@@ -12,8 +12,8 @@ Completed:
 
 - Phase 1: Developer C FastAPI backend harness.
 - Phase 2: Developer C-side schemas and mock adapter boundaries.
-- Phase 3, pre-prototype version: JSON mock request endpoint at
-  `POST /api/game/ai/respond`.
+- Phase 3, pre-prototype version: JSON mock request endpoint and multipart
+  `turn` JSON plus wav request handling at `POST /api/game/ai/respond`.
 - Phase 4, partial: Developer C Orchestrator, OpenKB mock, and Understanding
   Agent are connected for `IMM_002_PURPOSE`.
 - Phase 5, partial: Developer B policy adapter mock is connected through the
@@ -22,14 +22,15 @@ Completed:
   builder are connected.
 - Phase 7, minimum: Branch and response validation exists for the happy-path
   mock flow.
+- Developer C STT runtime: local Whisper large v3 turbo boundary is wired with
+  API fallback and deterministic test mode.
 
 Not completed yet:
 
-- Real wav byte transcription through Whisper large v3 turbo.
+- Live local Whisper model download and smoke test on the demo machine.
 - Real Developer A NPC dialogue/TTS implementation.
 - Real Developer B policy/level/hint/feedback implementation.
 - Full Chapter 0 OpenKB node coverage.
-- Multipart Unreal-style request handling.
 - NPC response wav generation or fixture artifact response.
 - Out-game feedback logging and final report flow.
 - End-to-end retry, bad-ending, and STT fallback demos.
@@ -53,16 +54,19 @@ mock turn JSON + player wav
   -> Unreal-safe JSON + NPC response wav reference
 ```
 
-Current implementation already proves the same flow with JSON mock audio data.
-The next demo step is to replace the JSON transcript shortcut with a real wav
-file boundary while keeping deterministic tests available.
+Current implementation proves the same flow with JSON mock audio data and with
+a multipart request that sends `turn` JSON plus
+`samples/utterance-20260603-163237.wav`. The STT boundary accepts real wav bytes
+and can run local Whisper first with API fallback. Automated tests and contract
+demos set `MURPHY_STT_MODE=mock`, so they still use deterministic demo
+transcription instead of downloading a local model or requiring an API key.
 
 ## Current AI-Only Flow
 
 ```mermaid
 flowchart TD
-    REQ["JSON mock request<br/>turn + mock wav metadata"] --> API["Developer C API<br/>POST /api/game/ai/respond"]
-    API --> STT["Whisper large v3 turbo wrapper<br/>deterministic transcript shortcut"]
+    REQ["JSON or multipart request<br/>turn + sample wav"] --> API["Developer C API<br/>POST /api/game/ai/respond"]
+    API --> STT["Whisper large v3 turbo boundary<br/>local mode or deterministic mock mode"]
     STT --> ORCH["Developer C Orchestrator"]
     ORCH --> KB["OpenKB mock<br/>IMM_002_PURPOSE node_context"]
     KB --> UA["Understanding Agent<br/>intent, slots, relevance, risk"]
@@ -78,7 +82,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     CURL["Demo client<br/>mock JSON + player_input.wav"] --> API["AI Backend<br/>multipart/form-data"]
-    API --> STT["STT Service<br/>Whisper large v3 turbo"]
+    API --> STT["STT Service<br/>local Whisper large v3 turbo<br/>API fallback"]
     STT --> C["Developer C Orchestrator"]
     C --> U["Understanding Agent"]
     U --> B["Developer B<br/>Policy / Level / Hint / Feedback"]
@@ -111,6 +115,46 @@ curl.exe -X POST http://127.0.0.1:8000/api/game/ai/respond `
   -F "turn=<demo/input/imm_002_purpose.json;type=application/json" `
   -F "audio=@samples/utterance-20260603-163237.wav;type=audio/wav"
 ```
+
+## STT Runtime Setup
+
+Runtime settings are loaded from `.env`. Start from the shared template:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+For automated tests and contract demos, set deterministic mode in `.env`:
+
+```text
+MURPHY_STT_MODE=mock
+```
+
+For real local transcription mode, set:
+
+```powershell
+uv sync --extra local-stt
+```
+
+```text
+MURPHY_STT_MODE=local
+MURPHY_STT_LOCAL_MODEL=turbo
+```
+
+The local runtime uses `openai-whisper` and the `turbo` model alias for Whisper
+large-v3-turbo. The first real local run may download the model weights, and
+the host machine must have `ffmpeg` available.
+
+Optional API fallback settings in `.env`:
+
+```text
+OPENAI_API_KEY=<your-api-key>
+MURPHY_STT_API_MODEL=whisper-1
+```
+
+The fallback calls the OpenAI Transcriptions API only when the local runtime
+fails. `MURPHY_STT_API_MODEL` can be changed to another supported
+Transcriptions API model.
 
 Suggested demo fixture layout:
 
@@ -146,6 +190,9 @@ Target demo response excerpt:
   "next_action": "ADVANCE",
   "stt": {
     "model": "whisper-large-v3-turbo",
+    "primary_runtime": "local",
+    "fallback_runtime": "api",
+    "runtime_used": "local",
     "player_text": "I'm here for tourism.",
     "confidence": 0.87
   },
@@ -169,8 +216,8 @@ Target demo response excerpt:
 }
 ```
 
-The current implementation does not yet include `stt.player_text` or
-`npc.audio_url` in the final response. Those are recommended demo additions.
+The current implementation includes `stt.player_text`. It does not yet include
+`npc.audio_url`; that is the next Developer A/C demo addition.
 
 ## Developer A Responsibilities for Demo
 
@@ -229,15 +276,15 @@ and demo backend transport.
 For the next demo milestone, Developer C should implement:
 
 - Multipart request support for `turn` JSON plus `audio` wav.
-- Real wav STT provider boundary for Whisper large v3 turbo.
+- Live local Whisper smoke test on the demo machine.
 - Deterministic STT mock path for tests.
 - NPC voice artifact adapter that can return an `audio_url`.
 - Static serving or artifact path handling for demo wav output.
 - Response fields for STT visibility and NPC audio reference.
 - Tests for multipart request to response with `npc.audio_url`.
 
-Developer C should keep tests passing without real provider credentials by
-using mocks and fixtures.
+Developer C should keep tests passing without local model downloads or real API
+credentials by using mocks and fixtures.
 
 ## Demo Milestones
 
@@ -270,14 +317,15 @@ Input:
 
 Output:
 
-- Transcript from Whisper large v3 turbo boundary.
+- Transcript from the Whisper large v3 turbo boundary.
+- STT runtime metadata showing local primary and API fallback.
 - Unreal-safe JSON response.
 - NPC text from Developer A adapter.
 
 Status:
 
 ```text
-next Developer C milestone
+implemented with real local/API fallback boundary and deterministic test mode
 ```
 
 ### Demo 3: NPC Voice Artifact
@@ -320,10 +368,11 @@ future A/B/C integration milestone
 The pre-prototype demo is ready when:
 
 - A single command can send mock turn JSON plus wav to the backend.
-- The backend returns the recognized player text or STT debug info.
+- The backend returns the recognized player text or STT debug info, including
+  local primary and API fallback metadata.
 - The backend returns `next_node_id = "IMM_003_DURATION"` for the tourism
   success case.
 - The backend returns Officer Miller NPC text.
 - The backend returns or serves an NPC response wav artifact.
-- Tests still pass without real API keys, Unreal Engine runtime, remote OpenKB,
-  or real A/B provider dependencies.
+- Tests still pass without local Whisper model downloads, real API keys, Unreal
+  Engine runtime, remote OpenKB, or real A/B provider dependencies.

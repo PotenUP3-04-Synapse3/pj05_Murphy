@@ -6,42 +6,63 @@ Phase 1 bootstrap is complete, Phase 2 contracts exist, and the AI-only
 pre-prototype turn flow is now implemented. The repository has a Developer C
 FastAPI backend package, C-side schemas, deterministic mock adapters, a
 Whisper-large-v3-turbo STT wrapper, an orchestrator, a minimal validator, and
-tests for the mock wav turn flow.
+tests for JSON mock and multipart sample-wav turn flows. The STT contract is
+local-first with API fallback. Automated tests keep deterministic STT through
+`MURPHY_STT_MODE=mock`. Runtime settings now load from `.env` through
+`pydantic-settings`.
 
 ## Last Completed Task
 
-Added a shared pre-prototype status and demo plan document for Developer A,
-Developer B, and Developer C. The document explains current phase status, the
-AI-only orchestration flow, the target mock JSON plus wav demo setup, expected
-response shape, and each developer's demo responsibilities.
+Implemented `.env`-based settings for Developer C runtime configuration. The
+app now reads `OPENAI_API_KEY`, STT mode, local Whisper model alias, API
+fallback model, endpoint, and timeout through
+`backend/app/services/settings_service.py`. The real `.env` file is ignored by
+git; `.env.example` is the committed template.
 
 ## Changed Files
 
-- `docs/preprototype_status_demo_plan.md`
-- `samples/utterance-20260603-163237.wav`
+- `.env.example`
+- `.gitignore`
+- `README.md`
+- `backend/app/services/settings_service.py`
+- `backend/app/services/stt_service.py`
+- `backend/tests/test_settings_service.py`
+- `docs/contracts/dependency_contract.md`
+- `docs/contracts/developer_c_adapter_contracts.md`
+- `docs/contracts/developer_c_schema_contract.md`
 - `docs/handoff.md`
+- `docs/preprototype_status_demo_plan.md`
 
 ## Commands Run
 
-- `git status --short`
-- `rg --files docs`
-- `Get-Content -LiteralPath 'docs\handoff.md'`
-- `Get-Content -LiteralPath 'docs\contracts\developer_c_schema_contract.md'`
-- `Get-Content -LiteralPath 'docs\contracts\developer_c_adapter_contracts.md'`
-- `Get-Content -LiteralPath 'docs\preprototype_status_demo_plan.md'`
-- `Get-ChildItem -Recurse -File -LiteralPath 'samples'`
+- `git status --short --branch`
+- `Get-Content -Path backend\app\services\stt_service.py`
+- `Get-Content -Path .gitignore`
+- `Get-Content -Path .env.example`
+- `Get-Content -Path backend\tests\test_stt_service.py`
+- `Get-Content -Path README.md`
+- `Get-Content -Path docs\contracts\dependency_contract.md`
+- `Get-Content -Path docs\contracts\developer_c_schema_contract.md`
+- `Get-Content -Path docs\preprototype_status_demo_plan.md`
+- `Get-Content -Path docs\handoff.md`
+- `uv run pytest backend/tests/test_settings_service.py -q` (RED: settings service did not exist)
+- `uv run pytest backend/tests/test_settings_service.py -q` (GREEN: 2 passed)
+- `rg --files -g ".gitignore" -g ".env*" -g "*.env" -g "pyproject.toml" -g "*.md"`
+- `rg -n "MURPHY_STT|OPENAI_API_KEY|\.env|Runtime STT|STT Runtime Setup" README.md docs\contracts\dependency_contract.md docs\contracts\developer_c_schema_contract.md docs\contracts\developer_c_adapter_contracts.md docs\preprototype_status_demo_plan.md docs\handoff.md`
 - `git diff --stat`
 - `uv sync` (first sandboxed attempt failed on user-level uv cache initialization)
-- `uv sync` (rerun with approved escalation)
-- `uv run pytest`
-- `uv run ruff check .`
-- `uv run mypy .`
+- `uv sync` (rerun with approved escalation: resolved 93 packages, audited 55 packages)
+- `uv run pytest` (9 passed, 1 warning)
+- `uv run ruff check .` (passed)
+- `uv run mypy .` (initially failed on typed `_env_file` constructor usage)
+- `uv run mypy .` (passed)
+- `git diff --check` (passed)
 
 ## Current Architecture
 
 The current implementation exposes `GET /health` and
 `POST /api/game/ai/respond`. The pre-prototype endpoint accepts JSON mock input
-instead of real Unreal multipart data.
+and multipart `turn` JSON plus wav input.
 
 The target Developer C architecture is a FastAPI backend that receives wav
 audio from Unreal, runs STT, retrieves OpenKB context, runs a deterministic
@@ -52,8 +73,8 @@ validates all responses before returning them.
 Current pre-prototype flow:
 
 ```text
-Mock Unreal wav JSON
-  -> Whisper-large-v3-turbo STT wrapper
+Mock Unreal JSON or multipart sample wav
+  -> Whisper-large-v3-turbo STT boundary (mock mode in tests, local mode in demo)
   -> Developer C Orchestrator
   -> Developer C OpenKB node_context
   -> Developer C Understanding Agent
@@ -68,7 +89,7 @@ Canonical turn flow:
 
 ```text
 Unreal wav
-  -> Developer C STT
+  -> Developer C local STT, with API fallback
   -> Developer C Orchestrator
   -> Developer C OpenKB node_context
   -> Developer C Understanding Agent
@@ -110,7 +131,10 @@ Implemented C-owned modules:
   schemas for mock Unreal input, STT normalized input, OpenKB node context,
   Understanding output, Developer A/B adapter payloads, and final response.
 - `backend/app/services/stt_service.py` wraps the configured
-  `whisper-large-v3-turbo` model name with deterministic mock transcription.
+  `whisper-large-v3-turbo` model name with real local Whisper transcription,
+  OpenAI Transcriptions API fallback, and deterministic mock mode for tests.
+- `backend/app/services/settings_service.py` centralizes `.env` and process
+  environment configuration for C-owned runtime settings.
 - `backend/app/services/orchestrator.py` wires STT, OpenKB, Understanding,
   Developer B, Developer A, logging, response building, and validation.
 - `backend/app/services/validator.py` enforces minimal branch and response
@@ -122,24 +146,43 @@ Package management uses `uv`. Python is set to 3.12. Required runtime and dev
 dependencies are recorded in `pyproject.toml` and `uv.lock`, including
 `langchain==1.3.2` and `langgraph==1.2.2`.
 
-The sandboxed `uv sync` attempt failed while initializing the user-level uv
-cache. It passed when rerun with approved escalation. The latest `uv run
-pytest`, `uv run ruff check .`, and `uv run mypy .` passed.
+Local STT dependencies are optional:
+
+```powershell
+uv sync --extra local-stt
+```
+
+Runtime STT settings:
+
+- `.env.example` is the committed settings template.
+- `.env` is local-only and ignored by git.
+- `MURPHY_STT_MODE=local` runs local Whisper first.
+- `MURPHY_STT_MODE=mock` uses deterministic transcription for tests.
+- `MURPHY_STT_LOCAL_MODEL=turbo` uses the local Whisper large-v3-turbo alias.
+- `MURPHY_STT_API_MODEL=whisper-1` controls API fallback.
+- `OPENAI_API_KEY` is required only if API fallback is needed.
+
+The sandboxed `uv sync` and `uv lock` attempts failed while initializing the
+user-level uv cache. Both passed when rerun with approved escalation. The
+latest `uv run pytest` passed with 9 tests and 1 warning.
+`uv run ruff check .` and `uv run mypy .` passed. `git diff --check` passed.
 
 ## Known Issues
 
-The pre-prototype uses deterministic mocks for Developer A, Developer B, OpenKB,
-and STT transcription content. It does not yet process real wav bytes through a
-remote or local Whisper provider. The primary endpoint currently accepts JSON
-mock input, not real Unreal multipart upload. Developer A and Developer B real
-implementation files are still absent.
+The pre-prototype uses deterministic mocks for Developer A, Developer B, and
+OpenKB. STT can now execute real local Whisper in `local` mode, but automated
+tests intentionally use fake runtimes or `mock` mode and do not download model
+weights. The first real local run needs `uv sync --extra local-stt`, `ffmpeg`,
+and time to download/load the Whisper model. Developer A and Developer B real
+implementation files are still absent. The response does not yet include
+`npc.audio_url`.
 
 ## Next Recommended Step
 
-Next, replace the deterministic STT transcript shortcut with a real
-Whisper-large-v3-turbo provider boundary while keeping tests on the mock path.
-After that, expand scenario coverage beyond `IMM_002_PURPOSE` and connect real
-Developer A/B implementations behind the existing adapters.
+Next, run a live local Whisper smoke test on the demo machine with
+`MURPHY_STT_MODE=local`. After that, implement Demo 3 by adding an NPC voice
+artifact fixture or Developer A voice output adapter and returning
+`npc.audio_url`.
 
 ## Resume Instructions
 

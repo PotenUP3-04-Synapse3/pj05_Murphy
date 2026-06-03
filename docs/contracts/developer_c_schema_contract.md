@@ -27,6 +27,23 @@ metadata as:
 }
 ```
 
+The STT runtime policy is local-first:
+
+- Primary runtime: local `whisper-large-v3-turbo`.
+- Fallback runtime: OpenAI Transcriptions API.
+- Tests and deterministic demo paths must pass without requiring a local model
+  download or API key.
+
+Runtime configuration is loaded from process environment variables and `.env`
+through `backend/app/services/settings_service.py`:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MURPHY_STT_MODE` | `local` | `local` runs local Whisper first; `mock` uses deterministic demo transcription |
+| `MURPHY_STT_LOCAL_MODEL` | `turbo` | `openai-whisper` local model alias for Whisper large-v3-turbo |
+| `MURPHY_STT_API_MODEL` | `whisper-1` | OpenAI Transcriptions API fallback model |
+| `OPENAI_API_KEY` | unset | Required only when API fallback is needed |
+
 This keeps the Unreal request simple while still satisfying the Developer B
 `dev_b_policy.v1` input contract.
 
@@ -86,8 +103,9 @@ accept a JSON test harness payload shaped as:
 ```
 
 The mock payload still represents a wav turn. The `transcript` field is a test
-harness shortcut used by the deterministic Whisper service wrapper and should
-be removed or ignored when real wav bytes are connected.
+harness shortcut used by the deterministic local Whisper service boundary and
+should be removed or ignored when real wav bytes are connected to the local
+runtime.
 
 ## Unreal Turn Request
 
@@ -196,7 +214,11 @@ Understanding Agent.
     "stt_confidence": 0.87,
     "language_detected": "en-US",
     "needs_repeat": false
-  }
+  },
+  "stt_model": "whisper-large-v3-turbo",
+  "stt_primary_runtime": "local",
+  "stt_fallback_runtime": "api",
+  "stt_runtime_used": "local"
 }
 ```
 
@@ -204,10 +226,16 @@ Rules:
 
 - `input_source.input_type` is always `voice` for the current prototype.
 - The configured STT model name is `whisper-large-v3-turbo`.
+- `stt_primary_runtime` is always `local` for the current prototype.
+- `stt_fallback_runtime` is always `api`; it is used only when the local
+  runtime is unavailable or fails in a non-test environment.
+- `stt_runtime_used` records the runtime that produced the transcript for the
+  current turn.
 - `stt_confidence` may be `null` only when the mock STT cannot estimate it.
 - `needs_repeat` must be true when STT confidence or audio quality is too low
   for safe evaluation.
-- Tests must pass with deterministic mock STT and no external provider keys.
+- Tests must pass with deterministic mock STT and no local model download or
+  external provider keys.
 
 ## OpenKB Node Context
 
@@ -449,6 +477,16 @@ Developer C returns only validated, Unreal-safe data.
   "current_node_id": "IMM_002_PURPOSE",
   "next_node_id": "IMM_003_DURATION",
   "next_action": "ADVANCE",
+  "stt": {
+    "model": "whisper-large-v3-turbo",
+    "primary_runtime": "local",
+    "fallback_runtime": "api",
+    "runtime_used": "local",
+    "player_text": "I'm here for tourism.",
+    "confidence": 0.87,
+    "language_detected": "en-US",
+    "needs_repeat": false
+  },
   "npc": {
     "speaker": "Officer Miller",
     "text": "You're here for tourism. How long will you stay?",
@@ -509,6 +547,12 @@ Developer C returns only validated, Unreal-safe data.
 Rules:
 
 - `next_node_id` must be validated against `node_context.allowed_next_nodes`.
+- `stt.player_text` is the normalized transcript passed into the Understanding
+  Agent and Developer B policy adapter.
+- `stt.primary_runtime` and `stt.fallback_runtime` expose the local-first
+  runtime policy for demo/debug visibility.
+- `stt.runtime_used` must be `local` unless the API fallback actually produced
+  the transcript.
 - `state_delta` must come from Developer B output after validation.
 - NPC text must come from Developer A output or a Developer C deterministic
   adapter mock, not from Developer B.
