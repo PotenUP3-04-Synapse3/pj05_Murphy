@@ -1,0 +1,81 @@
+{
+  "speaker": "Officer Miller",
+  "npc_text": "Alright. You'll stay for five days. Where will you be staying?",
+  "text": "Alright. You'll stay for five days. Where will you be staying?",
+  "tts_text": "Alright. You'll stay for five days. ... Where will you be staying?",
+  "feedback_kr": "체류 기간은 전달됐지만, 관사와 전치사를 넣으면 더 자연스럽습니다. 더 자연스럽게는: I'll stay for five days.",
+  "tone": "formal_neutral",
+  "animation": "none",
+  "fallback": {
+    "used": false,
+    "reason": null
+  },
+  "generation_profile": {
+    "player_language": {
+      "english_level": "beginner",
+      "task_success": 3,
+      "clarity": 2,
+      "needs_hint": false,
+      "complexity": "simple",
+      "feedback_depth": "brief_recast"
+    },
+    "npc_emotion": {
+      "emotion": "calm_official",
+      "intensity": 0.35,
+      "reason": "successful_low_priority_answer"
+    },
+    "dialogue_policy": {
+      "action": "recast_and_advance",
+      "tone": "formal_neutral",
+      "max_sentence_count": 2,
+      "use_recast": true,
+      "add_officer_ack": true,
+      "next_question_style": "short"
+    },
+    "tts_style": {
+      "english_level": "beginner",
+      "complexity": "simple",
+      "feedback_depth": "brief_recast",
+      "emotion": "calm_official",
+      "emotion_intensity": 0.35,
+      "emotion_reason": "successful_low_priority_answer",
+      "dialogue_action": "recast_and_advance",
+      "next_question_style": "short"
+    }
+  },
+  "llm": {
+    "used": true,
+    "fallback_used": false,
+    "model_reason": "The response acknowledges the player's duration of stay while prompting for the next information in a calm and official manner."
+  },
+  "tts": {
+    "provider": "kokoro",
+    "voice_id": "am_michael",
+    "audio_path": "backend\\runtime\\audio\\kokoro\\02160bafedccd24e454895e852ceafd3aa9de82429259566f87eb5af41c8cf38.wav",
+    "audio_url": "http://localhost:8000/runtime/audio/kokoro/02160bafedccd24e454895e852ceafd3aa9de82429259566f87eb5af41c8cf38.wav",
+    "sample_rate": 24000,
+    "format": "wav",
+    "audio_seconds": 4.625,
+    "generation_seconds": 3.3083267000001797,
+    "real_time_factor": 0.7153138810811199,
+    "status": "ok",
+    "cache_key": "02160bafedccd24e454895e852ceafd3aa9de82429259566f87eb5af41c8cf38",
+    "quality_metadata": {
+      "sample_rate": 24000,
+      "channels": 1,
+      "bit_depth": 16,
+      "duration_ms": 4625,
+      "silent_ratio": 0.43103448275862066
+    },
+    "postprocess_policy": {
+      "provider": "kokoro",
+      "target_sample_rate": 24000,
+      "target_format": "wav",
+      "target_channels": 1,
+      "target_peak_dbfs": -3.0,
+      "trim_outer_silence": true,
+      "preserve_sentence_pause": true,
+      "actual_dsp_applied": false
+    }
+  }
+}

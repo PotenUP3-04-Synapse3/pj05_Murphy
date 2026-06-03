@@ -31,6 +31,10 @@ Current `.python-version`:
 - `httpx`
 - `langchain==1.3.2`
 - `langgraph==1.2.2`
+- `kokoro`
+- `soundfile`
+- `torch`
+- `espeakng-loader`
 
 ## Required Development Dependencies
 
@@ -52,3 +56,23 @@ Do not upgrade or downgrade these packages unless this file,
 
 No real STT, TTS, or LLM provider dependency should be added until explicitly
 requested. Tests must pass without external API keys.
+
+## Approved Local TTS Dependencies
+
+Developer A / kimyonghee received explicit approval on 2026-06-03 to add local
+Kokoro TTS dependencies for real wav generation tests.
+
+Approved packages:
+
+- `kokoro>=0.9.4`
+- `soundfile>=0.13.1`
+- `torch>=2.12.0`
+- `espeakng-loader>=0.2.4`
+
+Constraints:
+
+- Tests must still pass without external API keys.
+- Real Kokoro generation may download local model assets during smoke tests.
+- Runtime audio files are generated under `backend/runtime/`.
+- Unreal-facing audio delivery is expected to use `audio_url`, but Developer C
+  still needs to define the static serving route.
