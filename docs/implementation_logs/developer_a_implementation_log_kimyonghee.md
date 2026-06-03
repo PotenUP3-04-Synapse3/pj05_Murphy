@@ -346,3 +346,19 @@
   - `silent_ratio=0.4310`
   - `status=ok`
 - 임시 실행 스크립트는 제거했고, JSON/wav/metadata 산출물은 보존했다.
+
+## 2026-06-03 22:45:43 +09:00
+
+- 사용자가 wav 파일명을 사람이 구분 가능한 형식으로 변경해달라고 요청했다.
+- 적용할 규칙: `{node_id}_{target_slot}_{branch_type}_{voice_id}_{hash8}.wav`
+- cache key는 그대로 유지하고, 파일명에 짧은 hash를 붙여 충돌 방지와 사람이 읽기 쉬운 구분을 함께 유지한다.
+- 기존 생성된 runtime wav와 metadata/audio_url 참조도 함께 갱신한다.
+
+## 2026-06-03 22:46:00 +09:00
+
+- `audio_storage_service.audio_output_path`를 확장해 사람이 구분 가능한 파일명을 생성하도록 수정했다.
+- 새 파일명 생성 함수 `build_audio_filename`을 추가했다.
+- `voice_output_service`에서 `node_id`, `target_slot`, `branch_type`, `voice_id`를 audio path 생성에 넘기도록 수정했다.
+- 기존 runtime wav 5개를 새 파일명으로 rename했다.
+- 기존 metadata의 `audio_path`, `audio_url`도 새 파일명으로 갱신했다.
+- 1차 rename 중 source metadata가 부족한 파일에서 `short`가 target slot으로 들어간 문제를 발견했고, `stay_duration`/`stay_address`로 보정했다.

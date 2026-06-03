@@ -46,8 +46,8 @@
   "tts": {
     "provider": "kokoro",
     "voice_id": "am_michael",
-    "audio_path": "backend\\runtime\\audio\\kokoro\\c4abebc8604d7dfddb997ba8fa16db2dbcbaaf9a6bb0dd1d474656e5bf9056b0.wav",
-    "audio_url": "http://localhost:8000/runtime/audio/kokoro/c4abebc8604d7dfddb997ba8fa16db2dbcbaaf9a6bb0dd1d474656e5bf9056b0.wav",
+    "audio_path": "backend\\runtime\\audio\\kokoro\\IMM_002_PURPOSE_stay_duration_success_am_michael_c4abebc8.wav",
+    "audio_url": "http://localhost:8000/runtime/audio/kokoro/IMM_002_PURPOSE_stay_duration_success_am_michael_c4abebc8.wav",
     "sample_rate": 24000,
     "format": "wav",
     "audio_seconds": 4.3,

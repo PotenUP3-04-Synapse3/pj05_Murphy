@@ -92,6 +92,9 @@ def build_voice_output_from_level_design(
             runtime_root=root,
             use_real_tts=use_real_tts,
             audio_url_base=audio_url_base,
+            node_id=str(normalized.get("node_id", "")),
+            target_slot=str(normalized.get("target_slot", "")),
+            branch_type=str(normalized.get("branch_type", "")),
         )
         output = {**dialogue, "tts": tts}
         write_developer_a_event(
@@ -137,6 +140,9 @@ def _build_kokoro_audio(
     runtime_root: Path,
     use_real_tts: bool,
     audio_url_base: str | None,
+    node_id: str | None = None,
+    target_slot: str | None = None,
+    branch_type: str | None = None,
 ) -> dict[str, Any]:
     voice = str(tts_request.provider_options["voice"])
     model_version = "kokoro-0.9.4" if use_real_tts else "fake-kokoro-v1"
@@ -148,7 +154,15 @@ def _build_kokoro_audio(
         output_format=tts_request.output_format,
         model_version=model_version,
     )
-    output_path = audio_output_path(runtime_root, cache_key, tts_request.output_format)
+    output_path = audio_output_path(
+        root=runtime_root,
+        cache_key=cache_key,
+        output_format=tts_request.output_format,
+        node_id=node_id,
+        target_slot=target_slot,
+        branch_type=branch_type,
+        voice_id=voice,
+    )
     provider = RealKokoroProvider() if use_real_tts else FakeKokoroProvider()
     metadata = provider.synthesize(tts_request, output_path)
     quality_metadata = analyze_wav_quality(output_path)
