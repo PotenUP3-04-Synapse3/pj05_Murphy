@@ -15,6 +15,11 @@ The current prototype assumes every Unreal turn arrives as a wav file. There is
 no public Unreal `input_type`; Developer C always runs STT before semantic
 understanding.
 
+The AI-only pre-prototype uses JSON mock input instead of a real Unreal
+multipart upload. That mock input still models a wav turn and flows through the
+same STT, orchestrator, Understanding, Developer B, Developer A, response
+builder, and validator stages.
+
 ```mermaid
 flowchart TD
     U["Unreal Client"] --> API["Developer C API<br/>POST /api/game/ai/respond<br/>wav + turn metadata"]
@@ -112,6 +117,7 @@ Output:
 Rules:
 
 - `input_source.input_type` is always `voice` in this prototype.
+- The STT service is configured around `whisper-large-v3-turbo`.
 - The mock STT must be deterministic.
 - Tests must not require real STT provider credentials.
 

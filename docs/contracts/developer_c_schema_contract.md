@@ -64,6 +64,31 @@ Required parts:
 Developer C should reject the request before orchestration when `audio` is
 missing, is not wav-compatible, or required `turn` metadata is missing.
 
+Pre-prototype transport:
+
+```text
+application/json
+```
+
+During the AI-only pre-prototype, Unreal is not connected yet. Developer C may
+accept a JSON test harness payload shaped as:
+
+```json
+{
+  "turn": {
+    "contract_version": "dev_c_unreal_turn.v1"
+  },
+  "audio": {
+    "mock_wav_path": "mock://immigration/purpose_tourism.wav",
+    "transcript": "I'm here for tourism."
+  }
+}
+```
+
+The mock payload still represents a wav turn. The `transcript` field is a test
+harness shortcut used by the deterministic Whisper service wrapper and should
+be removed or ignored when real wav bytes are connected.
+
 ## Unreal Turn Request
 
 Canonical `turn` payload:
@@ -178,6 +203,7 @@ Understanding Agent.
 Rules:
 
 - `input_source.input_type` is always `voice` for the current prototype.
+- The configured STT model name is `whisper-large-v3-turbo`.
 - `stt_confidence` may be `null` only when the mock STT cannot estimate it.
 - `needs_repeat` must be true when STT confidence or audio quality is too low
   for safe evaluation.
