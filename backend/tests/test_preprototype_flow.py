@@ -102,6 +102,9 @@ def test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response() -> N
     assert response.ui.in_game_feedback.feedback_strategy == "recast"
     assert response.debug.stt_model == "whisper-large-v3-turbo"
     assert response.debug.stt_confidence == pytest.approx(0.87)
+    assert response.stt.primary_runtime == "local"
+    assert response.stt.fallback_runtime == "api"
+    assert response.stt.runtime_used == "local"
 
 
 def test_api_accepts_mock_unreal_turn_json() -> None:
@@ -120,6 +123,9 @@ def test_api_accepts_mock_unreal_turn_json() -> None:
     body = response.json()
     assert body["next_node_id"] == "IMM_003_DURATION"
     assert body["stt"]["player_text"] == "I'm here for tourism."
+    assert body["stt"]["primary_runtime"] == "local"
+    assert body["stt"]["fallback_runtime"] == "api"
+    assert body["stt"]["runtime_used"] == "local"
     assert body["debug"]["stt_model"] == "whisper-large-v3-turbo"
 
 
@@ -146,6 +152,9 @@ def test_api_accepts_multipart_turn_json_and_sample_wav() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["stt"]["model"] == "whisper-large-v3-turbo"
+    assert body["stt"]["primary_runtime"] == "local"
+    assert body["stt"]["fallback_runtime"] == "api"
+    assert body["stt"]["runtime_used"] == "local"
     assert body["stt"]["player_text"] == "I'm here for tourism."
     assert body["next_node_id"] == "IMM_003_DURATION"
     assert body["npc"]["text"] == "You're here for tourism. How long will you stay?"

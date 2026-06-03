@@ -36,6 +36,9 @@ class ResponseBuilder:
             next_action=dev_b_output.branch.next_action,
             stt=SttResponse(
                 model=normalized_input.stt_model,
+                primary_runtime=normalized_input.stt_primary_runtime,
+                fallback_runtime=normalized_input.stt_fallback_runtime,
+                runtime_used=normalized_input.stt_runtime_used,
                 player_text=normalized_input.player_text,
                 confidence=normalized_input.input_source.stt_confidence,
                 language_detected=normalized_input.input_source.language_detected,

@@ -5,6 +5,8 @@ from backend.app.schemas.game_turn import AudioMetadata, InputSource, MockAudioI
 
 class WhisperLargeV3TurboSttService:
     model_name: Literal["whisper-large-v3-turbo"] = "whisper-large-v3-turbo"
+    primary_runtime: Literal["local"] = "local"
+    fallback_runtime: Literal["api"] = "api"
 
     def transcribe_wav(
         self,
@@ -27,6 +29,9 @@ class WhisperLargeV3TurboSttService:
                 needs_repeat=False,
             ),
             stt_model=self.model_name,
+            stt_primary_runtime=self.primary_runtime,
+            stt_fallback_runtime=self.fallback_runtime,
+            stt_runtime_used=self.primary_runtime,
         )
 
     def _transcribe_uploaded_wav(self, audio: MockAudioInput) -> str:

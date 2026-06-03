@@ -6,18 +6,21 @@ Phase 1 bootstrap is complete, Phase 2 contracts exist, and the AI-only
 pre-prototype turn flow is now implemented. The repository has a Developer C
 FastAPI backend package, C-side schemas, deterministic mock adapters, a
 Whisper-large-v3-turbo STT wrapper, an orchestrator, a minimal validator, and
-tests for JSON mock and multipart sample-wav turn flows.
+tests for JSON mock and multipart sample-wav turn flows. The STT contract is
+local-first with API fallback metadata, while the current test/demo
+transcription remains deterministic.
 
 ## Last Completed Task
 
-Implemented the Developer C Demo 2 baseline. The endpoint now accepts both the
-existing JSON mock request and multipart `turn` JSON plus sample wav requests.
-The response includes `stt.player_text`, `next_node_id`, and `npc.text`.
+Clarified and implemented the Developer C STT runtime contract for Demo 2. The
+endpoint still accepts both the existing JSON mock request and multipart
+`turn` JSON plus sample wav requests. The response includes `stt.player_text`,
+`stt.primary_runtime = "local"`, `stt.fallback_runtime = "api"`,
+`stt.runtime_used`, `next_node_id`, and `npc.text`.
 
 ## Changed Files
 
 - `docs/preprototype_status_demo_plan.md`
-- `backend/app/api/ai_respond.py`
 - `backend/app/schemas/game_turn.py`
 - `backend/app/services/response_builder.py`
 - `backend/app/services/stt_service.py`
@@ -27,21 +30,25 @@ The response includes `stt.player_text`, `next_node_id`, and `npc.text`.
 
 ## Commands Run
 
-- `git status --short`
-- `rg --files docs`
-- `Get-Content -LiteralPath 'docs\handoff.md'`
-- `Get-Content -LiteralPath 'docs\contracts\developer_c_schema_contract.md'`
-- `Get-Content -LiteralPath 'docs\contracts\developer_c_adapter_contracts.md'`
-- `Get-Content -LiteralPath 'docs\preprototype_status_demo_plan.md'`
-- `Get-ChildItem -Recurse -File -LiteralPath 'samples'`
-- `git diff --stat`
-- `uv run pytest backend/tests/test_preprototype_flow.py -q` (RED: multipart request and `stt` response fields were not implemented)
+- `git status --short --branch`
+- `Get-Content -Path backend\tests\test_preprototype_flow.py`
+- `Get-Content -Path backend\app\schemas\game_turn.py`
+- `Get-Content -Path backend\app\services\stt_service.py`
+- `Get-Content -Path backend\app\services\response_builder.py`
+- `Get-Content -Path docs\contracts\developer_c_schema_contract.md`
+- `Get-Content -Path docs\preprototype_status_demo_plan.md`
+- `Get-Content -Path docs\handoff.md`
+- `uv run pytest backend/tests/test_preprototype_flow.py -q` (RED: STT runtime metadata fields were not implemented)
 - `uv run pytest backend/tests/test_preprototype_flow.py -q` (GREEN: 4 passed, 1 warning)
+- `rg -n "provider|Whisper|STT|fallback|runtime" docs\contracts\developer_c_schema_contract.md docs\preprototype_status_demo_plan.md docs\handoff.md`
+- `git diff -- docs\contracts\developer_c_schema_contract.md docs\preprototype_status_demo_plan.md docs\handoff.md`
+- `git diff --stat`
 - `uv sync` (first sandboxed attempt failed on user-level uv cache initialization)
-- `uv sync` (rerun with approved escalation)
+- `uv sync` (rerun with approved escalation: resolved 57 packages, audited 55 packages)
 - `uv run pytest` (5 passed, 1 warning)
-- `uv run ruff check .`
-- `uv run mypy .`
+- `uv run ruff check .` (passed)
+- `uv run mypy .` (passed)
+- `git diff --check` (passed)
 
 ## Current Architecture
 
@@ -59,7 +66,7 @@ Current pre-prototype flow:
 
 ```text
 Mock Unreal JSON or multipart sample wav
-  -> Whisper-large-v3-turbo STT boundary
+  -> Whisper-large-v3-turbo STT boundary (local primary, API fallback)
   -> Developer C Orchestrator
   -> Developer C OpenKB node_context
   -> Developer C Understanding Agent
@@ -74,7 +81,7 @@ Canonical turn flow:
 
 ```text
 Unreal wav
-  -> Developer C STT
+  -> Developer C local STT, with API fallback
   -> Developer C Orchestrator
   -> Developer C OpenKB node_context
   -> Developer C Understanding Agent
@@ -116,8 +123,8 @@ Implemented C-owned modules:
   schemas for mock Unreal input, STT normalized input, OpenKB node context,
   Understanding output, Developer A/B adapter payloads, and final response.
 - `backend/app/services/stt_service.py` wraps the configured
-  `whisper-large-v3-turbo` model name with deterministic mock and sample-wav
-  transcription.
+  `whisper-large-v3-turbo` model name with local-first/API-fallback metadata
+  and deterministic mock and sample-wav transcription.
 - `backend/app/services/orchestrator.py` wires STT, OpenKB, Understanding,
   Developer B, Developer A, logging, response building, and validation.
 - `backend/app/services/validator.py` enforces minimal branch and response
@@ -132,22 +139,24 @@ dependencies are recorded in `pyproject.toml` and `uv.lock`, including
 The sandboxed `uv sync` attempt failed while initializing the user-level uv
 cache. It passed when rerun with approved escalation. The latest
 `uv run pytest` passed with 5 tests and 1 warning. `uv run ruff check .` and
-`uv run mypy .` passed.
+`uv run mypy .` passed. `git diff --check` passed.
 
 ## Known Issues
 
 The pre-prototype uses deterministic mocks for Developer A, Developer B, OpenKB,
-and STT transcription content. It accepts wav bytes for the demo path but does
-not yet process them through a remote or local Whisper provider. Developer A
-and Developer B real implementation files are still absent. The response does
-not yet include `npc.audio_url`.
+and STT transcription content. It accepts wav bytes for the demo path and
+exposes the local-primary/API-fallback STT contract, but does not yet execute a
+real local Whisper runtime or API fallback call. Developer A and Developer B
+real implementation files are still absent. The response does not yet include
+`npc.audio_url`.
 
 ## Next Recommended Step
 
-Next, implement Demo 3 by adding an NPC voice artifact fixture or Developer A
-voice output adapter and returning `npc.audio_url`. After that, replace the
-deterministic STT transcript shortcut with a real Whisper-large-v3-turbo
-provider boundary while keeping tests on the mock path.
+Next, implement the actual local Whisper large v3 turbo runtime behind the
+existing STT boundary, then wire the API fallback path for local-runtime
+failure. In parallel or after that, implement Demo 3 by adding an NPC voice
+artifact fixture or Developer A voice output adapter and returning
+`npc.audio_url`.
 
 ## Resume Instructions
 

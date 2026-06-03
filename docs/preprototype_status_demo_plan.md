@@ -25,7 +25,7 @@ Completed:
 
 Not completed yet:
 
-- Real provider transcription through Whisper large v3 turbo.
+- Real local transcription through Whisper large v3 turbo with API fallback.
 - Real Developer A NPC dialogue/TTS implementation.
 - Real Developer B policy/level/hint/feedback implementation.
 - Full Chapter 0 OpenKB node coverage.
@@ -55,14 +55,16 @@ mock turn JSON + player wav
 Current implementation proves the same flow with JSON mock audio data and with
 a multipart request that sends `turn` JSON plus
 `samples/utterance-20260603-163237.wav`. The STT boundary accepts real wav bytes
-but still uses deterministic demo transcription instead of a real provider call.
+and exposes the local-first/API-fallback runtime contract, but still uses
+deterministic demo transcription instead of calling the local model or fallback
+API.
 
 ## Current AI-Only Flow
 
 ```mermaid
 flowchart TD
     REQ["JSON or multipart request<br/>turn + sample wav"] --> API["Developer C API<br/>POST /api/game/ai/respond"]
-    API --> STT["Whisper large v3 turbo boundary<br/>deterministic demo transcript"]
+    API --> STT["Whisper large v3 turbo boundary<br/>local-first metadata + deterministic transcript"]
     STT --> ORCH["Developer C Orchestrator"]
     ORCH --> KB["OpenKB mock<br/>IMM_002_PURPOSE node_context"]
     KB --> UA["Understanding Agent<br/>intent, slots, relevance, risk"]
@@ -78,7 +80,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     CURL["Demo client<br/>mock JSON + player_input.wav"] --> API["AI Backend<br/>multipart/form-data"]
-    API --> STT["STT Service<br/>Whisper large v3 turbo"]
+    API --> STT["STT Service<br/>local Whisper large v3 turbo<br/>API fallback"]
     STT --> C["Developer C Orchestrator"]
     C --> U["Understanding Agent"]
     U --> B["Developer B<br/>Policy / Level / Hint / Feedback"]
@@ -146,6 +148,9 @@ Target demo response excerpt:
   "next_action": "ADVANCE",
   "stt": {
     "model": "whisper-large-v3-turbo",
+    "primary_runtime": "local",
+    "fallback_runtime": "api",
+    "runtime_used": "local",
     "player_text": "I'm here for tourism.",
     "confidence": 0.87
   },
@@ -229,15 +234,15 @@ and demo backend transport.
 For the next demo milestone, Developer C should implement:
 
 - Multipart request support for `turn` JSON plus `audio` wav.
-- Real wav STT provider boundary for Whisper large v3 turbo.
+- Local Whisper large v3 turbo runtime with API fallback.
 - Deterministic STT mock path for tests.
 - NPC voice artifact adapter that can return an `audio_url`.
 - Static serving or artifact path handling for demo wav output.
 - Response fields for STT visibility and NPC audio reference.
 - Tests for multipart request to response with `npc.audio_url`.
 
-Developer C should keep tests passing without real provider credentials by
-using mocks and fixtures.
+Developer C should keep tests passing without local model downloads or real API
+credentials by using mocks and fixtures.
 
 ## Demo Milestones
 
@@ -270,14 +275,15 @@ Input:
 
 Output:
 
-- Transcript from Whisper large v3 turbo boundary.
+- Transcript from the Whisper large v3 turbo boundary.
+- STT runtime metadata showing local primary and API fallback.
 - Unreal-safe JSON response.
 - NPC text from Developer A adapter.
 
 Status:
 
 ```text
-implemented with deterministic STT demo transcript
+implemented with deterministic local STT demo transcript
 ```
 
 ### Demo 3: NPC Voice Artifact
@@ -320,10 +326,11 @@ future A/B/C integration milestone
 The pre-prototype demo is ready when:
 
 - A single command can send mock turn JSON plus wav to the backend.
-- The backend returns the recognized player text or STT debug info.
+- The backend returns the recognized player text or STT debug info, including
+  local primary and API fallback metadata.
 - The backend returns `next_node_id = "IMM_003_DURATION"` for the tourism
   success case.
 - The backend returns Officer Miller NPC text.
 - The backend returns or serves an NPC response wav artifact.
-- Tests still pass without real API keys, Unreal Engine runtime, remote OpenKB,
-  or real A/B provider dependencies.
+- Tests still pass without local Whisper model downloads, real API keys, Unreal
+  Engine runtime, remote OpenKB, or real A/B provider dependencies.

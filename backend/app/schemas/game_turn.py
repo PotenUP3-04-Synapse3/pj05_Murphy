@@ -108,6 +108,9 @@ class NormalizedInput(BaseModel):
     player_text: str
     input_source: InputSource
     stt_model: Literal["whisper-large-v3-turbo"]
+    stt_primary_runtime: Literal["local"]
+    stt_fallback_runtime: Literal["api"]
+    stt_runtime_used: Literal["local", "api"]
 
 
 class HintPolicy(BaseModel):
@@ -372,6 +375,9 @@ class DebugInfo(BaseModel):
 
 class SttResponse(BaseModel):
     model: str
+    primary_runtime: Literal["local"]
+    fallback_runtime: Literal["api"]
+    runtime_used: Literal["local", "api"]
     player_text: str
     confidence: float | None
     language_detected: str | None
