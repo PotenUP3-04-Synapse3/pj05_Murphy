@@ -30,9 +30,18 @@ metadata as:
 The STT runtime policy is local-first:
 
 - Primary runtime: local `whisper-large-v3-turbo`.
-- Fallback runtime: API `whisper-large-v3-turbo`.
+- Fallback runtime: OpenAI Transcriptions API.
 - Tests and deterministic demo paths must pass without requiring a local model
   download or API key.
+
+Runtime configuration:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MURPHY_STT_MODE` | `local` | `local` runs local Whisper first; `mock` uses deterministic demo transcription |
+| `MURPHY_STT_LOCAL_MODEL` | `turbo` | `openai-whisper` local model alias for Whisper large-v3-turbo |
+| `MURPHY_STT_API_MODEL` | `whisper-1` | OpenAI Transcriptions API fallback model |
+| `OPENAI_API_KEY` | unset | Required only when API fallback is needed |
 
 This keeps the Unreal request simple while still satisfying the Developer B
 `dev_b_policy.v1` input contract.

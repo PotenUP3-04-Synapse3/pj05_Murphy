@@ -13,6 +13,11 @@ from backend.app.services.validator import ValidationError, Validator
 SAMPLE_WAV = Path("samples/utterance-20260603-163237.wav")
 
 
+@pytest.fixture(autouse=True)
+def _use_mock_stt_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MURPHY_STT_MODE", "mock")
+
+
 def _turn_payload() -> dict:
     return {
         "contract_version": "dev_c_unreal_turn.v1",

@@ -22,10 +22,12 @@ Completed:
   builder are connected.
 - Phase 7, minimum: Branch and response validation exists for the happy-path
   mock flow.
+- Developer C STT runtime: local Whisper large v3 turbo boundary is wired with
+  API fallback and deterministic test mode.
 
 Not completed yet:
 
-- Real local transcription through Whisper large v3 turbo with API fallback.
+- Live local Whisper model download and smoke test on the demo machine.
 - Real Developer A NPC dialogue/TTS implementation.
 - Real Developer B policy/level/hint/feedback implementation.
 - Full Chapter 0 OpenKB node coverage.
@@ -55,16 +57,16 @@ mock turn JSON + player wav
 Current implementation proves the same flow with JSON mock audio data and with
 a multipart request that sends `turn` JSON plus
 `samples/utterance-20260603-163237.wav`. The STT boundary accepts real wav bytes
-and exposes the local-first/API-fallback runtime contract, but still uses
-deterministic demo transcription instead of calling the local model or fallback
-API.
+and can run local Whisper first with API fallback. Automated tests and contract
+demos set `MURPHY_STT_MODE=mock`, so they still use deterministic demo
+transcription instead of downloading a local model or requiring an API key.
 
 ## Current AI-Only Flow
 
 ```mermaid
 flowchart TD
     REQ["JSON or multipart request<br/>turn + sample wav"] --> API["Developer C API<br/>POST /api/game/ai/respond"]
-    API --> STT["Whisper large v3 turbo boundary<br/>local-first metadata + deterministic transcript"]
+    API --> STT["Whisper large v3 turbo boundary<br/>local mode or deterministic mock mode"]
     STT --> ORCH["Developer C Orchestrator"]
     ORCH --> KB["OpenKB mock<br/>IMM_002_PURPOSE node_context"]
     KB --> UA["Understanding Agent<br/>intent, slots, relevance, risk"]
@@ -113,6 +115,37 @@ curl.exe -X POST http://127.0.0.1:8000/api/game/ai/respond `
   -F "turn=<demo/input/imm_002_purpose.json;type=application/json" `
   -F "audio=@samples/utterance-20260603-163237.wav;type=audio/wav"
 ```
+
+## STT Runtime Setup
+
+Automated tests use deterministic mode:
+
+```powershell
+$env:MURPHY_STT_MODE="mock"
+```
+
+Real local transcription mode:
+
+```powershell
+uv sync --extra local-stt
+$env:MURPHY_STT_MODE="local"
+$env:MURPHY_STT_LOCAL_MODEL="turbo"
+```
+
+The local runtime uses `openai-whisper` and the `turbo` model alias for Whisper
+large-v3-turbo. The first real local run may download the model weights, and
+the host machine must have `ffmpeg` available.
+
+Optional API fallback:
+
+```powershell
+$env:OPENAI_API_KEY="<your-api-key>"
+$env:MURPHY_STT_API_MODEL="whisper-1"
+```
+
+The fallback calls the OpenAI Transcriptions API only when the local runtime
+fails. `MURPHY_STT_API_MODEL` can be changed to another supported
+Transcriptions API model.
 
 Suggested demo fixture layout:
 
@@ -234,7 +267,7 @@ and demo backend transport.
 For the next demo milestone, Developer C should implement:
 
 - Multipart request support for `turn` JSON plus `audio` wav.
-- Local Whisper large v3 turbo runtime with API fallback.
+- Live local Whisper smoke test on the demo machine.
 - Deterministic STT mock path for tests.
 - NPC voice artifact adapter that can return an `audio_url`.
 - Static serving or artifact path handling for demo wav output.
@@ -283,7 +316,7 @@ Output:
 Status:
 
 ```text
-implemented with deterministic local STT demo transcript
+implemented with real local/API fallback boundary and deterministic test mode
 ```
 
 ### Demo 3: NPC Voice Artifact

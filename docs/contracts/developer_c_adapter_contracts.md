@@ -110,7 +110,11 @@ Output:
     "stt_confidence": 0.87,
     "language_detected": "en-US",
     "needs_repeat": false
-  }
+  },
+  "stt_model": "whisper-large-v3-turbo",
+  "stt_primary_runtime": "local",
+  "stt_fallback_runtime": "api",
+  "stt_runtime_used": "local"
 }
 ```
 
@@ -118,8 +122,17 @@ Rules:
 
 - `input_source.input_type` is always `voice` in this prototype.
 - The STT service is configured around `whisper-large-v3-turbo`.
-- The mock STT must be deterministic.
-- Tests must not require real STT provider credentials.
+- `MURPHY_STT_MODE=local` runs local Whisper first and calls API fallback only
+  when the local runtime fails.
+- The local runtime uses `openai-whisper` with local model alias `turbo` by
+  default. This maps the runtime to Whisper large-v3-turbo while keeping the
+  public contract model name `whisper-large-v3-turbo`.
+- API fallback calls the OpenAI Transcriptions API with
+  `MURPHY_STT_API_MODEL`, defaulting to `whisper-1`.
+- `MURPHY_STT_MODE=mock` keeps deterministic sample-wav transcription for
+  tests and contract demos.
+- Tests must not require local model downloads or real STT provider
+  credentials.
 
 ## OpenKB Service Contract
 
