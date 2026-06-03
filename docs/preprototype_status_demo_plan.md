@@ -12,8 +12,8 @@ Completed:
 
 - Phase 1: Developer C FastAPI backend harness.
 - Phase 2: Developer C-side schemas and mock adapter boundaries.
-- Phase 3, pre-prototype version: JSON mock request endpoint at
-  `POST /api/game/ai/respond`.
+- Phase 3, pre-prototype version: JSON mock request endpoint and multipart
+  `turn` JSON plus wav request handling at `POST /api/game/ai/respond`.
 - Phase 4, partial: Developer C Orchestrator, OpenKB mock, and Understanding
   Agent are connected for `IMM_002_PURPOSE`.
 - Phase 5, partial: Developer B policy adapter mock is connected through the
@@ -25,11 +25,10 @@ Completed:
 
 Not completed yet:
 
-- Real wav byte transcription through Whisper large v3 turbo.
+- Real provider transcription through Whisper large v3 turbo.
 - Real Developer A NPC dialogue/TTS implementation.
 - Real Developer B policy/level/hint/feedback implementation.
 - Full Chapter 0 OpenKB node coverage.
-- Multipart Unreal-style request handling.
 - NPC response wav generation or fixture artifact response.
 - Out-game feedback logging and final report flow.
 - End-to-end retry, bad-ending, and STT fallback demos.
@@ -53,16 +52,17 @@ mock turn JSON + player wav
   -> Unreal-safe JSON + NPC response wav reference
 ```
 
-Current implementation already proves the same flow with JSON mock audio data.
-The next demo step is to replace the JSON transcript shortcut with a real wav
-file boundary while keeping deterministic tests available.
+Current implementation proves the same flow with JSON mock audio data and with
+a multipart request that sends `turn` JSON plus
+`samples/utterance-20260603-163237.wav`. The STT boundary accepts real wav bytes
+but still uses deterministic demo transcription instead of a real provider call.
 
 ## Current AI-Only Flow
 
 ```mermaid
 flowchart TD
-    REQ["JSON mock request<br/>turn + mock wav metadata"] --> API["Developer C API<br/>POST /api/game/ai/respond"]
-    API --> STT["Whisper large v3 turbo wrapper<br/>deterministic transcript shortcut"]
+    REQ["JSON or multipart request<br/>turn + sample wav"] --> API["Developer C API<br/>POST /api/game/ai/respond"]
+    API --> STT["Whisper large v3 turbo boundary<br/>deterministic demo transcript"]
     STT --> ORCH["Developer C Orchestrator"]
     ORCH --> KB["OpenKB mock<br/>IMM_002_PURPOSE node_context"]
     KB --> UA["Understanding Agent<br/>intent, slots, relevance, risk"]
@@ -169,8 +169,8 @@ Target demo response excerpt:
 }
 ```
 
-The current implementation does not yet include `stt.player_text` or
-`npc.audio_url` in the final response. Those are recommended demo additions.
+The current implementation includes `stt.player_text`. It does not yet include
+`npc.audio_url`; that is the next Developer A/C demo addition.
 
 ## Developer A Responsibilities for Demo
 
@@ -277,7 +277,7 @@ Output:
 Status:
 
 ```text
-next Developer C milestone
+implemented with deterministic STT demo transcript
 ```
 
 ### Demo 3: NPC Voice Artifact

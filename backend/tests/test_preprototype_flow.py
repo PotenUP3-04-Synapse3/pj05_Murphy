@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 import pytest
 
@@ -5,6 +8,9 @@ from backend.app.main import app
 from backend.app.schemas.game_turn import MockAudioInput, PrePrototypeRequest, UnrealTurnRequest
 from backend.app.services.orchestrator import Orchestrator
 from backend.app.services.validator import ValidationError, Validator
+
+
+SAMPLE_WAV = Path("samples/utterance-20260603-163237.wav")
 
 
 def _turn_payload() -> dict:
@@ -113,7 +119,36 @@ def test_api_accepts_mock_unreal_turn_json() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["next_node_id"] == "IMM_003_DURATION"
+    assert body["stt"]["player_text"] == "I'm here for tourism."
     assert body["debug"]["stt_model"] == "whisper-large-v3-turbo"
+
+
+def test_api_accepts_multipart_turn_json_and_sample_wav() -> None:
+    client = TestClient(app)
+
+    with SAMPLE_WAV.open("rb") as audio_file:
+        response = client.post(
+            "/api/game/ai/respond",
+            files={
+                "turn": (
+                    "imm_002_purpose.json",
+                    json.dumps(_turn_payload()),
+                    "application/json",
+                ),
+                "audio": (
+                    SAMPLE_WAV.name,
+                    audio_file,
+                    "audio/wav",
+                ),
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stt"]["model"] == "whisper-large-v3-turbo"
+    assert body["stt"]["player_text"] == "I'm here for tourism."
+    assert body["next_node_id"] == "IMM_003_DURATION"
+    assert body["npc"]["text"] == "You're here for tourism. How long will you stay?"
 
 
 def test_validator_rejects_developer_b_branch_outside_allowed_nodes() -> None:

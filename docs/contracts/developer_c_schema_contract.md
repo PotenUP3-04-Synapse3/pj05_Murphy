@@ -449,6 +449,13 @@ Developer C returns only validated, Unreal-safe data.
   "current_node_id": "IMM_002_PURPOSE",
   "next_node_id": "IMM_003_DURATION",
   "next_action": "ADVANCE",
+  "stt": {
+    "model": "whisper-large-v3-turbo",
+    "player_text": "I'm here for tourism.",
+    "confidence": 0.87,
+    "language_detected": "en-US",
+    "needs_repeat": false
+  },
   "npc": {
     "speaker": "Officer Miller",
     "text": "You're here for tourism. How long will you stay?",
@@ -509,6 +516,8 @@ Developer C returns only validated, Unreal-safe data.
 Rules:
 
 - `next_node_id` must be validated against `node_context.allowed_next_nodes`.
+- `stt.player_text` is the normalized transcript passed into the Understanding
+  Agent and Developer B policy adapter.
 - `state_delta` must come from Developer B output after validation.
 - NPC text must come from Developer A output or a Developer C deterministic
   adapter mock, not from Developer B.

@@ -85,8 +85,11 @@ class UnrealTurnRequest(BaseModel):
 
 
 class MockAudioInput(BaseModel):
-    mock_wav_path: str
+    mock_wav_path: str | None = None
     transcript: str | None = None
+    file_name: str | None = None
+    content_type: str | None = None
+    audio_bytes: bytes | None = None
 
 
 class PrePrototypeRequest(BaseModel):
@@ -367,6 +370,14 @@ class DebugInfo(BaseModel):
     contract_versions: list[str]
 
 
+class SttResponse(BaseModel):
+    model: str
+    player_text: str
+    confidence: float | None
+    language_detected: str | None
+    needs_repeat: bool
+
+
 class UnrealResponse(BaseModel):
     contract_version: Literal["dev_c_unreal_response.v1"]
     request_id: str
@@ -375,6 +386,7 @@ class UnrealResponse(BaseModel):
     current_node_id: str
     next_node_id: str
     next_action: str
+    stt: SttResponse
     npc: NpcResponse
     ui: UiResponse
     state_delta: StateDelta
