@@ -10,58 +10,32 @@ tests for the mock wav turn flow.
 
 ## Last Completed Task
 
-Implemented the pre-prototype AI turn flow without Unreal. A JSON mock request
-represents Unreal wav input, Developer C runs the Whisper-large-v3-turbo STT
-wrapper, OpenKB lookup, Understanding Agent, Developer B policy adapter,
-Developer A dialogue adapter, response builder, and rule-based validator.
+Added a shared pre-prototype status and demo plan document for Developer A,
+Developer B, and Developer C. The document explains current phase status, the
+AI-only orchestration flow, the target mock JSON plus wav demo setup, expected
+response shape, and each developer's demo responsibilities.
 
 ## Changed Files
 
-- `docs/contracts/developer_c_contract.md`
-- `docs/contracts/developer_c_schema_contract.md`
-- `docs/contracts/developer_c_adapter_contracts.md`
-- `backend/app/api/__init__.py`
-- `backend/app/api/ai_respond.py`
-- `backend/app/agents/__init__.py`
-- `backend/app/agents/understanding_agent.py`
-- `backend/app/integrations/__init__.py`
-- `backend/app/integrations/dev_a_npc_dialogue_client.py`
-- `backend/app/integrations/dev_b_level_hint_client.py`
-- `backend/app/schemas/__init__.py`
-- `backend/app/schemas/game_turn.py`
-- `backend/app/services/__init__.py`
-- `backend/app/services/logging_service.py`
-- `backend/app/services/openkb_service.py`
-- `backend/app/services/orchestrator.py`
-- `backend/app/services/response_builder.py`
-- `backend/app/services/stt_service.py`
-- `backend/app/services/validator.py`
-- `backend/app/main.py`
-- `backend/tests/test_preprototype_flow.py`
+- `docs/preprototype_status_demo_plan.md`
+- `samples/utterance-20260603-163237.wav`
 - `docs/handoff.md`
 
 ## Commands Run
 
 - `git status --short`
-- `rg --files`
-- `Get-Content -LiteralPath 'AGENTS.md'`
-- `Get-Content -LiteralPath 'docs\contracts\developer_c_contract.md'`
+- `rg --files docs`
 - `Get-Content -LiteralPath 'docs\handoff.md'`
-- `Get-Content -Encoding UTF8 -LiteralPath 'C:\Users\hanvv\Downloads\developer_b_json_final_v1.md'`
-- `Get-Content -Encoding UTF8 -LiteralPath 'C:\Users\hanvv\Downloads\developer_b_json_key_value_contract_v1.md'`
 - `Get-Content -LiteralPath 'docs\contracts\developer_c_schema_contract.md'`
 - `Get-Content -LiteralPath 'docs\contracts\developer_c_adapter_contracts.md'`
-- `git diff -- docs\contracts\developer_c_contract.md docs\handoff.md docs\contracts\developer_c_schema_contract.md docs\contracts\developer_c_adapter_contracts.md`
+- `Get-Content -LiteralPath 'docs\preprototype_status_demo_plan.md'`
+- `Get-ChildItem -Recurse -File -LiteralPath 'samples'`
+- `git diff --stat`
 - `uv sync` (first sandboxed attempt failed on user-level uv cache initialization)
 - `uv sync` (rerun with approved escalation)
-- `uv run pytest backend/tests/test_preprototype_flow.py -q` (RED: failed because `backend.app.schemas` did not exist)
-- `uv run pytest backend/tests/test_preprototype_flow.py -q` (GREEN: 3 passed, 1 warning)
 - `uv run pytest`
-- `uv run ruff check .` (first run caught one F541 lint issue)
-- `uv run mypy .` (first run caught Literal typing issues)
-- `uv run ruff check .` (passed after fixes)
-- `uv run mypy .` (passed after fixes)
-- `uv run pytest` (4 passed, 1 warning)
+- `uv run ruff check .`
+- `uv run mypy .`
 
 ## Current Architecture
 
@@ -116,6 +90,9 @@ existed in this repository, and none were modified.
 
 New Developer C contract docs:
 
+- `docs/preprototype_status_demo_plan.md` summarizes the current phase status,
+  AI-only pre-prototype architecture, target demo request/response plan,
+  Developer A/B/C demo responsibilities, and demo readiness criteria.
 - `docs/contracts/developer_c_schema_contract.md` defines
   `dev_c_unreal_turn.v1`, STT normalized input, OpenKB node context,
   Understanding output, Developer B policy input mapping, internal turn context,
