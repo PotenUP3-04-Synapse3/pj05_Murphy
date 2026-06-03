@@ -2,78 +2,83 @@
 
 ## Current Status
 
-Phase 1 bootstrap is complete. The repository now has a Developer C FastAPI
-backend package, initial contracts, handoff and portfolio docs, dependency
-pins, a bootstrap health-route test, and shared A/B/C collaboration guidance.
+Phase 1 bootstrap is complete, Phase 2 contracts exist, and the AI-only
+pre-prototype turn flow is now implemented. The repository has a Developer C
+FastAPI backend package, C-side schemas, deterministic mock adapters, a
+Whisper-large-v3-turbo STT wrapper, an orchestrator, a minimal validator, and
+tests for the mock wav turn flow.
 
 ## Last Completed Task
 
-Inspected the repository, installed the required Phase 1 dependencies with
-`uv`, added Developer C harness documentation, created a minimal FastAPI app,
-verified the available checks, rewrote `AGENTS.md` as a shared A/B/C guide,
-and added start prompts for Developer A and Developer B.
+Added a shared pre-prototype status and demo plan document for Developer A,
+Developer B, and Developer C. The document explains current phase status, the
+AI-only orchestration flow, the target mock JSON plus wav demo setup, expected
+response shape, and each developer's demo responsibilities.
 
 ## Changed Files
 
-- `AGENTS.md`
-- `README.md`
-- `.env.example`
-- `.gitignore`
-- `pyproject.toml`
-- `uv.lock`
-- `backend/__init__.py`
-- `backend/app/__init__.py`
-- `backend/app/main.py`
-- `backend/tests/test_app_bootstrap.py`
-- `docs/contracts/team_guardrails.md`
-- `docs/contracts/developer_c_contract.md`
-- `docs/contracts/dependency_contract.md`
-- `docs/contracts/change_requests.md`
-- `docs/prompts/developer_a_start_prompt.md`
-- `docs/prompts/developer_b_start_prompt.md`
+- `docs/preprototype_status_demo_plan.md`
+- `samples/utterance-20260603-163237.wav`
 - `docs/handoff.md`
-- `docs/portfolio_seanhan.md`
 
 ## Commands Run
 
-- `Get-Content -LiteralPath 'C:\Users\user\.codex\attachments\384b077d-e0c8-4a25-bb64-4fec348285e3\pasted-text.txt'`
-- `git rev-parse --git-dir`
-- `git rev-parse --git-common-dir`
-- `git rev-parse --show-superproject-working-tree`
-- `git branch --show-current`
 - `git status --short`
-- `rg --files`
-- `Get-Content -LiteralPath 'README.md'`
-- `Get-Content -LiteralPath 'pyproject.toml'`
-- `Get-Content -LiteralPath '.python-version'`
-- `Get-Content -LiteralPath '.gitignore'`
-- `Get-Content -LiteralPath 'main.py'`
-- `Get-ChildItem -Force`
-- `Get-Content -LiteralPath 'uv.lock'`
-- `uv --version`
-- `uv add fastapi "uvicorn[standard]" pydantic pydantic-settings python-multipart httpx langchain==1.3.2 langgraph==1.2.2`
-- `uv add --dev pytest ruff mypy`
-- `uv lock`
-- `uv run pytest backend/tests/test_app_bootstrap.py`
-- `uv sync`
+- `rg --files docs`
+- `Get-Content -LiteralPath 'docs\handoff.md'`
+- `Get-Content -LiteralPath 'docs\contracts\developer_c_schema_contract.md'`
+- `Get-Content -LiteralPath 'docs\contracts\developer_c_adapter_contracts.md'`
+- `Get-Content -LiteralPath 'docs\preprototype_status_demo_plan.md'`
+- `Get-ChildItem -Recurse -File -LiteralPath 'samples'`
+- `git diff --stat`
+- `uv sync` (first sandboxed attempt failed on user-level uv cache initialization)
+- `uv sync` (rerun with approved escalation)
 - `uv run pytest`
 - `uv run ruff check .`
 - `uv run mypy .`
-- `git status -sb`
-- `git remote -v`
-- `git log --oneline --decorate -5`
-- `Get-Content -LiteralPath 'AGENTS.md'`
-- `Get-Content -LiteralPath 'docs\handoff.md'`
 
 ## Current Architecture
 
-The current Phase 1 architecture is a minimal FastAPI app at
-`backend/app/main.py` with `GET /health`.
+The current implementation exposes `GET /health` and
+`POST /api/game/ai/respond`. The pre-prototype endpoint accepts JSON mock input
+instead of real Unreal multipart data.
 
-The target Developer C architecture is a FastAPI backend that normalizes player
-input, retrieves OpenKB context, runs a deterministic Understanding Agent,
-calls replaceable Developer A/B adapters, assembles Unreal response JSON, and
+The target Developer C architecture is a FastAPI backend that receives wav
+audio from Unreal, runs STT, retrieves OpenKB context, runs a deterministic
+Understanding Agent, calls replaceable Developer B and Developer A adapters,
+records validated error-capture markdown, assembles Unreal response JSON, and
 validates all responses before returning them.
+
+Current pre-prototype flow:
+
+```text
+Mock Unreal wav JSON
+  -> Whisper-large-v3-turbo STT wrapper
+  -> Developer C Orchestrator
+  -> Developer C OpenKB node_context
+  -> Developer C Understanding Agent
+  -> Developer B Policy Adapter mock
+  -> Developer A NPC Dialogue Adapter mock
+  -> Developer C Response Builder
+  -> Developer C Validator
+  -> Unreal-safe JSON
+```
+
+Canonical turn flow:
+
+```text
+Unreal wav
+  -> Developer C STT
+  -> Developer C Orchestrator
+  -> Developer C OpenKB node_context
+  -> Developer C Understanding Agent
+  -> Developer B Policy / Level / Hint / Feedback Adapter
+  -> Developer C Orchestrator
+  -> Developer A NPC Dialogue Adapter
+  -> Developer C Response Builder
+  -> Developer C Validator
+  -> Unreal
+```
 
 ## Contracts / Interfaces
 
@@ -83,27 +88,58 @@ Developer A, B, and C ownership boundaries. Developer A and B start prompts now
 exist under `docs/prompts/`. No Developer A or Developer B implementation files
 existed in this repository, and none were modified.
 
+New Developer C contract docs:
+
+- `docs/preprototype_status_demo_plan.md` summarizes the current phase status,
+  AI-only pre-prototype architecture, target demo request/response plan,
+  Developer A/B/C demo responsibilities, and demo readiness criteria.
+- `docs/contracts/developer_c_schema_contract.md` defines
+  `dev_c_unreal_turn.v1`, STT normalized input, OpenKB node context,
+  Understanding output, Developer B policy input mapping, internal turn context,
+  and `dev_c_unreal_response.v1`.
+- `docs/contracts/developer_c_adapter_contracts.md` defines the STT, OpenKB,
+  Understanding, Developer B policy, Developer B final feedback, Developer A
+  dialogue, logging, response builder, and validator adapter boundaries.
+
+The Developer B adapter now consumes the broader `dev_b_policy.v1` policy
+contract, not only level/hint/branch fields.
+
+Implemented C-owned modules:
+
+- `backend/app/schemas/game_turn.py` contains the pre-prototype Pydantic
+  schemas for mock Unreal input, STT normalized input, OpenKB node context,
+  Understanding output, Developer A/B adapter payloads, and final response.
+- `backend/app/services/stt_service.py` wraps the configured
+  `whisper-large-v3-turbo` model name with deterministic mock transcription.
+- `backend/app/services/orchestrator.py` wires STT, OpenKB, Understanding,
+  Developer B, Developer A, logging, response building, and validation.
+- `backend/app/services/validator.py` enforces minimal branch and response
+  invariants.
+
 ## Dependency State
 
 Package management uses `uv`. Python is set to 3.12. Required runtime and dev
 dependencies are recorded in `pyproject.toml` and `uv.lock`, including
 `langchain==1.3.2` and `langgraph==1.2.2`.
 
-The sandbox could not access the user-level `uv` cache, so dependency and
-verification commands that used `uv` were rerun with approved escalation.
+The sandboxed `uv sync` attempt failed while initializing the user-level uv
+cache. It passed when rerun with approved escalation. The latest `uv run
+pytest`, `uv run ruff check .`, and `uv run mypy .` passed.
 
 ## Known Issues
 
-No Phase 1 check failures remain. Phase 2 contracts, schemas, and the primary
-`POST /api/game/ai/respond` endpoint are not implemented yet. Developer A and
-Developer B real implementation files are still absent; their prompts direct
-future agents to create owned files without crossing team boundaries.
+The pre-prototype uses deterministic mocks for Developer A, Developer B, OpenKB,
+and STT transcription content. It does not yet process real wav bytes through a
+remote or local Whisper provider. The primary endpoint currently accepts JSON
+mock input, not real Unreal multipart upload. Developer A and Developer B real
+implementation files are still absent.
 
 ## Next Recommended Step
 
-Share `docs/prompts/developer_a_start_prompt.md` with Developer A and
-`docs/prompts/developer_b_start_prompt.md` with Developer B. Then start Phase
-2 for Developer C schemas and API/agent/OpenKB/Unreal contract docs.
+Next, replace the deterministic STT transcript shortcut with a real
+Whisper-large-v3-turbo provider boundary while keeping tests on the mock path.
+After that, expand scenario coverage beyond `IMM_002_PURPOSE` and connect real
+Developer A/B implementations behind the existing adapters.
 
 ## Resume Instructions
 

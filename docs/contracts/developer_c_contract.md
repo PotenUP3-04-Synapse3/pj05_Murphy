@@ -30,15 +30,32 @@ level/hint/scenario branch logic.
 
 The target Developer C flow is:
 
-1. Normalize Unreal request input.
-2. Bypass STT for text or use mock/provider STT for voice.
-3. Load OpenKB node context.
-4. Run the Understanding Agent.
-5. Call the Developer B adapter for level, hint, and branch mock/contract data.
-6. Call the Developer A adapter for NPC response mock/contract data.
-7. Build Unreal response JSON.
-8. Validate the response with rule-based checks.
-9. Return the validated response.
+1. Receive an Unreal turn request with a required wav audio file and turn
+   metadata.
+2. Run STT with a deterministic mock or provider implementation and create
+   normalized player text.
+3. Load OpenKB node context for the current scenario node.
+4. Run the Understanding Agent to produce semantic evidence only.
+5. Call the Developer B policy adapter for evaluation, level, hint, in-game
+   feedback strategy, error capture, out-game feedback seed, state delta, and
+   branch recommendation.
+6. Record Developer B error capture markdown when validation allows it.
+7. Call the Developer A dialogue adapter for NPC response text and presentation
+   hints.
+8. Build Unreal response JSON from validated Developer A and B outputs.
+9. Validate the response with rule-based checks, including branch transition
+   safety.
+10. Return the validated response.
+
+Developer C currently assumes all Unreal player input is wav audio. The public
+Unreal request does not need an `input_type` field. Developer C sets
+`input_source.input_type` to `voice` internally when building downstream
+adapter payloads.
+
+Detailed C-side schema and adapter contracts:
+
+- `docs/contracts/developer_c_schema_contract.md`
+- `docs/contracts/developer_c_adapter_contracts.md`
 
 ## Guardrails
 
