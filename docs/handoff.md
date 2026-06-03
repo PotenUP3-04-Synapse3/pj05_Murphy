@@ -8,57 +8,53 @@ FastAPI backend package, C-side schemas, deterministic mock adapters, a
 Whisper-large-v3-turbo STT wrapper, an orchestrator, a minimal validator, and
 tests for JSON mock and multipart sample-wav turn flows. The STT contract is
 local-first with API fallback. Automated tests keep deterministic STT through
-`MURPHY_STT_MODE=mock`.
+`MURPHY_STT_MODE=mock`. Runtime settings now load from `.env` through
+`pydantic-settings`.
 
 ## Last Completed Task
 
-Implemented the Developer C real STT boundary. The endpoint still accepts both
-the existing JSON mock request and multipart `turn` JSON plus sample wav
-requests. In `local` mode, STT calls local Whisper first and falls back to the
-OpenAI Transcriptions API when local transcription fails. The response includes
-`stt.player_text`, `stt.primary_runtime = "local"`,
-`stt.fallback_runtime = "api"`, `stt.runtime_used`, `next_node_id`, and
-`npc.text`.
+Implemented `.env`-based settings for Developer C runtime configuration. The
+app now reads `OPENAI_API_KEY`, STT mode, local Whisper model alias, API
+fallback model, endpoint, and timeout through
+`backend/app/services/settings_service.py`. The real `.env` file is ignored by
+git; `.env.example` is the committed template.
 
 ## Changed Files
 
-- `docs/preprototype_status_demo_plan.md`
-- `pyproject.toml`
-- `uv.lock`
-- `backend/app/schemas/game_turn.py`
-- `backend/app/services/response_builder.py`
+- `.env.example`
+- `.gitignore`
+- `README.md`
+- `backend/app/services/settings_service.py`
 - `backend/app/services/stt_service.py`
-- `backend/tests/test_preprototype_flow.py`
-- `backend/tests/test_stt_service.py`
+- `backend/tests/test_settings_service.py`
 - `docs/contracts/dependency_contract.md`
 - `docs/contracts/developer_c_adapter_contracts.md`
 - `docs/contracts/developer_c_schema_contract.md`
 - `docs/handoff.md`
+- `docs/preprototype_status_demo_plan.md`
 
 ## Commands Run
 
 - `git status --short --branch`
-- `Get-Content -Path backend\tests\test_preprototype_flow.py`
-- `Get-Content -Path backend\app\schemas\game_turn.py`
 - `Get-Content -Path backend\app\services\stt_service.py`
-- `Get-Content -Path backend\app\services\response_builder.py`
+- `Get-Content -Path .gitignore`
+- `Get-Content -Path .env.example`
+- `Get-Content -Path backend\tests\test_stt_service.py`
+- `Get-Content -Path README.md`
+- `Get-Content -Path docs\contracts\dependency_contract.md`
 - `Get-Content -Path docs\contracts\developer_c_schema_contract.md`
 - `Get-Content -Path docs\preprototype_status_demo_plan.md`
 - `Get-Content -Path docs\handoff.md`
-- `uv run pytest backend/tests/test_preprototype_flow.py -q` (RED: STT runtime metadata fields were not implemented)
-- `uv run pytest backend/tests/test_preprototype_flow.py -q` (GREEN: 4 passed, 1 warning)
-- `uv run pytest backend/tests/test_stt_service.py -q` (RED: local/API runtime injection was not implemented)
-- `uv run pytest backend/tests/test_stt_service.py -q` (GREEN: 2 passed)
-- `uv lock` (first sandboxed attempt failed on user-level uv cache initialization)
-- `uv lock` (rerun with approved escalation: resolved 93 packages)
-- `rg -n "provider|Whisper|STT|fallback|runtime" docs\contracts\developer_c_schema_contract.md docs\preprototype_status_demo_plan.md docs\handoff.md`
-- `git diff -- docs\contracts\developer_c_schema_contract.md docs\preprototype_status_demo_plan.md docs\handoff.md`
+- `uv run pytest backend/tests/test_settings_service.py -q` (RED: settings service did not exist)
+- `uv run pytest backend/tests/test_settings_service.py -q` (GREEN: 2 passed)
+- `rg --files -g ".gitignore" -g ".env*" -g "*.env" -g "pyproject.toml" -g "*.md"`
+- `rg -n "MURPHY_STT|OPENAI_API_KEY|\.env|Runtime STT|STT Runtime Setup" README.md docs\contracts\dependency_contract.md docs\contracts\developer_c_schema_contract.md docs\contracts\developer_c_adapter_contracts.md docs\preprototype_status_demo_plan.md docs\handoff.md`
 - `git diff --stat`
 - `uv sync` (first sandboxed attempt failed on user-level uv cache initialization)
 - `uv sync` (rerun with approved escalation: resolved 93 packages, audited 55 packages)
-- `uv run pytest` (7 passed, 1 warning)
+- `uv run pytest` (9 passed, 1 warning)
 - `uv run ruff check .` (passed)
-- `uv run mypy .` (initially failed on optional `whisper` import typing and endpoint URL typing)
+- `uv run mypy .` (initially failed on typed `_env_file` constructor usage)
 - `uv run mypy .` (passed)
 - `git diff --check` (passed)
 
@@ -137,6 +133,8 @@ Implemented C-owned modules:
 - `backend/app/services/stt_service.py` wraps the configured
   `whisper-large-v3-turbo` model name with real local Whisper transcription,
   OpenAI Transcriptions API fallback, and deterministic mock mode for tests.
+- `backend/app/services/settings_service.py` centralizes `.env` and process
+  environment configuration for C-owned runtime settings.
 - `backend/app/services/orchestrator.py` wires STT, OpenKB, Understanding,
   Developer B, Developer A, logging, response building, and validation.
 - `backend/app/services/validator.py` enforces minimal branch and response
@@ -156,6 +154,8 @@ uv sync --extra local-stt
 
 Runtime STT settings:
 
+- `.env.example` is the committed settings template.
+- `.env` is local-only and ignored by git.
 - `MURPHY_STT_MODE=local` runs local Whisper first.
 - `MURPHY_STT_MODE=mock` uses deterministic transcription for tests.
 - `MURPHY_STT_LOCAL_MODEL=turbo` uses the local Whisper large-v3-turbo alias.
@@ -164,7 +164,7 @@ Runtime STT settings:
 
 The sandboxed `uv sync` and `uv lock` attempts failed while initializing the
 user-level uv cache. Both passed when rerun with approved escalation. The
-latest `uv run pytest` passed with 7 tests and 1 warning.
+latest `uv run pytest` passed with 9 tests and 1 warning.
 `uv run ruff check .` and `uv run mypy .` passed. `git diff --check` passed.
 
 ## Known Issues

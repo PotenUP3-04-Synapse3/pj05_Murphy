@@ -118,29 +118,38 @@ curl.exe -X POST http://127.0.0.1:8000/api/game/ai/respond `
 
 ## STT Runtime Setup
 
-Automated tests use deterministic mode:
+Runtime settings are loaded from `.env`. Start from the shared template:
 
 ```powershell
-$env:MURPHY_STT_MODE="mock"
+Copy-Item .env.example .env
 ```
 
-Real local transcription mode:
+For automated tests and contract demos, set deterministic mode in `.env`:
+
+```text
+MURPHY_STT_MODE=mock
+```
+
+For real local transcription mode, set:
 
 ```powershell
 uv sync --extra local-stt
-$env:MURPHY_STT_MODE="local"
-$env:MURPHY_STT_LOCAL_MODEL="turbo"
+```
+
+```text
+MURPHY_STT_MODE=local
+MURPHY_STT_LOCAL_MODEL=turbo
 ```
 
 The local runtime uses `openai-whisper` and the `turbo` model alias for Whisper
 large-v3-turbo. The first real local run may download the model weights, and
 the host machine must have `ffmpeg` available.
 
-Optional API fallback:
+Optional API fallback settings in `.env`:
 
-```powershell
-$env:OPENAI_API_KEY="<your-api-key>"
-$env:MURPHY_STT_API_MODEL="whisper-1"
+```text
+OPENAI_API_KEY=<your-api-key>
+MURPHY_STT_API_MODEL=whisper-1
 ```
 
 The fallback calls the OpenAI Transcriptions API only when the local runtime

@@ -14,5 +14,10 @@ wheels/
 .mypy_cache/
 .ruff_cache/
 
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
 # data
 data/assets/

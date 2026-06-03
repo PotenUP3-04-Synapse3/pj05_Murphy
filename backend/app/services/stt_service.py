@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 import tempfile
 from importlib import import_module
-from typing import Any, Literal, Protocol, cast
+from typing import Any, Literal, Protocol
 
 import httpx
 
 from backend.app.schemas.game_turn import AudioMetadata, InputSource, MockAudioInput, NormalizedInput
+from backend.app.services.settings_service import AppSettings, get_settings
 
 SttMode = Literal["local", "mock"]
 SttRuntimeUsed = Literal["local", "api"]
@@ -24,8 +24,9 @@ class SttRuntime(Protocol):
 
 
 class LocalWhisperLargeV3TurboRuntime:
-    def __init__(self, model_name: str | None = None) -> None:
-        self.model_name = model_name or os.getenv("MURPHY_STT_LOCAL_MODEL", "turbo")
+    def __init__(self, model_name: str | None = None, settings: AppSettings | None = None) -> None:
+        self.settings = settings or get_settings()
+        self.model_name = model_name or self.settings.murphy_stt_local_model
         self._model: Any | None = None
 
     def transcribe_wav(self, audio: MockAudioInput, audio_metadata: AudioMetadata) -> str:
@@ -84,14 +85,13 @@ class OpenAITranscriptionApiFallbackRuntime:
         model_name: str | None = None,
         endpoint_url: str | None = None,
         timeout_s: float | None = None,
+        settings: AppSettings | None = None,
     ) -> None:
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        self.model_name = model_name or os.getenv("MURPHY_STT_API_MODEL", "whisper-1")
-        self.endpoint_url: str = endpoint_url or os.getenv(
-            "MURPHY_STT_API_ENDPOINT",
-            "https://api.openai.com/v1/audio/transcriptions",
-        ) or "https://api.openai.com/v1/audio/transcriptions"
-        self.timeout_s = timeout_s or float(os.getenv("MURPHY_STT_API_TIMEOUT_S", "60"))
+        self.settings = settings or get_settings()
+        self.api_key = api_key or self.settings.openai_api_key
+        self.model_name = model_name or self.settings.murphy_stt_api_model
+        self.endpoint_url = endpoint_url or self.settings.murphy_stt_api_endpoint
+        self.timeout_s = timeout_s or self.settings.murphy_stt_api_timeout_s
 
     def transcribe_wav(self, audio: MockAudioInput, audio_metadata: AudioMetadata) -> str:
         audio_bytes = _require_uploaded_wav(audio)
@@ -146,10 +146,12 @@ class WhisperLargeV3TurboSttService:
         local_runtime: SttRuntime | None = None,
         api_fallback: SttRuntime | None = None,
         mode: SttMode | None = None,
+        settings: AppSettings | None = None,
     ) -> None:
-        self.local_runtime = local_runtime or LocalWhisperLargeV3TurboRuntime()
-        self.api_fallback = api_fallback or OpenAITranscriptionApiFallbackRuntime()
-        self.mode = mode or _stt_mode_from_env()
+        self.settings = settings or get_settings()
+        self.local_runtime = local_runtime or LocalWhisperLargeV3TurboRuntime(settings=self.settings)
+        self.api_fallback = api_fallback or OpenAITranscriptionApiFallbackRuntime(settings=self.settings)
+        self.mode = mode or self.settings.murphy_stt_mode
 
     def transcribe_wav(
         self,
@@ -197,14 +199,6 @@ class WhisperLargeV3TurboSttService:
             return self.local_runtime.transcribe_wav(audio, audio_metadata), self.primary_runtime
         except Exception:
             return self.api_fallback.transcribe_wav(audio, audio_metadata), self.fallback_runtime
-
-
-def _stt_mode_from_env() -> SttMode:
-    mode = os.getenv("MURPHY_STT_MODE", "local")
-    if mode not in {"local", "mock"}:
-        raise ValueError("MURPHY_STT_MODE must be either 'local' or 'mock'.")
-
-    return cast(SttMode, mode)
 
 
 def _require_uploaded_wav(audio: MockAudioInput) -> bytes:

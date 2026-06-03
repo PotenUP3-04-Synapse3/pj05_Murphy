@@ -48,6 +48,30 @@ The `local-stt` extra includes:
 The local Whisper runtime also requires `ffmpeg` to be available on the host
 machine path.
 
+## Environment Configuration
+
+Runtime settings are loaded with `pydantic-settings` from process environment
+variables and the repository root `.env` file.
+
+Shared template:
+
+```text
+.env.example
+```
+
+Local secret file:
+
+```text
+.env
+```
+
+Rules:
+
+- Commit `.env.example`.
+- Do not commit `.env` or `.env.*` secret files.
+- Store `OPENAI_API_KEY` only in local environment variables or `.env`.
+- Keep test defaults deterministic and key-free.
+
 ## Required Development Dependencies
 
 - `pytest`

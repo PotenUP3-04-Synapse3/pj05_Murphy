@@ -122,6 +122,9 @@ Rules:
 
 - `input_source.input_type` is always `voice` in this prototype.
 - The STT service is configured around `whisper-large-v3-turbo`.
+- STT runtime settings are loaded through
+  `backend/app/services/settings_service.py`, which reads environment
+  variables and `.env`.
 - `MURPHY_STT_MODE=local` runs local Whisper first and calls API fallback only
   when the local runtime fails.
 - The local runtime uses `openai-whisper` with local model alias `turbo` by

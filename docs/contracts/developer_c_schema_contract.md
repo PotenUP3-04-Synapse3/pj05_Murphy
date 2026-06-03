@@ -34,7 +34,8 @@ The STT runtime policy is local-first:
 - Tests and deterministic demo paths must pass without requiring a local model
   download or API key.
 
-Runtime configuration:
+Runtime configuration is loaded from process environment variables and `.env`
+through `backend/app/services/settings_service.py`:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
