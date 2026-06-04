@@ -14,6 +14,8 @@ def _clear_runtime_env(monkeypatch) -> None:
         "MURPHY_STT_API_MODEL",
         "MURPHY_STT_API_ENDPOINT",
         "MURPHY_STT_API_TIMEOUT_S",
+        "MURPHY_TTS_MODE",
+        "MURPHY_NPC_DIALOGUE_MODE",
     ]:
         monkeypatch.delenv(key, raising=False)
 
@@ -30,6 +32,8 @@ def test_app_settings_reads_values_from_env_file(tmp_path, monkeypatch) -> None:
                 "MURPHY_STT_API_MODEL=gpt-4o-mini-transcribe",
                 "MURPHY_STT_API_ENDPOINT=https://example.test/v1/audio/transcriptions",
                 "MURPHY_STT_API_TIMEOUT_S=12.5",
+                "MURPHY_TTS_MODE=real",
+                "MURPHY_NPC_DIALOGUE_MODE=llm",
             ]
         ),
         encoding="utf-8",
@@ -43,6 +47,8 @@ def test_app_settings_reads_values_from_env_file(tmp_path, monkeypatch) -> None:
     assert settings.murphy_stt_api_model == "gpt-4o-mini-transcribe"
     assert settings.murphy_stt_api_endpoint == "https://example.test/v1/audio/transcriptions"
     assert settings.murphy_stt_api_timeout_s == 12.5
+    assert settings.murphy_tts_mode == "real"
+    assert settings.murphy_npc_dialogue_mode == "llm"
 
 
 def test_stt_runtimes_use_settings_loaded_from_env_file(tmp_path, monkeypatch) -> None:

@@ -6,15 +6,18 @@ Read `AGENTS.md` first and follow it as the repository-level operating guide.
 
 ## Current Repository Situation
 
-This repo currently contains the Phase 1 Developer C backend harness:
+This repo currently contains the integrated AI-only pre-prototype:
 
 - Python 3.12 `uv` project.
-- Minimal FastAPI app at `backend/app/main.py`.
-- Health route: `GET /health`.
-- Initial contracts under `docs/contracts/`.
+- FastAPI app at `backend/app/main.py`.
+- Routes: `GET /health`, `POST /api/game/ai/respond`, and
+  `/runtime/audio/...` for generated demo wav artifacts.
+- Contracts under `docs/contracts/`.
 - Developer C handoff at `docs/handoff.md`.
-- No real Developer A implementation has been created yet.
-- No real Developer B implementation has been created yet.
+- Developer A implementation exists under `backend/app/agents/agent_a/` and
+  `backend/app/services/service_a/`.
+- Developer B implementation exists under `backend/app/agents/agent_b/`,
+  `backend/app/services/service_b/`, and `backend/app/data/scenario_nodes.json`.
 
 The primary target endpoint is:
 
@@ -22,9 +25,9 @@ The primary target endpoint is:
 POST /api/game/ai/respond
 ```
 
-Developer C will eventually orchestrate STT, OpenKB retrieval, understanding,
-Developer B level/hint/branch results, Developer A NPC dialogue results,
-response assembly, and validation.
+Developer C now orchestrates STT, OpenKB retrieval, understanding, Developer B
+policy results, Developer A dialogue/voice results, response assembly, and
+validation for the pre-prototype path.
 
 ## Your Role
 
@@ -32,17 +35,16 @@ You own NPC dialogue and voice output.
 
 Your likely files are:
 
-- `backend/app/agents/npc_dialogue_agent.py`
-- `backend/app/services/tts_service.py`
-- `backend/app/services/voice_output_service.py`
+- `backend/app/agents/agent_a/`
+- `backend/app/services/service_a/`
 - `backend/app/prompts/npc_dialogue_prompt.md`
 
 You may create tests and contract docs for your own scope.
 
 ## What You Should Build
 
-Build replaceable Developer A components that can later be called by Developer
-C through `backend/app/integrations/dev_a_npc_dialogue_client.py`.
+Build replaceable Developer A components called by Developer C through
+`backend/app/integrations/dev_a_npc_dialogue_client.py`.
 
 Focus on:
 

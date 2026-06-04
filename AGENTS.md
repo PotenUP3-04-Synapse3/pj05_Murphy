@@ -25,7 +25,12 @@ Current repository state:
 - Initial contract docs under `docs/contracts/`.
 - Developer C handoff: `docs/handoff.md`.
 - Sean Han portfolio: `docs/portfolio_seanhan.md`.
-- No real Developer A or Developer B implementation exists yet.
+- Developer A implementation exists under `backend/app/agents/agent_a/` and
+  `backend/app/services/service_a/`.
+- Developer B implementation exists under `backend/app/agents/agent_b/`,
+  `backend/app/services/service_b/`, and `backend/app/data/scenario_nodes.json`.
+- Developer C adapters now connect merged A/B implementations for the
+  integrated AI-only pre-prototype.
 
 ## Package Management
 

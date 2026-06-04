@@ -3,37 +3,50 @@
 ## Current Status
 
 Phase 1 bootstrap is complete, Phase 2 contracts exist, and the AI-only
-pre-prototype turn flow is now implemented. The repository has a Developer C
-FastAPI backend package, C-side schemas, deterministic mock adapters, a
-Whisper-large-v3-turbo STT wrapper, an orchestrator, a minimal validator, and
-tests for JSON mock and multipart sample-wav turn flows. The STT contract is
-local-first with API fallback. Automated tests keep deterministic STT through
+pre-prototype turn flow is now implemented through merged A/B/C packages. The
+repository has a Developer C FastAPI backend package, C-side schemas, real
+Developer B deterministic policy wiring, Developer A voice artifact wiring, a
+Whisper-large-v3-turbo STT wrapper, an orchestrator, a strengthened validator,
+and tests for JSON mock and multipart sample-wav turn flows. The STT contract
+is local-first with API fallback. Automated tests keep deterministic STT through
 `MURPHY_STT_MODE=mock`. Runtime settings now load from `.env` through
-`pydantic-settings`.
-The dependency lockfile has been repaired and `uv sync` parses it successfully
-again.
+`pydantic-settings`, and the endpoint can enable real Kokoro TTS through
+`MURPHY_TTS_MODE=real`.
 
 ## Last Completed Task
 
-Implemented `.env`-based settings for Developer C runtime configuration. The
-app now reads `OPENAI_API_KEY`, STT mode, local Whisper model alias, API
-fallback model, endpoint, and timeout through
-`backend/app/services/service_c/settings_service.py`. The real `.env` file is
-ignored by git; `.env.example` is the committed template.
+Enabled the real STT plus real Kokoro TTS endpoint demo path. The C-owned
+`DevANpcDialogueClient` now reads `MURPHY_TTS_MODE` and
+`MURPHY_NPC_DIALOGUE_MODE` from `AppSettings` and passes `use_real_tts` /
+`use_llm_dialogue` into Developer A's `build_voice_output_from_level_design()`
+service. Deterministic defaults remain `MURPHY_STT_MODE=mock`,
+`MURPHY_TTS_MODE=fake`, and `MURPHY_NPC_DIALOGUE_MODE=rule` for tests. A demo
+turn fixture now exists at `demo/input/imm_002_purpose.json`.
 
 ## Changed Files
 
 - `.env.example`
 - `.gitignore`
 - `README.md`
+- `demo/input/imm_002_purpose.json`
 - `backend/app/services/service_c/settings_service.py`
 - `backend/app/services/service_c/stt_service.py`
 - `backend/tests/test_settings_service.py`
+- `backend/app/integrations/dev_a_npc_dialogue_client.py`
+- `backend/app/integrations/dev_b_level_hint_client.py`
+- `backend/app/main.py`
+- `backend/app/schemas/game_turn.py`
+- `backend/app/services/service_c/openkb_service.py`
+- `backend/app/services/service_c/response_builder.py`
+- `backend/app/services/service_c/validator.py`
+- `backend/tests/test_preprototype_flow.py`
 - `docs/contracts/dependency_contract.md`
 - `docs/contracts/developer_c_adapter_contracts.md`
 - `docs/contracts/developer_c_schema_contract.md`
 - `docs/handoff.md`
 - `docs/preprototype_status_demo_plan.md`
+- `docs/superpowers/plans/2026-06-04-real-stt-kokoro-endpoint-demo.md`
+- `docs/superpowers/plans/2026-06-04-preprototype-abc-integration.md`
 
 ## Commands Run
 
@@ -59,6 +72,21 @@ ignored by git; `.env.example` is the committed template.
 - `uv run mypy .` (initially failed on typed `_env_file` constructor usage)
 - `uv run mypy .` (passed)
 - `git diff --check` (passed)
+- `uv run pytest backend/tests/test_preprototype_flow.py -q` (RED: OpenKB only supported `IMM_002_PURPOSE`; B adapter was still mock)
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_api_accepts_multipart_turn_json_and_sample_wav -q` (RED: A adapter did not produce next-question dialogue or `npc.audio_url`)
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_validator_rejects_developer_b_hint_payload_when_hint_is_not_needed backend/tests/test_preprototype_flow.py::test_validator_requires_npc_audio_url_for_preprototype_response -q` (RED: validator did not enforce these invariants)
+- `uv run pytest backend/tests/test_preprototype_flow.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/dev_b/test_developer_b_policy_engine.py -q` (20 passed, 2 warnings)
+- `uv run pytest` (27 passed, 2 warnings)
+- `uv run ruff check .` (passed)
+- `uv run mypy .` (passed)
+- `uv run pytest backend/tests/test_settings_service.py::test_app_settings_reads_values_from_env_file -q` (RED: `AppSettings` had no `murphy_tts_mode`)
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings -q` (RED: `DevANpcDialogueClient` had no settings or builder injection)
+- `uv run pytest backend/tests/test_settings_service.py::test_app_settings_reads_values_from_env_file -q` (GREEN: 1 passed)
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings -q` (GREEN: 1 passed, 2 warnings)
+- `uv run pytest` (28 passed, 2 warnings)
+- `uv run ruff check .` (passed)
+- `uv run mypy .` (passed)
+- `git diff --check` (passed with CRLF conversion warnings only)
 
 ## Current Architecture
 
@@ -113,13 +141,14 @@ Current pre-prototype flow:
 Mock Unreal JSON or multipart sample wav
   -> Whisper-large-v3-turbo STT boundary (mock mode in tests, local mode in demo)
   -> Developer C Orchestrator
-  -> Developer C OpenKB node_context
+  -> Developer C OpenKB node_context from backend/app/data/scenario_nodes.json
   -> Developer C Understanding Agent
-  -> Developer B Policy Adapter mock
-  -> Developer A NPC Dialogue Adapter mock
+  -> Developer B Policy Adapter calling EnglishLevelHintAgent
+  -> Developer A Dialogue/Voice Adapter calling voice output service
+     (fake Kokoro by default, real Kokoro with MURPHY_TTS_MODE=real)
   -> Developer C Response Builder
   -> Developer C Validator
-  -> Unreal-safe JSON
+  -> Unreal-safe JSON with npc.audio_url
 ```
 
 Canonical turn flow:
@@ -179,6 +208,13 @@ Implemented C-owned modules:
   validation.
 - `backend/app/services/service_c/validator.py` enforces minimal branch and response
   invariants.
+- `backend/app/integrations/dev_b_level_hint_client.py` delegates C's
+  `DevBPolicyInput` to Developer B's `EnglishLevelHintAgent`.
+- `backend/app/integrations/dev_a_npc_dialogue_client.py` maps C turn context
+  and validated B policy output into Developer A's level-design voice output
+  service, then returns C-safe dialogue fields plus `audio_url`.
+- `backend/app/main.py` serves generated demo wav artifacts from
+  `/runtime/audio/...`, backed by `backend/runtime/generated/audio`.
 
 ## Dependency State
 
@@ -202,31 +238,43 @@ Runtime STT settings:
 - `MURPHY_STT_API_MODEL=whisper-1` controls API fallback.
 - `OPENAI_API_KEY` is required only if API fallback is needed.
 
-The sandboxed `uv sync` and `uv lock` attempts failed while initializing the
-user-level uv cache. Both passed when rerun with approved escalation. The
-latest `uv run pytest` passed with 23 tests and 2 warnings.
-`uv run ruff check .` passed. `uv run mypy .` passed when rerun outside the
-sandbox due to a sandbox-only uv cache access denial. `git diff --check` passed.
+Runtime TTS and NPC dialogue settings:
+
+- `MURPHY_TTS_MODE=fake` keeps deterministic fake Kokoro wav output.
+- `MURPHY_TTS_MODE=real` runs Developer A's real Kokoro provider and serves the
+  generated wav under `/runtime/audio/...`.
+- `MURPHY_NPC_DIALOGUE_MODE=rule` keeps deterministic Developer A dialogue.
+- `MURPHY_NPC_DIALOGUE_MODE=llm` enables optional OpenAI NPC dialogue before
+  Kokoro TTS and requires `OPENAI_API_KEY`.
+
+The sandboxed `uv sync`, `uv lock`, and `uv run ...` attempts can fail while
+initializing the user-level uv cache. Rerunning with approved escalation is the
+known workaround in this environment. The latest `uv run pytest` passed with
+28 tests and 2 warnings. `uv run ruff check .` passed. `uv run mypy .` passed.
 
 ## Known Issues
 
-The pre-prototype still uses deterministic C-side adapter boundaries for
-Developer B and OpenKB until Developer C accepts the wiring change request. STT
-can now execute real local Whisper in `local` mode, but automated tests
-intentionally use fake runtimes or `mock` mode and do not download model
-weights. The first real local run needs `uv sync --extra local-stt`, `ffmpeg`,
-and time to download/load the Whisper model. The response does not yet include
-`npc.audio_url`.
+The pre-prototype now wires merged Developer A/B packages through C adapters.
+The automated path still uses deterministic STT and fake Kokoro TTS so it
+passes without local model downloads, real API keys, Unreal Engine runtime, or
+remote OpenKB. STT can execute real local Whisper in `local` mode, but the
+first real local run needs `uv sync --extra local-stt`, `ffmpeg`, and time to
+download/load the Whisper model. Real Kokoro can execute with
+`MURPHY_TTS_MODE=real`, but the first run may download/load model assets and
+can emit known torch/Kokoro warnings. Developer C Understanding is still a
+deterministic prototype analyzer. Out-game final report generation is not yet
+implemented. Generated runtime artifacts for the integrated endpoint are
+written under `backend/runtime/generated/` and ignored by git.
 
 ## Next Recommended Step
 
-Next, run a live local Whisper smoke test on the demo machine with
-`MURPHY_STT_MODE=local`. After that, implement Demo 3 by adding an NPC voice
-artifact fixture or Developer A voice output adapter and returning
-`npc.audio_url`.
+Next, run a live endpoint smoke test on the demo machine with
+`MURPHY_STT_MODE=local` and `MURPHY_TTS_MODE=real`, then add API-level retry,
+clarify, warning, and bad-end demo cases. After that, implement out-game
+feedback/final report and prepare the real Unreal multipart bridge.
 
 ## Resume Instructions
 
 Run `uv sync` from the repository root, then run `uv run pytest`,
-`uv run ruff check .`, and `uv run mypy .`. Continue with Phase 2 only after
-Phase 1 is verified.
+`uv run ruff check .`, and `uv run mypy .`. Continue from the integrated
+pre-prototype flow unless a newer handoff entry supersedes this one.
