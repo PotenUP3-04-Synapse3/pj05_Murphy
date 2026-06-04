@@ -36,7 +36,7 @@ class Orchestrator:
         self.stt_service = WhisperLargeV3TurboSttService()
         self.openkb_service = OpenKBService()
         self.understanding_agent = UnderstandingAgent()
-        self.dev_b_client = DevBPolicyClient()
+        self.dev_b_client = DevBPolicyClient(agent_run_root=agent_run_root)
         self.dev_a_client = DevANpcDialogueClient()
         self.logging_service = LoggingService()
         self.response_builder = ResponseBuilder()

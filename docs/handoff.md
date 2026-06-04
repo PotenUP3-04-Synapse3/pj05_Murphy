@@ -264,6 +264,49 @@ Coordination request:
 - Final report generation can use B's OpenKB records to distinguish rule, LLM,
   and fallback feedback sources.
 
+# Developer B Unified AgentRun Logger Update - 2026-06-04
+
+Developer B now appends execution-level AgentRun records using the shared
+`unified_agent_run.v1` format already used by Developer A and Developer C. The
+new B logger is separate from `OpenKBFeedbackWriter`: OpenKB records remain
+learning feedback/error artifacts, while AgentRun records explain the B policy
+engine's runtime decision path.
+
+Added/changed files:
+
+- `backend/app/services/service_b/developer_b_agent_run_logger.py`
+- `backend/app/agents/agent_b/english_level_hint_agent.py`
+- `backend/app/services/service_b/__init__.py`
+- `backend/app/integrations/dev_b_level_hint_client.py`
+- `backend/app/services/service_c/orchestrator.py`
+- `backend/tests/dev_b/test_developer_b_agent_run_log.py`
+- `backend/tests/test_unified_agent_run_log.py`
+- `docs/portfolio_dev_b.md`
+
+Runtime behavior:
+
+- B records append to `backend/runtime/generated/agent_runs/unified_agent_runs.jsonl`
+  and `backend/runtime/generated/agent_runs/unified_agent_runs.md`.
+- B uses `agent_name=english_level_hint_agent` and `owner=developer_b`.
+- The B event timeline records state-machine, level, hint, feedback strategy,
+  form issue, rubric/difficulty, feedback generation, and OpenKB write steps.
+- B log summaries store `player_text_preview`, not a full `player_text` field.
+- Logger append failures are best-effort and must not change B branch, verdict,
+  state delta, or OpenKB write behavior.
+
+Verification commands for this update:
+
+- `uv run pytest backend/tests/dev_b/test_developer_b_agent_run_log.py -q`
+  reports `4 passed`.
+- `uv run pytest backend/tests/test_unified_agent_run_log.py -q` reports
+  `1 passed, 1 warning`.
+- `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/dev_b/test_developer_b_agent_run_log.py -q`
+  reports `26 passed`.
+- `uv run ruff check .` passes.
+- `uv run mypy .` passes when run outside the sandbox because the sandboxed
+  run cannot access the user-level uv cache.
+- `uv run pytest -q` reports `62 passed, 2 warnings`.
+
 # Developer B Objective UI Content Update - 2026-06-04
 
 Developer B added `objective_kr` to Chapter 0 scenario node content and the

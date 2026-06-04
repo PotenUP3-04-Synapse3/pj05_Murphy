@@ -47,6 +47,11 @@ policy remains the authority for verdict, branch, next node, and state delta;
 the LLM layer is limited to Korean hint text, feedback notes, report wording,
 Focus-on-Form explanations, and rubric score candidates with fallback behavior.
 
+Developer B now records policy-engine execution through the shared
+`unified_agent_run.v1` AgentRun log format. These records explain the internal
+state-machine, level/hint, feedback, rubric, LLM/fallback, and OpenKB write
+steps without changing the public `dev_b_policy.v1` response contract.
+
 ## Architecture
 
 The Developer B implementation is split into a small public agent and focused
@@ -66,6 +71,8 @@ services:
   feedback text generation and schema validation.
 - `backend/app/services/service_b/tier_difficulty_controller.py` owns 0-12
   rubric scoring, TSL mapping, and difficulty profile generation.
+- `backend/app/services/service_b/developer_b_agent_run_logger.py` owns B
+  execution logging into the shared unified AgentRun JSONL/markdown files.
 - `backend/app/data/scenario_nodes.json` defines Chapter 0 immigration node
   content and branch candidates.
 - `backend/app/kb/dev_b/` is the tracked B namespace for static OpenKB content
@@ -89,6 +96,7 @@ that Developer C should replace the current mock body of
 - OpenKB Feedback/Error Writer
 - LLM-assisted Feedback/Hint Generator
 - Travel Speaking Level Rubric Controller
+- Unified AgentRun Logger
 - Dialogue Directive Metadata
 - Developer B pytest suite
 
@@ -169,6 +177,12 @@ uses deterministic fallback text. `DEV_B_FEEDBACK_LLM_MODE=llm` attempts the B
 LLM path, but API key absence, model errors, or invalid JSON fall back without
 changing branch, verdict, next node, or state delta.
 
+Unified AgentRun logging is additive and best-effort. Runtime records append to
+`backend/runtime/generated/agent_runs/unified_agent_runs.jsonl` and
+`backend/runtime/generated/agent_runs/unified_agent_runs.md` with
+`agent_name=english_level_hint_agent` and `owner=developer_b`. Log summaries use
+short previews and policy metadata rather than storing full raw player text.
+
 Developer B coordination requests are recorded in
 `docs/contracts/change_requests.md`:
 
@@ -207,12 +221,19 @@ Covered scenarios:
 - LLM failure falls back without changing branch, verdict, or state delta.
 - Rubric totals map to TSL 1-4 and difficulty profiles.
 - OpenKB records include feedback generation and difficulty metadata.
+- Unified AgentRun records capture the B policy timeline and appear alongside
+  C orchestrator records in the shared JSONL/markdown log files.
 
 Latest verification:
 
-- `uv run pytest backend/tests/dev_b -q`: 22 passed
-- Full project verification should be rerun after C consumes the new
-  optional B metadata fields.
+- `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/dev_b/test_developer_b_agent_run_log.py -q`:
+  26 passed
+- `uv run pytest backend/tests/test_unified_agent_run_log.py -q`: 1 passed,
+  1 warning
+- `uv run pytest -q`: 62 passed, 2 warnings
+- `uv run ruff check .`: passed
+- `uv run mypy .`: passed when run outside the sandbox because the sandboxed
+  run cannot access the user-level uv cache.
 
 ## Demo Scenarios
 
@@ -247,6 +268,8 @@ Latest verification:
 - Added optional LLM-assisted Korean hint, feedback, report, Focus-on-Form, and
   rubric candidate generation with deterministic fallback.
 - Added 0-12 Travel Speaking Level rubric and difficulty profile policy.
+- Added shared `unified_agent_run.v1` AgentRun logging for Developer B policy
+  execution timelines.
 - Added focused pytest coverage for broken English, branch safety, risk
   handling, node spec completeness, feedback/report payload generation, and
   OpenKB write behavior.

@@ -29,7 +29,8 @@ def test_orchestrator_appends_unified_agent_run_with_data_flow_events(tmp_path) 
         json.loads(line)
         for line in (tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    record = records[0]
+    record = next(item for item in records if item["owner"] == "developer_c")
+    developer_b_record = next(item for item in records if item["owner"] == "developer_b")
     tool_names = [
         event.get("tool_name")
         for event in record["events"]
@@ -37,6 +38,7 @@ def test_orchestrator_appends_unified_agent_run_with_data_flow_events(tmp_path) 
     ]
 
     assert response.next_node_id == "IMM_003_DURATION"
+    assert len(records) == 2
     assert record["schema_version"] == "unified_agent_run.v1"
     assert record["agent_name"] == "ai_backend_orchestrator"
     assert record["owner"] == "developer_c"
@@ -64,9 +66,15 @@ def test_orchestrator_appends_unified_agent_run_with_data_flow_events(tmp_path) 
     )
     assert dev_b_event["output_summary"]["branch"]["next_node_id"] == "IMM_003_DURATION"
     assert understanding_event["output_summary"]["understanding_trace"]["mode"] == "rule"
+    assert developer_b_record["schema_version"] == "unified_agent_run.v1"
+    assert developer_b_record["agent_name"] == "english_level_hint_agent"
+    assert developer_b_record["owner"] == "developer_b"
+    assert developer_b_record["summary"]["output"]["next_node_id"] == "IMM_003_DURATION"
+    assert developer_b_record["summary"]["output"]["feedback_generation_mode"] == "rule"
 
     readable_log = (tmp_path / "unified_agent_runs.md").read_text(encoding="utf-8")
     assert "## Agent Run: ai_backend_orchestrator / developer_c" in readable_log
+    assert "## Agent Run: english_level_hint_agent / developer_b" in readable_log
     assert "understanding_agent.analyze_player_text" in readable_log
     assert "validator.validate_unreal_response" in readable_log
 
