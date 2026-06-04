@@ -21,6 +21,9 @@ class AppSettings(BaseSettings):
     murphy_stt_api_timeout_s: float = 60.0
     murphy_tts_mode: Literal["fake", "real"] = "fake"
     murphy_npc_dialogue_mode: Literal["rule", "llm"] = "rule"
+    murphy_understanding_mode: Literal["rule", "llm"] = "rule"
+    murphy_understanding_llm_model: str = "gpt-4o-mini"
+    murphy_understanding_llm_timeout_seconds: float = 10.0
 
     @classmethod
     def from_env_file(cls, env_file: str | Path) -> "AppSettings":
