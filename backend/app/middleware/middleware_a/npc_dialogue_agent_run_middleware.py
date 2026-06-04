@@ -16,6 +16,7 @@ class NPCDialogueAgentRunMiddleware:
         permission_level: str,
         metadata: dict[str, Any],
     ) -> dict[str, Any]:
+        metadata.setdefault("events", [])
         now = datetime.now(UTC).isoformat()
         run_id_seed = f"{now}:{cache_key}:{model_name}".encode("utf-8")
         return {
@@ -35,6 +36,40 @@ class NPCDialogueAgentRunMiddleware:
             "created_at": now,
             "completed_at": None,
         }
+
+    def record_event(
+        self,
+        metadata: dict[str, Any],
+        *,
+        event: str,
+        status: str,
+        tool_name: str | None = None,
+        data_loaded: dict[str, Any] | None = None,
+        input_summary: dict[str, Any] | None = None,
+        output_summary: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> None:
+        events = metadata.setdefault("events", [])
+        if not isinstance(events, list):
+            metadata["events"] = []
+            events = metadata["events"]
+
+        item: dict[str, Any] = {
+            "event": event,
+            "status": status,
+            "recorded_at": datetime.now(UTC).isoformat(),
+        }
+        if tool_name is not None:
+            item["tool_name"] = tool_name
+        if data_loaded is not None:
+            item["data_loaded"] = data_loaded
+        if input_summary is not None:
+            item["input_summary"] = input_summary
+        if output_summary is not None:
+            item["output_summary"] = output_summary
+        if error is not None:
+            item["error"] = error
+        events.append(item)
 
     def complete_run(
         self,

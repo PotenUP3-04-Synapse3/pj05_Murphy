@@ -48,13 +48,13 @@ def build_user_visible_run_summary(agent_run: dict[str, Any]) -> dict[str, Any]:
     tts = metadata.get("tts_summary", {})
     fallback = metadata.get("fallback", {})
     return {
-        "실행 Agent": agent_run.get("agent_name"),
-        "상태": agent_run.get("status"),
-        "근거 요약": evidence.get("snippet"),
-        "모델": agent_run.get("model_name"),
-        "토큰": agent_run.get("total_tokens"),
-        "예상 비용 USD": agent_run.get("estimated_cost_usd"),
-        "TTS 목소리": tts.get("voice_id"),
-        "오디오 URL": tts.get("audio_url"),
-        "Fallback 사용": fallback.get("used"),
+        "Agent": agent_run.get("agent_name"),
+        "Status": agent_run.get("status"),
+        "Evidence Summary": evidence.get("snippet"),
+        "Model": agent_run.get("model_name"),
+        "Tokens": agent_run.get("total_tokens"),
+        "Estimated Cost USD": agent_run.get("estimated_cost_usd"),
+        "TTS Voice": tts.get("voice_id"),
+        "Audio URL": tts.get("audio_url"),
+        "Fallback Used": fallback.get("used"),
     }

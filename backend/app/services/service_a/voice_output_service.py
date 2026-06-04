@@ -83,12 +83,73 @@ def build_voice_output_from_level_design(
         session_id=session_id,
     )
 
+    agent_run_middleware = NPCDialogueAgentRunMiddleware()
+    evidence_metadata = build_npc_dialogue_evidence_summary(payload)
+    agent_run_middleware.record_event(
+        evidence_metadata,
+        event="agent_start",
+        status="started",
+        data_loaded={
+            "request_id": request_id,
+            "session_id": session_id,
+            "payload_keys": sorted(payload.keys()),
+        },
+        input_summary={
+            "node_id": payload.get("node_id"),
+            "player_text": payload.get("player_text"),
+        },
+    )
+
     try:
         normalized = normalize_level_design_payload(payload)
+        agent_run_middleware.record_event(
+            evidence_metadata,
+            event="tool_call",
+            status="completed",
+            tool_name="developer_a_input_service.normalize_level_design_payload",
+            data_loaded={
+                "node_id": normalized.get("node_id"),
+                "english_level": normalized.get("english_level"),
+                "branch_type": normalized.get("branch_type"),
+                "target_slot": normalized.get("target_slot"),
+            },
+            output_summary={
+                "candidate_text_available": bool(normalized.get("candidate_text")),
+                "do_not_generate_npc_text": normalized.get("do_not_generate_npc_text"),
+                "blocks_progression": normalized.get("blocks_progression"),
+            },
+        )
         dialogue = generate_npc_dialogue_from_level_design(payload, use_llm=use_llm_dialogue)
+        agent_run_middleware.record_event(
+            evidence_metadata,
+            event="tool_call",
+            status="completed",
+            tool_name="agent_a.npc_dialogue_agent.generate_npc_dialogue_from_level_design",
+            input_summary={
+                "use_llm_dialogue": use_llm_dialogue,
+                "prompt_version": PROMPT_VERSION,
+            },
+            output_summary={
+                "npc_text": dialogue.get("npc_text") or dialogue.get("text"),
+                "tone": dialogue.get("tone"),
+                "fallback": dialogue.get("fallback"),
+                "llm": dialogue.get("llm"),
+            },
+        )
         voice_profile = resolve_voice_profile(
             user_id=user_id or str(payload.get("user_id", "")),
             npc_id="officer_miller",
+        )
+        agent_run_middleware.record_event(
+            evidence_metadata,
+            event="tool_call",
+            status="completed",
+            tool_name="voice_profile_service.resolve_voice_profile",
+            data_loaded={
+                "npc_id": "officer_miller",
+                "voice_profile_id": voice_profile.voice_profile_id,
+                "voice_id": voice_profile.voice_id,
+            },
         )
         tts_request = build_kokoro_provider_request(
             text=str(dialogue.get("tts_text") or dialogue["npc_text"]),
@@ -108,6 +169,20 @@ def build_voice_output_from_level_design(
                 .get("intensity", 0.35)
             ),
         )
+        agent_run_middleware.record_event(
+            evidence_metadata,
+            event="tool_call",
+            status="completed",
+            tool_name="tts_service.build_kokoro_provider_request",
+            output_summary={
+                "provider": tts_request.provider,
+                "voice": tts_request.provider_options.get("voice"),
+                "lang_code": tts_request.provider_options.get("lang_code"),
+                "speaking_rate": tts_request.speaking_rate,
+                "sample_rate": tts_request.sample_rate,
+                "text_length": len(tts_request.text),
+            },
+        )
         tts = _build_kokoro_audio(
             tts_request=tts_request,
             runtime_root=root,
@@ -117,12 +192,36 @@ def build_voice_output_from_level_design(
             target_slot=str(normalized.get("target_slot", "")),
             branch_type=str(normalized.get("branch_type", "")),
         )
+        agent_run_middleware.record_event(
+            evidence_metadata,
+            event="tool_call",
+            status="completed",
+            tool_name="tts_provider_service.KokoroProvider.synthesize",
+            output_summary={
+                "provider": tts.get("provider"),
+                "voice_id": tts.get("voice_id"),
+                "audio_url": tts.get("audio_url"),
+                "audio_path": tts.get("audio_path"),
+                "status": tts.get("status"),
+            },
+        )
+        agent_run_middleware.record_event(
+            evidence_metadata,
+            event="agent_end",
+            status="completed",
+            output_summary={
+                "npc_text": dialogue.get("npc_text") or dialogue.get("text"),
+                "audio_url": tts.get("audio_url"),
+                "fallback": dialogue.get("fallback"),
+            },
+        )
         agent_run, artifact, agent_run_path, artifact_path = _record_agent_run(
             payload=payload,
             normalized=normalized,
             dialogue=dialogue,
             tts=tts,
             run_root=run_root,
+            evidence_metadata=evidence_metadata,
         )
         output = {
             **dialogue,
@@ -159,11 +258,18 @@ def build_voice_output_from_level_design(
             session_id=session_id,
             metadata={"error_type": type(exc).__name__},
         )
+        agent_run_middleware.record_event(
+            evidence_metadata,
+            event="agent_error",
+            status="failed",
+            error=type(exc).__name__,
+        )
         agent_run, artifact, agent_run_path, artifact_path = _record_failed_agent_run(
             payload=payload,
             fallback_tts=fallback_tts,
             run_root=run_root,
             error=exc,
+            evidence_metadata=evidence_metadata,
         )
         return {
             "speaker": "Officer Miller",
@@ -237,8 +343,8 @@ def _record_agent_run(
     dialogue: dict[str, Any],
     tts: dict[str, Any],
     run_root: Path,
+    evidence_metadata: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, object], Path, Path]:
-    evidence_metadata = build_npc_dialogue_evidence_summary(payload)
     llm_metadata = _as_dict(dialogue.get("llm"))
     model_name = str(
         llm_metadata.get("model_name")
@@ -301,8 +407,8 @@ def _record_failed_agent_run(
     fallback_tts: dict[str, Any],
     run_root: Path,
     error: Exception,
+    evidence_metadata: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, object], Path, Path]:
-    evidence_metadata = build_npc_dialogue_evidence_summary(payload)
     evidence_metadata["fallback"] = {"used": True, "reason": type(error).__name__}
     evidence_metadata["tts_summary"] = _tts_summary(fallback_tts)
     middleware = NPCDialogueAgentRunMiddleware()

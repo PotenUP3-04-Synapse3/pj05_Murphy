@@ -396,3 +396,22 @@
   - `uv run ruff check ...`: PASS
   - `uv run mypy ...`: PASS
 - warning은 기존 `audioop` deprecation warning이며 이번 AgentRun 구현과 직접 관련은 없다.
+## 2026-06-04 00:45:00 +09:00
+
+- AgentRun 로그에 agent 시작/종료와 tool 호출 흐름이 부족하다는 피드백을 반영했다.
+- `NPCDialogueAgentRunMiddleware.record_event()`를 추가해 `metadata.events` timeline을 기록하도록 했다.
+- `voice_output_service`에서 다음 이벤트를 AgentRun에 남기도록 연결했다.
+  - `agent_start`
+  - `developer_a_input_service.normalize_level_design_payload`
+  - `agent_a.npc_dialogue_agent.generate_npc_dialogue_from_level_design`
+  - `voice_profile_service.resolve_voice_profile`
+  - `tts_service.build_kokoro_provider_request`
+  - `tts_provider_service.KokoroProvider.synthesize`
+  - `agent_end`
+  - 실패 시 `agent_error`
+- 각 이벤트에는 `tool_name`, `data_loaded`, `input_summary`, `output_summary`, `error`를 가능한 범위에서 남긴다.
+- 검증 결과:
+  - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 7 passed, 1 warning
+  - `uv run ruff check ...`: PASS
+  - `uv run mypy ...`: PASS
+  - `uv run pytest -q`: PASS, 47 passed, 13 warnings

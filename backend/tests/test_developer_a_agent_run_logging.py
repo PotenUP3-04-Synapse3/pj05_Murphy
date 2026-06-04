@@ -49,8 +49,15 @@ def test_estimate_openai_cost_usd_for_gpt_4o_mini() -> None:
     assert cost == 0.0003
 
 
-def test_agent_run_middleware_builds_slack_style_agent_run() -> None:
+def test_agent_run_middleware_builds_structured_agent_run() -> None:
     middleware = NPCDialogueAgentRunMiddleware()
+    metadata = {"source_type": "level_design", "evidence_summary": []}
+    middleware.record_event(
+        metadata,
+        event="agent_start",
+        status="started",
+        data_loaded={"node_id": "IMM_003_DURATION"},
+    )
 
     run = middleware.start_run(
         prompt_version="npc_dialogue_prompt_v1",
@@ -63,7 +70,7 @@ def test_agent_run_middleware_builds_slack_style_agent_run() -> None:
         cache_key="sha256:test",
         model_name="gpt-4o-mini",
         permission_level="runtime_user_session",
-        metadata={"source_type": "level_design", "evidence_summary": []},
+        metadata=metadata,
     )
     completed = middleware.complete_run(
         run,
@@ -76,6 +83,8 @@ def test_agent_run_middleware_builds_slack_style_agent_run() -> None:
     assert completed["status"] == "completed"
     assert completed["total_tokens"] == 120
     assert completed["estimated_cost_usd"] == 0.000021
+    assert completed["metadata"]["events"][0]["event"] == "agent_start"
+    assert completed["metadata"]["events"][0]["data_loaded"]["node_id"] == "IMM_003_DURATION"
 
 
 def test_agent_run_store_appends_run_and_artifact_jsonl(tmp_path) -> None:
@@ -126,11 +135,11 @@ def test_build_user_visible_run_summary_formats_agent_run_for_demo() -> None:
         }
     )
 
-    assert summary["실행 Agent"] == "npc_dialogue_agent"
-    assert summary["상태"] == "completed"
-    assert summary["근거 요약"] == "Player answered: I will stay five days."
-    assert summary["모델"] == "gpt-4o-mini"
-    assert summary["TTS 목소리"] == "am_michael"
+    assert summary["Agent"] == "npc_dialogue_agent"
+    assert summary["Status"] == "completed"
+    assert summary["Evidence Summary"] == "Player answered: I will stay five days."
+    assert summary["Model"] == "gpt-4o-mini"
+    assert summary["TTS Voice"] == "am_michael"
 
 
 def test_voice_output_writes_agent_run_and_artifact_records(tmp_path) -> None:
@@ -163,6 +172,18 @@ def test_voice_output_writes_agent_run_and_artifact_records(tmp_path) -> None:
     assert runs[0]["agent_name"] == "npc_dialogue_agent"
     assert runs[0]["status"] == "completed"
     assert runs[0]["metadata"]["evidence_summary"][0]["author"] == "level_design_agent"
+    event_names = [event["event"] for event in runs[0]["metadata"]["events"]]
+    tool_names = [
+        event.get("tool_name")
+        for event in runs[0]["metadata"]["events"]
+        if event.get("event") == "tool_call"
+    ]
+    assert event_names[0] == "agent_start"
+    assert "agent_end" in event_names
+    assert "developer_a_input_service.normalize_level_design_payload" in tool_names
+    assert "agent_a.npc_dialogue_agent.generate_npc_dialogue_from_level_design" in tool_names
+    assert "tts_service.build_kokoro_provider_request" in tool_names
+    assert "tts_provider_service.KokoroProvider.synthesize" in tool_names
     assert artifacts[0]["agent_run_id"] == runs[0]["agent_run_id"]
     assert artifacts[0]["payload"]["npc_text"] == output["npc_text"]
     assert output["agent_run_id"] == runs[0]["agent_run_id"]
