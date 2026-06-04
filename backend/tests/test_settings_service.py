@@ -1,5 +1,5 @@
-from backend.app.services.settings_service import AppSettings
-from backend.app.services.stt_service import (
+from backend.app.services.service_c.settings_service import AppSettings
+from backend.app.services.service_c.stt_service import (
     LocalWhisperLargeV3TurboRuntime,
     OpenAITranscriptionApiFallbackRuntime,
     WhisperLargeV3TurboSttService,

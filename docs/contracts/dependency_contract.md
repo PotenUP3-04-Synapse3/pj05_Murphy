@@ -71,6 +71,10 @@ Rules:
 - Do not commit `.env` or `.env.*` secret files.
 - Store `OPENAI_API_KEY` only in local environment variables or `.env`.
 - Keep test defaults deterministic and key-free.
+- `kokoro`
+- `soundfile`
+- `torch`
+- `espeakng-loader`
 
 ## Required Development Dependencies
 
@@ -96,3 +100,23 @@ Transcriptions API only when local STT fails and `OPENAI_API_KEY` is present.
 
 Tests must pass without local model downloads, external API keys, real TTS
 providers, real LLM providers, Unreal Engine runtime, or remote OpenKB.
+
+## Approved Local TTS Dependencies
+
+Developer A / kimyonghee received explicit approval on 2026-06-03 to add local
+Kokoro TTS dependencies for real wav generation tests.
+
+Approved packages:
+
+- `kokoro>=0.9.4`
+- `soundfile>=0.13.1`
+- `torch>=2.12.0`
+- `espeakng-loader>=0.2.4`
+
+Constraints:
+
+- Tests must still pass without external API keys.
+- Real Kokoro generation may download local model assets during smoke tests.
+- Runtime audio files are generated under `backend/runtime/`.
+- Unreal-facing audio delivery is expected to use `audio_url`, but Developer C
+  still needs to define the static serving route.

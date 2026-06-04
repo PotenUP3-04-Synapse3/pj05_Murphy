@@ -1,5 +1,5 @@
 from backend.app.schemas.game_turn import AudioMetadata, MockAudioInput
-from backend.app.services.stt_service import WhisperLargeV3TurboSttService
+from backend.app.services.service_c.stt_service import WhisperLargeV3TurboSttService
 
 
 class FakeSttRuntime:

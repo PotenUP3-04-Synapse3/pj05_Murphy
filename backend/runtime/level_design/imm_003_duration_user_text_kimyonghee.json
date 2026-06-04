@@ -1,0 +1,48 @@
+{
+  "node_id": "IMM_003_DURATION",
+  "player_text": "I will stay five days",
+  "node_context": {
+    "npc_question": "How long will you stay?",
+    "recommended_expression": "I'll stay for five days.",
+    "next_question_goal": "ask_stay_address"
+  },
+  "evaluation_summary": {
+    "verdict": "SUCCESS",
+    "task_success": 3,
+    "clarity": 2,
+    "main_feedback_tag": "minor_grammar_issue",
+    "feedback_note": "체류 기간은 전달됐지만, 관사와 전치사를 넣으면 더 자연스럽습니다."
+  },
+  "level_hint": {
+    "english_level": "beginner",
+    "needs_hint": false,
+    "hint_type": null,
+    "hint_kr": null,
+    "recommended_expression": "I'll stay for five days."
+  },
+  "in_game_feedback": {
+    "show": true,
+    "feedback_strategy": "recast",
+    "priority": "low",
+    "npc_recast_line_candidate": "You'll stay for five days. Where will you be staying?",
+    "recommended_expression": "I'll stay for five days.",
+    "blocks_progression": false
+  },
+  "branch": {
+    "branch_type": "success",
+    "next_action": "ADVANCE",
+    "next_node_id": "IMM_004_ADDRESS"
+  },
+  "dialogue_directive": {
+    "purpose": "continue_to_next_question",
+    "tone_hint": "neutral",
+    "target_slot": "stay_address",
+    "do_not_generate_npc_text": false
+  },
+  "temporary_level_design_agent": {
+    "generated_by": "kimyonghee",
+    "source": "user_provided_transcript",
+    "source_text": "I will stay five days",
+    "note": "Understanding Agent와 Level Design Agent 미구현 상태에서 임시 추론으로 생성한 JSON이다."
+  }
+}

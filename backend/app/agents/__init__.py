@@ -1,1 +1,1 @@
-"""Developer C-owned agent modules."""
+"""개발자별 Agent 패키지를 관리하는 공용 패키지."""

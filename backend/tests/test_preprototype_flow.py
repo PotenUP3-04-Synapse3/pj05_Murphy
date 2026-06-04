@@ -6,8 +6,8 @@ import pytest
 
 from backend.app.main import app
 from backend.app.schemas.game_turn import MockAudioInput, PrePrototypeRequest, UnrealTurnRequest
-from backend.app.services.orchestrator import Orchestrator
-from backend.app.services.validator import ValidationError, Validator
+from backend.app.services.service_c.orchestrator import Orchestrator
+from backend.app.services.service_c.validator import ValidationError, Validator
 
 
 SAMPLE_WAV = Path("samples/utterance-20260603-163237.wav")

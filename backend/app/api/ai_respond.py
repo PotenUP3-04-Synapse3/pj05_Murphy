@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 from starlette.datastructures import UploadFile
 
 from backend.app.schemas.game_turn import MockAudioInput, PrePrototypeRequest, UnrealResponse, UnrealTurnRequest
-from backend.app.services.orchestrator import Orchestrator
+from backend.app.services.service_c.orchestrator import Orchestrator
 
 router = APIRouter(prefix="/api/game/ai", tags=["game-ai"])
 

@@ -1,0 +1,81 @@
+{
+  "speaker": "Officer Miller",
+  "npc_text": "You're here for tourism. How long will you stay?",
+  "text": "You're here for tourism. How long will you stay?",
+  "tts_text": "You're here for tourism. ... How long will you stay?",
+  "feedback_kr": "방문 목적은 전달됐지만 완전한 문장으로 말하면 더 자연스럽습니다.",
+  "tone": "formal_neutral",
+  "animation": "calm",
+  "fallback": {
+    "used": false,
+    "reason": null
+  },
+  "generation_profile": {
+    "player_language": {
+      "english_level": "beginner",
+      "task_success": 3,
+      "clarity": 2,
+      "needs_hint": false,
+      "complexity": "simple",
+      "feedback_depth": "brief_recast"
+    },
+    "npc_emotion": {
+      "emotion": "calm_official",
+      "intensity": 0.35,
+      "reason": "successful_low_priority_answer"
+    },
+    "dialogue_policy": {
+      "action": "recast_and_advance",
+      "tone": "formal_neutral",
+      "max_sentence_count": 2,
+      "use_recast": true,
+      "add_officer_ack": true,
+      "next_question_style": "short"
+    },
+    "tts_style": {
+      "english_level": "beginner",
+      "complexity": "simple",
+      "feedback_depth": "brief_recast",
+      "emotion": "calm_official",
+      "emotion_intensity": 0.35,
+      "emotion_reason": "successful_low_priority_answer",
+      "dialogue_action": "recast_and_advance",
+      "next_question_style": "short"
+    }
+  },
+  "llm": {
+    "used": true,
+    "fallback_used": false,
+    "model_reason": "The player successfully communicated their purpose but with slight grammatical errors, prompting a neutral recast and follow-up question."
+  },
+  "tts": {
+    "provider": "kokoro",
+    "voice_id": "am_michael",
+    "audio_path": "backend\\runtime\\audio\\kokoro\\IMM_002_PURPOSE_stay_duration_success_am_michael_d8137a4e.wav",
+    "audio_url": "http://localhost:8000/runtime/audio/kokoro/IMM_002_PURPOSE_stay_duration_success_am_michael_d8137a4e.wav",
+    "sample_rate": 24000,
+    "format": "wav",
+    "audio_seconds": 3.8,
+    "generation_seconds": 3.150789299999815,
+    "real_time_factor": 0.8291550789473198,
+    "status": "ok",
+    "cache_key": "d8137a4e4e7592c88bf2f78e5763e50b7eb073b5e8ed48036636de9694a83521",
+    "quality_metadata": {
+      "sample_rate": 24000,
+      "channels": 1,
+      "bit_depth": 16,
+      "duration_ms": 3800,
+      "silent_ratio": 0.4473684210526316
+    },
+    "postprocess_policy": {
+      "provider": "kokoro",
+      "target_sample_rate": 24000,
+      "target_format": "wav",
+      "target_channels": 1,
+      "target_peak_dbfs": -3.0,
+      "trim_outer_silence": true,
+      "preserve_sentence_pause": true,
+      "actual_dsp_applied": false
+    }
+  }
+}

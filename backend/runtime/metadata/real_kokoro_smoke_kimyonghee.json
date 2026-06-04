@@ -1,0 +1,42 @@
+{
+  "speaker": "Officer Miller",
+  "npc_text": "You're here for tourism. How long will you stay?",
+  "text": "You're here for tourism. How long will you stay?",
+  "feedback_kr": "방문 목적은 전달됐지만 완전한 문장으로 말하면 더 자연스럽습니다. 더 자연스럽게는: I'm here for tourism.",
+  "tone": "formal_neutral",
+  "animation": "officer_check_passport",
+  "fallback": {
+    "used": false,
+    "reason": null
+  },
+  "tts": {
+    "provider": "kokoro",
+    "voice_id": "am_michael",
+    "audio_path": "backend\\runtime\\audio\\kokoro\\IMM_002_PURPOSE_stay_duration_success_am_michael_70684d4b.wav",
+    "audio_url": "http://localhost:8000/runtime/audio/kokoro/IMM_002_PURPOSE_stay_duration_success_am_michael_70684d4b.wav",
+    "sample_rate": 24000,
+    "format": "wav",
+    "audio_seconds": 3.675,
+    "generation_seconds": 4.242003999999724,
+    "real_time_factor": 1.1542868027210136,
+    "status": "ok",
+    "cache_key": "70684d4be5afdd2a7be69612516bd5e2729b30212ca823cde238f6166ac92451",
+    "quality_metadata": {
+      "sample_rate": 24000,
+      "channels": 1,
+      "bit_depth": 16,
+      "duration_ms": 3675,
+      "silent_ratio": 0.45652173913043476
+    },
+    "postprocess_policy": {
+      "provider": "kokoro",
+      "target_sample_rate": 24000,
+      "target_format": "wav",
+      "target_channels": 1,
+      "target_peak_dbfs": -3.0,
+      "trim_outer_silence": true,
+      "preserve_sentence_pause": true,
+      "actual_dsp_applied": false
+    }
+  }
+}

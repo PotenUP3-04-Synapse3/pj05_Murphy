@@ -1,4 +1,4 @@
-from backend.app.agents.understanding_agent import UnderstandingAgent
+from backend.app.agents.agent_c.understanding_agent import UnderstandingAgent
 from backend.app.integrations.dev_a_npc_dialogue_client import DevANpcDialogueClient
 from backend.app.integrations.dev_b_level_hint_client import DevBPolicyClient
 from backend.app.schemas.game_turn import (
@@ -11,11 +11,11 @@ from backend.app.schemas.game_turn import (
     UnderstandingOutput,
     UnrealResponse,
 )
-from backend.app.services.logging_service import LoggingService
-from backend.app.services.openkb_service import OpenKBService
-from backend.app.services.response_builder import ResponseBuilder
-from backend.app.services.stt_service import WhisperLargeV3TurboSttService
-from backend.app.services.validator import Validator
+from backend.app.services.service_c.logging_service import LoggingService
+from backend.app.services.service_c.openkb_service import OpenKBService
+from backend.app.services.service_c.response_builder import ResponseBuilder
+from backend.app.services.service_c.stt_service import WhisperLargeV3TurboSttService
+from backend.app.services.service_c.validator import Validator
 
 
 class Orchestrator:

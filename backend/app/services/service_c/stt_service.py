@@ -8,7 +8,7 @@ from typing import Any, Literal, Protocol
 import httpx
 
 from backend.app.schemas.game_turn import AudioMetadata, InputSource, MockAudioInput, NormalizedInput
-from backend.app.services.settings_service import AppSettings, get_settings
+from backend.app.services.service_c.settings_service import AppSettings, get_settings
 
 SttMode = Literal["local", "mock"]
 SttRuntimeUsed = Literal["local", "api"]
