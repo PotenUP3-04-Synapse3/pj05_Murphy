@@ -58,3 +58,37 @@ Does this break existing mocks or tests?
 ### Temporary Workaround
 What Developer C will do until the change is accepted.
 ```
+
+## Change Request - 2026-06-04 - Wire Developer B Policy Engine
+
+### Requested By
+Developer B
+
+### Affected Owner
+Developer C / Sean Han
+
+### Reason
+Developer B now exposes a real deterministic `dev_b_policy.v1` policy engine
+under `backend/app/agents/agent_b/` and `backend/app/services/service_b/`.
+The current runtime still calls the C-owned mock adapter at
+`backend/app/integrations/dev_b_level_hint_client.py`.
+
+### Proposed Contract Change
+Keep the existing `DevBPolicyInput` and `DevBPolicyOutput` schemas unchanged.
+Update `DevBPolicyClient.evaluate_turn()` to delegate to
+`backend.app.agents.agent_b.EnglishLevelHintAgent.evaluate_turn()` after
+Developer C approves importing the B-owned package from the adapter.
+
+Also sync or consume `backend/app/data/scenario_nodes.json` in the C-owned
+OpenKB runtime so all Chapter 0 immigration nodes are available beyond
+`IMM_002_PURPOSE`.
+
+### Compatibility Impact
+No schema-breaking change is requested. Existing mock tests may need expectation
+updates if they depend on the previous simplified C mock behavior, especially
+`dialogue_directive.do_not_generate_npc_text`, `error_capture`, and warning or
+hint branch behavior.
+
+### Temporary Workaround
+Developer C can keep using the existing mock adapter until the adapter handoff is
+accepted. Developer B tests call the B engine directly.

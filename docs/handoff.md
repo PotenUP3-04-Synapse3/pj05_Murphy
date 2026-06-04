@@ -10,22 +10,24 @@ tests for JSON mock and multipart sample-wav turn flows. The STT contract is
 local-first with API fallback. Automated tests keep deterministic STT through
 `MURPHY_STT_MODE=mock`. Runtime settings now load from `.env` through
 `pydantic-settings`.
+The dependency lockfile has been repaired and `uv sync` parses it successfully
+again.
 
 ## Last Completed Task
 
 Implemented `.env`-based settings for Developer C runtime configuration. The
 app now reads `OPENAI_API_KEY`, STT mode, local Whisper model alias, API
 fallback model, endpoint, and timeout through
-`backend/app/services/settings_service.py`. The real `.env` file is ignored by
-git; `.env.example` is the committed template.
+`backend/app/services/service_c/settings_service.py`. The real `.env` file is
+ignored by git; `.env.example` is the committed template.
 
 ## Changed Files
 
 - `.env.example`
 - `.gitignore`
 - `README.md`
-- `backend/app/services/settings_service.py`
-- `backend/app/services/stt_service.py`
+- `backend/app/services/service_c/settings_service.py`
+- `backend/app/services/service_c/stt_service.py`
 - `backend/tests/test_settings_service.py`
 - `docs/contracts/dependency_contract.md`
 - `docs/contracts/developer_c_adapter_contracts.md`
@@ -70,6 +72,41 @@ Understanding Agent, calls replaceable Developer B and Developer A adapters,
 records validated error-capture markdown, assembles Unreal response JSON, and
 validates all responses before returning them.
 
+# Developer B Update - 2026-06-04
+
+Developer B added a first deterministic `dev_b_policy.v1` policy engine without
+modifying C-owned adapters, schemas, OpenKB runtime, orchestrator, validator, or
+response builder.
+
+Added B-owned runtime files:
+
+- `backend/app/agents/agent_b/english_level_hint_agent.py`
+- `backend/app/services/service_b/scenario_state_machine.py`
+- `backend/app/services/service_b/level_adaptation_controller.py`
+- `backend/app/data/scenario_nodes.json`
+- `backend/app/prompts/english_level_hint_prompt.md`
+
+Added B-focused tests under `backend/tests/dev_b/` to cover clear success,
+broken English, clarify, retry/hint, warning/bad-end, allowed next-node guards,
+empty allowed-node failure, node JSON coverage, and report/feedback fields.
+
+Coordination request:
+
+- `docs/contracts/change_requests.md` now requests that Developer C wire
+  `backend/app/integrations/dev_b_level_hint_client.py` to
+  `backend.app.agents.agent_b.EnglishLevelHintAgent` and sync
+  `backend/app/data/scenario_nodes.json` into the C-owned OpenKB runtime.
+
+Verification note:
+
+- After the lockfile repair, Developer B verification passes:
+  `uv run pytest backend/tests/dev_b -q` reports `10 passed`,
+  `uv run pytest` reports `23 passed, 2 warnings`, `uv run ruff check .`
+  passes, and `uv run mypy .` passes when run outside the sandbox because the
+  sandboxed run cannot access the user-level uv cache.
+
+---
+
 Current pre-prototype flow:
 
 ```text
@@ -106,8 +143,10 @@ Unreal wav
 Initial Phase 1 team guardrail, Developer C ownership, dependency, and change
 request contracts exist under `docs/contracts/`. `AGENTS.md` now explains
 Developer A, B, and C ownership boundaries. Developer A and B start prompts now
-exist under `docs/prompts/`. No Developer A or Developer B implementation files
-existed in this repository, and none were modified.
+exist under `docs/prompts/`. Developer A and Developer B implementation packages
+now live under their owner-specific `agent_a`/`service_a` and
+`agent_b`/`service_b` folders; Developer C adapters remain the integration
+boundary.
 
 New Developer C contract docs:
 
@@ -130,14 +169,15 @@ Implemented C-owned modules:
 - `backend/app/schemas/game_turn.py` contains the pre-prototype Pydantic
   schemas for mock Unreal input, STT normalized input, OpenKB node context,
   Understanding output, Developer A/B adapter payloads, and final response.
-- `backend/app/services/stt_service.py` wraps the configured
+- `backend/app/services/service_c/stt_service.py` wraps the configured
   `whisper-large-v3-turbo` model name with real local Whisper transcription,
   OpenAI Transcriptions API fallback, and deterministic mock mode for tests.
-- `backend/app/services/settings_service.py` centralizes `.env` and process
-  environment configuration for C-owned runtime settings.
-- `backend/app/services/orchestrator.py` wires STT, OpenKB, Understanding,
-  Developer B, Developer A, logging, response building, and validation.
-- `backend/app/services/validator.py` enforces minimal branch and response
+- `backend/app/services/service_c/settings_service.py` centralizes `.env` and
+  process environment configuration for C-owned runtime settings.
+- `backend/app/services/service_c/orchestrator.py` wires STT, OpenKB,
+  Understanding, Developer B, Developer A, logging, response building, and
+  validation.
+- `backend/app/services/service_c/validator.py` enforces minimal branch and response
   invariants.
 
 ## Dependency State
@@ -164,17 +204,18 @@ Runtime STT settings:
 
 The sandboxed `uv sync` and `uv lock` attempts failed while initializing the
 user-level uv cache. Both passed when rerun with approved escalation. The
-latest `uv run pytest` passed with 9 tests and 1 warning.
-`uv run ruff check .` and `uv run mypy .` passed. `git diff --check` passed.
+latest `uv run pytest` passed with 23 tests and 2 warnings.
+`uv run ruff check .` passed. `uv run mypy .` passed when rerun outside the
+sandbox due to a sandbox-only uv cache access denial. `git diff --check` passed.
 
 ## Known Issues
 
-The pre-prototype uses deterministic mocks for Developer A, Developer B, and
-OpenKB. STT can now execute real local Whisper in `local` mode, but automated
-tests intentionally use fake runtimes or `mock` mode and do not download model
+The pre-prototype still uses deterministic C-side adapter boundaries for
+Developer B and OpenKB until Developer C accepts the wiring change request. STT
+can now execute real local Whisper in `local` mode, but automated tests
+intentionally use fake runtimes or `mock` mode and do not download model
 weights. The first real local run needs `uv sync --extra local-stt`, `ffmpeg`,
-and time to download/load the Whisper model. Developer A and Developer B real
-implementation files are still absent. The response does not yet include
+and time to download/load the Whisper model. The response does not yet include
 `npc.audio_url`.
 
 ## Next Recommended Step
