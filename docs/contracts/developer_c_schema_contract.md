@@ -336,6 +336,16 @@ Runtime modes:
 - The LLM mode is allowed to fill only the fields in `UnderstandingOutput`.
   It must not emit branch, next-node, state-delta, score, hint, NPC dialogue,
   TTS, or Unreal command fields.
+- OpenAI strict structured output requires every object to set
+  `additionalProperties: false` and every property to be listed in `required`.
+  Developer C therefore asks the LLM for `extracted_slots.visit_purpose` as a
+  required nullable field and removes null slot values before validating the
+  final `UnderstandingOutput`.
+- Rule fallback maps visit purpose keywords to allowed slot values:
+  `family_visit` for uncle, aunt, cousin, parents, family, relative;
+  `friend_visit` for friend; `business` for business, meeting, conference;
+  `study` for study, school; `transit` for transit, layover; and `tourism` for
+  tourism, travel, vacation, sightseeing.
 
 ```json
 {

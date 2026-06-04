@@ -117,6 +117,4 @@ finally {
     $form.Dispose()
     $client.Dispose()
 }
-{
-    $client.Dispose()
-}
+
