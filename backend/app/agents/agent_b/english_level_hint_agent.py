@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Literal, Protocol
+from pathlib import Path
+from typing import Any, Literal, Protocol
 
 from backend.app.schemas.game_turn import (
     Branch,
@@ -23,6 +24,7 @@ from backend.app.services.service_b.level_adaptation_controller import (
     LevelAdaptationController,
 )
 from backend.app.services.service_b.feedback_hint_generator import FeedbackHintGenerator
+from backend.app.services.service_b.developer_b_agent_run_logger import DeveloperBAgentRunLogger
 from backend.app.services.service_b.openkb_feedback_writer import OpenKBFeedbackWriter
 from backend.app.services.service_b.scenario_state_machine import ScenarioDecision, ScenarioStateMachine
 from backend.app.services.service_b.tier_difficulty_controller import TierDifficultyController
@@ -47,91 +49,227 @@ class EnglishLevelHintAgent:
         tier_controller: TierDifficultyController | None = None,
         feedback_generator: FeedbackHintGenerator | None = None,
         openkb_writer: OpenKBPolicyWriter | None = None,
+        agent_run_root: Path | None = None,
+        agent_run_logger: DeveloperBAgentRunLogger | None = None,
     ) -> None:
         self.state_machine = state_machine or ScenarioStateMachine()
         self.level_controller = level_controller or LevelAdaptationController()
         self.tier_controller = tier_controller or TierDifficultyController()
         self.feedback_generator = feedback_generator or FeedbackHintGenerator()
         self.openkb_writer = openkb_writer or OpenKBFeedbackWriter()
+        self.agent_run_logger = agent_run_logger or DeveloperBAgentRunLogger(agent_run_root)
 
     def evaluate_turn(self, payload: DevBPolicyInput) -> DevBPolicyOutput:
-        decision = self.state_machine.decide(payload)
-        english_level = self.level_controller.english_level(payload)
-        needs_hint, hint_level, hint_type, hint_kr = self.level_controller.hint_policy(payload, decision)
-        feedback_strategy = self.level_controller.feedback_strategy(decision)
-        has_form_issue = self.level_controller.has_form_issue(payload)
-        tier_result = self.tier_controller.evaluate(payload, decision, has_form_issue=has_form_issue)
+        agent_run = self.agent_run_logger.start_run(payload)
+        input_summary = _policy_input_summary(payload)
+        self.agent_run_logger.record_event(
+            agent_run,
+            event="agent_start",
+            status="started",
+            data_loaded=input_summary,
+        )
+        self.agent_run_logger.record_data_flow(
+            agent_run,
+            from_node="dev_b_policy_input",
+            to_node="scenario_state_machine",
+            payload_summary=input_summary,
+        )
 
-        output = DevBPolicyOutput(
-            contract_version="dev_b_policy.v1",
-            node_id=payload.current_node_id,
-            evaluation=self._build_evaluation(payload, decision, has_form_issue),
-            level_hint=LevelHint(
-                english_level=english_level,
-                travel_speaking_level=payload.player_profile.travel_speaking_level,
-                cefr_estimate=self.level_controller.cefr_estimate(english_level),
-                needs_hint=needs_hint,
-                hint_level=hint_level,
-                hint_type=hint_type,
-                hint_kr=hint_kr,
-                example_en=payload.node_context.recommended_expression,
-                avoid_expression=self._avoid_expression(payload),
-                recommended_expression=payload.node_context.recommended_expression,
-            ),
-            in_game_feedback=self._build_in_game_feedback(payload, decision, feedback_strategy),
-            error_capture=self._build_error_capture(payload, decision, has_form_issue),
-            out_game_feedback_seed=self._build_out_game_feedback_seed(payload, decision, has_form_issue),
-            branch=Branch(
-                branch_type=decision.branch_type,
-                next_action=decision.next_action,
-                next_node_id=decision.next_node_id,
-                branch_reason=decision.branch_reason,
-                allowed_next_node_checked=True,
-            ),
-            state_delta=StateDelta(
-                patience_delta=decision.patience_delta,
-                suspicion_delta=decision.suspicion_delta,
-                retry_count_delta=decision.retry_count_delta,
-                hint_count_delta=decision.hint_count_delta,
-            ),
-            dialogue_directive=self._build_dialogue_directive(payload, decision),
-            report_item=self._build_report_item(payload, decision, has_form_issue),
-            rubric_scores=tier_result.rubric_scores,
-            difficulty_profile=tier_result.difficulty_profile,
-        )
-        feedback_generation = self.feedback_generator.generate(
-            payload=payload,
-            decision=decision,
-            base_output=output,
-            tier_result=tier_result,
-            focus_on_form_explanation_kr=self._focus_on_form_explanation(payload, output),
-        )
-        if feedback_generation.rubric_scores is not None:
-            tier_result = self.tier_controller.from_rubric_scores(
-                feedback_generation.rubric_scores,
-                tier=payload.player_profile.tier,
-            )
-        output = output.model_copy(
-            update={
-                "evaluation": output.evaluation.model_copy(update={"feedback_note": feedback_generation.feedback_note}),
-                "level_hint": output.level_hint.model_copy(update={"hint_kr": feedback_generation.hint_kr}),
-                "report_item": output.report_item.model_copy(
-                    update={
-                        "summary": feedback_generation.report_summary,
-                        "improvement": feedback_generation.report_improvement,
-                        "example_answer": feedback_generation.example_answer,
-                    }
-                ),
-                "rubric_scores": tier_result.rubric_scores,
-                "difficulty_profile": tier_result.difficulty_profile,
-                "feedback_generation": feedback_generation.trace,
-            }
-        )
         try:
-            openkb_write = self.openkb_writer.write_policy_output(payload, output)
+            decision = self.state_machine.decide(payload)
+            self.agent_run_logger.record_event(
+                agent_run,
+                event="tool_call",
+                status="completed",
+                tool_name="scenario_state_machine.decide",
+                input_summary=input_summary,
+                output_summary=_decision_summary(decision),
+            )
+
+            english_level = self.level_controller.english_level(payload)
+            self.agent_run_logger.record_event(
+                agent_run,
+                event="tool_call",
+                status="completed",
+                tool_name="level_adaptation_controller.english_level",
+                output_summary={"english_level": english_level},
+            )
+
+            needs_hint, hint_level, hint_type, hint_kr = self.level_controller.hint_policy(payload, decision)
+            self.agent_run_logger.record_event(
+                agent_run,
+                event="tool_call",
+                status="completed",
+                tool_name="level_adaptation_controller.hint_policy",
+                output_summary={
+                    "needs_hint": needs_hint,
+                    "hint_level": hint_level,
+                    "hint_type": hint_type,
+                },
+            )
+
+            feedback_strategy = self.level_controller.feedback_strategy(decision)
+            self.agent_run_logger.record_event(
+                agent_run,
+                event="tool_call",
+                status="completed",
+                tool_name="level_adaptation_controller.feedback_strategy",
+                output_summary={"feedback_strategy": feedback_strategy},
+            )
+
+            has_form_issue = self.level_controller.has_form_issue(payload)
+            self.agent_run_logger.record_event(
+                agent_run,
+                event="tool_call",
+                status="completed",
+                tool_name="level_adaptation_controller.has_form_issue",
+                output_summary={"has_form_issue": has_form_issue},
+            )
+
+            tier_result = self.tier_controller.evaluate(payload, decision, has_form_issue=has_form_issue)
+            self.agent_run_logger.record_event(
+                agent_run,
+                event="tool_call",
+                status="completed",
+                tool_name="tier_difficulty_controller.evaluate",
+                output_summary={
+                    "rubric_total": tier_result.rubric_scores.total,
+                    "travel_speaking_level": tier_result.difficulty_profile.travel_speaking_level,
+                },
+            )
+
+            output = DevBPolicyOutput(
+                contract_version="dev_b_policy.v1",
+                node_id=payload.current_node_id,
+                evaluation=self._build_evaluation(payload, decision, has_form_issue),
+                level_hint=LevelHint(
+                    english_level=english_level,
+                    travel_speaking_level=payload.player_profile.travel_speaking_level,
+                    cefr_estimate=self.level_controller.cefr_estimate(english_level),
+                    needs_hint=needs_hint,
+                    hint_level=hint_level,
+                    hint_type=hint_type,
+                    hint_kr=hint_kr,
+                    example_en=payload.node_context.recommended_expression,
+                    avoid_expression=self._avoid_expression(payload),
+                    recommended_expression=payload.node_context.recommended_expression,
+                ),
+                in_game_feedback=self._build_in_game_feedback(payload, decision, feedback_strategy),
+                error_capture=self._build_error_capture(payload, decision, has_form_issue),
+                out_game_feedback_seed=self._build_out_game_feedback_seed(payload, decision, has_form_issue),
+                branch=Branch(
+                    branch_type=decision.branch_type,
+                    next_action=decision.next_action,
+                    next_node_id=decision.next_node_id,
+                    branch_reason=decision.branch_reason,
+                    allowed_next_node_checked=True,
+                ),
+                state_delta=StateDelta(
+                    patience_delta=decision.patience_delta,
+                    suspicion_delta=decision.suspicion_delta,
+                    retry_count_delta=decision.retry_count_delta,
+                    hint_count_delta=decision.hint_count_delta,
+                ),
+                dialogue_directive=self._build_dialogue_directive(payload, decision),
+                report_item=self._build_report_item(payload, decision, has_form_issue),
+                rubric_scores=tier_result.rubric_scores,
+                difficulty_profile=tier_result.difficulty_profile,
+            )
+            feedback_generation = self.feedback_generator.generate(
+                payload=payload,
+                decision=decision,
+                base_output=output,
+                tier_result=tier_result,
+                focus_on_form_explanation_kr=self._focus_on_form_explanation(payload, output),
+            )
+            self.agent_run_logger.record_event(
+                agent_run,
+                event="tool_call",
+                status="completed",
+                tool_name="feedback_hint_generator.generate",
+                output_summary=_feedback_generation_summary(feedback_generation),
+            )
+            if feedback_generation.rubric_scores is not None:
+                tier_result = self.tier_controller.from_rubric_scores(
+                    feedback_generation.rubric_scores,
+                    tier=payload.player_profile.tier,
+                )
+            output = output.model_copy(
+                update={
+                    "evaluation": output.evaluation.model_copy(
+                        update={"feedback_note": feedback_generation.feedback_note}
+                    ),
+                    "level_hint": output.level_hint.model_copy(update={"hint_kr": feedback_generation.hint_kr}),
+                    "report_item": output.report_item.model_copy(
+                        update={
+                            "summary": feedback_generation.report_summary,
+                            "improvement": feedback_generation.report_improvement,
+                            "example_answer": feedback_generation.example_answer,
+                        }
+                    ),
+                    "rubric_scores": tier_result.rubric_scores,
+                    "difficulty_profile": tier_result.difficulty_profile,
+                    "feedback_generation": feedback_generation.trace,
+                }
+            )
+            try:
+                openkb_write = self.openkb_writer.write_policy_output(payload, output)
+            except Exception as exc:
+                openkb_write = self.openkb_writer.failure_result(exc)
+            openkb_status = "completed" if openkb_write.succeeded else "failed"
+            self.agent_run_logger.record_event(
+                agent_run,
+                event="tool_call",
+                status=openkb_status,
+                tool_name="openkb_feedback_writer.write_policy_output",
+                output_summary=_openkb_write_summary(openkb_write),
+            )
+
+            output = output.model_copy(update={"openkb_write": openkb_write})
+            output_summary = _policy_output_summary(output)
+            self.agent_run_logger.record_data_flow(
+                agent_run,
+                from_node="openkb_feedback_writer",
+                to_node="dev_b_policy_output",
+                payload_summary=output_summary,
+            )
+            self.agent_run_logger.record_event(
+                agent_run,
+                event="agent_end",
+                status="completed",
+                output_summary=output_summary,
+            )
+            self.agent_run_logger.complete_and_append(
+                agent_run,
+                status="completed",
+                summary={
+                    "input": input_summary,
+                    "output": output_summary,
+                    "fallback_used": _feedback_fallback_used(output),
+                    "audio_url": None,
+                },
+                model_name=_model_name(output),
+            )
+            return output
         except Exception as exc:
-            openkb_write = self.openkb_writer.failure_result(exc)
-        return output.model_copy(update={"openkb_write": openkb_write})
+            error_summary = {"error": str(exc), "error_type": exc.__class__.__name__}
+            self.agent_run_logger.record_event(
+                agent_run,
+                event="agent_end",
+                status="failed",
+                error=str(exc),
+            )
+            self.agent_run_logger.fail_and_append(
+                agent_run,
+                error=exc,
+                summary={
+                    "input": input_summary,
+                    "output": error_summary,
+                    "fallback_used": False,
+                    "audio_url": None,
+                },
+            )
+            raise
 
     def _build_evaluation(
         self,
@@ -434,3 +572,84 @@ class EnglishLevelHintAgent:
         if targets:
             return f"Focus on {', '.join(targets)} using: {payload.node_context.recommended_expression}"
         return f"Use a concise immigration answer such as: {payload.node_context.recommended_expression}"
+
+
+def _policy_input_summary(payload: DevBPolicyInput) -> dict[str, Any]:
+    return {
+        "request_id": payload.request_id,
+        "session_id": payload.session_id,
+        "turn_index": payload.turn_index,
+        "node_id": payload.current_node_id,
+        "player_text_preview": _preview(payload.player_text),
+        "tier": payload.player_profile.tier,
+        "travel_speaking_level": payload.player_profile.travel_speaking_level,
+        "retry_count": payload.scenario_state.retry_count,
+        "suspicion": payload.scenario_state.suspicion,
+    }
+
+
+def _decision_summary(decision: ScenarioDecision) -> dict[str, Any]:
+    return {
+        "verdict": decision.verdict,
+        "branch_type": decision.branch_type,
+        "next_action": decision.next_action,
+        "next_node_id": decision.next_node_id,
+        "patience_delta": decision.patience_delta,
+        "suspicion_delta": decision.suspicion_delta,
+        "retry_count_delta": decision.retry_count_delta,
+        "hint_count_delta": decision.hint_count_delta,
+    }
+
+
+def _feedback_generation_summary(feedback_generation: Any) -> dict[str, Any]:
+    trace = feedback_generation.trace
+    return {
+        "mode": trace.mode,
+        "model": trace.model,
+        "used_llm": trace.used_llm,
+        "fallback_reason": trace.fallback_reason,
+    }
+
+
+def _openkb_write_summary(openkb_write: OpenKBWriteResult) -> dict[str, Any]:
+    return {
+        "attempted": openkb_write.attempted,
+        "succeeded": openkb_write.succeeded,
+        "namespace": openkb_write.namespace,
+        "record_id": openkb_write.record_id,
+        "jsonl_path": openkb_write.jsonl_path,
+        "markdown_path": openkb_write.markdown_path,
+        "error_message": openkb_write.error_message,
+    }
+
+
+def _policy_output_summary(output: DevBPolicyOutput) -> dict[str, Any]:
+    return {
+        "verdict": output.evaluation.verdict,
+        "branch_type": output.branch.branch_type,
+        "next_action": output.branch.next_action,
+        "next_node_id": output.branch.next_node_id,
+        "needs_hint": output.level_hint.needs_hint,
+        "hint_type": output.level_hint.hint_type,
+        "feedback_strategy": output.in_game_feedback.feedback_strategy,
+        "state_delta": output.state_delta.model_dump(),
+        "openkb_write_succeeded": output.openkb_write.succeeded if output.openkb_write else None,
+        "feedback_generation_mode": output.feedback_generation.mode if output.feedback_generation else None,
+    }
+
+
+def _feedback_fallback_used(output: DevBPolicyOutput) -> bool:
+    return bool(output.feedback_generation and output.feedback_generation.mode == "fallback")
+
+
+def _model_name(output: DevBPolicyOutput) -> str:
+    if output.feedback_generation and output.feedback_generation.model:
+        return output.feedback_generation.model
+    return "rule_based"
+
+
+def _preview(text: str, limit: int = 120) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[: limit - 3]}..."
