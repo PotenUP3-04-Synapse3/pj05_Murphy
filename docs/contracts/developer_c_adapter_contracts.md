@@ -233,6 +233,15 @@ Rules:
   LLM mode this trace contains a `tool_call` summary for
   `understanding_llm_client.analyze`; when LLM output is unavailable or unsafe,
   the trace records fallback mode and the rule output summary.
+- LLM fallback failures are logged through the C runtime logger before rule
+  fallback is used.
+- The OpenAI structured output schema uses strict-compatible objects. Optional
+  slot values are represented as required nullable schema fields, then
+  normalized back into `extracted_slots: dict[str, str]` before Pydantic
+  validation.
+- Rule fallback recognizes the current `visit_purpose` allowed values:
+  `family_visit`, `friend_visit`, `business`, `study`, `transit`, and
+  `tourism`.
 - Developer C writes the Understanding trace inside the orchestrator's unified
   AgentRun record rather than creating a separate log file.
 

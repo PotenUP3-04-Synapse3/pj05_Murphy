@@ -1,3 +1,4 @@
+import logging
 from pydantic import ValidationError as PydanticValidationError
 from time import perf_counter
 from typing import Any
@@ -7,8 +8,11 @@ from backend.app.agents.agent_c.understanding_llm_client import (
     UnderstandingLLMClient,
     UnderstandingLLMUnavailable,
 )
+from backend.app.agents.agent_c.visit_purpose_classifier import classify_visit_purpose
 from backend.app.schemas.game_turn import NodeContext, UnderstandingOutput
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
+
+_LOGGER = logging.getLogger(__name__)
 
 
 FORBIDDEN_UNDERSTANDING_LLM_KEYS = {
@@ -52,6 +56,11 @@ class UnderstandingAgent:
             try:
                 output = self._analyze_with_llm(player_text, node_context)
             except (UnderstandingLLMUnavailable, PydanticValidationError, TypeError, ValueError) as exc:
+                _LOGGER.warning(
+                    "Understanding Agent LLM failed; using rule fallback. error_type=%s error=%s",
+                    exc.__class__.__name__,
+                    exc,
+                )
                 output = self._analyze_with_rules(player_text, node_context)
                 self.last_trace = _build_fallback_trace(
                     player_text=player_text,
@@ -119,7 +128,10 @@ class UnderstandingAgent:
         node_context: NodeContext,
     ) -> UnderstandingOutput:
         normalized = player_text.lower()
-        matched_tourism = "tourism" in normalized or "travel" in normalized
+        visit_purpose = classify_visit_purpose(
+            player_text,
+            node_context.allowed_slot_values.get("visit_purpose"),
+        )
         risky = any(keyword in normalized for keyword in node_context.risk_keywords)
 
         if risky:
@@ -139,19 +151,19 @@ class UnderstandingAgent:
                 needs_clarification=False,
             )
 
-        if matched_tourism:
+        if visit_purpose is not None:
             return UnderstandingOutput(
                 intent="state_visit_purpose",
                 intent_success=True,
                 confidence=0.94,
-                meaning_summary_kr="The player said they are visiting for tourism.",
+                meaning_summary_kr=_visit_purpose_summary(visit_purpose),
                 emotion="nervous_humor",
                 answer_relevance="on_topic",
                 ambiguity_type="none",
                 risk_delta=0,
                 risk_reason="The purpose is clear and no risk expression was found.",
                 risk_tags=[],
-                extracted_slots={"visit_purpose": "tourism"},
+                extracted_slots={"visit_purpose": visit_purpose},
                 missing_slots=[],
                 needs_clarification=False,
             )
@@ -178,6 +190,12 @@ def _reject_forbidden_llm_keys(result: dict[str, object]) -> None:
     if forbidden_keys:
         joined_keys = ", ".join(sorted(forbidden_keys))
         raise UnderstandingLLMUnavailable(f"Understanding LLM returned forbidden keys: {joined_keys}")
+
+
+def _visit_purpose_summary(visit_purpose: str) -> str:
+    if visit_purpose == "tourism":
+        return "The player said they are visiting for tourism."
+    return f"The player clearly stated a visit purpose: {visit_purpose}."
 
 
 def _build_rule_trace(output: UnderstandingOutput | None = None) -> dict[str, Any]:

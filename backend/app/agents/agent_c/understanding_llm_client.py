@@ -6,6 +6,7 @@ import json
 
 import httpx
 
+from backend.app.agents.agent_c.visit_purpose_classifier import VISIT_PURPOSE_VALUES
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
 
 
@@ -75,8 +76,12 @@ class OpenAIUnderstandingLLMClient:
             )
             response.raise_for_status()
             data = response.json()
+        except httpx.HTTPStatusError as exc:
+            raise UnderstandingLLMUnavailable(
+                f"Understanding LLM request failed: {_http_status_error_detail(exc)}"
+            ) from exc
         except httpx.HTTPError as exc:
-            raise UnderstandingLLMUnavailable("Understanding LLM request failed.") from exc
+            raise UnderstandingLLMUnavailable(f"Understanding LLM request failed: {exc}") from exc
         except ValueError as exc:
             raise UnderstandingLLMUnavailable("Understanding LLM returned non-JSON response.") from exc
 
@@ -92,6 +97,9 @@ def _developer_instructions() -> str:
         "NPC dialogue, TTS text, Unreal commands, or state_delta. Treat "
         "immigration risk expressions seriously and keep the Korean meaning "
         "summary concise."
+        " For extracted_slots.visit_purpose, use one of "
+        f"{', '.join(VISIT_PURPOSE_VALUES)} when the purpose is clear, or null "
+        "when the visit purpose is missing."
     )
 
 
@@ -115,22 +123,29 @@ def _understanding_schema() -> dict[str, Any]:
             "needs_clarification",
         ],
         "properties": {
-            "intent": {"type": "string", "minLength": 1, "maxLength": 80},
+            "intent": {"type": "string"},
             "intent_success": {"type": "boolean"},
-            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-            "meaning_summary_kr": {"type": "string", "minLength": 1, "maxLength": 240},
-            "emotion": {"type": "string", "minLength": 1, "maxLength": 80},
+            "confidence": {"type": "number"},
+            "meaning_summary_kr": {"type": "string"},
+            "emotion": {"type": "string"},
             "answer_relevance": {
                 "type": "string",
                 "enum": ["on_topic", "partially_related", "off_topic"],
             },
-            "ambiguity_type": {"type": "string", "minLength": 1, "maxLength": 80},
-            "risk_delta": {"type": "integer", "minimum": -100, "maximum": 100},
-            "risk_reason": {"type": "string", "minLength": 1, "maxLength": 240},
+            "ambiguity_type": {"type": "string"},
+            "risk_delta": {"type": "integer"},
+            "risk_reason": {"type": "string"},
             "risk_tags": {"type": "array", "items": {"type": "string"}},
             "extracted_slots": {
                 "type": "object",
-                "additionalProperties": {"type": "string"},
+                "additionalProperties": False,
+                "required": ["visit_purpose"],
+                "properties": {
+                    "visit_purpose": {
+                        "type": ["string", "null"],
+                        "enum": [*VISIT_PURPOSE_VALUES, None],
+                    }
+                },
             },
             "missing_slots": {"type": "array", "items": {"type": "string"}},
             "needs_clarification": {"type": "boolean"},
@@ -140,9 +155,37 @@ def _understanding_schema() -> dict[str, Any]:
 
 def _extract_structured_json(data: dict[str, Any]) -> dict[str, Any]:
     if isinstance(data.get("output_text"), str):
-        return json.loads(data["output_text"])
+        return _normalize_structured_result(json.loads(data["output_text"]))
     for output_item in data.get("output", []):
         for content_item in output_item.get("content", []):
             if content_item.get("type") == "output_text":
-                return json.loads(str(content_item.get("text", "")))
+                return _normalize_structured_result(json.loads(str(content_item.get("text", ""))))
     raise UnderstandingLLMUnavailable("OpenAI response did not include output_text.")
+
+
+def _normalize_structured_result(result: dict[str, Any]) -> dict[str, Any]:
+    extracted_slots = result.get("extracted_slots")
+    if isinstance(extracted_slots, dict):
+        result["extracted_slots"] = {
+            str(key): str(value)
+            for key, value in extracted_slots.items()
+            if value is not None
+        }
+    else:
+        result["extracted_slots"] = {}
+    return result
+
+
+def _http_status_error_detail(exc: httpx.HTTPStatusError) -> str:
+    response = exc.response
+    try:
+        payload = response.json()
+    except ValueError:
+        return f"status={response.status_code} body={response.text[:500]}"
+
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if isinstance(error, dict):
+        code = error.get("code") or error.get("type") or "unknown"
+        message = error.get("message") or response.text[:500]
+        return f"status={response.status_code} code={code} message={message}"
+    return f"status={response.status_code} body={response.text[:500]}"

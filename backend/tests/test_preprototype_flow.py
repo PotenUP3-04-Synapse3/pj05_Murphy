@@ -147,6 +147,15 @@ def test_orchestrator_uses_real_developer_b_policy_for_form_issue_capture() -> N
     assert "minor_form_issue" in response.evaluation.feedback_tags
 
 
+def test_orchestrator_advances_family_visit_purpose_to_duration_node() -> None:
+    response = Orchestrator().run_turn(_preprototype_request(transcript="I'm here to visit my uncle."))
+
+    assert response.stt.player_text == "I'm here to visit my uncle."
+    assert response.next_action == "ADVANCE"
+    assert response.next_node_id == "IMM_003_DURATION"
+    assert response.debug.understanding_confidence == pytest.approx(0.94)
+
+
 def test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings() -> None:
     builder_calls: list[dict[str, Any]] = []
 

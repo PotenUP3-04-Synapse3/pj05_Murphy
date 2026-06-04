@@ -31,7 +31,10 @@ OpenAI Responses API client. Missing API key, request failure, invalid JSON,
 schema failure, or forbidden authority fields fall back to deterministic rule
 mode. Developer C now appends an orchestration-level unified AgentRun record to
 Developer A's shared log sink and includes the Understanding Agent's
-LLM/fallback trace inside the orchestrator event timeline.
+LLM/fallback trace inside the orchestrator event timeline. The Understanding
+LLM structured output schema now follows OpenAI strict schema requirements, and
+rule fallback recognizes family, friend, business, study, transit, and tourism
+visit-purpose values.
 
 ## Changed Files
 
@@ -45,6 +48,7 @@ LLM/fallback trace inside the orchestrator event timeline.
 - `backend/app/integrations/dev_a_npc_dialogue_client.py`
 - `backend/app/agents/agent_c/understanding_agent.py`
 - `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/agents/agent_c/visit_purpose_classifier.py`
 - `backend/app/middleware/middleware_c/developer_c_agent_run_middleware.py`
 - `backend/app/integrations/dev_b_level_hint_client.py`
 - `backend/app/main.py`
@@ -53,6 +57,8 @@ LLM/fallback trace inside the orchestrator event timeline.
 - `backend/app/services/service_c/response_builder.py`
 - `backend/app/services/service_c/validator.py`
 - `backend/tests/test_preprototype_flow.py`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/test_understanding_llm_client.py`
 - `docs/contracts/dependency_contract.md`
 - `docs/contracts/developer_c_adapter_contracts.md`
 - `docs/contracts/developer_c_schema_contract.md`
@@ -127,6 +133,12 @@ LLM/fallback trace inside the orchestrator event timeline.
 - `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_unified_agent_run_log.py -q` (RED: `UnderstandingAgent.last_trace` and `Orchestrator(agent_run_root=...)` were not implemented)
 - `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_unified_agent_run_log.py -q` (GREEN: 3 passed, 1 warning)
 - `uv run pytest` (52 passed, 2 warnings)
+- `uv run ruff check .` (passed)
+- `uv run mypy .` (passed)
+- `git diff --check` (passed with CRLF conversion warnings only)
+- `uv run pytest backend/tests/test_understanding_llm_client.py backend/tests/test_understanding_agent.py backend/tests/test_preprototype_flow.py::test_orchestrator_advances_family_visit_purpose_to_duration_node -q` (RED: strict schema rejected `extracted_slots`, null slots were not normalized, uncle fallback did not fill `family_visit`, and orchestrator stayed on `REASK`)
+- `uv run pytest backend/tests/test_understanding_llm_client.py backend/tests/test_understanding_agent.py backend/tests/test_preprototype_flow.py::test_orchestrator_advances_family_visit_purpose_to_duration_node -q` (GREEN: 8 passed, 2 warnings)
+- `uv run pytest` (58 passed, 2 warnings)
 - `uv run ruff check .` (passed)
 - `uv run mypy .` (passed)
 - `git diff --check` (passed with CRLF conversion warnings only)
@@ -407,7 +419,7 @@ Unified AgentRun logging:
 The sandboxed `uv sync`, `uv lock`, and `uv run ...` attempts can fail while
 initializing the user-level uv cache. Rerunning with approved escalation is the
 known workaround in this environment. The latest `uv run pytest` passed with
-52 tests and 2 warnings. `uv run ruff check .` passed. `uv run mypy .` passed.
+58 tests and 2 warnings. `uv run ruff check .` passed. `uv run mypy .` passed.
 
 ## Known Issues
 
