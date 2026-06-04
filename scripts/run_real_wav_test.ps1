@@ -14,54 +14,54 @@ if (-not (Test-Path -LiteralPath $AudioPath)) {
 # In production, Unreal creates this turn JSON from the current game state.
 # This script builds a local mock request for end-to-end testing.
 $turnObject = @{
-    contract_version = "dev_c_unreal_turn.v1"
-    request_id = "req_real_wav_001"
-    session = @{
-        session_id = "session_real_wav_001"
-        player_id = "player_001"
-        chapter_id = "CH0_IMMIGRATION"
-        scene_id = "JFK_IMMIGRATION_HALL"
+    contract_version          = "dev_c_unreal_turn.v1"
+    request_id                = "req_real_wav_001"
+    session                   = @{
+        session_id      = "session_real_wav_001"
+        player_id       = "player_001"
+        chapter_id      = "CH0_IMMIGRATION"
+        scene_id        = "JFK_IMMIGRATION_HALL"
         current_node_id = "IMM_002_PURPOSE"
-        turn_index = 1
+        turn_index      = 1
     }
-    npc = @{
-        npc_id = "officer_miller"
-        npc_role = "immigration_officer"
+    npc                       = @{
+        npc_id           = "officer_miller"
+        npc_role         = "immigration_officer"
         last_npc_message = "What is the purpose of your visit?"
     }
-    audio = @{
-        mime_type = "audio/wav"
+    audio                     = @{
+        mime_type      = "audio/wav"
         sample_rate_hz = 16000
-        channels = 1
-        duration_ms = 3000
-        language_hint = "en-US"
+        channels       = 1
+        duration_ms    = 3000
+        language_hint  = "en-US"
     }
-    player_profile = @{
-        nickname = "player"
-        english_confidence = "beginner"
-        tier = "Bronze"
+    player_profile            = @{
+        nickname              = "player"
+        english_confidence    = "beginner"
+        tier                  = "Bronze"
         travel_speaking_level = "TSL_1_SURVIVAL"
     }
-    scenario_state = @{
-        patience = 5
-        suspicion = 0
-        retry_count = 0
-        hint_count = 0
+    scenario_state            = @{
+        patience            = 5
+        suspicion           = 0
+        retry_count         = 0
+        hint_count          = 0
         previous_fail_count = 0
-        completed_intents = @()
+        completed_intents   = @()
     }
-    game_state = @{
-        inventory = @("passport")
-        flags = @()
+    game_state                = @{
+        inventory         = @("passport")
+        flags             = @()
         completed_intents = @()
         current_objective = "Answer the immigration officer."
     }
-    previous_node_results = @()
+    previous_node_results     = @()
     client_allowed_next_nodes = @("IMM_003_DURATION", "IMM_002_PURPOSE")
-    client_context = @{
-        platform = "windows"
-        input_device = "microphone"
-        locale = "ko-KR"
+    client_context            = @{
+        platform      = "windows"
+        input_device  = "microphone"
+        locale        = "ko-KR"
         build_version = "local-test"
     }
 }
@@ -113,5 +113,7 @@ try {
 }
 finally {
     $form.Dispose()
+    $client.Dispose()
+}
     $client.Dispose()
 }
