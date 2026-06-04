@@ -59,13 +59,19 @@ these values in `.env`:
 ```text
 MURPHY_STT_MODE=local
 MURPHY_STT_LOCAL_MODEL=turbo
+MURPHY_UNDERSTANDING_MODE=llm
+MURPHY_UNDERSTANDING_LLM_MODEL=gpt-4o-mini
+MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS=10
 MURPHY_TTS_MODE=real
 MURPHY_NPC_DIALOGUE_MODE=rule
 ```
 
-`MURPHY_NPC_DIALOGUE_MODE=llm` can be used for optional OpenAI NPC dialogue
-generation. That mode also needs `OPENAI_API_KEY` and may use
-`NPC_DIALOGUE_LLM_MODEL` plus `NPC_DIALOGUE_LLM_TIMEOUT_SECONDS`.
+`MURPHY_UNDERSTANDING_MODE=rule` keeps Developer C semantic analysis
+deterministic. `MURPHY_UNDERSTANDING_MODE=llm` enables OpenAI-assisted
+Understanding Agent output with rule fallback. `MURPHY_NPC_DIALOGUE_MODE=llm`
+can be used for optional OpenAI NPC dialogue generation. These LLM modes need
+`OPENAI_API_KEY`; NPC dialogue may also use `NPC_DIALOGUE_LLM_MODEL` plus
+`NPC_DIALOGUE_LLM_TIMEOUT_SECONDS`.
 
 Run the development server after the backend endpoint exists:
 

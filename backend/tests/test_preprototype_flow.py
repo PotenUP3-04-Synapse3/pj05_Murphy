@@ -16,6 +16,7 @@ from backend.app.schemas.game_turn import (
 )
 from backend.app.services.service_c.openkb_service import OpenKBService
 from backend.app.services.service_c.orchestrator import Orchestrator
+from backend.app.services.service_c.settings_service import AppSettings, get_settings
 from backend.app.services.service_c.validator import ValidationError, Validator
 
 
@@ -126,6 +127,89 @@ def test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response() -> N
     assert response.stt.primary_runtime == "local"
     assert response.stt.fallback_runtime == "api"
     assert response.stt.runtime_used == "local"
+
+
+def test_openkb_loads_chapter_zero_duration_node_from_scenario_nodes() -> None:
+    node_context = OpenKBService().get_node_context("CH0_IMMIGRATION", "IMM_003_DURATION")
+
+    assert node_context.node_id == "IMM_003_DURATION"
+    assert node_context.npc_question == "How long will you stay?"
+    assert node_context.objective_kr == "체류 기간 말하기"
+    assert node_context.success_next_node == "IMM_004_STAY_LOCATION"
+    assert "IMM_003_RETRY_DURATION" in node_context.allowed_next_nodes
+
+
+def test_orchestrator_uses_real_developer_b_policy_for_form_issue_capture() -> None:
+    response = Orchestrator().run_turn(_preprototype_request(transcript="Travel. New York."))
+
+    assert response.next_node_id == "IMM_003_DURATION"
+    assert response.report.recorded_error_count == 1
+    assert "minor_form_issue" in response.evaluation.feedback_tags
+
+
+def test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings() -> None:
+    builder_calls: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_calls.append(kwargs)
+        return {
+            "speaker": "Officer Miller",
+            "npc_text": "You're here for tourism. How long will you stay?",
+            "tone": "formal_neutral",
+            "animation": "officer_check_passport",
+            "feedback_kr": "Good.",
+            "tts": {
+                "audio_url": "/runtime/audio/kokoro/real-demo.wav",
+            },
+        }
+
+    request = _preprototype_request()
+    orchestrator = Orchestrator()
+    node_context = orchestrator.openkb_service.get_node_context(
+        request.turn.session.chapter_id,
+        request.turn.session.current_node_id,
+    )
+    normalized_input = orchestrator.stt_service.transcribe_wav(request.audio, request.turn.audio)
+    understanding = orchestrator.understanding_agent.analyze_player_text(
+        normalized_input.player_text,
+        node_context,
+    )
+    dev_b_output = orchestrator.dev_b_client.evaluate_turn(
+        orchestrator.build_dev_b_policy_input(
+            request,
+            normalized_input=normalized_input,
+            node_context=node_context,
+            understanding=understanding,
+        )
+    )
+    client = DevANpcDialogueClient(
+        settings=AppSettings(
+            murphy_tts_mode="real",
+            murphy_npc_dialogue_mode="llm",
+        ),
+        voice_output_builder=fake_voice_output_builder,
+    )
+
+    output = client.generate_dialogue(
+        DevADialogueInput(
+            contract_version="dev_a_dialogue.v1",
+            request_id=request.turn.request_id,
+            session_id=request.turn.session.session_id,
+            current_node_id=request.turn.session.current_node_id,
+            player_text=normalized_input.player_text,
+            npc=request.turn.npc,
+            node_context=node_context,
+            understanding=understanding,
+            developer_b_policy=dev_b_output,
+        )
+    )
+
+    assert output.audio_url == "/runtime/audio/kokoro/real-demo.wav"
+    assert builder_calls[0]["use_real_tts"] is True
+    assert builder_calls[0]["use_llm_dialogue"] is True
 
 
 def test_api_accepts_mock_unreal_turn_json() -> None:

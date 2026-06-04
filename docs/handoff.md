@@ -11,17 +11,27 @@ and tests for JSON mock and multipart sample-wav turn flows. The STT contract
 is local-first with API fallback. Automated tests keep deterministic STT through
 `MURPHY_STT_MODE=mock`. Runtime settings now load from `.env` through
 `pydantic-settings`, and the endpoint can enable real Kokoro TTS through
-`MURPHY_TTS_MODE=real`.
+`MURPHY_TTS_MODE=real`. Developer C Understanding Agent now supports
+deterministic `rule` mode and optional OpenAI-assisted `llm` mode with rule
+fallback.
 
 ## Last Completed Task
 
-Developer A now appends NPC Dialogue AgentRun records to shared unified runtime
-logs while keeping the existing A-only logs. The shared files are
-`backend/runtime/generated/agent_runs/unified_agent_runs.jsonl` for structured
-tracking and `backend/runtime/generated/agent_runs/unified_agent_runs.md` for
-human-readable demo/debug review. B/C implementation files were not modified;
-`docs/contracts/change_requests.md` now requests that B/C connect their own
-owned entrypoints to the same shared writer.
+Enabled the real STT plus real Kokoro TTS endpoint demo path. The C-owned
+`DevANpcDialogueClient` now reads `MURPHY_TTS_MODE` and
+`MURPHY_NPC_DIALOGUE_MODE` from `AppSettings` and passes `use_real_tts` /
+`use_llm_dialogue` into Developer A's `build_voice_output_from_level_design()`
+service. Deterministic defaults remain `MURPHY_STT_MODE=mock`,
+`MURPHY_TTS_MODE=fake`, and `MURPHY_NPC_DIALOGUE_MODE=rule` for tests. A demo
+turn fixture now exists at `demo/input/imm_002_purpose.json`.
+
+Developer C also added real AI mode for the Understanding Agent. Set
+`MURPHY_UNDERSTANDING_MODE=llm` with `OPENAI_API_KEY` to call the C-owned
+OpenAI Responses API client. Missing API key, request failure, invalid JSON,
+schema failure, or forbidden authority fields fall back to deterministic rule
+mode. Tool-call/data-flow logging is not implemented yet; Developer C should
+wait for Developer A's shared log file directory and then emit orchestration
+trace events to that shared sink.
 
 ## Changed Files
 
@@ -33,6 +43,8 @@ owned entrypoints to the same shared writer.
 - `backend/app/services/service_c/stt_service.py`
 - `backend/tests/test_settings_service.py`
 - `backend/app/integrations/dev_a_npc_dialogue_client.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
 - `backend/app/integrations/dev_b_level_hint_client.py`
 - `backend/app/main.py`
 - `backend/app/schemas/game_turn.py`
@@ -54,6 +66,7 @@ owned entrypoints to the same shared writer.
 - `docs/contracts/change_requests.md`
 - `AGENTS.md`
 - `docs/preprototype_status_demo_plan.md`
+- `docs/superpowers/plans/2026-06-04-real-understanding-agent-mode.md`
 - `docs/superpowers/plans/2026-06-04-real-stt-kokoro-endpoint-demo.md`
 - `docs/superpowers/plans/2026-06-04-preprototype-abc-integration.md`
 
@@ -96,8 +109,19 @@ owned entrypoints to the same shared writer.
 - `uv run ruff check .` (passed)
 - `uv run mypy .` (passed)
 - `git diff --check` (passed with CRLF conversion warnings only)
-- `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`
-  (9 passed, 1 warning)
+- `uv run pytest backend/tests/test_settings_service.py::test_app_settings_reads_values_from_env_file -q` (RED: `AppSettings` had no `murphy_understanding_mode`)
+- `uv run pytest backend/tests/test_understanding_agent.py -q` (RED: `UnderstandingAgent` had no settings or LLM client injection)
+- `uv run pytest backend/tests/test_settings_service.py::test_app_settings_reads_values_from_env_file -q` (GREEN: 1 passed)
+- `uv run pytest backend/tests/test_understanding_agent.py -q` (GREEN: 2 passed)
+- `uv run pytest backend/tests/test_preprototype_flow.py -q` (GREEN: 9 passed, 2 warnings after deterministic runtime fixture cache clearing)
+- `uv run ruff check .` (passed)
+- `uv run mypy .` (initially failed on `UnderstandingLLMClient.model` protocol mutability)
+- `uv run mypy .` (passed after using a read-only protocol property)
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_settings_service.py -q` (4 passed)
+- `uv run pytest` (42 passed, 2 warnings)
+- `uv run ruff check .` (passed)
+- `uv run mypy .` (passed)
+- `git diff --check` (passed with CRLF conversion warnings only)
 
 ## Current Architecture
 
@@ -214,6 +238,25 @@ Coordination request:
 - Final report generation can use B's OpenKB records to distinguish rule, LLM,
   and fallback feedback sources.
 
+# Developer B Objective UI Content Update - 2026-06-04
+
+Developer B added `objective_kr` to Chapter 0 scenario node content and the
+shared `NodeContext` schema as an optional field. The field is intended for
+Korean Unreal UI objective display, for example `방문 목적 말하기` or `체류 기간
+말하기`.
+
+Scope:
+
+- `backend/app/data/scenario_nodes.json` now defines `objective_kr` for every
+  Chapter 0 immigration node.
+- `backend/app/services/service_c/openkb_service.py` maps `objective_kr` into
+  `NodeContext`.
+- No `retry_question` or `retry_prompt_seed` field was added. Retry/clarify
+  behavior continues to use `npc_question`, B feedback candidates, and Developer
+  A dialogue generation.
+- Developer C still needs to decide whether and where to expose `objective_kr`
+  in the final Unreal response UI payload.
+
 ---
 
 Current pre-prototype flow:
@@ -328,10 +371,19 @@ Runtime TTS and NPC dialogue settings:
 - `MURPHY_NPC_DIALOGUE_MODE=llm` enables optional OpenAI NPC dialogue before
   Kokoro TTS and requires `OPENAI_API_KEY`.
 
+Runtime Understanding settings:
+
+- `MURPHY_UNDERSTANDING_MODE=rule` keeps deterministic semantic analysis.
+- `MURPHY_UNDERSTANDING_MODE=llm` calls Developer C's OpenAI-backed semantic
+  analyzer and falls back to rule mode when the LLM path is unavailable or
+  unsafe.
+- `MURPHY_UNDERSTANDING_LLM_MODEL=gpt-4o-mini` is the default model.
+- `MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS=10` is the default timeout.
+
 The sandboxed `uv sync`, `uv lock`, and `uv run ...` attempts can fail while
 initializing the user-level uv cache. Rerunning with approved escalation is the
 known workaround in this environment. The latest `uv run pytest` passed with
-28 tests and 2 warnings. `uv run ruff check .` passed. `uv run mypy .` passed.
+42 tests and 2 warnings. `uv run ruff check .` passed. `uv run mypy .` passed.
 
 ## Known Issues
 

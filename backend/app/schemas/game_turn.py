@@ -125,6 +125,7 @@ class NodeContext(BaseModel):
     chapter_id: str
     npc_question: str
     npc_question_goal: str
+    objective_kr: str | None = None
     required_intents: list[str]
     required_slots: list[str]
     optional_slots: list[str] = Field(default_factory=list)

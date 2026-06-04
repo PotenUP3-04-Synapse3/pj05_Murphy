@@ -97,6 +97,9 @@ Do not upgrade or downgrade these packages unless this file,
 Real local STT has been explicitly requested for Developer C and is available
 behind the `local-stt` optional extra. API fallback uses the OpenAI
 Transcriptions API only when local STT fails and `OPENAI_API_KEY` is present.
+Developer C Understanding Agent LLM mode also uses `OPENAI_API_KEY` when
+`MURPHY_UNDERSTANDING_MODE=llm`; tests and deterministic demos keep
+`MURPHY_UNDERSTANDING_MODE=rule`.
 
 Tests must pass without local model downloads, external API keys, real TTS
 providers, real LLM providers, Unreal Engine runtime, or remote OpenKB.

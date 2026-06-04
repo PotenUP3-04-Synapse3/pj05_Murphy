@@ -43,6 +43,9 @@ through `backend/app/services/service_c/settings_service.py`:
 | `MURPHY_STT_LOCAL_MODEL` | `turbo` | `openai-whisper` local model alias for Whisper large-v3-turbo |
 | `MURPHY_STT_API_MODEL` | `whisper-1` | OpenAI Transcriptions API fallback model |
 | `OPENAI_API_KEY` | unset | Required only when API fallback is needed |
+| `MURPHY_UNDERSTANDING_MODE` | `rule` | `rule` is deterministic; `llm` enables OpenAI-assisted semantic analysis |
+| `MURPHY_UNDERSTANDING_LLM_MODEL` | `gpt-4o-mini` | Understanding Agent LLM model |
+| `MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS` | `10` | Understanding Agent LLM timeout |
 
 This keeps the Unreal request simple while still satisfying the Developer B
 `dev_b_policy.v1` input contract.
@@ -250,6 +253,7 @@ C owns retrieval, validation, and final response assembly.
   "chapter_id": "CH0_IMMIGRATION",
   "npc_question": "What is the purpose of your visit?",
   "npc_question_goal": "ask_visit_purpose",
+  "objective_kr": "방문 목적 말하기",
   "required_intents": [
     "state_visit_purpose"
   ],
@@ -314,6 +318,8 @@ Rules:
 - `node_context.node_id` must equal `session.current_node_id`.
 - `required_intents` is the canonical key. Do not use `success_intents` in new
   Developer C schemas.
+- `objective_kr` is optional scenario content for Korean UI objective display.
+  It is not NPC dialogue and should not replace Developer A dialogue output.
 - `allowed_next_nodes` is the branch safety boundary used by Developer C
   validation.
 
@@ -321,6 +327,15 @@ Rules:
 
 Developer C Understanding Agent returns semantic evidence only. It must not
 create final branches, scores, hints, or NPC dialogue.
+
+Runtime modes:
+
+- `rule`: deterministic local analyzer used by tests and contract demos.
+- `llm`: OpenAI-assisted semantic analyzer. Invalid, unavailable, or forbidden
+  LLM output falls back to `rule`.
+- The LLM mode is allowed to fill only the fields in `UnderstandingOutput`.
+  It must not emit branch, next-node, state-delta, score, hint, NPC dialogue,
+  TTS, or Unreal command fields.
 
 ```json
 {

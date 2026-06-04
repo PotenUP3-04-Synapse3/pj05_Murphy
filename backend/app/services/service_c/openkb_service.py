@@ -36,6 +36,7 @@ class OpenKBService:
             chapter_id=str(node["chapter_id"]),
             npc_question=str(node["npc_question"]),
             npc_question_goal=str(node["npc_question_goal"]),
+            objective_kr=node.get("objective_kr"),
             required_intents=list(node["required_intents"]),
             required_slots=list(node["required_slots"]),
             optional_slots=list(node.get("optional_slots", [])),

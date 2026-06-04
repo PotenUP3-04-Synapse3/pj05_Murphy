@@ -180,130 +180,28 @@ Developer B stores these fields in the B-owned OpenKB `dev_b` runtime record.
 C can continue consuming the existing `level_hint`, `evaluation`,
 `report_item`, and `openkb_write` fields.
 
-## Change Request - 2026-06-04 - Shared AgentRun Persistence Contract
+## Change Request - 2026-06-04 - Expose OpenKB objective_kr to Unreal UI
 
 ### Requested By
-Developer A
+Developer B
 
 ### Affected Owner
 Developer C / Sean Han
 
 ### Reason
-NPC Dialogue Agent should eventually persist structured execution records in
-the same shared AgentRun table pattern used by the Slack Agent. Developer A now
-has a temporary JSONL implementation so runs can be inspected during prototype
-work, but a shared persistence contract is needed for production integration.
+Developer B now defines `objective_kr` in Chapter 0 scenario node content so the
+current node's Korean objective can be shown consistently in Unreal UI.
 
 ### Proposed Contract Change
-Provide or approve a shared AgentRun persistence interface with these fields:
-
-- `agent_run_id`
-- `agent_name`
-- `prompt_version`
-- `status`
-- `source_window`
-- `cache_key`
-- `model_name`
-- `input_tokens`
-- `output_tokens`
-- `total_tokens`
-- `estimated_cost_usd`
-- `permission_level`
-- `metadata`
-- `created_at`
-- `completed_at`
-
-Developer A artifacts should also be linkable by `agent_run_id` and include
-`npc_text`, `tts_text`, `feedback_kr`, `audio_url`, `audio_path`, source links,
-and source snippets.
-
-### Temporary Workaround
-Developer A appends table-like JSONL records under:
-
-- `backend/runtime/agent_runs/npc_dialogue_agent_runs.jsonl`
-- `backend/runtime/agent_runs/npc_dialogue_artifacts.jsonl`
-
-### Needed Decision
-Developer C should decide whether NPC Dialogue AgentRun records become part of
-the shared backend DB, and whether Developer A artifacts are exposed in Unreal
-responses or kept as internal operation logs only.
-
-## Change Request - 2026-06-04 - Unified AgentRun JSONL and Markdown Log Contract
-
-### Requested By
-Developer A / kimyonghee
-
-### Affected Owner
-Developer B, Developer C / Sean Han
-
-### Reason
-The demo/debug flow needs one place where a reviewer can see which agent ran,
-what input summary it used, which tools/middleware steps executed, what output
-was produced, and where the final audio/text artifacts went. Developer A now
-appends NPC Dialogue Agent records to the shared log paths, but B/C entrypoints
-must opt in from their own owned code to complete the full turn trace.
-
-### Proposed Contract Change
-Append one structured record per agent execution to:
-
-- `backend/runtime/generated/agent_runs/unified_agent_runs.jsonl`
-- `backend/runtime/generated/agent_runs/unified_agent_runs.md`
-
-Use schema version `unified_agent_run.v1` with these top-level fields:
-
-- `agent_run_id`
-- `agent_name`
-- `owner`
-- `request_id`
-- `session_id`
-- `turn_index`
-- `status`
-- `started_at`
-- `completed_at`
-- `source_window`
-- `model`
-- `events`
-- `summary`
-- `metadata`
-
-Each developer should build `events` inside their own agent middleware/service.
-The shared writer only appends records and must not inspect or mutate another
-developer's business logic.
-
-### Requested Developer B Work
-Developer B should append `english_level_hint_agent` records that include:
-
-- agent start/end
-- scenario node and policy input summary
-- level/hint/scenario-state tool steps
-- branch/next-node decision summary
-- LLM feedback metadata when enabled
-- fallback/skip/failure reason when applicable
-
-### Requested Developer C Work
-Developer C should append orchestrator-level records that include:
-
-- request receipt and normalized source window
-- STT step result summary
-- OpenKB node lookup summary
-- Understanding Agent result summary
-- Developer B adapter call summary
-- Developer A adapter call summary
-- response builder and validator summary
-- final response/audio trace identifiers
-
-Developer C should also pass stable `request_id`, `session_id`, and
-`turn_index` into A/B calls so all agent records from one player turn can be
-grouped.
+`NodeContext.objective_kr` is an optional field populated from
+`backend/app/data/scenario_nodes.json`. Developer C may expose it through the
+final Unreal UI response when the response contract is ready for objective
+display.
 
 ### Compatibility Impact
-Additive only. Existing per-agent JSONL logs remain available. The shared JSONL
-and Markdown files are prototype runtime artifacts and should not be treated as
-authoritative game state.
+The field is optional and additive. Existing Understanding, Developer B policy,
+Developer A dialogue, and response builder behavior can ignore it.
 
 ### Temporary Workaround
-Until B/C are connected, Developer A records its own runs in both:
-
-- `npc_dialogue_agent_runs.jsonl`
-- `unified_agent_runs.jsonl`
-- `unified_agent_runs.md`
+Until C adds a UI response field, `objective_kr` is available in the internal
+node context only.

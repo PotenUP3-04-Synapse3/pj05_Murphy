@@ -15,13 +15,14 @@ Runtime provider modes are controlled by Developer C settings:
 
 ```text
 MURPHY_STT_MODE=mock|local
+MURPHY_UNDERSTANDING_MODE=rule|llm
 MURPHY_TTS_MODE=fake|real
 MURPHY_NPC_DIALOGUE_MODE=rule|llm
 ```
 
-The default test-safe mode is `mock`, `fake`, and `rule`. The endpoint demo can
-enable local Whisper and real Kokoro without changing the public response
-contract.
+The default test-safe mode is `mock`, `rule`, `fake`, and `rule`. The endpoint
+demo can enable local Whisper, real Understanding AI, and real Kokoro without
+changing the public response contract.
 
 ## Architecture
 
@@ -189,6 +190,15 @@ Developer C component:
 analyze_player_text(player_text, node_context) -> understanding
 ```
 
+Runtime modes:
+
+- `MURPHY_UNDERSTANDING_MODE=rule` uses the deterministic local analyzer.
+- `MURPHY_UNDERSTANDING_MODE=llm` calls Developer C's OpenAI-backed semantic
+  analyzer and falls back to rule mode on missing API key, request failure,
+  invalid JSON, schema failure, or forbidden authority fields.
+- `MURPHY_UNDERSTANDING_LLM_MODEL` defaults to `gpt-4o-mini`.
+- `MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS` defaults to `10`.
+
 Output:
 
 ```json
@@ -217,6 +227,12 @@ Rules:
 - It must not decide `next_node_id`.
 - It must not generate final NPC dialogue.
 - It must not generate turn scores or final hints.
+- LLM output must not include branch, next action, state delta, scores, hints,
+  NPC dialogue, TTS text, or Unreal commands.
+- Tool-call/data-flow logging for Understanding Agent is deferred until
+  Developer A finalizes the shared log file directory; C should later emit
+  orchestration trace events to the shared sink rather than inventing a
+  separate log location.
 
 ## Developer B Policy Adapter
 
