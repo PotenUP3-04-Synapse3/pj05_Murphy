@@ -11,6 +11,18 @@ calling merged Developer A and Developer B implementations. Automated tests use
 deterministic STT and fake Kokoro voice output so the pre-prototype remains
 key-free and reproducible.
 
+Runtime provider modes are controlled by Developer C settings:
+
+```text
+MURPHY_STT_MODE=mock|local
+MURPHY_TTS_MODE=fake|real
+MURPHY_NPC_DIALOGUE_MODE=rule|llm
+```
+
+The default test-safe mode is `mock`, `fake`, and `rule`. The endpoint demo can
+enable local Whisper and real Kokoro without changing the public response
+contract.
+
 ## Architecture
 
 The current prototype assumes every Unreal turn arrives as a wav file. There is
@@ -404,8 +416,13 @@ Rules:
 
 - Developer A output is dialogue content, not branch authority.
 - Developer A must not change `next_node_id`, `next_action`, or `state_delta`.
-- Developer C currently calls Developer A's voice output service with fake
-  Kokoro by default for deterministic tests.
+- Developer C calls Developer A's voice output service with fake Kokoro by
+  default for deterministic tests.
+- `MURPHY_TTS_MODE=real` makes the C adapter pass `use_real_tts=True` to
+  Developer A's voice output service.
+- `MURPHY_NPC_DIALOGUE_MODE=llm` makes the C adapter pass
+  `use_llm_dialogue=True` to Developer A's dialogue path. This optional mode
+  requires the OpenAI dialogue environment expected by Developer A.
 - Developer C validates text safety, known animation ids, and response size
   before returning to Unreal.
 - Developer C serves generated pre-prototype wav artifacts from

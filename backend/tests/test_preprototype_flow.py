@@ -1,13 +1,21 @@
 import json
 from pathlib import Path
+from typing import Any
 
 from fastapi.testclient import TestClient
 import pytest
 
+from backend.app.integrations.dev_a_npc_dialogue_client import DevANpcDialogueClient
 from backend.app.main import app
-from backend.app.schemas.game_turn import MockAudioInput, PrePrototypeRequest, UnrealTurnRequest
+from backend.app.schemas.game_turn import (
+    DevADialogueInput,
+    MockAudioInput,
+    PrePrototypeRequest,
+    UnrealTurnRequest,
+)
 from backend.app.services.service_c.openkb_service import OpenKBService
 from backend.app.services.service_c.orchestrator import Orchestrator
+from backend.app.services.service_c.settings_service import AppSettings
 from backend.app.services.service_c.validator import ValidationError, Validator
 
 
@@ -128,6 +136,71 @@ def test_orchestrator_uses_real_developer_b_policy_for_form_issue_capture() -> N
     assert response.next_node_id == "IMM_003_DURATION"
     assert response.report.recorded_error_count == 1
     assert "minor_form_issue" in response.evaluation.feedback_tags
+
+
+def test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings() -> None:
+    builder_calls: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_calls.append(kwargs)
+        return {
+            "speaker": "Officer Miller",
+            "npc_text": "You're here for tourism. How long will you stay?",
+            "tone": "formal_neutral",
+            "animation": "officer_check_passport",
+            "feedback_kr": "Good.",
+            "tts": {
+                "audio_url": "/runtime/audio/kokoro/real-demo.wav",
+            },
+        }
+
+    request = _preprototype_request()
+    orchestrator = Orchestrator()
+    node_context = orchestrator.openkb_service.get_node_context(
+        request.turn.session.chapter_id,
+        request.turn.session.current_node_id,
+    )
+    normalized_input = orchestrator.stt_service.transcribe_wav(request.audio, request.turn.audio)
+    understanding = orchestrator.understanding_agent.analyze_player_text(
+        normalized_input.player_text,
+        node_context,
+    )
+    dev_b_output = orchestrator.dev_b_client.evaluate_turn(
+        orchestrator.build_dev_b_policy_input(
+            request,
+            normalized_input=normalized_input,
+            node_context=node_context,
+            understanding=understanding,
+        )
+    )
+    client = DevANpcDialogueClient(
+        settings=AppSettings(
+            murphy_tts_mode="real",
+            murphy_npc_dialogue_mode="llm",
+        ),
+        voice_output_builder=fake_voice_output_builder,
+    )
+
+    output = client.generate_dialogue(
+        DevADialogueInput(
+            contract_version="dev_a_dialogue.v1",
+            request_id=request.turn.request_id,
+            session_id=request.turn.session.session_id,
+            current_node_id=request.turn.session.current_node_id,
+            player_text=normalized_input.player_text,
+            npc=request.turn.npc,
+            node_context=node_context,
+            understanding=understanding,
+            developer_b_policy=dev_b_output,
+        )
+    )
+
+    assert output.audio_url == "/runtime/audio/kokoro/real-demo.wav"
+    assert builder_calls[0]["use_real_tts"] is True
+    assert builder_calls[0]["use_llm_dialogue"] is True
 
 
 def test_api_accepts_mock_unreal_turn_json() -> None:

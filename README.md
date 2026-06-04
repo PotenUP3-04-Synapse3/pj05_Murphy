@@ -53,11 +53,37 @@ For real local Whisper STT:
 uv sync --extra local-stt
 ```
 
+For a non-deterministic endpoint demo with real STT and real Kokoro TTS, set
+these values in `.env`:
+
+```text
+MURPHY_STT_MODE=local
+MURPHY_STT_LOCAL_MODEL=turbo
+MURPHY_TTS_MODE=real
+MURPHY_NPC_DIALOGUE_MODE=rule
+```
+
+`MURPHY_NPC_DIALOGUE_MODE=llm` can be used for optional OpenAI NPC dialogue
+generation. That mode also needs `OPENAI_API_KEY` and may use
+`NPC_DIALOGUE_LLM_MODEL` plus `NPC_DIALOGUE_LLM_TIMEOUT_SECONDS`.
+
 Run the development server after the backend endpoint exists:
 
 ```powershell
 uv run uvicorn backend.app.main:app --reload
 ```
+
+Send the demo turn JSON and wav as multipart form data:
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/api/game/ai/respond `
+  -F "turn=<demo/input/imm_002_purpose.json;type=application/json" `
+  -F "audio=@samples/utterance-20260603-163237.wav;type=audio/wav"
+```
+
+The response includes `stt.player_text`, STT runtime metadata, Officer Miller's
+NPC text, and `npc.audio_url`. The audio URL is served by the same FastAPI app
+under `/runtime/audio/...`.
 
 ## Current Phase
 

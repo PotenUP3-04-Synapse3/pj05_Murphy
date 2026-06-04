@@ -118,5 +118,5 @@ Constraints:
 - Tests must still pass without external API keys.
 - Real Kokoro generation may download local model assets during smoke tests.
 - Runtime audio files are generated under `backend/runtime/`.
-- Unreal-facing audio delivery is expected to use `audio_url`, but Developer C
-  still needs to define the static serving route.
+- Unreal-facing audio delivery uses `audio_url`; Developer C serves generated
+  pre-prototype wav artifacts under `/runtime/audio/...`.

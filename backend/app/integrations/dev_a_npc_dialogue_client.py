@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from backend.app.schemas.game_turn import DevADialogueInput, DevADialogueOutput
 from backend.app.services.service_a.voice_output_service import build_voice_output_from_level_design
 from backend.app.services.service_c.openkb_service import OpenKBService
+from backend.app.services.service_c.settings_service import AppSettings, get_settings
+
+VoiceOutputBuilder = Callable[..., dict[str, Any]]
 
 
 class DevANpcDialogueClient:
@@ -14,19 +18,31 @@ class DevANpcDialogueClient:
         *,
         runtime_root: Path | None = None,
         audio_url_base: str = "/runtime/audio",
-        use_real_tts: bool = False,
-        use_llm_dialogue: bool = False,
+        use_real_tts: bool | None = None,
+        use_llm_dialogue: bool | None = None,
         openkb_service: OpenKBService | None = None,
+        settings: AppSettings | None = None,
+        voice_output_builder: VoiceOutputBuilder = build_voice_output_from_level_design,
     ) -> None:
+        resolved_settings = settings or get_settings()
         self.runtime_root = runtime_root or Path("backend/runtime/generated")
         self.audio_url_base = audio_url_base
-        self.use_real_tts = use_real_tts
-        self.use_llm_dialogue = use_llm_dialogue
+        self.use_real_tts = (
+            use_real_tts
+            if use_real_tts is not None
+            else resolved_settings.murphy_tts_mode == "real"
+        )
+        self.use_llm_dialogue = (
+            use_llm_dialogue
+            if use_llm_dialogue is not None
+            else resolved_settings.murphy_npc_dialogue_mode == "llm"
+        )
         self.openkb_service = openkb_service or OpenKBService()
+        self.voice_output_builder = voice_output_builder
 
     def generate_dialogue(self, payload: DevADialogueInput) -> DevADialogueOutput:
         level_design_payload = self._build_level_design_payload(payload)
-        result = build_voice_output_from_level_design(
+        result = self.voice_output_builder(
             level_design_payload,
             runtime_root=self.runtime_root,
             request_id=payload.request_id,

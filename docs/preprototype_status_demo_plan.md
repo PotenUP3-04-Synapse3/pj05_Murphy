@@ -24,6 +24,9 @@ Completed:
   the integrated pre-prototype flow.
 - Developer C STT runtime: local Whisper large v3 turbo boundary is wired with
   API fallback and deterministic test mode.
+- Developer C adapter settings can enable real Kokoro TTS and optional OpenAI
+  NPC dialogue generation through environment variables while keeping
+  deterministic defaults for tests.
 - Chapter 0 node context is loaded from `backend/app/data/scenario_nodes.json`
   through the C-owned OpenKB service.
 - Demo 3 NPC voice artifact is implemented with deterministic fake Kokoro wav
@@ -32,7 +35,8 @@ Completed:
 Not completed yet:
 
 - Live local Whisper model download and smoke test on the demo machine.
-- Live real Kokoro TTS and OpenAI NPC dialogue mode in the endpoint path.
+- Live real Kokoro TTS and optional OpenAI NPC dialogue smoke test on the demo
+  machine.
 - Out-game feedback logging and final report flow.
 - End-to-end retry, bad-ending, and STT fallback demos.
 - Real Unreal multipart bridge validation.
@@ -62,6 +66,9 @@ a multipart request that sends `turn` JSON plus
 and can run local Whisper first with API fallback. Automated tests and contract
 demos set `MURPHY_STT_MODE=mock`, so they still use deterministic demo
 transcription instead of downloading a local model or requiring an API key.
+Developer A voice output defaults to fake Kokoro for deterministic tests, but
+`MURPHY_TTS_MODE=real` now sends the same endpoint path through Developer A's
+real Kokoro provider.
 
 ## Current AI-Only Flow
 
@@ -158,6 +165,38 @@ The fallback calls the OpenAI Transcriptions API only when the local runtime
 fails. `MURPHY_STT_API_MODEL` can be changed to another supported
 Transcriptions API model.
 
+## TTS and NPC Dialogue Runtime Setup
+
+Automated tests and contract demos should keep deterministic voice output:
+
+```text
+MURPHY_TTS_MODE=fake
+MURPHY_NPC_DIALOGUE_MODE=rule
+```
+
+For a real Kokoro endpoint demo:
+
+```text
+MURPHY_TTS_MODE=real
+MURPHY_NPC_DIALOGUE_MODE=rule
+```
+
+This keeps Developer A's deterministic dialogue policy but uses the real Kokoro
+provider to generate the served wav artifact. The response should include an
+`npc.audio_url` under `/runtime/audio/kokoro/...`.
+
+Optional OpenAI dialogue generation can be enabled with:
+
+```text
+OPENAI_API_KEY=<your-api-key>
+MURPHY_NPC_DIALOGUE_MODE=llm
+NPC_DIALOGUE_LLM_MODEL=gpt-4o-mini
+NPC_DIALOGUE_LLM_TIMEOUT_SECONDS=10
+```
+
+The LLM dialogue mode is optional for the real Kokoro demo. If it is not needed,
+keep `MURPHY_NPC_DIALOGUE_MODE=rule`.
+
 Suggested demo fixture layout:
 
 ```text
@@ -167,8 +206,6 @@ samples/
 demo/
   input/
     imm_002_purpose.json
-  npc_voice/
-    officer_miller_imm_003_duration.wav
 
 artifacts/
   demo/
@@ -220,7 +257,8 @@ Target demo response excerpt:
 
 The current implementation includes `stt.player_text` and `npc.audio_url`.
 The automated endpoint path uses deterministic fake Kokoro wav output so tests
-do not require real TTS credentials or model downloads.
+do not require real TTS credentials or model downloads. The local demo endpoint
+can use real Kokoro by setting `MURPHY_TTS_MODE=real`.
 
 ## Developer A Responsibilities for Demo
 
@@ -344,7 +382,7 @@ Output:
 Status:
 
 ```text
-implemented with deterministic fake Kokoro artifact generation
+implemented with deterministic fake Kokoro artifacts and env-enabled real Kokoro mode
 ```
 
 ### Demo 4: Real A/B Integration
@@ -362,7 +400,7 @@ Output:
 Status:
 
 ```text
-implemented for deterministic pre-prototype mode; live provider mode remains future work
+implemented for deterministic pre-prototype mode and env-enabled real Kokoro mode
 ```
 
 ## Success Criteria

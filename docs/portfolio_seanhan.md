@@ -29,6 +29,9 @@ The Phase 1 backend exposes a minimal FastAPI health route. The planned backend
 flow receives Unreal input, normalizes text or voice input, loads local OpenKB
 context, creates structured understanding data, calls replaceable Developer A/B
 adapters, builds Unreal-safe JSON, and validates the result before returning it.
+The current pre-prototype endpoint can run local Whisper STT and Developer A's
+real Kokoro TTS through environment-controlled runtime modes while preserving
+deterministic defaults for CI-style tests.
 
 ## Main Modules
 
