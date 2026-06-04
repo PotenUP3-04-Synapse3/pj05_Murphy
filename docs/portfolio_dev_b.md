@@ -34,6 +34,17 @@ Developer B also defined the full Chapter 0 immigration node context in
 `IMM_007_FINAL_DECISION`, each with allowed next nodes and retry, clarify,
 hint, warning, and bad-end branch candidates.
 
+Developer B then extended the policy engine to write learning feedback records
+directly into the B-owned OpenKB `dev_b` namespace. The write path records
+error capture, out-game feedback seeds, focus-on-form targets, report items,
+player utterance metadata, branch decisions, and state deltas as deterministic
+JSONL plus markdown artifacts.
+
+Developer B also added an optional LLM-assisted feedback layer. The deterministic
+policy remains the authority for verdict, branch, next node, and state delta;
+the LLM layer is limited to Korean hint text, feedback notes, report wording,
+Focus-on-Form explanations, and rubric score candidates with fallback behavior.
+
 ## Architecture
 
 The Developer B implementation is split into a small public agent and focused
@@ -45,8 +56,19 @@ services:
   verdict, branch, next-action, next-node, and state-delta decisions.
 - `backend/app/services/service_b/level_adaptation_controller.py` owns English
   level, CEFR estimate, hint strength, hint type, and in-game feedback strategy.
+- `backend/app/services/service_b/openkb_feedback_writer.py` owns B namespace
+  runtime OpenKB writes for feedback/error/focus-on-form records.
+- `backend/app/agents/agent_b/feedback_hint_llm_client.py` owns the optional
+  OpenAI Responses API client for B feedback generation.
+- `backend/app/services/service_b/feedback_hint_generator.py` owns LLM/fallback
+  feedback text generation and schema validation.
+- `backend/app/services/service_b/tier_difficulty_controller.py` owns 0-12
+  rubric scoring, TSL mapping, and difficulty profile generation.
 - `backend/app/data/scenario_nodes.json` defines Chapter 0 immigration node
   content and branch candidates.
+- `backend/app/kb/dev_b/` is the tracked B namespace for static OpenKB content
+  seeds. Generated runtime records are written under
+  `backend/runtime/openkb/dev_b/`.
 
 The C-owned adapter is intentionally left untouched. A change request documents
 that Developer C should replace the current mock body of
@@ -62,6 +84,9 @@ that Developer C should replace the current mock body of
 - Rule-based Branch Policy
 - Error Capture Candidate Builder
 - Out-game Feedback Seed Builder
+- OpenKB Feedback/Error Writer
+- LLM-assisted Feedback/Hint Generator
+- Travel Speaking Level Rubric Controller
 - Dialogue Directive Metadata
 - Developer B pytest suite
 
@@ -77,6 +102,24 @@ The implementation does not add fields such as `in_game_feedback.ui_hint` that
 are absent from the stricter key-value contract. It keeps
 `dialogue_directive.do_not_generate_npc_text` set to `true` because Developer A
 owns final NPC dialogue and voice.
+
+The contract now includes an additive optional `openkb_write` object so
+Developer C can validate and consume B-authored OpenKB records without
+duplicating the write:
+
+- `attempted`
+- `succeeded`
+- `namespace`
+- `record_id`
+- `jsonl_path`
+- `markdown_path`
+- `error_message`
+
+The contract also includes optional learning-difficulty metadata:
+
+- `rubric_scores`
+- `difficulty_profile`
+- `feedback_generation`
 
 ## Rule-based Policy
 
@@ -114,12 +157,27 @@ STT providers, TTS providers, Unreal runtime, or remote OpenKB. It is designed
 for C to call through an adapter, and for C's validator to remain the final
 safety gate.
 
+OpenKB writes are local and idempotent. The record id is derived from request
+id, node id, turn index, and error ids, so repeated evaluation of the same turn
+does not append duplicate JSONL entries. Writer failures are isolated from
+branch/state decisions and are surfaced through `openkb_write`.
+
+LLM feedback is optional and disabled by default. `DEV_B_FEEDBACK_LLM_MODE=rule`
+uses deterministic fallback text. `DEV_B_FEEDBACK_LLM_MODE=llm` attempts the B
+LLM path, but API key absence, model errors, or invalid JSON fall back without
+changing branch, verdict, next node, or state delta.
+
 Developer B coordination requests are recorded in
 `docs/contracts/change_requests.md`:
 
 - C should wire `dev_b_level_hint_client.py` to the B engine.
 - C should sync or consume `backend/app/data/scenario_nodes.json` in the
   C-owned OpenKB runtime.
+- C should avoid duplicate logging when B `openkb_write.succeeded == true`,
+  validate B write references, and use B record ids for final report retrieval.
+- C should treat `rubric_scores`, `difficulty_profile`, and
+  `feedback_generation` as optional metadata and keep branch/state validation
+  rule-based.
 
 ## Testing
 
@@ -138,13 +196,21 @@ Covered scenarios:
 - All Chapter 0 nodes define branch candidates and allowed next nodes.
 - Report items, feedback tags, error capture, and out-game feedback seeds are
   returned.
+- OpenKB write references are returned for every policy evaluation.
+- Error turns create JSONL and markdown records in the B namespace.
+- Successful turns can record low-priority summary seeds.
+- Repeated evaluation of the same turn is idempotent.
+- Writer failure does not change branch, verdict, or state delta.
+- Fake LLM feedback can update hint, feedback note, and report wording.
+- LLM failure falls back without changing branch, verdict, or state delta.
+- Rubric totals map to TSL 1-4 and difficulty profiles.
+- OpenKB records include feedback generation and difficulty metadata.
 
 Latest verification:
 
-- `uv run pytest backend/tests/dev_b -q`: 10 passed
-- `uv run pytest`: 23 passed, 2 warnings
-- `uv run ruff check .`: passed
-- `uv run mypy .`: passed, 51 source files
+- `uv run pytest backend/tests/dev_b -q`: 22 passed
+- Full project verification should be rerun after C consumes the new
+  optional B metadata fields.
 
 ## Demo Scenarios
 
@@ -173,7 +239,14 @@ Latest verification:
   `out_game_feedback_seed`, `dialogue_directive`, and `report_item` payloads
   without crossing into NPC dialogue, TTS, STT, validator, or Unreal response
   ownership.
+- Implemented local OpenKB `dev_b` namespace writes for feedback/error records
+  with deterministic ids, JSONL/markdown artifacts, idempotency, and write
+  failure isolation.
+- Added optional LLM-assisted Korean hint, feedback, report, Focus-on-Form, and
+  rubric candidate generation with deterministic fallback.
+- Added 0-12 Travel Speaking Level rubric and difficulty profile policy.
 - Added focused pytest coverage for broken English, branch safety, risk
-  handling, node spec completeness, and feedback/report payload generation.
+  handling, node spec completeness, feedback/report payload generation, and
+  OpenKB write behavior.
 - Documented cross-owner integration requirements so Developer C can replace
   the mock adapter with the real B policy engine without changing schemas.

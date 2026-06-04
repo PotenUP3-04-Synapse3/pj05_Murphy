@@ -240,7 +240,9 @@ Rules:
 ## OpenKB Node Context
 
 Developer C loads node context from local OpenKB data before calling the
-Understanding Agent and Developer B adapter.
+Understanding Agent and Developer B adapter. Developer B owns content authoring
+and runtime feedback/error writes under the OpenKB `dev_b` namespace; Developer
+C owns retrieval, validation, and final response assembly.
 
 ```json
 {
@@ -434,7 +436,71 @@ Understanding output into `dev_b_policy.v1`.
 ```
 
 Developer C must validate Developer B output before applying `state_delta`,
-using `branch.next_node_id`, storing markdown, or building an Unreal response.
+using `branch.next_node_id`, consuming OpenKB write references, or building an
+Unreal response.
+
+Developer B may return this optional additive write reference:
+
+```json
+{
+  "openkb_write": {
+    "attempted": true,
+    "succeeded": true,
+    "namespace": "dev_b",
+    "record_id": "dev_b_0123456789abcdef",
+    "jsonl_path": "backend/runtime/openkb/dev_b/session_001.jsonl",
+    "markdown_path": "backend/runtime/openkb/dev_b/dev_b_0123456789abcdef.md",
+    "error_message": null
+  }
+}
+```
+
+Rules:
+
+- The field is optional and additive.
+- `namespace` must be `dev_b` when present.
+- Successful write references must stay under the B-owned OpenKB runtime
+  namespace.
+- Developer C should avoid duplicate error markdown storage when
+  `openkb_write.succeeded` is true.
+
+Developer B may also return optional learning-feedback metadata:
+
+```json
+{
+  "rubric_scores": {
+    "comprehension": 2,
+    "fluency": 1,
+    "grammar_accuracy": 1,
+    "vocabulary_range": 1,
+    "clarity": 2,
+    "interaction_problem_solving": 2,
+    "total": 9
+  },
+  "difficulty_profile": {
+    "travel_speaking_level": "TSL_3_INDEPENDENT",
+    "npc_speech_speed": "normal",
+    "question_complexity": "expanded",
+    "hint_frequency": "medium",
+    "pressure_level": "medium"
+  },
+  "feedback_generation": {
+    "mode": "llm",
+    "model": "gpt-4o-mini",
+    "used_llm": true,
+    "fallback_reason": null
+  }
+}
+```
+
+Rules:
+
+- These fields are optional and additive.
+- They are learning metadata only.
+- They must not override `evaluation.verdict`, `branch`, `next_node_id`, or
+  `state_delta`.
+- Tests and deterministic flows must pass with `feedback_generation.mode` set
+  to `rule` or `fallback` and without real API keys.
 
 ## Internal Turn Context
 
@@ -583,3 +649,8 @@ Developer C validator must enforce at least these rules:
 11. Final response includes only Unreal-safe fields and valid enum values.
 12. Pre-prototype final response includes `npc.audio_url` under
     `/runtime/audio/...`.
+13. Developer B `openkb_write` references, when present, use namespace `dev_b`
+    and do not point outside the B-owned OpenKB runtime path.
+14. Developer B optional `rubric_scores.total` stays in the 0-12 range.
+15. Developer B optional `feedback_generation` is trace metadata only and does
+    not grant LLM branch or state authority.

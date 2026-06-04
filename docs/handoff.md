@@ -133,6 +133,76 @@ Verification note:
   passes, and `uv run mypy .` passes when run outside the sandbox because the
   sandboxed run cannot access the user-level uv cache.
 
+# Developer B OpenKB Runtime Write Update - 2026-06-04
+
+Developer B now owns runtime feedback/error writes under the OpenKB `dev_b`
+namespace. The B policy engine writes deterministic JSONL and markdown records
+to `backend/runtime/openkb/dev_b/` through
+`backend/app/services/service_b/openkb_feedback_writer.py`. Static B OpenKB
+content seeds live under `backend/app/kb/dev_b/`.
+
+Added/changed B write behavior:
+
+- `DevBPolicyOutput` now has an optional additive `openkb_write` field with the
+  write attempt status, namespace, record id, JSONL path, markdown path, and
+  error message.
+- `EnglishLevelHintAgent.evaluate_turn()` builds the policy output first, then
+  attempts the B OpenKB write. Writer failures do not change branch, verdict, or
+  state delta; they are surfaced through `openkb_write.succeeded == false`.
+- Runtime record ids are deterministic from request id, node id, turn index, and
+  error ids, so repeated evaluation of the same turn does not append duplicate
+  JSONL entries.
+
+Coordination request:
+
+- Developer C should update logging to avoid duplicate error markdown records
+  when `dev_b_policy.openkb_write.succeeded == true`.
+- Developer C validator should validate B write references for namespace and
+  local path safety.
+- Developer C final report retrieval should consume B-authored records by
+  `openkb_write.record_id`.
+
+# Developer B LLM-Assisted Feedback Update - 2026-06-04
+
+Developer B now has an optional LLM-assisted feedback/hint layer on top of the
+deterministic policy engine. Branch, next-node, verdict, and state-delta remain
+rule-based. The LLM layer may only improve learning feedback text, report text,
+Focus-on-Form explanations, and rubric score candidates.
+
+Added B-owned runtime files:
+
+- `backend/app/agents/agent_b/feedback_hint_llm_client.py`
+- `backend/app/services/service_b/feedback_hint_generator.py`
+- `backend/app/services/service_b/tier_difficulty_controller.py`
+
+Added optional `DevBPolicyOutput` fields:
+
+- `rubric_scores`
+- `difficulty_profile`
+- `feedback_generation`
+
+Runtime behavior:
+
+- `DEV_B_FEEDBACK_LLM_MODE=rule` is the default and does not call an external
+  model.
+- `DEV_B_FEEDBACK_LLM_MODE=llm` enables the B feedback LLM path.
+- `DEV_B_FEEDBACK_LLM_MODEL` defaults to `gpt-4o-mini`.
+- `DEV_B_FEEDBACK_LLM_TIMEOUT_SECONDS` defaults to `10`.
+- `OPENAI_API_KEY` is required only when B LLM mode is enabled and no fake
+  client is injected.
+- Missing API keys, failed LLM calls, or invalid LLM JSON produce
+  `feedback_generation.mode == "fallback"` and preserve the deterministic
+  branch/verdict/state.
+
+Coordination request:
+
+- Developer C should treat `rubric_scores`, `difficulty_profile`, and
+  `feedback_generation` as optional metadata.
+- Developer C validator should ensure these optional fields never override
+  branch, next-node, state-delta, or verdict authority.
+- Final report generation can use B's OpenKB records to distinguish rule, LLM,
+  and fallback feedback sources.
+
 ---
 
 Current pre-prototype flow:

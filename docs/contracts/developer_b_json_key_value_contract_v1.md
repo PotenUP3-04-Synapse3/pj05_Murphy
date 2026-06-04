@@ -32,6 +32,10 @@ Developer B가 정의하거나 반환하는 데이터:
 - `state_delta`
 - `dialogue_directive`
 - `report_item`
+- `openkb_write`
+- `rubric_scores`
+- `difficulty_profile`
+- `feedback_generation`
 - `out_game_feedback`
 - `final_recommendation`
 
@@ -421,6 +425,10 @@ Canonical output returned by Developer B policy.
 | `state_delta` | object | yes | Developer B | Proposed state changes |
 | `dialogue_directive` | object | no | Developer B | Advisory metadata for Developer A/C |
 | `report_item` | object | yes | Developer B | Legacy/simple report item summary |
+| `openkb_write` | object | no | Developer B | B-owned OpenKB `dev_b` namespace write reference |
+| `rubric_scores` | object | no | Developer B | 0-12 Travel Speaking Level rubric metadata |
+| `difficulty_profile` | object | no | Developer B | Learning difficulty profile metadata |
+| `feedback_generation` | object | no | Developer B | Rule/LLM/fallback feedback generation trace |
 
 ## 7. Output Object Contracts
 
@@ -524,7 +532,57 @@ In-game feedback is for maintaining communication and mission flow. It should no
 | `focus_on_form_targets` | array<string> | yes | Focus on Form target ids |
 | `report_priority` | string | yes | `low`, `medium`, `high` |
 
-### 7.7 `branch`
+### 7.7 `openkb_write`
+
+`openkb_write` is optional and additive. It reports whether Developer B wrote
+the policy feedback/error/focus-on-form record to the B-owned OpenKB `dev_b`
+namespace.
+
+| Key | Type | Required | Description |
+| --- | --- | --- | --- |
+| `attempted` | boolean | yes | Whether B attempted a namespace write |
+| `succeeded` | boolean | yes | Whether the write completed |
+| `namespace` | string | yes | Must be `dev_b` |
+| `record_id` | string or null | no | Deterministic B record id |
+| `jsonl_path` | string or null | no | Local JSONL record path |
+| `markdown_path` | string or null | no | Local markdown record path |
+| `error_message` | string or null | no | Failure reason when write failed |
+
+### 7.8 `rubric_scores`
+
+`rubric_scores` is optional metadata for learning difficulty. It must not
+override `evaluation.verdict`, `branch`, or `state_delta`.
+
+| Key | Type | Required | Range |
+| --- | --- | --- | --- |
+| `comprehension` | integer | yes | 0-2 |
+| `fluency` | integer | yes | 0-2 |
+| `grammar_accuracy` | integer | yes | 0-2 |
+| `vocabulary_range` | integer | yes | 0-2 |
+| `clarity` | integer | yes | 0-2 |
+| `interaction_problem_solving` | integer | yes | 0-2 |
+| `total` | integer | yes | 0-12 |
+
+### 7.9 `difficulty_profile`
+
+| Key | Type | Required | Allowed Values |
+| --- | --- | --- | --- |
+| `travel_speaking_level` | string | yes | `TSL_1_SURVIVAL`, `TSL_2_FUNCTIONAL`, `TSL_3_INDEPENDENT`, `TSL_4_STRATEGIC` |
+| `npc_speech_speed` | string | yes | `slow`, `normal`, `natural` |
+| `question_complexity` | string | yes | `basic`, `standard`, `expanded`, `complex` |
+| `hint_frequency` | string | yes | `high`, `medium`, `low` |
+| `pressure_level` | string | yes | `low`, `medium`, `high` |
+
+### 7.10 `feedback_generation`
+
+| Key | Type | Required | Allowed Values |
+| --- | --- | --- | --- |
+| `mode` | string | yes | `rule`, `llm`, `fallback` |
+| `model` | string or null | no | any |
+| `used_llm` | boolean | yes | true/false |
+| `fallback_reason` | string or null | no | any |
+
+### 7.11 `branch`
 
 | Key | Type | Required | Allowed Values | Description |
 | --- | --- | --- | --- | --- |
@@ -534,7 +592,7 @@ In-game feedback is for maintaining communication and mission flow. It should no
 | `branch_reason` | string | yes | any | Reason for branch |
 | `allowed_next_node_checked` | boolean | yes | true/false | Whether B checked allowed nodes |
 
-### 7.8 `state_delta`
+### 7.12 `state_delta`
 
 | Key | Type | Required | Range | Description |
 | --- | --- | --- | --- | --- |
@@ -842,4 +900,3 @@ Contract changes must follow this process.
 4. Update Developer B tests and sample payloads.
 5. Notify Developer C before changing branch, state_delta, or final feedback I/O.
 ```
-

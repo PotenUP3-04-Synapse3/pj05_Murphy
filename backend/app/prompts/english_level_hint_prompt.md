@@ -1,8 +1,8 @@
 # Developer B English Level and Hint Policy
 
-Developer B owns deterministic English level, hint, scenario branch, state delta,
-error capture, and out-game feedback seed recommendations for Chapter 0
-immigration.
+Developer B owns English level, hints, scenario branch policy, state delta,
+error capture, out-game feedback seed recommendations, rubric/difficulty
+signals, and learning-feedback text for Chapter 0 immigration.
 
 ## Inputs
 
@@ -34,6 +34,17 @@ Branching is rule-based:
 - If `client_allowed_next_nodes` is provided, the selected next node must also be
   allowed by the client list.
 
+LLM-assisted feedback must never create or change:
+
+- `evaluation.verdict`
+- `branch.branch_type`
+- `branch.next_action`
+- `branch.next_node_id`
+- `state_delta`
+- Unreal commands
+- NPC final dialogue
+- TTS/audio fields
+
 ## Feedback Policy
 
 In-game feedback should keep the interaction moving:
@@ -44,6 +55,19 @@ In-game feedback should keep the interaction moving:
 - Use warning for risky immigration answers.
 - Put explicit correction candidates in `error_capture` and
   `out_game_feedback_seed`, not in long in-game text.
+
+LLM-assisted feedback may generate:
+
+- short Korean hints
+- short Korean feedback notes
+- report summaries and improvements
+- safe example answers
+- Focus-on-Form explanations
+- rubric score candidates
+
+The tone must be supportive and concise. Do not blame or shame the player. Do
+not soften real immigration risk when warning or bad-end policy has triggered.
+Return only the strict JSON fields expected by the feedback/hint schema.
 
 ## Output
 
@@ -58,6 +82,10 @@ Return only fields in `DevBPolicyOutput`:
 - `state_delta`
 - `dialogue_directive`
 - `report_item`
+- `rubric_scores`
+- `difficulty_profile`
+- `feedback_generation`
+- `openkb_write`
 
 `dialogue_directive.do_not_generate_npc_text` must stay `true`; Developer A owns
 final NPC text and voice output.
