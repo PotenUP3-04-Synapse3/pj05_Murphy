@@ -326,6 +326,7 @@ class DevADialogueOutput(BaseModel):
     tone: str
     animation: str
     feedback_kr: str | None = None
+    audio_url: str | None = None
 
 
 class RecordedErrorSummary(BaseModel):
@@ -340,6 +341,7 @@ class NpcResponse(BaseModel):
     text: str
     tone: str
     animation: str
+    audio_url: str | None = None
 
 
 class UiFeedback(BaseModel):

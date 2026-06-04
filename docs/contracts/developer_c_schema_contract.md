@@ -35,7 +35,7 @@ The STT runtime policy is local-first:
   download or API key.
 
 Runtime configuration is loaded from process environment variables and `.env`
-through `backend/app/services/settings_service.py`:
+through `backend/app/services/service_c/settings_service.py`:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -491,7 +491,8 @@ Developer C returns only validated, Unreal-safe data.
     "speaker": "Officer Miller",
     "text": "You're here for tourism. How long will you stay?",
     "tone": "formal_neutral",
-    "animation": "officer_check_passport"
+    "animation": "officer_check_passport",
+    "audio_url": "/runtime/audio/kokoro/IMM_002_PURPOSE_stay_duration_success_am_michael_abcd1234.wav"
   },
   "ui": {
     "show_hint": false,
@@ -554,8 +555,10 @@ Rules:
 - `stt.runtime_used` must be `local` unless the API fallback actually produced
   the transcript.
 - `state_delta` must come from Developer B output after validation.
-- NPC text must come from Developer A output or a Developer C deterministic
-  adapter mock, not from Developer B.
+- NPC text and `npc.audio_url` must come from Developer A output through the
+  Developer C adapter, not directly from Developer B.
+- `npc.audio_url` points to a Developer C-served runtime artifact under
+  `/runtime/audio/...` in the pre-prototype.
 - `debug` may be omitted in production.
 - Developer C may redact, omit, or transform internal fields before returning
   to Unreal.
@@ -578,3 +581,5 @@ Developer C validator must enforce at least these rules:
 10. Developer A output does not alter `branch`, `next_node_id`, or
     `state_delta`.
 11. Final response includes only Unreal-safe fields and valid enum values.
+12. Pre-prototype final response includes `npc.audio_url` under
+    `/runtime/audio/...`.

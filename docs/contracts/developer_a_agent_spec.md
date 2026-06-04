@@ -24,9 +24,9 @@ Developer A가 소유하는 기능은 다음과 같다.
 
 현재 Developer A 소유 파일은 다음과 같다.
 
-- `backend/app/agents/npc_dialogue_agent.py`
-- `backend/app/services/tts_service.py`
-- `backend/app/services/voice_output_service.py`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/services/service_a/tts_service.py`
+- `backend/app/services/service_a/voice_output_service.py`
 - `backend/app/prompts/npc_dialogue_prompt.md`
 - `backend/tests/test_developer_a_npc_dialogue.py`
 - `docs/contracts/developer_a_agent_spec.md`

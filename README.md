@@ -11,9 +11,10 @@ Unreal-safe JSON commands through:
 POST /api/game/ai/respond
 ```
 
-Phase 1 bootstraps the Developer C project only. It does not implement real
-Developer A NPC dialogue logic, real Developer B scenario logic, real STT
-providers, or external LLM calls.
+The current pre-prototype wires Developer C orchestration to merged Developer B
+policy logic and Developer A dialogue/voice output through C-owned adapters.
+Automated tests still use deterministic STT and fake Kokoro output, so the
+project remains restorable and testable without provider credentials.
 
 ## Developer C Responsibilities
 
@@ -60,17 +61,22 @@ uv run uvicorn backend.app.main:app --reload
 
 ## Current Phase
 
-Current scope: Phase 1 - Developer C harness bootstrap.
+Current scope: integrated AI-only pre-prototype for Chapter 0 Immigration
+Check.
 
-## Bootstrap Health Check
+## Implemented Backend Checks
 
-The Phase 1 FastAPI skeleton exposes:
+The FastAPI backend exposes:
 
 ```text
 GET /health
+POST /api/game/ai/respond
+GET /runtime/audio/{artifact}
 ```
 
-This route confirms the Developer C backend package imports and the app starts.
+`POST /api/game/ai/respond` accepts JSON mock input or multipart `turn` JSON
+plus `audio/wav` input and returns Unreal-safe JSON, including STT transcript
+metadata and `npc.audio_url` for generated demo voice artifacts.
 
 ## Collaboration Prompts
 

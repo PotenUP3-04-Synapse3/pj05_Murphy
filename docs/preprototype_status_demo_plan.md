@@ -14,26 +14,28 @@ Completed:
 - Phase 2: Developer C-side schemas and mock adapter boundaries.
 - Phase 3, pre-prototype version: JSON mock request endpoint and multipart
   `turn` JSON plus wav request handling at `POST /api/game/ai/respond`.
-- Phase 4, partial: Developer C Orchestrator, OpenKB mock, and Understanding
-  Agent are connected for `IMM_002_PURPOSE`.
-- Phase 5, partial: Developer B policy adapter mock is connected through the
-  `dev_b_policy.v1` shape.
-- Phase 6, partial: Developer A dialogue adapter mock and Developer C response
-  builder are connected.
-- Phase 7, minimum: Branch and response validation exists for the happy-path
-  mock flow.
+- Phase 4, partial: Developer C Orchestrator, local OpenKB node data, and
+  Understanding Agent are connected.
+- Phase 5: Developer B deterministic policy engine is connected through the
+  C-owned `DevBPolicyClient` adapter and `dev_b_policy.v1` shape.
+- Phase 6: Developer A dialogue/voice output service is connected through the
+  C-owned `DevANpcDialogueClient` adapter.
+- Phase 7: Branch, hint, response, and `npc.audio_url` validation exists for
+  the integrated pre-prototype flow.
 - Developer C STT runtime: local Whisper large v3 turbo boundary is wired with
   API fallback and deterministic test mode.
+- Chapter 0 node context is loaded from `backend/app/data/scenario_nodes.json`
+  through the C-owned OpenKB service.
+- Demo 3 NPC voice artifact is implemented with deterministic fake Kokoro wav
+  generation and `/runtime/audio/...` static serving.
 
 Not completed yet:
 
 - Live local Whisper model download and smoke test on the demo machine.
-- Real Developer A NPC dialogue/TTS implementation.
-- Real Developer B policy/level/hint/feedback implementation.
-- Full Chapter 0 OpenKB node coverage.
-- NPC response wav generation or fixture artifact response.
+- Live real Kokoro TTS and OpenAI NPC dialogue mode in the endpoint path.
 - Out-game feedback logging and final report flow.
 - End-to-end retry, bad-ending, and STT fallback demos.
+- Real Unreal multipart bridge validation.
 
 ## Pre-Prototype Goal
 
@@ -68,10 +70,10 @@ flowchart TD
     REQ["JSON or multipart request<br/>turn + sample wav"] --> API["Developer C API<br/>POST /api/game/ai/respond"]
     API --> STT["Whisper large v3 turbo boundary<br/>local mode or deterministic mock mode"]
     STT --> ORCH["Developer C Orchestrator"]
-    ORCH --> KB["OpenKB mock<br/>IMM_002_PURPOSE node_context"]
+    ORCH --> KB["OpenKB local data<br/>Chapter 0 node_context"]
     KB --> UA["Understanding Agent<br/>intent, slots, relevance, risk"]
-    UA --> B["Developer B Policy Adapter mock<br/>evaluation, hint, feedback, branch"]
-    B --> A["Developer A Dialogue Adapter mock<br/>NPC text, tone, animation"]
+    UA --> B["Developer B Policy Adapter<br/>EnglishLevelHintAgent"]
+    B --> A["Developer A Dialogue/Voice Adapter<br/>NPC text, tone, animation, audio_url"]
     A --> RB["Response Builder"]
     RB --> V["Rule-based Validator"]
     V --> OUT["dev_c_unreal_response.v1 JSON"]
@@ -216,8 +218,9 @@ Target demo response excerpt:
 }
 ```
 
-The current implementation includes `stt.player_text`. It does not yet include
-`npc.audio_url`; that is the next Developer A/C demo addition.
+The current implementation includes `stt.player_text` and `npc.audio_url`.
+The automated endpoint path uses deterministic fake Kokoro wav output so tests
+do not require real TTS credentials or model downloads.
 
 ## Developer A Responsibilities for Demo
 
@@ -278,10 +281,9 @@ For the next demo milestone, Developer C should implement:
 - Multipart request support for `turn` JSON plus `audio` wav.
 - Live local Whisper smoke test on the demo machine.
 - Deterministic STT mock path for tests.
-- NPC voice artifact adapter that can return an `audio_url`.
-- Static serving or artifact path handling for demo wav output.
-- Response fields for STT visibility and NPC audio reference.
-- Tests for multipart request to response with `npc.audio_url`.
+- API-level retry, clarify, warning, and bad-end demo tests.
+- Out-game feedback and final report flow.
+- Real Unreal bridge validation after the backend demo path is stable.
 
 Developer C should keep tests passing without local model downloads or real API
 credentials by using mocks and fixtures.
@@ -342,7 +344,7 @@ Output:
 Status:
 
 ```text
-next Developer A/C milestone
+implemented with deterministic fake Kokoro artifact generation
 ```
 
 ### Demo 4: Real A/B Integration
@@ -353,14 +355,14 @@ Input:
 
 Output:
 
-- Developer B real policy result.
-- Developer A real dialogue and voice output.
+- Developer B deterministic policy result.
+- Developer A dialogue and voice output.
 - Developer C validated response.
 
 Status:
 
 ```text
-future A/B/C integration milestone
+implemented for deterministic pre-prototype mode; live provider mode remains future work
 ```
 
 ## Success Criteria

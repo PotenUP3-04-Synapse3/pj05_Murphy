@@ -1,48 +1,57 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
 from backend.app.schemas.game_turn import HintPolicy, NodeContext
 
 
 class OpenKBService:
+    def __init__(self, scenario_node_path: Path | None = None) -> None:
+        self.scenario_node_path = scenario_node_path or Path("backend/app/data/scenario_nodes.json")
+
     def get_node_context(self, chapter_id: str, current_node_id: str) -> NodeContext:
-        if chapter_id != "CH0_IMMIGRATION" or current_node_id != "IMM_002_PURPOSE":
-            raise ValueError(f"Unsupported mock node: {chapter_id}/{current_node_id}")
+        payload = self._load_scenario_nodes()
+        if payload.get("chapter_id") != chapter_id:
+            raise ValueError(f"Unsupported chapter: {chapter_id}")
+
+        nodes = payload.get("nodes")
+        if not isinstance(nodes, dict):
+            raise ValueError("Scenario node data must include a nodes object.")
+
+        node = nodes.get(current_node_id)
+        if not isinstance(node, dict):
+            raise ValueError(f"Unsupported node: {chapter_id}/{current_node_id}")
+
+        if node.get("chapter_id") != chapter_id:
+            raise ValueError(f"Node chapter mismatch: {chapter_id}/{current_node_id}")
+
+        branch_candidates = node.get("branch_candidates")
+        if not isinstance(branch_candidates, dict):
+            raise ValueError(f"Node is missing branch candidates: {current_node_id}")
 
         return NodeContext(
-            node_id="IMM_002_PURPOSE",
-            chapter_id="CH0_IMMIGRATION",
-            npc_question="What is the purpose of your visit?",
-            npc_question_goal="ask_visit_purpose",
-            required_intents=["state_visit_purpose"],
-            required_slots=["visit_purpose"],
-            optional_slots=["destination", "activity", "duration"],
-            critical_slots=["illegal_work_intent", "unclear_purpose", "suspicious_purpose"],
-            allowed_slot_values={
-                "visit_purpose": [
-                    "tourism",
-                    "business",
-                    "family_visit",
-                    "friend_visit",
-                    "study",
-                    "transit",
-                ]
-            },
-            risk_keywords=["illegal", "forever", "secret", "disappear", "no return ticket"],
-            recommended_expression="I'm here for tourism.",
-            base_hint_kr="Tell the purpose of your visit.",
-            hint_policy=HintPolicy(
-                keyword=["tourism", "business", "vacation"],
-                sentence_pattern="I'm here for ___.",
-                situation_hint="Say why you are visiting.",
-                action_hint="Say the purpose first, then add a short reason if needed.",
-            ),
-            success_next_node="IMM_003_DURATION",
-            retry_next_node="IMM_002_RETRY_PURPOSE",
-            clarify_next_node="IMM_EXTRA_001_CLARIFY_PURPOSE",
-            hint_next_node="IMM_002_RETRY_PURPOSE",
-            warning_next_node="END_SECONDARY_INSPECTION",
-            allowed_next_nodes=[
-                "IMM_003_DURATION",
-                "IMM_002_RETRY_PURPOSE",
-                "IMM_EXTRA_001_CLARIFY_PURPOSE",
-                "END_SECONDARY_INSPECTION",
-            ],
+            node_id=str(node["node_id"]),
+            chapter_id=str(node["chapter_id"]),
+            npc_question=str(node["npc_question"]),
+            npc_question_goal=str(node["npc_question_goal"]),
+            required_intents=list(node["required_intents"]),
+            required_slots=list(node["required_slots"]),
+            optional_slots=list(node.get("optional_slots", [])),
+            critical_slots=list(node.get("critical_slots", [])),
+            allowed_slot_values=dict(node.get("allowed_slot_values", {})),
+            risk_keywords=list(node.get("risk_keywords", [])),
+            recommended_expression=str(node["recommended_expression"]),
+            base_hint_kr=str(node["base_hint_kr"]),
+            hint_policy=HintPolicy(**node["hint_policy"]),
+            success_next_node=str(branch_candidates["success"]),
+            retry_next_node=str(branch_candidates["retry"]),
+            clarify_next_node=str(branch_candidates["clarify"]),
+            hint_next_node=str(branch_candidates["hint"]),
+            warning_next_node=str(branch_candidates["warning"]),
+            allowed_next_nodes=list(node["allowed_next_nodes"]),
         )
+
+    def _load_scenario_nodes(self) -> dict[str, Any]:
+        return json.loads(self.scenario_node_path.read_text(encoding="utf-8"))
