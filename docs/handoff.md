@@ -29,9 +29,12 @@ Developer C also added real AI mode for the Understanding Agent. Set
 `MURPHY_UNDERSTANDING_MODE=llm` with `OPENAI_API_KEY` to call the C-owned
 OpenAI Responses API client. Missing API key, request failure, invalid JSON,
 schema failure, or forbidden authority fields fall back to deterministic rule
-mode. Tool-call/data-flow logging is not implemented yet; Developer C should
-wait for Developer A's shared log file directory and then emit orchestration
-trace events to that shared sink.
+mode. Developer C now appends an orchestration-level unified AgentRun record to
+Developer A's shared log sink and includes the Understanding Agent's
+LLM/fallback trace inside the orchestrator event timeline. The Understanding
+LLM structured output schema now follows OpenAI strict schema requirements, and
+rule fallback recognizes family, friend, business, study, transit, and tourism
+visit-purpose values.
 
 ## Changed Files
 
@@ -45,6 +48,8 @@ trace events to that shared sink.
 - `backend/app/integrations/dev_a_npc_dialogue_client.py`
 - `backend/app/agents/agent_c/understanding_agent.py`
 - `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/agents/agent_c/visit_purpose_classifier.py`
+- `backend/app/middleware/middleware_c/developer_c_agent_run_middleware.py`
 - `backend/app/integrations/dev_b_level_hint_client.py`
 - `backend/app/main.py`
 - `backend/app/schemas/game_turn.py`
@@ -52,6 +57,8 @@ trace events to that shared sink.
 - `backend/app/services/service_c/response_builder.py`
 - `backend/app/services/service_c/validator.py`
 - `backend/tests/test_preprototype_flow.py`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/test_understanding_llm_client.py`
 - `docs/contracts/dependency_contract.md`
 - `docs/contracts/developer_c_adapter_contracts.md`
 - `docs/contracts/developer_c_schema_contract.md`
@@ -62,6 +69,7 @@ trace events to that shared sink.
 - `backend/app/services/service_a/npc_dialogue_agent_run_store.py`
 - `backend/app/services/service_a/voice_output_service.py`
 - `backend/tests/test_developer_a_agent_run_logging.py`
+- `backend/tests/test_unified_agent_run_log.py`
 - `docs/implementation_logs/developer_a_implementation_log_kimyonghee.md`
 - `docs/contracts/change_requests.md`
 - `AGENTS.md`
@@ -119,6 +127,18 @@ trace events to that shared sink.
 - `uv run mypy .` (passed after using a read-only protocol property)
 - `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_settings_service.py -q` (4 passed)
 - `uv run pytest` (42 passed, 2 warnings)
+- `uv run ruff check .` (passed)
+- `uv run mypy .` (passed)
+- `git diff --check` (passed with CRLF conversion warnings only)
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_unified_agent_run_log.py -q` (RED: `UnderstandingAgent.last_trace` and `Orchestrator(agent_run_root=...)` were not implemented)
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_unified_agent_run_log.py -q` (GREEN: 3 passed, 1 warning)
+- `uv run pytest` (52 passed, 2 warnings)
+- `uv run ruff check .` (passed)
+- `uv run mypy .` (passed)
+- `git diff --check` (passed with CRLF conversion warnings only)
+- `uv run pytest backend/tests/test_understanding_llm_client.py backend/tests/test_understanding_agent.py backend/tests/test_preprototype_flow.py::test_orchestrator_advances_family_visit_purpose_to_duration_node -q` (RED: strict schema rejected `extracted_slots`, null slots were not normalized, uncle fallback did not fill `family_visit`, and orchestrator stayed on `REASK`)
+- `uv run pytest backend/tests/test_understanding_llm_client.py backend/tests/test_understanding_agent.py backend/tests/test_preprototype_flow.py::test_orchestrator_advances_family_visit_purpose_to_duration_node -q` (GREEN: 8 passed, 2 warnings)
+- `uv run pytest` (58 passed, 2 warnings)
 - `uv run ruff check .` (passed)
 - `uv run mypy .` (passed)
 - `git diff --check` (passed with CRLF conversion warnings only)
@@ -328,8 +348,11 @@ Implemented C-owned modules:
 - `backend/app/services/service_c/settings_service.py` centralizes `.env` and
   process environment configuration for C-owned runtime settings.
 - `backend/app/services/service_c/orchestrator.py` wires STT, OpenKB,
-  Understanding, Developer B, Developer A, logging, response building, and
-  validation.
+  Understanding, Developer B, Developer A, logging, response building,
+  validation, and C-owned unified AgentRun logging.
+- `backend/app/middleware/middleware_c/developer_c_agent_run_middleware.py`
+  builds the C orchestration AgentRun record and appends it through the shared
+  `AgentRunLogStore`.
 - `backend/app/services/service_c/validator.py` enforces minimal branch and response
   invariants.
 - `backend/app/integrations/dev_b_level_hint_client.py` delegates C's
@@ -380,10 +403,23 @@ Runtime Understanding settings:
 - `MURPHY_UNDERSTANDING_LLM_MODEL=gpt-4o-mini` is the default model.
 - `MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS=10` is the default timeout.
 
+Unified AgentRun logging:
+
+- Developer C appends one record per orchestrated turn to
+  `backend/runtime/generated/agent_runs/unified_agent_runs.jsonl` and
+  `backend/runtime/generated/agent_runs/unified_agent_runs.md`.
+- The C record uses `agent_name=ai_backend_orchestrator` and
+  `owner=developer_c`.
+- Timeline events cover STT, OpenKB, Understanding, Developer B, Developer A,
+  response builder, validator, and error-capture boundaries.
+- `metadata.data_flow` summarizes payload movement between services/agents.
+  It intentionally stores compact summaries, not wav bytes, API keys, or full
+  provider prompts.
+
 The sandboxed `uv sync`, `uv lock`, and `uv run ...` attempts can fail while
 initializing the user-level uv cache. Rerunning with approved escalation is the
 known workaround in this environment. The latest `uv run pytest` passed with
-42 tests and 2 warnings. `uv run ruff check .` passed. `uv run mypy .` passed.
+58 tests and 2 warnings. `uv run ruff check .` passed. `uv run mypy .` passed.
 
 ## Known Issues
 

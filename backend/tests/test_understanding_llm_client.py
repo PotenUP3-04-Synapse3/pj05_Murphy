@@ -1,0 +1,85 @@
+import json
+from typing import Any
+
+import httpx
+import pytest
+
+from backend.app.agents.agent_c.understanding_llm_client import (
+    OpenAIUnderstandingLLMClient,
+    UnderstandingLLMUnavailable,
+    _extract_structured_json,
+    _understanding_schema,
+)
+
+
+def test_understanding_schema_is_openai_strict_compatible() -> None:
+    schema = _understanding_schema()
+
+    _assert_strict_object_schema(schema)
+    extracted_slots = schema["properties"]["extracted_slots"]
+    assert extracted_slots["additionalProperties"] is False
+    assert extracted_slots["required"] == ["visit_purpose"]
+    assert extracted_slots["properties"]["visit_purpose"]["type"] == ["string", "null"]
+
+
+def test_extract_structured_json_drops_null_optional_slot_values() -> None:
+    result = _extract_structured_json(
+        {
+            "output_text": json.dumps(
+                {
+                    "intent": "unknown",
+                    "intent_success": False,
+                    "confidence": 0.55,
+                    "meaning_summary_kr": "방문 목적이 불명확합니다.",
+                    "emotion": "nervous",
+                    "answer_relevance": "partially_related",
+                    "ambiguity_type": "unclear_purpose",
+                    "risk_delta": 0,
+                    "risk_reason": "No risk expression was found.",
+                    "risk_tags": [],
+                    "extracted_slots": {"visit_purpose": None},
+                    "missing_slots": ["visit_purpose"],
+                    "needs_clarification": True,
+                },
+                ensure_ascii=False,
+            )
+        }
+    )
+
+    assert result["extracted_slots"] == {}
+
+
+def test_openai_understanding_client_includes_responses_api_error_detail(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_post(*args: Any, **kwargs: Any) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={
+                "error": {
+                    "code": "invalid_json_schema",
+                    "message": "Invalid schema for response_format 'developer_c_understanding_result'",
+                }
+            },
+            request=httpx.Request("POST", "https://api.openai.com/v1/responses"),
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    client = OpenAIUnderstandingLLMClient(api_key="test-api-key")
+
+    with pytest.raises(UnderstandingLLMUnavailable, match="invalid_json_schema.*Invalid schema"):
+        client.analyze({"player_text": "I'm here to visit my uncle."})
+
+
+def _assert_strict_object_schema(schema: dict[str, Any]) -> None:
+    schema_type = schema.get("type")
+    if schema_type == "object":
+        properties = schema.get("properties", {})
+        assert schema.get("additionalProperties") is False
+        assert set(schema.get("required", [])) == set(properties)
+        for property_schema in properties.values():
+            if isinstance(property_schema, dict):
+                _assert_strict_object_schema(property_schema)
+
+    if schema_type == "array":
+        items = schema.get("items")
+        if isinstance(items, dict):
+            _assert_strict_object_schema(items)
