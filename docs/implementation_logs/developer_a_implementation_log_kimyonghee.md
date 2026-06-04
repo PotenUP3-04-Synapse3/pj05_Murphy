@@ -362,3 +362,13 @@
 - 기존 runtime wav 5개를 새 파일명으로 rename했다.
 - 기존 metadata의 `audio_path`, `audio_url`도 새 파일명으로 갱신했다.
 - 1차 rename 중 source metadata가 부족한 파일에서 `short`가 target slot으로 들어간 문제를 발견했고, `stay_duration`/`stay_address`로 보정했다.
+
+## 2026-06-04 00:00:00 +09:00
+
+- Developer A/B/C 합의에 따라 `agents`와 `services` 하위에 개발자별 전용 패키지를 분리했다.
+- Developer A 파일은 `backend/app/agents/agent_a/`, `backend/app/services/service_a/`로 이동했다.
+- Developer C 파일은 병합 합의 범위 안에서 `backend/app/agents/agent_c/`, `backend/app/services/service_c/`로 이동했다.
+- Developer B는 아직 구현 파일이 없으므로 `backend/app/agents/agent_b/`, `backend/app/services/service_b/` 패키지 초기화 파일만 추가했다.
+- `backend/app/agents/__init__.py`와 `backend/app/services/__init__.py`는 공용 패키지 설명만 남기고 하위 모듈 import/export를 하지 않도록 정리했다.
+- 새 경로에 맞게 실행 코드와 테스트 import 경로를 수정했다.
+- `AGENTS.md`에 개발자별 agents/services 폴더 소유 구조를 명시했다.

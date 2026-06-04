@@ -31,6 +31,46 @@ Current `.python-version`:
 - `httpx`
 - `langchain==1.3.2`
 - `langgraph==1.2.2`
+
+## Optional Runtime Dependencies
+
+Install optional local STT dependencies only on machines that need real local
+Whisper transcription:
+
+```powershell
+uv sync --extra local-stt
+```
+
+The `local-stt` extra includes:
+
+- `openai-whisper>=20240930`
+
+The local Whisper runtime also requires `ffmpeg` to be available on the host
+machine path.
+
+## Environment Configuration
+
+Runtime settings are loaded with `pydantic-settings` from process environment
+variables and the repository root `.env` file.
+
+Shared template:
+
+```text
+.env.example
+```
+
+Local secret file:
+
+```text
+.env
+```
+
+Rules:
+
+- Commit `.env.example`.
+- Do not commit `.env` or `.env.*` secret files.
+- Store `OPENAI_API_KEY` only in local environment variables or `.env`.
+- Keep test defaults deterministic and key-free.
 - `kokoro`
 - `soundfile`
 - `torch`
@@ -54,8 +94,12 @@ Do not upgrade or downgrade these packages unless this file,
 
 ## External Provider Policy
 
-No real STT, TTS, or LLM provider dependency should be added until explicitly
-requested. Tests must pass without external API keys.
+Real local STT has been explicitly requested for Developer C and is available
+behind the `local-stt` optional extra. API fallback uses the OpenAI
+Transcriptions API only when local STT fails and `OPENAI_API_KEY` is present.
+
+Tests must pass without local model downloads, external API keys, real TTS
+providers, real LLM providers, Unreal Engine runtime, or remote OpenKB.
 
 ## Approved Local TTS Dependencies
 

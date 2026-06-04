@@ -37,6 +37,21 @@ uv run ruff check .
 uv run mypy .
 ```
 
+Create local runtime settings from `.env.example`:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Fill `.env` locally for API keys and STT settings. The real `.env` file is
+ignored by git and must not be committed.
+
+For real local Whisper STT:
+
+```powershell
+uv sync --extra local-stt
+```
+
 Run the development server after the backend endpoint exists:
 
 ```powershell

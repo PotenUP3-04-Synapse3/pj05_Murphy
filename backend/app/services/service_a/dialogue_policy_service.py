@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from backend.app.services.npc_emotion_service import NPCEmotionState
-from backend.app.services.player_language_profile_service import PlayerLanguageProfile
+from backend.app.services.service_a.npc_emotion_service import NPCEmotionState
+from backend.app.services.service_a.player_language_profile_service import PlayerLanguageProfile
 
 DialogueAction = Literal["recast_and_advance", "ask_retry", "continue"]
 

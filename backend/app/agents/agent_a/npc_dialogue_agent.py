@@ -4,17 +4,19 @@ import json
 
 import httpx
 
-from backend.app.agents.npc_llm_client import (
+from backend.app.agents.agent_a.npc_llm_client import (
     NPCDialogueLLMClient,
     NPCDialogueLLMUnavailable,
     OpenAINPCDialogueLLMClient,
 )
-from backend.app.services.developer_a_fallback_service import build_text_fallback
-from backend.app.services.developer_a_input_service import normalize_level_design_payload
-from backend.app.services.dialogue_policy_service import build_dialogue_policy
-from backend.app.services.npc_emotion_service import infer_npc_emotion_state
-from backend.app.services.player_language_profile_service import build_player_language_profile
-from backend.app.services.tts_text_polisher_service import (
+from backend.app.services.service_a.developer_a_fallback_service import build_text_fallback
+from backend.app.services.service_a.developer_a_input_service import normalize_level_design_payload
+from backend.app.services.service_a.dialogue_policy_service import build_dialogue_policy
+from backend.app.services.service_a.npc_emotion_service import infer_npc_emotion_state
+from backend.app.services.service_a.player_language_profile_service import (
+    build_player_language_profile,
+)
+from backend.app.services.service_a.tts_text_polisher_service import (
     build_tts_style_metadata,
     polish_tts_text,
 )

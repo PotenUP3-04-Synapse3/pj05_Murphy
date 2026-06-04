@@ -104,9 +104,8 @@ Developer A owns NPC dialogue and voice output.
 
 Likely owned files:
 
-- `backend/app/agents/npc_dialogue_agent.py`
-- `backend/app/services/tts_service.py`
-- `backend/app/services/voice_output_service.py`
+- `backend/app/agents/agent_a/`
+- `backend/app/services/service_a/`
 - `backend/app/prompts/npc_dialogue_prompt.md`
 
 Responsibilities:
@@ -136,9 +135,8 @@ Developer B owns English level, hints, and scenario progression rules.
 
 Likely owned files:
 
-- `backend/app/agents/english_level_hint_agent.py`
-- `backend/app/services/scenario_state_machine.py`
-- `backend/app/services/level_adaptation_controller.py`
+- `backend/app/agents/agent_b/`
+- `backend/app/services/service_b/`
 - `backend/app/prompts/english_level_hint_prompt.md`
 - `backend/app/data/scenario_nodes.json`
 - `backend/app/data/scenario_nodes.yaml`
@@ -176,13 +174,8 @@ Owned files:
 - `backend/app/main.py`
 - `backend/app/api/ai_respond.py`
 - `backend/app/schemas/`
-- `backend/app/services/orchestrator.py`
-- `backend/app/services/stt_service.py`
-- `backend/app/services/openkb_service.py`
-- `backend/app/services/validator.py`
-- `backend/app/services/response_builder.py`
-- `backend/app/services/logging_service.py`
-- `backend/app/agents/understanding_agent.py`
+- `backend/app/services/service_c/`
+- `backend/app/agents/agent_c/`
 - `backend/app/prompts/understanding_prompt.md`
 - `backend/app/graphs/developer_c_graph.py`
 - `backend/app/integrations/dev_a_npc_dialogue_client.py`

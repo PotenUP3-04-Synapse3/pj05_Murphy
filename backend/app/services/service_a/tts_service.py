@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from backend.app.services.tts_provider_service import TTSProviderRequest
+from backend.app.services.service_a.tts_provider_service import TTSProviderRequest
 
 TTSStatus = Literal["ok", "failed", "fallback_mock"]
 

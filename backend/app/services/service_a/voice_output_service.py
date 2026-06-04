@@ -2,24 +2,34 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from backend.app.agents.npc_dialogue_agent import (
+from backend.app.agents.agent_a.npc_dialogue_agent import (
     NPCDialogueResult,
     generate_npc_dialogue_from_level_design,
 )
-from backend.app.services.audio_quality_service import analyze_wav_quality, build_postprocess_policy
-from backend.app.services.audio_storage_service import audio_output_path, build_audio_cache_key
-from backend.app.services.developer_a_fallback_service import build_audio_fallback
-from backend.app.services.developer_a_input_service import normalize_level_design_payload
-from backend.app.services.developer_a_runtime_log_service import write_developer_a_event
-from backend.app.services.tts_provider_service import FakeKokoroProvider
-from backend.app.services.tts_provider_service import RealKokoroProvider
-from backend.app.services.tts_service import (
+from backend.app.services.service_a.audio_quality_service import (
+    analyze_wav_quality,
+    build_postprocess_policy,
+)
+from backend.app.services.service_a.audio_storage_service import (
+    audio_output_path,
+    build_audio_cache_key,
+)
+from backend.app.services.service_a.developer_a_fallback_service import build_audio_fallback
+from backend.app.services.service_a.developer_a_input_service import (
+    normalize_level_design_payload,
+)
+from backend.app.services.service_a.developer_a_runtime_log_service import (
+    write_developer_a_event,
+)
+from backend.app.services.service_a.tts_provider_service import FakeKokoroProvider
+from backend.app.services.service_a.tts_provider_service import RealKokoroProvider
+from backend.app.services.service_a.tts_service import (
     TTSAudio,
     TTSRequest,
     build_kokoro_provider_request,
     synthesize_speech,
 )
-from backend.app.services.voice_profile_service import resolve_voice_profile
+from backend.app.services.service_a.voice_profile_service import resolve_voice_profile
 
 
 @dataclass(frozen=True)

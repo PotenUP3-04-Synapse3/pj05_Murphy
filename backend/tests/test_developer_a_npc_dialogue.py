@@ -1,10 +1,10 @@
-from backend.app.agents.npc_dialogue_agent import (
+from backend.app.agents.agent_a.npc_dialogue_agent import (
     NPCDialogueInput,
     NPCDialogueResult,
     generate_npc_dialogue,
 )
-from backend.app.services.tts_service import TTSRequest, synthesize_speech
-from backend.app.services.voice_output_service import build_voice_output
+from backend.app.services.service_a.tts_service import TTSRequest, synthesize_speech
+from backend.app.services.service_a.voice_output_service import build_voice_output
 
 
 def test_generate_success_response_uses_officer_miller_style_and_feedback() -> None:

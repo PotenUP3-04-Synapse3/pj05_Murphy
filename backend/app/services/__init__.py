@@ -1,1 +1,1 @@
-"""Developer A service package."""
+"""개발자별 Service 패키지를 관리하는 공용 패키지."""

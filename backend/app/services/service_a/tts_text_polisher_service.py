@@ -1,8 +1,8 @@
 from typing import Any
 
-from backend.app.services.dialogue_policy_service import DialoguePolicy
-from backend.app.services.npc_emotion_service import NPCEmotionState
-from backend.app.services.player_language_profile_service import PlayerLanguageProfile
+from backend.app.services.service_a.dialogue_policy_service import DialoguePolicy
+from backend.app.services.service_a.npc_emotion_service import NPCEmotionState
+from backend.app.services.service_a.player_language_profile_service import PlayerLanguageProfile
 
 
 def polish_tts_text(
