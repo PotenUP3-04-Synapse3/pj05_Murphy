@@ -44,8 +44,10 @@ flowchart TD
     ORCH --> UA["Developer C Understanding Agent<br/>intent, slots, relevance, risk"]
     UA --> ORCH
     ORCH --> B["Developer B Policy Adapter<br/>evaluation, level, hint,<br/>feedback, state_delta, branch"]
+    B --> BW["Developer B OpenKB Writer<br/>dev_b namespace record"]
+    BW --> B
     B --> ORCH
-    ORCH --> LOG["Developer C Logging Service<br/>error_capture markdown"]
+    ORCH --> LOG["Developer C Logging Service<br/>validate or consume B write reference"]
     ORCH --> A["Developer A Dialogue Adapter<br/>NPC text, tone, animation hint"]
     A --> ORCH
     ORCH --> RB["Developer C Response Builder"]
@@ -66,6 +68,7 @@ Unreal wav
   -> Understanding Agent
   -> Orchestrator
   -> Developer B Policy / Level / Hint / Feedback Agent
+  -> Developer B OpenKB dev_b namespace write
   -> Orchestrator
   -> Developer A NPC Dialogue Agent
   -> Orchestrator
@@ -267,6 +270,10 @@ Required output fields:
 Optional output fields:
 
 - `dialogue_directive`
+- `openkb_write`
+- `rubric_scores`
+- `difficulty_profile`
+- `feedback_generation`
 
 Developer C must treat Developer B output as a recommendation until validation
 passes.
@@ -296,6 +303,13 @@ Developer C must validate:
 - feedback strategy-specific candidate fields are present
 - `out_game_feedback_seed.focus_on_form_targets` is non-empty when final report
   inclusion is requested
+- `openkb_write.namespace == "dev_b"` when a write reference is present
+- successful `openkb_write` references point to expected local OpenKB runtime
+  paths and do not escape the B-owned namespace
+- `rubric_scores.total` is between 0 and 12 when present
+- `feedback_generation.mode` is `rule`, `llm`, or `fallback` when present
+- `difficulty_profile` is learning metadata and must not affect branch
+  validation
 - no Unreal command, camera event, or final response envelope is present
 
 ## Developer B Final Feedback Adapter
@@ -315,7 +329,6 @@ Input is built after the episode from:
 
 Developer C owns:
 
-- markdown file storage
 - path generation
 - retention and privacy policy
 - OpenKB retrieval execution
@@ -326,6 +339,7 @@ Developer B owns:
 - final recommendation policy
 - out-game Focus on Form payload
 - report scoring policy
+- OpenKB `dev_b` namespace feedback/error runtime writes
 
 ## Developer A Dialogue Adapter
 
@@ -460,7 +474,11 @@ Output:
 Rules:
 
 - Developer B proposes markdown.
-- Developer C stores markdown.
+- Developer B stores feedback/error markdown under the OpenKB `dev_b`
+  namespace when `openkb_write.succeeded == true`.
+- Developer C must not create duplicate markdown for the same B write record.
+- Developer C may keep a compatibility logging summary for final response
+  counts and should consume the B `openkb_write` reference when present.
 - Markdown is not direct in-game UI text.
 - Tests must pass without persistent external storage.
 

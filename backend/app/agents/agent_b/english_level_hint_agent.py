@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Protocol
 
 from backend.app.schemas.game_turn import (
     Branch,
@@ -12,6 +12,7 @@ from backend.app.schemas.game_turn import (
     Evaluation,
     InGameFeedback,
     LevelHint,
+    OpenKBWriteResult,
     OutGameFeedbackSeed,
     ReportItem,
     Scores,
@@ -21,7 +22,20 @@ from backend.app.services.service_b.level_adaptation_controller import (
     FeedbackStrategy,
     LevelAdaptationController,
 )
+from backend.app.services.service_b.feedback_hint_generator import FeedbackHintGenerator
+from backend.app.services.service_b.openkb_feedback_writer import OpenKBFeedbackWriter
 from backend.app.services.service_b.scenario_state_machine import ScenarioDecision, ScenarioStateMachine
+from backend.app.services.service_b.tier_difficulty_controller import TierDifficultyController
+
+
+class OpenKBPolicyWriter(Protocol):
+    def write_policy_output(
+        self,
+        payload: DevBPolicyInput,
+        output: DevBPolicyOutput,
+    ) -> OpenKBWriteResult: ...
+
+    def failure_result(self, error: Exception) -> OpenKBWriteResult: ...
 
 
 class EnglishLevelHintAgent:
@@ -30,9 +44,15 @@ class EnglishLevelHintAgent:
         *,
         state_machine: ScenarioStateMachine | None = None,
         level_controller: LevelAdaptationController | None = None,
+        tier_controller: TierDifficultyController | None = None,
+        feedback_generator: FeedbackHintGenerator | None = None,
+        openkb_writer: OpenKBPolicyWriter | None = None,
     ) -> None:
         self.state_machine = state_machine or ScenarioStateMachine()
         self.level_controller = level_controller or LevelAdaptationController()
+        self.tier_controller = tier_controller or TierDifficultyController()
+        self.feedback_generator = feedback_generator or FeedbackHintGenerator()
+        self.openkb_writer = openkb_writer or OpenKBFeedbackWriter()
 
     def evaluate_turn(self, payload: DevBPolicyInput) -> DevBPolicyOutput:
         decision = self.state_machine.decide(payload)
@@ -40,8 +60,9 @@ class EnglishLevelHintAgent:
         needs_hint, hint_level, hint_type, hint_kr = self.level_controller.hint_policy(payload, decision)
         feedback_strategy = self.level_controller.feedback_strategy(decision)
         has_form_issue = self.level_controller.has_form_issue(payload)
+        tier_result = self.tier_controller.evaluate(payload, decision, has_form_issue=has_form_issue)
 
-        return DevBPolicyOutput(
+        output = DevBPolicyOutput(
             contract_version="dev_b_policy.v1",
             node_id=payload.current_node_id,
             evaluation=self._build_evaluation(payload, decision, has_form_issue),
@@ -75,7 +96,42 @@ class EnglishLevelHintAgent:
             ),
             dialogue_directive=self._build_dialogue_directive(payload, decision),
             report_item=self._build_report_item(payload, decision, has_form_issue),
+            rubric_scores=tier_result.rubric_scores,
+            difficulty_profile=tier_result.difficulty_profile,
         )
+        feedback_generation = self.feedback_generator.generate(
+            payload=payload,
+            decision=decision,
+            base_output=output,
+            tier_result=tier_result,
+            focus_on_form_explanation_kr=self._focus_on_form_explanation(payload, output),
+        )
+        if feedback_generation.rubric_scores is not None:
+            tier_result = self.tier_controller.from_rubric_scores(
+                feedback_generation.rubric_scores,
+                tier=payload.player_profile.tier,
+            )
+        output = output.model_copy(
+            update={
+                "evaluation": output.evaluation.model_copy(update={"feedback_note": feedback_generation.feedback_note}),
+                "level_hint": output.level_hint.model_copy(update={"hint_kr": feedback_generation.hint_kr}),
+                "report_item": output.report_item.model_copy(
+                    update={
+                        "summary": feedback_generation.report_summary,
+                        "improvement": feedback_generation.report_improvement,
+                        "example_answer": feedback_generation.example_answer,
+                    }
+                ),
+                "rubric_scores": tier_result.rubric_scores,
+                "difficulty_profile": tier_result.difficulty_profile,
+                "feedback_generation": feedback_generation.trace,
+            }
+        )
+        try:
+            openkb_write = self.openkb_writer.write_policy_output(payload, output)
+        except Exception as exc:
+            openkb_write = self.openkb_writer.failure_result(exc)
+        return output.model_copy(update={"openkb_write": openkb_write})
 
     def _build_evaluation(
         self,
@@ -372,3 +428,9 @@ class EnglishLevelHintAgent:
         if error_type == "task_response":
             return ["task_success", "clarity"]
         return ["clarity"]
+
+    def _focus_on_form_explanation(self, payload: DevBPolicyInput, output: DevBPolicyOutput) -> str:
+        targets = output.out_game_feedback_seed.focus_on_form_targets
+        if targets:
+            return f"Focus on {', '.join(targets)} using: {payload.node_context.recommended_expression}"
+        return f"Use a concise immigration answer such as: {payload.node_context.recommended_expression}"
