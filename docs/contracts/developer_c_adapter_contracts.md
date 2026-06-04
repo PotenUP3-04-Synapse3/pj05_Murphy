@@ -535,6 +535,14 @@ Rules:
   validator, error-capture, Developer A, response-builder, and final validator
   boundaries.
 - The log must not include wav bytes, API keys, or full provider prompts.
+- When Developer C directly calls the Understanding LLM and the provider
+  returns token usage, the unified record's top-level `model` object stores
+  `model_name`, `input_tokens`, `output_tokens`, `total_tokens`, and
+  `estimated_cost_usd`.
+- The same token/cost summary is also copied into the Understanding trace so
+  the exact paid tool boundary is visible in the event timeline.
+- Developer C does not estimate Developer A or Developer B costs inside the C
+  orchestration record. Those costs belong in each owner's own AgentRun record.
 - `metadata.data_flow` stores safe summaries of payload movement between
   agents/services so JSON flow can be debugged from the AI backend side.
 

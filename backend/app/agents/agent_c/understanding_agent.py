@@ -3,6 +3,7 @@ from pydantic import ValidationError as PydanticValidationError
 from time import perf_counter
 from typing import Any
 
+from backend.app.agents.agent_c.llm_cost_estimator import build_model_usage_summary
 from backend.app.agents.agent_c.understanding_llm_client import (
     OpenAIUnderstandingLLMClient,
     UnderstandingLLMClient,
@@ -54,7 +55,7 @@ class UnderstandingAgent:
             started = perf_counter()
             model_name = self._llm_model_name()
             try:
-                output = self._analyze_with_llm(player_text, node_context)
+                output, model_usage = self._analyze_with_llm(player_text, node_context)
             except (UnderstandingLLMUnavailable, PydanticValidationError, TypeError, ValueError) as exc:
                 _LOGGER.warning(
                     "Understanding Agent LLM failed; using rule fallback. error_type=%s error=%s",
@@ -78,6 +79,7 @@ class UnderstandingAgent:
                 model_name=model_name,
                 duration_ms=_duration_ms(started),
                 output=output,
+                model_usage=model_usage,
             )
             return output
 
@@ -89,7 +91,7 @@ class UnderstandingAgent:
         self,
         player_text: str,
         node_context: NodeContext,
-    ) -> UnderstandingOutput:
+    ) -> tuple[UnderstandingOutput, dict[str, Any]]:
         result = self._get_llm_client().analyze(
             {
                 "player_text": player_text,
@@ -109,8 +111,12 @@ class UnderstandingAgent:
                 },
             }
         )
+        model_usage = build_model_usage_summary(
+            model_name=self._llm_model_name(),
+            usage=_dict_or_none(result.get("__llm_usage")),
+        )
         _reject_forbidden_llm_keys(result)
-        return UnderstandingOutput.model_validate(result)
+        return UnderstandingOutput.model_validate(result), model_usage
 
     def _get_llm_client(self) -> UnderstandingLLMClient:
         if self.llm_client is not None:
@@ -218,10 +224,12 @@ def _build_llm_trace(
     model_name: str,
     duration_ms: int,
     output: UnderstandingOutput,
+    model_usage: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "mode": "llm",
         "model_name": model_name,
+        "model_usage": model_usage,
         "fallback_used": False,
         "fallback_reason": None,
         "tool_calls": [
@@ -230,9 +238,13 @@ def _build_llm_trace(
                 "status": "completed",
                 "tool_name": "understanding_llm_client.analyze",
                 "model_name": model_name,
+                "model_usage": model_usage,
                 "duration_ms": duration_ms,
                 "input_summary": _understanding_input_summary(player_text, node_context),
-                "output_summary": _understanding_output_summary(output),
+                "output_summary": {
+                    **_understanding_output_summary(output),
+                    "estimated_cost_usd": model_usage["estimated_cost_usd"],
+                },
             }
         ],
     }
@@ -293,6 +305,10 @@ def _understanding_output_summary(output: UnderstandingOutput) -> dict[str, Any]
 
 def _duration_ms(started: float) -> int:
     return max(0, round((perf_counter() - started) * 1000))
+
+
+def _dict_or_none(value: Any) -> dict[str, Any] | None:
+    return value if isinstance(value, dict) else None
 
 
 def _preview(text: str, limit: int = 120) -> str:

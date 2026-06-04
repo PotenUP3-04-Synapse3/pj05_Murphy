@@ -142,6 +142,12 @@ visit-purpose values.
 - `uv run ruff check .` (passed)
 - `uv run mypy .` (passed)
 - `git diff --check` (passed with CRLF conversion warnings only)
+- `uv run pytest backend/tests/test_understanding_llm_client.py::test_extract_structured_json_preserves_llm_usage backend/tests/test_unified_agent_run_log.py::test_orchestrator_unified_agent_run_includes_understanding_llm_tokens_and_cost -q` (RED: Understanding usage was not preserved and C unified record used zero token/cost values)
+- `uv run pytest backend/tests/test_understanding_llm_client.py::test_extract_structured_json_preserves_llm_usage backend/tests/test_unified_agent_run_log.py::test_orchestrator_unified_agent_run_includes_understanding_llm_tokens_and_cost -q` (GREEN: 2 passed, 1 warning)
+- `uv run pytest` (60 passed, 2 warnings)
+- `uv run ruff check .` (passed)
+- `uv run mypy .` (passed)
+- `git diff --check` (passed with CRLF conversion warnings only)
 
 ## Current Architecture
 
@@ -412,6 +418,10 @@ Unified AgentRun logging:
   `owner=developer_c`.
 - Timeline events cover STT, OpenKB, Understanding, Developer B, Developer A,
   response builder, validator, and error-capture boundaries.
+- If Understanding LLM mode returns provider usage, the C record's `model`
+  object now includes `input_tokens`, `output_tokens`, `total_tokens`, and
+  `estimated_cost_usd`. The same summary is copied into the Understanding trace
+  event. Developer A/B costs remain in their own AgentRun records.
 - `metadata.data_flow` summarizes payload movement between services/agents.
   It intentionally stores compact summaries, not wav bytes, API keys, or full
   provider prompts.
@@ -419,7 +429,7 @@ Unified AgentRun logging:
 The sandboxed `uv sync`, `uv lock`, and `uv run ...` attempts can fail while
 initializing the user-level uv cache. Rerunning with approved escalation is the
 known workaround in this environment. The latest `uv run pytest` passed with
-58 tests and 2 warnings. `uv run ruff check .` passed. `uv run mypy .` passed.
+60 tests and 2 warnings. `uv run ruff check .` passed. `uv run mypy .` passed.
 
 ## Known Issues
 

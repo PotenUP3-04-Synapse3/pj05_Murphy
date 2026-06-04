@@ -341,6 +341,10 @@ Runtime modes:
   Developer C therefore asks the LLM for `extracted_slots.visit_purpose` as a
   required nullable field and removes null slot values before validating the
   final `UnderstandingOutput`.
+- When OpenAI Responses API returns `usage`, Developer C stores those token
+  counts in the Understanding trace and in the C unified AgentRun `model`
+  object. `estimated_cost_usd` is a runtime estimate for C-owned LLM calls, not
+  an invoice source of truth.
 - Rule fallback maps visit purpose keywords to allowed slot values:
   `family_visit` for uncle, aunt, cousin, parents, family, relative;
   `friend_visit` for friend; `business` for business, meeting, conference;

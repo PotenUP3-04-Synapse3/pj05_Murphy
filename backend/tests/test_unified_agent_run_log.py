@@ -1,11 +1,13 @@
 import json
 from collections.abc import Generator
+from typing import Any
 
 import pytest
 
+from backend.app.agents.agent_c.understanding_agent import UnderstandingAgent
 from backend.app.schemas.game_turn import MockAudioInput, PrePrototypeRequest, UnrealTurnRequest
 from backend.app.services.service_c.orchestrator import Orchestrator
-from backend.app.services.service_c.settings_service import get_settings
+from backend.app.services.service_c.settings_service import AppSettings, get_settings
 
 
 @pytest.fixture(autouse=True)
@@ -67,6 +69,63 @@ def test_orchestrator_appends_unified_agent_run_with_data_flow_events(tmp_path) 
     assert "## Agent Run: ai_backend_orchestrator / developer_c" in readable_log
     assert "understanding_agent.analyze_player_text" in readable_log
     assert "validator.validate_unreal_response" in readable_log
+
+
+def test_orchestrator_unified_agent_run_includes_understanding_llm_tokens_and_cost(tmp_path) -> None:
+    orchestrator = Orchestrator(agent_run_root=tmp_path)
+    orchestrator.understanding_agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=FakeUnderstandingLLMClient(),
+    )
+
+    orchestrator.run_turn(_preprototype_request(transcript="I'm here to visit my uncle."))
+
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    record = records[0]
+    understanding_event = next(
+        event for event in record["events"] if event.get("tool_name") == "understanding_agent.analyze_player_text"
+    )
+    understanding_trace = understanding_event["output_summary"]["understanding_trace"]
+
+    assert record["model"] == {
+        "model_name": "gpt-4o-mini",
+        "input_tokens": 1000,
+        "output_tokens": 500,
+        "total_tokens": 1500,
+        "estimated_cost_usd": 0.00045,
+    }
+    assert understanding_trace["model_usage"] == record["model"]
+    assert understanding_trace["tool_calls"][0]["model_usage"] == record["model"]
+    assert understanding_trace["tool_calls"][0]["output_summary"]["estimated_cost_usd"] == 0.00045
+
+
+class FakeUnderstandingLLMClient:
+    model = "gpt-4o-mini"
+
+    def analyze(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "intent": "state_visit_purpose",
+            "intent_success": True,
+            "confidence": 0.91,
+            "meaning_summary_kr": "The player is visiting family.",
+            "emotion": "calm",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "none",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "extracted_slots": {"visit_purpose": "family_visit"},
+            "missing_slots": [],
+            "needs_clarification": False,
+            "__llm_usage": {
+                "input_tokens": 1000,
+                "output_tokens": 500,
+                "total_tokens": 1500,
+            },
+        }
 
 
 def _preprototype_request(transcript: str = "I'm here for tourism.") -> PrePrototypeRequest:
