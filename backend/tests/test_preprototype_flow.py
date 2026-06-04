@@ -126,6 +126,7 @@ def test_openkb_loads_chapter_zero_duration_node_from_scenario_nodes() -> None:
 
     assert node_context.node_id == "IMM_003_DURATION"
     assert node_context.npc_question == "How long will you stay?"
+    assert node_context.objective_kr == "체류 기간 말하기"
     assert node_context.success_next_node == "IMM_004_STAY_LOCATION"
     assert "IMM_003_RETRY_DURATION" in node_context.allowed_next_nodes
 

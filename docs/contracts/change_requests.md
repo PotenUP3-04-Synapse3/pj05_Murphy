@@ -179,3 +179,29 @@ them until validator/final-report integration is ready.
 Developer B stores these fields in the B-owned OpenKB `dev_b` runtime record.
 C can continue consuming the existing `level_hint`, `evaluation`,
 `report_item`, and `openkb_write` fields.
+
+## Change Request - 2026-06-04 - Expose OpenKB objective_kr to Unreal UI
+
+### Requested By
+Developer B
+
+### Affected Owner
+Developer C / Sean Han
+
+### Reason
+Developer B now defines `objective_kr` in Chapter 0 scenario node content so the
+current node's Korean objective can be shown consistently in Unreal UI.
+
+### Proposed Contract Change
+`NodeContext.objective_kr` is an optional field populated from
+`backend/app/data/scenario_nodes.json`. Developer C may expose it through the
+final Unreal UI response when the response contract is ready for objective
+display.
+
+### Compatibility Impact
+The field is optional and additive. Existing Understanding, Developer B policy,
+Developer A dialogue, and response builder behavior can ignore it.
+
+### Temporary Workaround
+Until C adds a UI response field, `objective_kr` is available in the internal
+node context only.

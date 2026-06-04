@@ -203,6 +203,25 @@ Coordination request:
 - Final report generation can use B's OpenKB records to distinguish rule, LLM,
   and fallback feedback sources.
 
+# Developer B Objective UI Content Update - 2026-06-04
+
+Developer B added `objective_kr` to Chapter 0 scenario node content and the
+shared `NodeContext` schema as an optional field. The field is intended for
+Korean Unreal UI objective display, for example `방문 목적 말하기` or `체류 기간
+말하기`.
+
+Scope:
+
+- `backend/app/data/scenario_nodes.json` now defines `objective_kr` for every
+  Chapter 0 immigration node.
+- `backend/app/services/service_c/openkb_service.py` maps `objective_kr` into
+  `NodeContext`.
+- No `retry_question` or `retry_prompt_seed` field was added. Retry/clarify
+  behavior continues to use `npc_question`, B feedback candidates, and Developer
+  A dialogue generation.
+- Developer C still needs to decide whether and where to expose `objective_kr`
+  in the final Unreal response UI payload.
+
 ---
 
 Current pre-prototype flow:

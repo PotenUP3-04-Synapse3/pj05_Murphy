@@ -250,6 +250,7 @@ C owns retrieval, validation, and final response assembly.
   "chapter_id": "CH0_IMMIGRATION",
   "npc_question": "What is the purpose of your visit?",
   "npc_question_goal": "ask_visit_purpose",
+  "objective_kr": "방문 목적 말하기",
   "required_intents": [
     "state_visit_purpose"
   ],
@@ -314,6 +315,8 @@ Rules:
 - `node_context.node_id` must equal `session.current_node_id`.
 - `required_intents` is the canonical key. Do not use `success_intents` in new
   Developer C schemas.
+- `objective_kr` is optional scenario content for Korean UI objective display.
+  It is not NPC dialogue and should not replace Developer A dialogue output.
 - `allowed_next_nodes` is the branch safety boundary used by Developer C
   validation.
 
