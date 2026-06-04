@@ -25,7 +25,12 @@ Current repository state:
 - Initial contract docs under `docs/contracts/`.
 - Developer C handoff: `docs/handoff.md`.
 - Sean Han portfolio: `docs/portfolio_seanhan.md`.
-- No real Developer A or Developer B implementation exists yet.
+- Developer A implementation exists under `backend/app/agents/agent_a/` and
+  `backend/app/services/service_a/`.
+- Developer B implementation exists under `backend/app/agents/agent_b/`,
+  `backend/app/services/service_b/`, and `backend/app/data/scenario_nodes.json`.
+- Developer C adapters now connect merged A/B implementations for the
+  integrated AI-only pre-prototype.
 
 ## Package Management
 
@@ -91,6 +96,12 @@ Rules:
 - Edit shared contracts carefully and document the change.
 - Treat another developer's implementation files as read-only.
 - Treat unknown files as read-only unless the user explicitly approves editing.
+- `backend/app/tools/tool_a`, `tool_b`, and `tool_c` contain agent-internal
+  tools for each developer only.
+- `backend/app/middleware/middleware_a`, `middleware_b`, and `middleware_c`
+  contain agent-internal pipeline middleware for each developer only.
+- FastAPI global middleware is Developer C owned. Developer A and Developer B
+  must not add FastAPI global middleware directly.
 - Do not reformat the whole repository.
 - Do not rename, move, or delete another developer's files silently.
 - Do not change public contracts without updating docs and handoff notes.
@@ -106,6 +117,8 @@ Likely owned files:
 
 - `backend/app/agents/agent_a/`
 - `backend/app/services/service_a/`
+- `backend/app/tools/tool_a/`
+- `backend/app/middleware/middleware_a/`
 - `backend/app/prompts/npc_dialogue_prompt.md`
 
 Responsibilities:
@@ -137,18 +150,28 @@ Likely owned files:
 
 - `backend/app/agents/agent_b/`
 - `backend/app/services/service_b/`
+- `backend/app/agents/agent_b/feedback_hint_llm_client.py`
+- `backend/app/services/service_b/openkb_feedback_writer.py`
 - `backend/app/prompts/english_level_hint_prompt.md`
 - `backend/app/data/scenario_nodes.json`
 - `backend/app/data/scenario_nodes.yaml`
+- `backend/app/kb/dev_b/`
+- `backend/runtime/openkb/dev_b/`
 
 Responsibilities:
 
 - English Level and Hint Agent
 - Scenario State Machine
 - Level Adaptation Controller
+- LLM-assisted learning feedback and hint text
+- Travel Speaking Level rubric and difficulty profile policy
 - Scenario node rules
 - Hint policy
 - OpenKB content design
+- OpenKB content authoring
+- OpenKB feedback/error runtime write under the `dev_b` namespace
+- Focus-on-Form target records
+- Out-game feedback seed records
 - Result score policy
 
 Guardrails:
@@ -157,6 +180,9 @@ Guardrails:
 - Do not implement Developer C orchestration, STT, validator, or response
   assembler logic.
 - Scenario branch control must remain rule-based.
+- LLM-assisted Developer B code may generate hint, feedback, report, and rubric
+  candidates only. It must not generate or override branch, next node, verdict,
+  state delta, Unreal commands, NPC dialogue, or TTS/audio fields.
 - Coordinate expected input/output with
   `backend/app/integrations/dev_b_level_hint_client.py` once that adapter
   exists.
@@ -180,7 +206,8 @@ Owned files:
 - `backend/app/graphs/developer_c_graph.py`
 - `backend/app/integrations/dev_a_npc_dialogue_client.py`
 - `backend/app/integrations/dev_b_level_hint_client.py`
-- `backend/app/kb/`
+- `backend/app/kb/`, except `backend/app/kb/dev_b/`
+- `backend/runtime/openkb/`, except `backend/runtime/openkb/dev_b/`
 - `backend/tests/`
 - `docs/handoff.md`
 - `docs/portfolio_seanhan.md`
@@ -192,6 +219,7 @@ Responsibilities:
 - Understanding Agent
 - AI Backend Orchestrator
 - OpenKB Retrieval
+- OpenKB runtime coordination outside B-owned write namespaces
 - Validator
 - Unreal Response JSON Assembler
 - Developer A/B integration adapters
@@ -201,6 +229,8 @@ Guardrails:
 
 - Do not implement real Developer A NPC dialogue logic.
 - Do not implement real Developer B level/hint or scenario branch logic.
+- Do not create or mutate B-owned OpenKB write records; read and validate them
+  through agreed contracts.
 - Use deterministic mocks until A/B contracts are ready.
 - Validator must stay rule-based.
 - LangGraph may orchestrate Developer C workflow nodes only. It must not
@@ -215,10 +245,13 @@ Target backend flow:
 3. Developer C loads current node context from OpenKB.
 4. Developer C runs the Understanding Agent.
 5. Developer C calls Developer B adapter for level, hint, and branch result.
-6. Developer C calls Developer A adapter for NPC dialogue result.
-7. Developer C builds Unreal-safe response JSON.
-8. Developer C validates commands and branch transitions.
-9. Developer C returns the response to Unreal.
+6. Developer B writes feedback/error/focus-on-form records to its OpenKB
+   `dev_b` namespace and returns the write reference in its policy output.
+7. Developer C validates and consumes the B write reference.
+8. Developer C calls Developer A adapter for NPC dialogue result.
+9. Developer C builds Unreal-safe response JSON.
+10. Developer C validates commands and branch transitions.
+11. Developer C returns the response to Unreal.
 
 Developer A and B should expose contracts that can be consumed by Developer C
 adapters. Developer C should not import A/B implementation files unless a

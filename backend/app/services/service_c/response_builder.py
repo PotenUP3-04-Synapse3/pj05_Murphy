@@ -49,6 +49,7 @@ class ResponseBuilder:
                 text=dev_a_output.text,
                 tone=dev_a_output.tone,
                 animation=dev_a_output.animation,
+                audio_url=dev_a_output.audio_url,
             ),
             ui=UiResponse(
                 show_hint=dev_b_output.level_hint.needs_hint,

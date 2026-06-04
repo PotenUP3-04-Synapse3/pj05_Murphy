@@ -372,3 +372,27 @@
 - `backend/app/agents/__init__.py`와 `backend/app/services/__init__.py`는 공용 패키지 설명만 남기고 하위 모듈 import/export를 하지 않도록 정리했다.
 - 새 경로에 맞게 실행 코드와 테스트 import 경로를 수정했다.
 - `AGENTS.md`에 개발자별 agents/services 폴더 소유 구조를 명시했다.
+## 2026-06-04 00:30:00 +09:00
+
+- Slack Agent의 AgentRun 구조를 참고해 NPC Dialogue Agent 실행 기록을 구조화 로그로 남기는 기능을 구현했다.
+- 추가한 Developer A 전용 tool:
+  - `backend/app/tools/tool_a/npc_dialogue_evidence_tool.py`
+  - `backend/app/tools/tool_a/npc_dialogue_cost_tool.py`
+  - `backend/app/tools/tool_a/npc_dialogue_artifact_tool.py`
+- 추가한 Developer A 전용 middleware:
+  - `backend/app/middleware/middleware_a/npc_dialogue_agent_run_middleware.py`
+- 추가한 Developer A 전용 저장소:
+  - `backend/app/services/service_a/npc_dialogue_agent_run_store.py`
+- AgentRun JSONL 저장 위치:
+  - `backend/runtime/agent_runs/npc_dialogue_agent_runs.jsonl`
+  - `backend/runtime/agent_runs/npc_dialogue_artifacts.jsonl`
+- `build_voice_output_from_level_design`가 실행될 때 AgentRun과 Artifact를 append 방식으로 누적 저장하도록 연결했다.
+- 반환 dict에 `agent_run_id`, `agent_run_path`, `artifact_path`, `agent_run`, `agent_run_artifact`를 포함하도록 했다.
+- OpenAI LLM 응답에서 token usage가 있으면 `llm` metadata에 `model_name`, `input_tokens`, `output_tokens`, `total_tokens`를 남기도록 했다.
+- `AGENTS.md`에 각 agent 전용 tool/middleware 소유권과 FastAPI 전역 middleware 금지 원칙을 추가했다.
+- `docs/contracts/change_requests.md`에 공용 AgentRun persistence contract 요청을 추가했다.
+- 검증 결과:
+  - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 7 passed, 1 warning
+  - `uv run ruff check ...`: PASS
+  - `uv run mypy ...`: PASS
+- warning은 기존 `audioop` deprecation warning이며 이번 AgentRun 구현과 직접 관련은 없다.

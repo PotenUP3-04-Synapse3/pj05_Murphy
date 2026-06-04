@@ -1,0 +1,296 @@
+{
+  "contract_version": "dev_b_scenario_nodes.v1",
+  "chapter_id": "CH0_IMMIGRATION",
+  "scene_id": "JFK_IMMIGRATION_HALL",
+  "nodes": {
+    "IMM_001_PASSPORT": {
+      "node_id": "IMM_001_PASSPORT",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Passport, please.",
+      "npc_question_goal": "request_passport_submission",
+      "required_intents": ["submit_passport"],
+      "required_slots": ["passport_submission_status"],
+      "optional_slots": [],
+      "critical_slots": ["passport_missing", "refuse_submission"],
+      "allowed_slot_values": {
+        "passport_submission_status": ["submitted", "presented", "available"]
+      },
+      "risk_keywords": ["no passport", "lost passport", "refuse", "no"],
+      "recommended_expression": "Here you are.",
+      "base_hint_kr": "Give your passport to the officer.",
+      "hint_policy": {
+        "keyword": ["passport", "here", "sure"],
+        "sentence_pattern": "Here you are.",
+        "situation_hint": "The officer is asking you to hand over your passport.",
+        "action_hint": "Say a short phrase and present the passport."
+      },
+      "branch_candidates": {
+        "success": "IMM_002_PURPOSE",
+        "retry": "IMM_001_RETRY_PASSPORT",
+        "clarify": "IMM_EXTRA_001_CLARIFY_PASSPORT",
+        "hint": "IMM_001_RETRY_PASSPORT",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_002_PURPOSE",
+        "IMM_001_RETRY_PASSPORT",
+        "IMM_EXTRA_001_CLARIFY_PASSPORT",
+        "END_SECONDARY_INSPECTION"
+      ]
+    },
+    "IMM_002_PURPOSE": {
+      "node_id": "IMM_002_PURPOSE",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "What is the purpose of your visit?",
+      "npc_question_goal": "ask_visit_purpose",
+      "required_intents": ["state_visit_purpose"],
+      "required_slots": ["visit_purpose"],
+      "optional_slots": ["destination", "activity", "companion", "duration"],
+      "critical_slots": ["illegal_work_intent", "unclear_purpose", "suspicious_purpose"],
+      "allowed_slot_values": {
+        "visit_purpose": ["tourism", "business", "family_visit", "friend_visit", "study", "transit"]
+      },
+      "risk_keywords": ["illegal", "forever", "secret", "disappear", "work illegally"],
+      "recommended_expression": "I'm here for tourism.",
+      "base_hint_kr": "Say the purpose of your visit.",
+      "hint_policy": {
+        "keyword": ["tourism", "business", "vacation"],
+        "sentence_pattern": "I'm here for ___.",
+        "situation_hint": "The officer is asking why you are visiting.",
+        "action_hint": "Say the purpose first, then add a short detail if needed."
+      },
+      "branch_candidates": {
+        "success": "IMM_003_DURATION",
+        "retry": "IMM_002_RETRY_PURPOSE",
+        "clarify": "IMM_EXTRA_001_CLARIFY_PURPOSE",
+        "hint": "IMM_002_RETRY_PURPOSE",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_003_DURATION",
+        "IMM_002_RETRY_PURPOSE",
+        "IMM_EXTRA_001_CLARIFY_PURPOSE",
+        "END_SECONDARY_INSPECTION"
+      ]
+    },
+    "IMM_003_DURATION": {
+      "node_id": "IMM_003_DURATION",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "How long will you stay?",
+      "npc_question_goal": "ask_stay_duration",
+      "required_intents": ["state_stay_duration"],
+      "required_slots": ["stay_duration"],
+      "optional_slots": ["return_date", "arrival_date", "travel_schedule"],
+      "critical_slots": ["no_fixed_duration", "overstay_intent", "indefinite_stay"],
+      "allowed_slot_values": {
+        "stay_duration": ["days", "weeks", "months", "until_date"]
+      },
+      "risk_keywords": ["forever", "no plan", "do not know when", "maybe forever"],
+      "recommended_expression": "I'll stay for five days.",
+      "base_hint_kr": "Say how long you will stay.",
+      "hint_policy": {
+        "keyword": ["five days", "one week", "two weeks"],
+        "sentence_pattern": "I'll stay for ___.",
+        "situation_hint": "The officer needs your stay duration.",
+        "action_hint": "Say a specific number of days or your return date."
+      },
+      "branch_candidates": {
+        "success": "IMM_004_STAY_LOCATION",
+        "retry": "IMM_003_RETRY_DURATION",
+        "clarify": "IMM_EXTRA_002_CLARIFY_DURATION",
+        "hint": "IMM_003_RETRY_DURATION",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_004_STAY_LOCATION",
+        "IMM_003_RETRY_DURATION",
+        "IMM_EXTRA_002_CLARIFY_DURATION",
+        "END_SECONDARY_INSPECTION"
+      ]
+    },
+    "IMM_004_STAY_LOCATION": {
+      "node_id": "IMM_004_STAY_LOCATION",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Where are you staying?",
+      "npc_question_goal": "ask_stay_location",
+      "required_intents": ["state_stay_location"],
+      "required_slots": ["stay_location"],
+      "optional_slots": ["hotel_name", "city", "address", "host_name"],
+      "critical_slots": ["no_accommodation", "unknown_location", "inconsistent_location"],
+      "allowed_slot_values": {
+        "stay_location": ["hotel", "friend_house", "family_house", "airbnb", "address"]
+      },
+      "risk_keywords": ["outside", "do not know", "no place", "nowhere"],
+      "recommended_expression": "I'm staying at a hotel in New York.",
+      "base_hint_kr": "Say where you will stay.",
+      "hint_policy": {
+        "keyword": ["hotel", "Airbnb", "friend's house"],
+        "sentence_pattern": "I'm staying at ___.",
+        "situation_hint": "The officer is asking for your accommodation.",
+        "action_hint": "Say the place type first, then add the city or address."
+      },
+      "branch_candidates": {
+        "success": "IMM_005_RETURN_TICKET",
+        "retry": "IMM_004_RETRY_LOCATION",
+        "clarify": "IMM_EXTRA_003_CLARIFY_LOCATION",
+        "hint": "IMM_004_RETRY_LOCATION",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_005_RETURN_TICKET",
+        "IMM_004_RETRY_LOCATION",
+        "IMM_EXTRA_003_CLARIFY_LOCATION",
+        "END_SECONDARY_INSPECTION"
+      ]
+    },
+    "IMM_005_RETURN_TICKET": {
+      "node_id": "IMM_005_RETURN_TICKET",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Do you have a return ticket?",
+      "npc_question_goal": "ask_return_ticket",
+      "required_intents": ["confirm_return_ticket"],
+      "required_slots": ["return_ticket_status"],
+      "optional_slots": ["return_date", "flight_info", "ticket_available"],
+      "critical_slots": ["no_return_ticket", "no_return_plan", "overstay_intent"],
+      "allowed_slot_values": {
+        "return_ticket_status": ["has_return_ticket", "has_digital_ticket", "has_return_date"]
+      },
+      "risk_keywords": ["no return", "no ticket", "stay here", "work here"],
+      "recommended_expression": "Yes, I do. My return flight is next Friday.",
+      "base_hint_kr": "Say whether you have a return ticket.",
+      "hint_policy": {
+        "keyword": ["yes", "return ticket", "return flight"],
+        "sentence_pattern": "Yes, I do. My return flight is on ___.",
+        "situation_hint": "The officer needs proof that you plan to leave.",
+        "action_hint": "Answer yes/no first, then add the return date if possible."
+      },
+      "branch_candidates": {
+        "success": "IMM_006_DECLARATION_CHECK",
+        "retry": "IMM_005_RETRY_RETURN_TICKET",
+        "clarify": "IMM_EXTRA_004_CLARIFY_RETURN_TICKET",
+        "hint": "IMM_005_RETRY_RETURN_TICKET",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_006_DECLARATION_CHECK",
+        "IMM_005_RETRY_RETURN_TICKET",
+        "IMM_EXTRA_004_CLARIFY_RETURN_TICKET",
+        "END_SECONDARY_INSPECTION"
+      ]
+    },
+    "IMM_006_DECLARATION_CHECK": {
+      "node_id": "IMM_006_DECLARATION_CHECK",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "You listed a small boat motor. What is it for?",
+      "npc_question_goal": "ask_declared_item_purpose",
+      "required_intents": ["explain_declared_item"],
+      "required_slots": ["item_purpose"],
+      "optional_slots": ["ownership", "personal_use", "destination_context", "non_commercial_use"],
+      "critical_slots": ["unknown_item", "commercial_resale", "dangerous_use", "inconsistent_explanation"],
+      "allowed_slot_values": {
+        "item_purpose": ["personal_recreation", "gift", "repair_part", "hobby_use", "sports_activity"]
+      },
+      "risk_keywords": ["sell", "secret", "do not know", "someone gave", "dangerous"],
+      "recommended_expression": "It's for my small fishing boat. I use it for personal recreation.",
+      "base_hint_kr": "Explain what the declared item is for.",
+      "hint_policy": {
+        "keyword": ["personal use", "fishing", "gift"],
+        "sentence_pattern": "It's for my ___.",
+        "situation_hint": "The officer needs a clear reason for the declared item.",
+        "action_hint": "Explain the item purpose and say it is not for business if needed."
+      },
+      "branch_candidates": {
+        "success": "IMM_006B_PACKED_BAG_CHECK",
+        "retry": "IMM_006_RETRY_DECLARATION",
+        "clarify": "IMM_EXTRA_005_CLARIFY_DECLARATION",
+        "hint": "IMM_006_RETRY_DECLARATION",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_006B_PACKED_BAG_CHECK",
+        "IMM_006_RETRY_DECLARATION",
+        "IMM_EXTRA_005_CLARIFY_DECLARATION",
+        "END_SECONDARY_INSPECTION"
+      ]
+    },
+    "IMM_006B_PACKED_BAG_CHECK": {
+      "node_id": "IMM_006B_PACKED_BAG_CHECK",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Did you pack your bag yourself?",
+      "npc_question_goal": "ask_packed_bag_ownership",
+      "required_intents": ["confirm_packed_by_self"],
+      "required_slots": ["packed_by_self"],
+      "optional_slots": ["bag_content_awareness", "ownership_confirmation"],
+      "critical_slots": ["packed_by_other", "unknown_contents", "received_from_stranger"],
+      "allowed_slot_values": {
+        "packed_by_self": ["yes_self_packed", "yes_knows_contents", "assisted_but_knows_contents"]
+      },
+      "risk_keywords": ["friend packed", "do not know inside", "someone gave", "stranger"],
+      "recommended_expression": "Yes, I packed it myself, and I know everything inside.",
+      "base_hint_kr": "Say whether you packed the bag yourself.",
+      "hint_policy": {
+        "keyword": ["yes", "packed myself", "checked everything"],
+        "sentence_pattern": "Yes, I packed it myself.",
+        "situation_hint": "The officer is checking whether you know your bag contents.",
+        "action_hint": "Answer yes/no first, then say you checked the contents."
+      },
+      "branch_candidates": {
+        "success": "IMM_007_FINAL_DECISION",
+        "retry": "IMM_006B_RETRY_PACKED_BAG",
+        "clarify": "IMM_EXTRA_006_CLARIFY_PACKED_BAG",
+        "hint": "IMM_006B_RETRY_PACKED_BAG",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_007_FINAL_DECISION",
+        "IMM_006B_RETRY_PACKED_BAG",
+        "IMM_EXTRA_006_CLARIFY_PACKED_BAG",
+        "END_SECONDARY_INSPECTION"
+      ]
+    },
+    "IMM_007_FINAL_DECISION": {
+      "node_id": "IMM_007_FINAL_DECISION",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Final decision.",
+      "npc_question_goal": "summarize_final_result",
+      "required_intents": ["summarize_final_result"],
+      "required_slots": ["final_recommendation"],
+      "optional_slots": ["reason_tags", "report_summary"],
+      "critical_slots": ["critical_fail_count", "high_suspicion"],
+      "allowed_slot_values": {
+        "final_recommendation": ["PASS", "CONDITIONAL_PASS", "SECONDARY_ROOM", "COMIC_FAIL", "UNRANKED"]
+      },
+      "risk_keywords": ["critical_fail", "high_suspicion"],
+      "recommended_expression": "Final decision ready.",
+      "base_hint_kr": "Review the final immigration result.",
+      "hint_policy": {
+        "keyword": ["final", "result", "pass"],
+        "sentence_pattern": "Final decision: ___.",
+        "situation_hint": "This node summarizes the completed immigration check.",
+        "action_hint": "Use accumulated node results to choose a final result."
+      },
+      "branch_candidates": {
+        "success": "END_PASS",
+        "retry": "IMM_007_RETRY_FINAL_DECISION",
+        "clarify": "IMM_EXTRA_007_CLARIFY_FINAL_DECISION",
+        "hint": "IMM_007_RETRY_FINAL_DECISION",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION",
+        "final": "END_PASS"
+      },
+      "allowed_next_nodes": [
+        "END_PASS",
+        "IMM_007_RETRY_FINAL_DECISION",
+        "IMM_EXTRA_007_CLARIFY_FINAL_DECISION",
+        "END_SECONDARY_INSPECTION"
+      ]
+    }
+  }
+}

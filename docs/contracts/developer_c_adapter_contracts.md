@@ -6,8 +6,22 @@ This document defines the adapter boundaries Developer C will implement around
 STT, OpenKB, the Understanding Agent, Developer B policy, Developer A dialogue,
 logging, response building, and validation.
 
-The adapters let Developer C use deterministic mocks until real Developer A and
-Developer B implementations are ready.
+The adapters let Developer C keep orchestration and validation ownership while
+calling merged Developer A and Developer B implementations. Automated tests use
+deterministic STT and fake Kokoro voice output so the pre-prototype remains
+key-free and reproducible.
+
+Runtime provider modes are controlled by Developer C settings:
+
+```text
+MURPHY_STT_MODE=mock|local
+MURPHY_TTS_MODE=fake|real
+MURPHY_NPC_DIALOGUE_MODE=rule|llm
+```
+
+The default test-safe mode is `mock`, `fake`, and `rule`. The endpoint demo can
+enable local Whisper and real Kokoro without changing the public response
+contract.
 
 ## Architecture
 
@@ -30,8 +44,10 @@ flowchart TD
     ORCH --> UA["Developer C Understanding Agent<br/>intent, slots, relevance, risk"]
     UA --> ORCH
     ORCH --> B["Developer B Policy Adapter<br/>evaluation, level, hint,<br/>feedback, state_delta, branch"]
+    B --> BW["Developer B OpenKB Writer<br/>dev_b namespace record"]
+    BW --> B
     B --> ORCH
-    ORCH --> LOG["Developer C Logging Service<br/>error_capture markdown"]
+    ORCH --> LOG["Developer C Logging Service<br/>validate or consume B write reference"]
     ORCH --> A["Developer A Dialogue Adapter<br/>NPC text, tone, animation hint"]
     A --> ORCH
     ORCH --> RB["Developer C Response Builder"]
@@ -52,6 +68,7 @@ Unreal wav
   -> Understanding Agent
   -> Orchestrator
   -> Developer B Policy / Level / Hint / Feedback Agent
+  -> Developer B OpenKB dev_b namespace write
   -> Orchestrator
   -> Developer A NPC Dialogue Agent
   -> Orchestrator
@@ -64,19 +81,20 @@ Unreal wav
 
 Developer C may implement these adapters under:
 
-- `backend/app/services/stt_service.py`
-- `backend/app/services/openkb_service.py`
-- `backend/app/services/orchestrator.py`
-- `backend/app/services/logging_service.py`
-- `backend/app/services/response_builder.py`
-- `backend/app/services/validator.py`
-- `backend/app/agents/understanding_agent.py`
+- `backend/app/services/service_c/stt_service.py`
+- `backend/app/services/service_c/openkb_service.py`
+- `backend/app/services/service_c/orchestrator.py`
+- `backend/app/services/service_c/logging_service.py`
+- `backend/app/services/service_c/response_builder.py`
+- `backend/app/services/service_c/validator.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
 - `backend/app/integrations/dev_a_npc_dialogue_client.py`
 - `backend/app/integrations/dev_b_level_hint_client.py`
 
 Developer C must not import Developer A or Developer B implementation modules
-unless a contract explicitly allows it. The C adapters may call mocks, local
-fixtures, HTTP clients, or future plugin clients.
+outside the C-owned adapter boundary. The current C adapters call
+`backend.app.agents.agent_b.EnglishLevelHintAgent` and Developer A's
+`build_voice_output_from_level_design()` service.
 
 ## STT Service Contract
 
@@ -123,7 +141,7 @@ Rules:
 - `input_source.input_type` is always `voice` in this prototype.
 - The STT service is configured around `whisper-large-v3-turbo`.
 - STT runtime settings are loaded through
-  `backend/app/services/settings_service.py`, which reads environment
+  `backend/app/services/service_c/settings_service.py`, which reads environment
   variables and `.env`.
 - `MURPHY_STT_MODE=local` runs local Whisper first and calls API fallback only
   when the local runtime fails.
@@ -252,9 +270,20 @@ Required output fields:
 Optional output fields:
 
 - `dialogue_directive`
+- `openkb_write`
+- `rubric_scores`
+- `difficulty_profile`
+- `feedback_generation`
 
 Developer C must treat Developer B output as a recommendation until validation
 passes.
+
+Current implementation:
+
+```text
+backend/app/integrations/dev_b_level_hint_client.py
+  -> backend.app.agents.agent_b.EnglishLevelHintAgent.evaluate_turn()
+```
 
 ### Developer B Output Validation
 
@@ -269,6 +298,18 @@ Developer C must validate:
 - `state_delta` values are within contract ranges
 - `error_capture.storage_format == "markdown"`
 - `error_capture.markdown_entry == null` when `should_record` is false
+- `level_hint.hint_type == null` and `level_hint.hint_kr == null` when
+  `level_hint.needs_hint` is false
+- feedback strategy-specific candidate fields are present
+- `out_game_feedback_seed.focus_on_form_targets` is non-empty when final report
+  inclusion is requested
+- `openkb_write.namespace == "dev_b"` when a write reference is present
+- successful `openkb_write` references point to expected local OpenKB runtime
+  paths and do not escape the B-owned namespace
+- `rubric_scores.total` is between 0 and 12 when present
+- `feedback_generation.mode` is `rule`, `llm`, or `fallback` when present
+- `difficulty_profile` is learning metadata and must not affect branch
+  validation
 - no Unreal command, camera event, or final response envelope is present
 
 ## Developer B Final Feedback Adapter
@@ -288,7 +329,6 @@ Input is built after the episode from:
 
 Developer C owns:
 
-- markdown file storage
 - path generation
 - retention and privacy policy
 - OpenKB retrieval execution
@@ -299,6 +339,7 @@ Developer B owns:
 - final recommendation policy
 - out-game Focus on Form payload
 - report scoring policy
+- OpenKB `dev_b` namespace feedback/error runtime writes
 
 ## Developer A Dialogue Adapter
 
@@ -380,7 +421,8 @@ Output:
   "text": "You're here for tourism. How long will you stay?",
   "tone": "formal_neutral",
   "animation": "officer_check_passport",
-  "feedback_kr": "Good. A natural sentence is: I'm here for tourism."
+  "feedback_kr": "Good. A natural sentence is: I'm here for tourism.",
+  "audio_url": "/runtime/audio/kokoro/IMM_002_PURPOSE_stay_duration_success_am_michael_abcd1234.wav"
 }
 ```
 
@@ -388,10 +430,17 @@ Rules:
 
 - Developer A output is dialogue content, not branch authority.
 - Developer A must not change `next_node_id`, `next_action`, or `state_delta`.
-- Developer C may replace Developer A with a deterministic mock until real
-  Developer A is ready.
+- Developer C calls Developer A's voice output service with fake Kokoro by
+  default for deterministic tests.
+- `MURPHY_TTS_MODE=real` makes the C adapter pass `use_real_tts=True` to
+  Developer A's voice output service.
+- `MURPHY_NPC_DIALOGUE_MODE=llm` makes the C adapter pass
+  `use_llm_dialogue=True` to Developer A's dialogue path. This optional mode
+  requires the OpenAI dialogue environment expected by Developer A.
 - Developer C validates text safety, known animation ids, and response size
   before returning to Unreal.
+- Developer C serves generated pre-prototype wav artifacts from
+  `/runtime/audio/...`, backed by `backend/runtime/generated/audio`.
 
 ## Logging Adapter
 
@@ -425,7 +474,11 @@ Output:
 Rules:
 
 - Developer B proposes markdown.
-- Developer C stores markdown.
+- Developer B stores feedback/error markdown under the OpenKB `dev_b`
+  namespace when `openkb_write.succeeded == true`.
+- Developer C must not create duplicate markdown for the same B write record.
+- Developer C may keep a compatibility logging summary for final response
+  counts and should consume the B `openkb_write` reference when present.
 - Markdown is not direct in-game UI text.
 - Tests must pass without persistent external storage.
 
@@ -477,6 +530,8 @@ Rules:
 - Validator must catch invalid branch transitions even if Developer B says
   `allowed_next_node_checked` is true.
 - Validator must catch any Developer A attempt to alter branch or state.
+- Validator must require `npc.audio_url` under `/runtime/audio/...` for the
+  integrated pre-prototype response.
 
 ## Legacy Mapping Notes
 

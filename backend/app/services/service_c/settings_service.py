@@ -19,6 +19,8 @@ class AppSettings(BaseSettings):
     murphy_stt_api_model: str = "whisper-1"
     murphy_stt_api_endpoint: str = "https://api.openai.com/v1/audio/transcriptions"
     murphy_stt_api_timeout_s: float = 60.0
+    murphy_tts_mode: Literal["fake", "real"] = "fake"
+    murphy_npc_dialogue_mode: Literal["rule", "llm"] = "rule"
 
     @classmethod
     def from_env_file(cls, env_file: str | Path) -> "AppSettings":

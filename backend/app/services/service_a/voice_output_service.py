@@ -6,6 +6,9 @@ from backend.app.agents.agent_a.npc_dialogue_agent import (
     NPCDialogueResult,
     generate_npc_dialogue_from_level_design,
 )
+from backend.app.middleware.middleware_a.npc_dialogue_agent_run_middleware import (
+    NPCDialogueAgentRunMiddleware,
+)
 from backend.app.services.service_a.audio_quality_service import (
     analyze_wav_quality,
     build_postprocess_policy,
@@ -21,6 +24,7 @@ from backend.app.services.service_a.developer_a_input_service import (
 from backend.app.services.service_a.developer_a_runtime_log_service import (
     write_developer_a_event,
 )
+from backend.app.services.service_a.npc_dialogue_agent_run_store import NPCDialogueAgentRunStore
 from backend.app.services.service_a.tts_provider_service import FakeKokoroProvider
 from backend.app.services.service_a.tts_provider_service import RealKokoroProvider
 from backend.app.services.service_a.tts_service import (
@@ -30,6 +34,11 @@ from backend.app.services.service_a.tts_service import (
     synthesize_speech,
 )
 from backend.app.services.service_a.voice_profile_service import resolve_voice_profile
+from backend.app.tools.tool_a.npc_dialogue_artifact_tool import build_npc_dialogue_artifact
+from backend.app.tools.tool_a.npc_dialogue_cost_tool import estimate_openai_cost_usd
+from backend.app.tools.tool_a.npc_dialogue_evidence_tool import build_npc_dialogue_evidence_summary
+
+PROMPT_VERSION = "npc_dialogue_prompt_v1"
 
 
 @dataclass(frozen=True)
@@ -59,9 +68,11 @@ def build_voice_output_from_level_design(
     use_real_tts: bool = False,
     use_llm_dialogue: bool = False,
     audio_url_base: str | None = None,
+    agent_run_root: Path | None = None,
 ) -> dict[str, Any]:
     """Level Design JSON에서 NPC 대사와 fake Kokoro 음성 metadata를 함께 만든다."""
     root = runtime_root or Path("backend/runtime")
+    run_root = agent_run_root or root / "agent_runs"
     log_path = root / "logs" / "developer_a_events.jsonl"
     write_developer_a_event(
         log_path=log_path,
@@ -106,7 +117,22 @@ def build_voice_output_from_level_design(
             target_slot=str(normalized.get("target_slot", "")),
             branch_type=str(normalized.get("branch_type", "")),
         )
-        output = {**dialogue, "tts": tts}
+        agent_run, artifact, agent_run_path, artifact_path = _record_agent_run(
+            payload=payload,
+            normalized=normalized,
+            dialogue=dialogue,
+            tts=tts,
+            run_root=run_root,
+        )
+        output = {
+            **dialogue,
+            "tts": tts,
+            "agent_run_id": agent_run["agent_run_id"],
+            "agent_run_path": str(agent_run_path),
+            "artifact_path": str(artifact_path),
+            "agent_run": agent_run,
+            "agent_run_artifact": artifact,
+        }
         write_developer_a_event(
             log_path=log_path,
             component_name="VoiceOutputService",
@@ -133,6 +159,12 @@ def build_voice_output_from_level_design(
             session_id=session_id,
             metadata={"error_type": type(exc).__name__},
         )
+        agent_run, artifact, agent_run_path, artifact_path = _record_failed_agent_run(
+            payload=payload,
+            fallback_tts=fallback_tts,
+            run_root=run_root,
+            error=exc,
+        )
         return {
             "speaker": "Officer Miller",
             "npc_text": "Okay. Please continue.",
@@ -142,6 +174,11 @@ def build_voice_output_from_level_design(
             "animation": "officer_check_passport",
             "tts": fallback_tts,
             "fallback": {"used": True, "reason": "voice_output_error"},
+            "agent_run_id": agent_run["agent_run_id"],
+            "agent_run_path": str(agent_run_path),
+            "artifact_path": str(artifact_path),
+            "agent_run": agent_run,
+            "agent_run_artifact": artifact,
         }
 
 
@@ -191,3 +228,148 @@ def _build_audio_url(audio_url_base: str | None, output_path: Path, runtime_root
         return None
     relative_path = output_path.relative_to(runtime_root / "audio").as_posix()
     return f"{audio_url_base.rstrip('/')}/{relative_path}"
+
+
+def _record_agent_run(
+    *,
+    payload: dict[str, Any],
+    normalized: dict[str, Any],
+    dialogue: dict[str, Any],
+    tts: dict[str, Any],
+    run_root: Path,
+) -> tuple[dict[str, Any], dict[str, object], Path, Path]:
+    evidence_metadata = build_npc_dialogue_evidence_summary(payload)
+    llm_metadata = _as_dict(dialogue.get("llm"))
+    model_name = str(
+        llm_metadata.get("model_name")
+        or ("gpt-4o-mini" if llm_metadata.get("used") else "rule_based")
+    )
+    input_tokens = _int_from_metadata(llm_metadata.get("input_tokens"))
+    output_tokens = _int_from_metadata(llm_metadata.get("output_tokens"))
+    fallback = _as_dict(dialogue.get("fallback"))
+
+    evidence_metadata["npc_context"] = {
+        "npc_id": _npc_id(payload),
+        "npc_emotion": _npc_emotion(payload, dialogue),
+        "tone": dialogue.get("tone"),
+    }
+    evidence_metadata["tts_summary"] = _tts_summary(tts)
+    evidence_metadata["fallback"] = {
+        "used": bool(fallback.get("used", False)),
+        "reason": fallback.get("reason"),
+    }
+
+    middleware = NPCDialogueAgentRunMiddleware()
+    agent_run = middleware.start_run(
+        prompt_version=PROMPT_VERSION,
+        source_window=_source_window(payload, normalized),
+        cache_key=f"sha256:{tts.get('cache_key', 'no_cache_key')}",
+        model_name=model_name,
+        permission_level="runtime_user_session",
+        metadata=evidence_metadata,
+    )
+    agent_run = middleware.complete_run(
+        agent_run,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        estimated_cost_usd=estimate_openai_cost_usd(
+            model_name=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        ),
+    )
+
+    evidence = evidence_metadata["evidence_summary"][0]
+    artifact = build_npc_dialogue_artifact(
+        agent_run_id=str(agent_run["agent_run_id"]),
+        npc_id=_npc_id(payload),
+        npc_text=str(dialogue.get("npc_text") or dialogue.get("text") or ""),
+        tts_text=str(dialogue.get("tts_text") or dialogue.get("npc_text") or ""),
+        feedback_kr=str(dialogue.get("feedback_kr", "")),
+        audio_url=_optional_str(tts.get("audio_url")),
+        audio_path=_optional_str(tts.get("audio_path")),
+        source_id=str(evidence["source_id"]),
+        source_snippet=str(evidence["snippet"]),
+    )
+    store = NPCDialogueAgentRunStore(run_root)
+    return agent_run, artifact, store.append_agent_run(agent_run), store.append_artifact(artifact)
+
+
+def _record_failed_agent_run(
+    *,
+    payload: dict[str, Any],
+    fallback_tts: dict[str, Any],
+    run_root: Path,
+    error: Exception,
+) -> tuple[dict[str, Any], dict[str, object], Path, Path]:
+    evidence_metadata = build_npc_dialogue_evidence_summary(payload)
+    evidence_metadata["fallback"] = {"used": True, "reason": type(error).__name__}
+    evidence_metadata["tts_summary"] = _tts_summary(fallback_tts)
+    middleware = NPCDialogueAgentRunMiddleware()
+    agent_run = middleware.start_run(
+        prompt_version=PROMPT_VERSION,
+        source_window=_source_window(payload, {}),
+        cache_key="sha256:fallback",
+        model_name="fallback",
+        permission_level="runtime_user_session",
+        metadata=evidence_metadata,
+    )
+    agent_run = middleware.fail_run(agent_run, error=type(error).__name__)
+    evidence = evidence_metadata["evidence_summary"][0]
+    artifact = build_npc_dialogue_artifact(
+        agent_run_id=str(agent_run["agent_run_id"]),
+        npc_id=_npc_id(payload),
+        npc_text="Okay. Please continue.",
+        tts_text="Okay. Please continue.",
+        feedback_kr="응답을 이어갈 수 있도록 기본 대사를 반환했습니다.",
+        audio_url=_optional_str(fallback_tts.get("audio_url")),
+        audio_path=_optional_str(fallback_tts.get("audio_path")),
+        source_id=str(evidence["source_id"]),
+        source_snippet=str(evidence["snippet"]),
+    )
+    store = NPCDialogueAgentRunStore(run_root)
+    return agent_run, artifact, store.append_agent_run(agent_run), store.append_artifact(artifact)
+
+
+def _source_window(payload: dict[str, Any], normalized: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source_type": "level_design_json",
+        "node_id": normalized.get("node_id") or payload.get("node_id"),
+        "turn_id": payload.get("turn_id"),
+        "chapter_id": payload.get("chapter_id"),
+    }
+
+
+def _tts_summary(tts: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "provider": tts.get("provider"),
+        "voice_id": tts.get("voice_id"),
+        "sample_rate": tts.get("sample_rate"),
+        "audio_url": tts.get("audio_url"),
+        "audio_path": tts.get("audio_path"),
+        "status": tts.get("status"),
+    }
+
+
+def _npc_id(payload: dict[str, Any]) -> str:
+    npc = _as_dict(payload.get("npc"))
+    return str(npc.get("npc_id") or npc.get("id") or "officer_miller")
+
+
+def _npc_emotion(payload: dict[str, Any], dialogue: dict[str, Any]) -> str:
+    npc = _as_dict(payload.get("npc"))
+    generation_profile = _as_dict(dialogue.get("generation_profile"))
+    emotion = _as_dict(generation_profile.get("npc_emotion"))
+    return str(npc.get("emotion") or emotion.get("emotion") or "unknown")
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _int_from_metadata(value: Any) -> int:
+    return value if isinstance(value, int) else 0
+
+
+def _optional_str(value: Any) -> str | None:
+    return str(value) if value is not None else None

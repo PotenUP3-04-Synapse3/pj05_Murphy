@@ -6,15 +6,18 @@ Read `AGENTS.md` first and follow it as the repository-level operating guide.
 
 ## Current Repository Situation
 
-This repo currently contains the Phase 1 Developer C backend harness:
+This repo currently contains the integrated AI-only pre-prototype:
 
 - Python 3.12 `uv` project.
-- Minimal FastAPI app at `backend/app/main.py`.
-- Health route: `GET /health`.
-- Initial contracts under `docs/contracts/`.
+- FastAPI app at `backend/app/main.py`.
+- Routes: `GET /health`, `POST /api/game/ai/respond`, and
+  `/runtime/audio/...` for generated demo wav artifacts.
+- Contracts under `docs/contracts/`.
 - Developer C handoff at `docs/handoff.md`.
-- No real Developer A implementation has been created yet.
-- No real Developer B implementation has been created yet.
+- Developer A implementation exists under `backend/app/agents/agent_a/` and
+  `backend/app/services/service_a/`.
+- Developer B implementation exists under `backend/app/agents/agent_b/`,
+  `backend/app/services/service_b/`, and `backend/app/data/scenario_nodes.json`.
 
 The primary target endpoint is:
 
@@ -22,9 +25,9 @@ The primary target endpoint is:
 POST /api/game/ai/respond
 ```
 
-Developer C will eventually orchestrate STT, OpenKB retrieval, understanding,
-Developer B level/hint/branch results, Developer A NPC dialogue results,
-response assembly, and validation.
+Developer C now orchestrates STT, OpenKB retrieval, understanding, Developer B
+policy results, Developer A dialogue/voice results, response assembly, and
+validation for the pre-prototype path.
 
 ## Your Role
 
@@ -32,9 +35,8 @@ You own English level, hints, scenario state, and OpenKB content design.
 
 Your likely files are:
 
-- `backend/app/agents/english_level_hint_agent.py`
-- `backend/app/services/scenario_state_machine.py`
-- `backend/app/services/level_adaptation_controller.py`
+- `backend/app/agents/agent_b/`
+- `backend/app/services/service_b/`
 - `backend/app/prompts/english_level_hint_prompt.md`
 - `backend/app/data/scenario_nodes.json`
 - `backend/app/data/scenario_nodes.yaml`
@@ -43,8 +45,8 @@ You may create tests and contract docs for your own scope.
 
 ## What You Should Build
 
-Build replaceable Developer B components that can later be called by Developer
-C through `backend/app/integrations/dev_b_level_hint_client.py`.
+Build replaceable Developer B components called by Developer C through
+`backend/app/integrations/dev_b_level_hint_client.py`.
 
 Focus on:
 
@@ -84,7 +86,7 @@ Expect Developer C to pass a payload shaped like:
       "IMM_003_DURATION",
       "IMM_002_RETRY_PURPOSE",
       "IMM_EXTRA_001_CLARIFY_PURPOSE",
-      "END_BAD_HANDCUFF"
+      "END_SECONDARY_INSPECTION"
     ]
   },
   "understanding": {
@@ -112,7 +114,7 @@ Return data shaped like:
   "branch": {
     "branch_type": "success",
     "next_node_id": "IMM_003_DURATION",
-    "reason": "Purpose of visit was clear."
+    "branch_reason": "Purpose of visit was clear."
   }
 }
 ```

@@ -186,6 +186,31 @@ class Scores(BaseModel):
     politeness: int
 
 
+class RubricScores(BaseModel):
+    comprehension: int = Field(ge=0, le=2)
+    fluency: int = Field(ge=0, le=2)
+    grammar_accuracy: int = Field(ge=0, le=2)
+    vocabulary_range: int = Field(ge=0, le=2)
+    clarity: int = Field(ge=0, le=2)
+    interaction_problem_solving: int = Field(ge=0, le=2)
+    total: int = Field(ge=0, le=12)
+
+
+class DifficultyProfile(BaseModel):
+    travel_speaking_level: str
+    npc_speech_speed: Literal["slow", "normal", "natural"]
+    question_complexity: Literal["basic", "standard", "expanded", "complex"]
+    hint_frequency: Literal["high", "medium", "low"]
+    pressure_level: Literal["low", "medium", "high"]
+
+
+class FeedbackGenerationTrace(BaseModel):
+    mode: Literal["rule", "llm", "fallback"]
+    model: str | None = None
+    used_llm: bool
+    fallback_reason: str | None = None
+
+
 class Evaluation(BaseModel):
     verdict: Literal["SUCCESS", "PARTIAL", "UNCLEAR", "FAIL", "CRITICAL_FAIL"]
     detected_intents: list[str]
@@ -264,6 +289,16 @@ class OutGameFeedbackSeed(BaseModel):
     report_priority: Literal["low", "medium", "high"]
 
 
+class OpenKBWriteResult(BaseModel):
+    attempted: bool
+    succeeded: bool
+    namespace: str
+    record_id: str | None = None
+    jsonl_path: str | None = None
+    markdown_path: str | None = None
+    error_message: str | None = None
+
+
 class Branch(BaseModel):
     branch_type: Literal["success", "retry", "clarify", "hint", "warning", "bad_end", "final"]
     next_action: Literal["ADVANCE", "REASK", "GIVE_HINT", "WARNING", "FAIL_END", "FINAL_DECISION"]
@@ -305,6 +340,10 @@ class DevBPolicyOutput(BaseModel):
     state_delta: StateDelta
     report_item: ReportItem
     dialogue_directive: DialogueDirective | None = None
+    openkb_write: OpenKBWriteResult | None = None
+    rubric_scores: RubricScores | None = None
+    difficulty_profile: DifficultyProfile | None = None
+    feedback_generation: FeedbackGenerationTrace | None = None
 
 
 class DevADialogueInput(BaseModel):
@@ -326,6 +365,7 @@ class DevADialogueOutput(BaseModel):
     tone: str
     animation: str
     feedback_kr: str | None = None
+    audio_url: str | None = None
 
 
 class RecordedErrorSummary(BaseModel):
@@ -340,6 +380,7 @@ class NpcResponse(BaseModel):
     text: str
     tone: str
     animation: str
+    audio_url: str | None = None
 
 
 class UiFeedback(BaseModel):
