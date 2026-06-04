@@ -11,7 +11,9 @@ and tests for JSON mock and multipart sample-wav turn flows. The STT contract
 is local-first with API fallback. Automated tests keep deterministic STT through
 `MURPHY_STT_MODE=mock`. Runtime settings now load from `.env` through
 `pydantic-settings`, and the endpoint can enable real Kokoro TTS through
-`MURPHY_TTS_MODE=real`.
+`MURPHY_TTS_MODE=real`. Developer C Understanding Agent now supports
+deterministic `rule` mode and optional OpenAI-assisted `llm` mode with rule
+fallback.
 
 ## Last Completed Task
 
@@ -23,6 +25,14 @@ service. Deterministic defaults remain `MURPHY_STT_MODE=mock`,
 `MURPHY_TTS_MODE=fake`, and `MURPHY_NPC_DIALOGUE_MODE=rule` for tests. A demo
 turn fixture now exists at `demo/input/imm_002_purpose.json`.
 
+Developer C also added real AI mode for the Understanding Agent. Set
+`MURPHY_UNDERSTANDING_MODE=llm` with `OPENAI_API_KEY` to call the C-owned
+OpenAI Responses API client. Missing API key, request failure, invalid JSON,
+schema failure, or forbidden authority fields fall back to deterministic rule
+mode. Tool-call/data-flow logging is not implemented yet; Developer C should
+wait for Developer A's shared log file directory and then emit orchestration
+trace events to that shared sink.
+
 ## Changed Files
 
 - `.env.example`
@@ -33,6 +43,8 @@ turn fixture now exists at `demo/input/imm_002_purpose.json`.
 - `backend/app/services/service_c/stt_service.py`
 - `backend/tests/test_settings_service.py`
 - `backend/app/integrations/dev_a_npc_dialogue_client.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
 - `backend/app/integrations/dev_b_level_hint_client.py`
 - `backend/app/main.py`
 - `backend/app/schemas/game_turn.py`
@@ -45,6 +57,7 @@ turn fixture now exists at `demo/input/imm_002_purpose.json`.
 - `docs/contracts/developer_c_schema_contract.md`
 - `docs/handoff.md`
 - `docs/preprototype_status_demo_plan.md`
+- `docs/superpowers/plans/2026-06-04-real-understanding-agent-mode.md`
 - `docs/superpowers/plans/2026-06-04-real-stt-kokoro-endpoint-demo.md`
 - `docs/superpowers/plans/2026-06-04-preprototype-abc-integration.md`
 
@@ -84,6 +97,19 @@ turn fixture now exists at `demo/input/imm_002_purpose.json`.
 - `uv run pytest backend/tests/test_settings_service.py::test_app_settings_reads_values_from_env_file -q` (GREEN: 1 passed)
 - `uv run pytest backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings -q` (GREEN: 1 passed, 2 warnings)
 - `uv run pytest` (28 passed, 2 warnings)
+- `uv run ruff check .` (passed)
+- `uv run mypy .` (passed)
+- `git diff --check` (passed with CRLF conversion warnings only)
+- `uv run pytest backend/tests/test_settings_service.py::test_app_settings_reads_values_from_env_file -q` (RED: `AppSettings` had no `murphy_understanding_mode`)
+- `uv run pytest backend/tests/test_understanding_agent.py -q` (RED: `UnderstandingAgent` had no settings or LLM client injection)
+- `uv run pytest backend/tests/test_settings_service.py::test_app_settings_reads_values_from_env_file -q` (GREEN: 1 passed)
+- `uv run pytest backend/tests/test_understanding_agent.py -q` (GREEN: 2 passed)
+- `uv run pytest backend/tests/test_preprototype_flow.py -q` (GREEN: 9 passed, 2 warnings after deterministic runtime fixture cache clearing)
+- `uv run ruff check .` (passed)
+- `uv run mypy .` (initially failed on `UnderstandingLLMClient.model` protocol mutability)
+- `uv run mypy .` (passed after using a read-only protocol property)
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_settings_service.py -q` (4 passed)
+- `uv run pytest` (42 passed, 2 warnings)
 - `uv run ruff check .` (passed)
 - `uv run mypy .` (passed)
 - `git diff --check` (passed with CRLF conversion warnings only)
@@ -336,10 +362,19 @@ Runtime TTS and NPC dialogue settings:
 - `MURPHY_NPC_DIALOGUE_MODE=llm` enables optional OpenAI NPC dialogue before
   Kokoro TTS and requires `OPENAI_API_KEY`.
 
+Runtime Understanding settings:
+
+- `MURPHY_UNDERSTANDING_MODE=rule` keeps deterministic semantic analysis.
+- `MURPHY_UNDERSTANDING_MODE=llm` calls Developer C's OpenAI-backed semantic
+  analyzer and falls back to rule mode when the LLM path is unavailable or
+  unsafe.
+- `MURPHY_UNDERSTANDING_LLM_MODEL=gpt-4o-mini` is the default model.
+- `MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS=10` is the default timeout.
+
 The sandboxed `uv sync`, `uv lock`, and `uv run ...` attempts can fail while
 initializing the user-level uv cache. Rerunning with approved escalation is the
 known workaround in this environment. The latest `uv run pytest` passed with
-28 tests and 2 warnings. `uv run ruff check .` passed. `uv run mypy .` passed.
+42 tests and 2 warnings. `uv run ruff check .` passed. `uv run mypy .` passed.
 
 ## Known Issues
 

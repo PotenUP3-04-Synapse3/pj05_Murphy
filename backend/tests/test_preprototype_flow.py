@@ -1,3 +1,4 @@
+from collections.abc import Generator
 import json
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,7 @@ from backend.app.schemas.game_turn import (
 )
 from backend.app.services.service_c.openkb_service import OpenKBService
 from backend.app.services.service_c.orchestrator import Orchestrator
-from backend.app.services.service_c.settings_service import AppSettings
+from backend.app.services.service_c.settings_service import AppSettings, get_settings
 from backend.app.services.service_c.validator import ValidationError, Validator
 
 
@@ -23,8 +24,15 @@ SAMPLE_WAV = Path("samples/utterance-20260603-163237.wav")
 
 
 @pytest.fixture(autouse=True)
-def _use_mock_stt_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+def _use_deterministic_runtime_modes(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
     monkeypatch.setenv("MURPHY_STT_MODE", "mock")
+    monkeypatch.setenv("MURPHY_TTS_MODE", "fake")
+    monkeypatch.setenv("MURPHY_NPC_DIALOGUE_MODE", "rule")
+    monkeypatch.setenv("MURPHY_UNDERSTANDING_MODE", "rule")
+    monkeypatch.setenv("DEV_B_FEEDBACK_LLM_MODE", "rule")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 def _turn_payload() -> dict:

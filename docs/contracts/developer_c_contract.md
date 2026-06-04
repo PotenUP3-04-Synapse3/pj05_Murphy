@@ -35,7 +35,10 @@ The target Developer C flow is:
 2. Run STT with a deterministic mock or provider implementation and create
    normalized player text.
 3. Load OpenKB node context for the current scenario node.
-4. Run the Understanding Agent to produce semantic evidence only.
+4. Run the Understanding Agent to produce semantic evidence only. The
+   Understanding Agent may use deterministic rule mode or optional real AI mode,
+   but it must not produce branch, score, hint, NPC dialogue, or Unreal command
+   fields.
 5. Call the Developer B policy adapter for evaluation, level, hint, in-game
    feedback strategy, error capture, out-game feedback seed, state delta, and
    branch recommendation.

@@ -32,6 +32,10 @@ adapters, builds Unreal-safe JSON, and validates the result before returning it.
 The current pre-prototype endpoint can run local Whisper STT and Developer A's
 real Kokoro TTS through environment-controlled runtime modes while preserving
 deterministic defaults for CI-style tests.
+Sean also added an optional real AI mode for the Developer C Understanding
+Agent, using structured JSON output with deterministic rule fallback so branch
+authority remains with Developer B and final safety remains with Developer C
+validation.
 
 ## Main Modules
 
