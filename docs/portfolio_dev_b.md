@@ -33,6 +33,8 @@ Developer B also defined the full Chapter 0 immigration node context in
 `backend/app/data/scenario_nodes.json`, including `IMM_001_PASSPORT` through
 `IMM_007_FINAL_DECISION`, each with allowed next nodes and retry, clarify,
 hint, warning, and bad-end branch candidates.
+Each node also includes `objective_kr` so the Korean UI objective can be managed
+with the scenario content.
 
 Developer B then extended the policy engine to write learning feedback records
 directly into the B-owned OpenKB `dev_b` namespace. The write path records
@@ -230,7 +232,7 @@ Latest verification:
   travel-English game prototype using contract-first Pydantic input/output.
 - Designed Chapter 0 immigration scenario node specs covering passport,
   purpose, duration, stay location, return ticket, declaration, bag check, and
-  final decision flows.
+  final decision flows, including Korean UI objective text.
 - Built a rule-based scenario state machine for success, retry, clarify, hint,
   warning, bad-end, and final branch recommendations.
 - Added English level and hint adaptation logic for beginner/Bronze,

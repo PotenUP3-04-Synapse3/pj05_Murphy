@@ -44,6 +44,7 @@ def _node_context(node_id: str = "IMM_002_PURPOSE") -> NodeContext:
         chapter_id=node["chapter_id"],
         npc_question=node["npc_question"],
         npc_question_goal=node["npc_question_goal"],
+        objective_kr=node["objective_kr"],
         required_intents=node["required_intents"],
         required_slots=node["required_slots"],
         optional_slots=node["optional_slots"],
@@ -276,6 +277,7 @@ def test_all_chapter_zero_nodes_define_branch_candidates_and_allowed_next_nodes(
     for node in node_data["nodes"].values():
         allowed_next_nodes = set(node["allowed_next_nodes"])
         assert allowed_next_nodes
+        assert node["objective_kr"]
         for branch_name in ["retry", "clarify", "warning", "bad_end"]:
             assert branch_name in node["branch_candidates"]
             assert node["branch_candidates"][branch_name] in allowed_next_nodes

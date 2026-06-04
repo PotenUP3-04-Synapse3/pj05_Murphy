@@ -252,6 +252,7 @@ Developer C adapter가 Developer B policy에 전달하는 canonical input이다.
 | --- | --- | --- | --- |
 | `node_id` | string | yes | Current node id. Must equal `current_node_id` |
 | `npc_question` | string | yes | NPC question text |
+| `objective_kr` | string | no | Korean UI objective text for the current node |
 | `required_intents` | array<string> | yes | Intents required for success |
 | `required_slots` | array<string> | yes | Slots required for success |
 | `optional_slots` | array<string> | no | Extra slots that improve clarity |
