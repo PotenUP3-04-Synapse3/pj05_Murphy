@@ -56,6 +56,15 @@ trace events to that shared sink.
 - `docs/contracts/developer_c_adapter_contracts.md`
 - `docs/contracts/developer_c_schema_contract.md`
 - `docs/handoff.md`
+- `backend/app/services/shared/__init__.py`
+- `backend/app/services/shared/agent_run_log_store.py`
+- `backend/app/services/shared/agent_run_markdown_formatter.py`
+- `backend/app/services/service_a/npc_dialogue_agent_run_store.py`
+- `backend/app/services/service_a/voice_output_service.py`
+- `backend/tests/test_developer_a_agent_run_logging.py`
+- `docs/implementation_logs/developer_a_implementation_log_kimyonghee.md`
+- `docs/contracts/change_requests.md`
+- `AGENTS.md`
 - `docs/preprototype_status_demo_plan.md`
 - `docs/superpowers/plans/2026-06-04-real-understanding-agent-mode.md`
 - `docs/superpowers/plans/2026-06-04-real-stt-kokoro-endpoint-demo.md`

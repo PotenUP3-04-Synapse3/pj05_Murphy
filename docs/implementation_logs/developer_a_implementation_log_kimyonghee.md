@@ -372,3 +372,67 @@
 - `backend/app/agents/__init__.py`와 `backend/app/services/__init__.py`는 공용 패키지 설명만 남기고 하위 모듈 import/export를 하지 않도록 정리했다.
 - 새 경로에 맞게 실행 코드와 테스트 import 경로를 수정했다.
 - `AGENTS.md`에 개발자별 agents/services 폴더 소유 구조를 명시했다.
+## 2026-06-04 00:30:00 +09:00
+
+- Slack Agent의 AgentRun 구조를 참고해 NPC Dialogue Agent 실행 기록을 구조화 로그로 남기는 기능을 구현했다.
+- 추가한 Developer A 전용 tool:
+  - `backend/app/tools/tool_a/npc_dialogue_evidence_tool.py`
+  - `backend/app/tools/tool_a/npc_dialogue_cost_tool.py`
+  - `backend/app/tools/tool_a/npc_dialogue_artifact_tool.py`
+- 추가한 Developer A 전용 middleware:
+  - `backend/app/middleware/middleware_a/npc_dialogue_agent_run_middleware.py`
+- 추가한 Developer A 전용 저장소:
+  - `backend/app/services/service_a/npc_dialogue_agent_run_store.py`
+- AgentRun JSONL 저장 위치:
+  - `backend/runtime/agent_runs/npc_dialogue_agent_runs.jsonl`
+  - `backend/runtime/agent_runs/npc_dialogue_artifacts.jsonl`
+- `build_voice_output_from_level_design`가 실행될 때 AgentRun과 Artifact를 append 방식으로 누적 저장하도록 연결했다.
+- 반환 dict에 `agent_run_id`, `agent_run_path`, `artifact_path`, `agent_run`, `agent_run_artifact`를 포함하도록 했다.
+- OpenAI LLM 응답에서 token usage가 있으면 `llm` metadata에 `model_name`, `input_tokens`, `output_tokens`, `total_tokens`를 남기도록 했다.
+- `AGENTS.md`에 각 agent 전용 tool/middleware 소유권과 FastAPI 전역 middleware 금지 원칙을 추가했다.
+- `docs/contracts/change_requests.md`에 공용 AgentRun persistence contract 요청을 추가했다.
+- 검증 결과:
+  - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 7 passed, 1 warning
+  - `uv run ruff check ...`: PASS
+  - `uv run mypy ...`: PASS
+- warning은 기존 `audioop` deprecation warning이며 이번 AgentRun 구현과 직접 관련은 없다.
+## 2026-06-04 00:45:00 +09:00
+
+- AgentRun 로그에 agent 시작/종료와 tool 호출 흐름이 부족하다는 피드백을 반영했다.
+- `NPCDialogueAgentRunMiddleware.record_event()`를 추가해 `metadata.events` timeline을 기록하도록 했다.
+- `voice_output_service`에서 다음 이벤트를 AgentRun에 남기도록 연결했다.
+  - `agent_start`
+  - `developer_a_input_service.normalize_level_design_payload`
+  - `agent_a.npc_dialogue_agent.generate_npc_dialogue_from_level_design`
+  - `voice_profile_service.resolve_voice_profile`
+  - `tts_service.build_kokoro_provider_request`
+  - `tts_provider_service.KokoroProvider.synthesize`
+  - `agent_end`
+  - 실패 시 `agent_error`
+- 각 이벤트에는 `tool_name`, `data_loaded`, `input_summary`, `output_summary`, `error`를 가능한 범위에서 남긴다.
+- 검증 결과:
+  - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 7 passed, 1 warning
+  - `uv run ruff check ...`: PASS
+  - `uv run mypy ...`: PASS
+  - `uv run pytest -q`: PASS, 47 passed, 13 warnings
+
+## 2026-06-04 01:10:00 +09:00
+
+- Developer A의 NPC Dialogue AgentRun을 공통 실행 로그에도 함께 저장하도록 구현했다.
+- 새 공통 저장소:
+  - `backend/app/services/shared/agent_run_log_store.py`
+  - `backend/app/services/shared/agent_run_markdown_formatter.py`
+  - `backend/app/services/shared/__init__.py`
+- 공통 로그 저장 위치:
+  - `backend/runtime/generated/agent_runs/unified_agent_runs.jsonl`
+  - `backend/runtime/generated/agent_runs/unified_agent_runs.md`
+- 기존 Developer A 전용 로그는 유지한다.
+  - `npc_dialogue_agent_runs.jsonl`
+  - `npc_dialogue_artifacts.jsonl`
+- `voice_output_service` 성공/실패 경로 모두에서 공통 로그 append를 호출하도록 연결했다.
+- 반환 payload에 추적용 경로를 추가했다.
+  - `unified_agent_run_path`
+  - `readable_agent_run_path`
+- B/C 구현 파일은 수정하지 않았고, B/C가 각자 owned entrypoint에서 같은 공통 writer를 호출하도록 `docs/contracts/change_requests.md`에 Change Request를 추가했다.
+- 검증:
+  - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 9 passed, 1 warning

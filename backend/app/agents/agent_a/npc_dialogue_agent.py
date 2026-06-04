@@ -252,6 +252,7 @@ def _generate_with_llm_or_fallback(
         }
         return fallback_result
 
+    llm_usage = llm_result.get("__llm_usage", {})
     merged = {
         **fallback_result,
         "speaker": str(llm_result["speaker"]),
@@ -264,6 +265,10 @@ def _generate_with_llm_or_fallback(
         "llm": {
             "used": True,
             "fallback_used": False,
+            "model_name": getattr(client, "model", "unknown"),
+            "input_tokens": int(llm_usage.get("input_tokens", 0)),
+            "output_tokens": int(llm_usage.get("output_tokens", 0)),
+            "total_tokens": int(llm_usage.get("total_tokens", 0)),
             "model_reason": str(llm_result.get("llm_reason", "")),
         },
     }

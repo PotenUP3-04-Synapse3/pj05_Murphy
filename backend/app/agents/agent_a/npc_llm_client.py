@@ -122,12 +122,35 @@ def _dialogue_schema() -> dict[str, Any]:
 
 def _extract_structured_json(data: dict[str, Any]) -> dict[str, Any]:
     if isinstance(data.get("output_text"), str):
-        return json.loads(data["output_text"])
+        result = json.loads(data["output_text"])
+        result["__llm_usage"] = _extract_usage(data)
+        return result
     for output_item in data.get("output", []):
         for content_item in output_item.get("content", []):
             if content_item.get("type") == "output_text":
-                return json.loads(str(content_item.get("text", "")))
+                result = json.loads(str(content_item.get("text", "")))
+                result["__llm_usage"] = _extract_usage(data)
+                return result
     raise NPCDialogueLLMUnavailable("OpenAI response did not include output_text.")
+
+
+def _extract_usage(data: dict[str, Any]) -> dict[str, int]:
+    # OpenAI usage 필드는 응답 형식에 따라 없을 수 있으므로 0으로 안전하게 보정한다.
+    usage = data.get("usage")
+    if not isinstance(usage, dict):
+        return {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    input_tokens = _int_value(usage.get("input_tokens"))
+    output_tokens = _int_value(usage.get("output_tokens"))
+    total_tokens = _int_value(usage.get("total_tokens")) or input_tokens + output_tokens
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
+def _int_value(value: Any) -> int:
+    return value if isinstance(value, int) else 0
 
 
 def _read_env_file(path: Path) -> dict[str, str]:

@@ -96,6 +96,18 @@ Rules:
 - Edit shared contracts carefully and document the change.
 - Treat another developer's implementation files as read-only.
 - Treat unknown files as read-only unless the user explicitly approves editing.
+- `backend/app/tools/tool_a`, `tool_b`, and `tool_c` contain agent-internal
+  tools for each developer only.
+- `backend/app/middleware/middleware_a`, `middleware_b`, and `middleware_c`
+  contain agent-internal pipeline middleware for each developer only.
+- FastAPI global middleware is Developer C owned. Developer A and Developer B
+  must not add FastAPI global middleware directly.
+- Unified AgentRun logs are appended under
+  `backend/runtime/generated/agent_runs/` as both structured JSONL and
+  human-readable Markdown.
+- Each developer owns event construction for their own agent. The shared writer
+  may append records only and must not inspect or mutate another developer's
+  business logic.
 - Do not reformat the whole repository.
 - Do not rename, move, or delete another developer's files silently.
 - Do not change public contracts without updating docs and handoff notes.
@@ -111,6 +123,8 @@ Likely owned files:
 
 - `backend/app/agents/agent_a/`
 - `backend/app/services/service_a/`
+- `backend/app/tools/tool_a/`
+- `backend/app/middleware/middleware_a/`
 - `backend/app/prompts/npc_dialogue_prompt.md`
 
 Responsibilities:
