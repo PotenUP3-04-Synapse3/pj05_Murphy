@@ -229,10 +229,12 @@ Rules:
 - It must not generate turn scores or final hints.
 - LLM output must not include branch, next action, state delta, scores, hints,
   NPC dialogue, TTS text, or Unreal commands.
-- Tool-call/data-flow logging for Understanding Agent is deferred until
-  Developer A finalizes the shared log file directory; C should later emit
-  orchestration trace events to the shared sink rather than inventing a
-  separate log location.
+- The Understanding Agent exposes `last_trace` after each analysis call. In
+  LLM mode this trace contains a `tool_call` summary for
+  `understanding_llm_client.analyze`; when LLM output is unavailable or unsafe,
+  the trace records fallback mode and the rule output summary.
+- Developer C writes the Understanding trace inside the orchestrator's unified
+  AgentRun record rather than creating a separate log file.
 
 ## Developer B Policy Adapter
 
@@ -497,6 +499,35 @@ Rules:
   counts and should consume the B `openkb_write` reference when present.
 - Markdown is not direct in-game UI text.
 - Tests must pass without persistent external storage.
+
+Developer C also appends one orchestration-level unified AgentRun record per
+turn:
+
+```text
+backend/runtime/generated/agent_runs/unified_agent_runs.jsonl
+backend/runtime/generated/agent_runs/unified_agent_runs.md
+```
+
+The record uses:
+
+```json
+{
+  "schema_version": "unified_agent_run.v1",
+  "agent_name": "ai_backend_orchestrator",
+  "owner": "developer_c"
+}
+```
+
+Rules:
+
+- C-owned `middleware_c` constructs C events and data-flow summaries.
+- The shared writer only appends records and renders Markdown.
+- Events are recorded at the STT, OpenKB, Understanding, Developer B,
+  validator, error-capture, Developer A, response-builder, and final validator
+  boundaries.
+- The log must not include wav bytes, API keys, or full provider prompts.
+- `metadata.data_flow` stores safe summaries of payload movement between
+  agents/services so JSON flow can be debugged from the AI backend side.
 
 ## Response Builder Contract
 

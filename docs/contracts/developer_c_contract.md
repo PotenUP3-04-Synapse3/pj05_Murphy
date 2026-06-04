@@ -48,7 +48,9 @@ The target Developer C flow is:
 8. Build Unreal response JSON from validated Developer A and B outputs.
 9. Validate the response with rule-based checks, including branch transition
    safety.
-10. Return the validated response.
+10. Append a Developer C unified AgentRun record with orchestration events and
+    safe data-flow summaries.
+11. Return the validated response.
 
 Developer C currently assumes all Unreal player input is wav audio. The public
 Unreal request does not need an `input_type` field. Developer C sets

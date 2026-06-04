@@ -1,4 +1,6 @@
 from pydantic import ValidationError as PydanticValidationError
+from time import perf_counter
+from typing import Any
 
 from backend.app.agents.agent_c.understanding_llm_client import (
     OpenAIUnderstandingLLMClient,
@@ -37,6 +39,7 @@ class UnderstandingAgent:
     ) -> None:
         self.settings = settings or get_settings()
         self.llm_client = llm_client
+        self.last_trace: dict[str, Any] = _build_rule_trace()
 
     def analyze_player_text(
         self,
@@ -44,12 +47,34 @@ class UnderstandingAgent:
         node_context: NodeContext,
     ) -> UnderstandingOutput:
         if self.settings.murphy_understanding_mode == "llm":
+            started = perf_counter()
+            model_name = self._llm_model_name()
             try:
-                return self._analyze_with_llm(player_text, node_context)
-            except (UnderstandingLLMUnavailable, PydanticValidationError, TypeError, ValueError):
-                return self._analyze_with_rules(player_text, node_context)
+                output = self._analyze_with_llm(player_text, node_context)
+            except (UnderstandingLLMUnavailable, PydanticValidationError, TypeError, ValueError) as exc:
+                output = self._analyze_with_rules(player_text, node_context)
+                self.last_trace = _build_fallback_trace(
+                    player_text=player_text,
+                    node_context=node_context,
+                    model_name=model_name,
+                    duration_ms=_duration_ms(started),
+                    error=exc,
+                    fallback_output=output,
+                )
+                return output
 
-        return self._analyze_with_rules(player_text, node_context)
+            self.last_trace = _build_llm_trace(
+                player_text=player_text,
+                node_context=node_context,
+                model_name=model_name,
+                duration_ms=_duration_ms(started),
+                output=output,
+            )
+            return output
+
+        output = self._analyze_with_rules(player_text, node_context)
+        self.last_trace = _build_rule_trace(output)
+        return output
 
     def _analyze_with_llm(
         self,
@@ -82,6 +107,11 @@ class UnderstandingAgent:
         if self.llm_client is not None:
             return self.llm_client
         return OpenAIUnderstandingLLMClient.from_settings(self.settings)
+
+    def _llm_model_name(self) -> str:
+        if self.llm_client is not None:
+            return self.llm_client.model
+        return self.settings.murphy_understanding_llm_model
 
     def _analyze_with_rules(
         self,
@@ -148,3 +178,107 @@ def _reject_forbidden_llm_keys(result: dict[str, object]) -> None:
     if forbidden_keys:
         joined_keys = ", ".join(sorted(forbidden_keys))
         raise UnderstandingLLMUnavailable(f"Understanding LLM returned forbidden keys: {joined_keys}")
+
+
+def _build_rule_trace(output: UnderstandingOutput | None = None) -> dict[str, Any]:
+    trace: dict[str, Any] = {
+        "mode": "rule",
+        "model_name": "rule_based",
+        "fallback_used": False,
+        "fallback_reason": None,
+        "tool_calls": [],
+    }
+    if output is not None:
+        trace["output_summary"] = _understanding_output_summary(output)
+    return trace
+
+
+def _build_llm_trace(
+    *,
+    player_text: str,
+    node_context: NodeContext,
+    model_name: str,
+    duration_ms: int,
+    output: UnderstandingOutput,
+) -> dict[str, Any]:
+    return {
+        "mode": "llm",
+        "model_name": model_name,
+        "fallback_used": False,
+        "fallback_reason": None,
+        "tool_calls": [
+            {
+                "event": "tool_call",
+                "status": "completed",
+                "tool_name": "understanding_llm_client.analyze",
+                "model_name": model_name,
+                "duration_ms": duration_ms,
+                "input_summary": _understanding_input_summary(player_text, node_context),
+                "output_summary": _understanding_output_summary(output),
+            }
+        ],
+    }
+
+
+def _build_fallback_trace(
+    *,
+    player_text: str,
+    node_context: NodeContext,
+    model_name: str,
+    duration_ms: int,
+    error: Exception,
+    fallback_output: UnderstandingOutput,
+) -> dict[str, Any]:
+    error_type = error.__class__.__name__
+    return {
+        "mode": "fallback",
+        "model_name": model_name,
+        "fallback_used": True,
+        "fallback_reason": error_type,
+        "tool_calls": [
+            {
+                "event": "tool_call",
+                "status": "failed",
+                "tool_name": "understanding_llm_client.analyze",
+                "model_name": model_name,
+                "duration_ms": duration_ms,
+                "input_summary": _understanding_input_summary(player_text, node_context),
+                "error": str(error),
+                "error_type": error_type,
+                "output_summary": _understanding_output_summary(fallback_output),
+            }
+        ],
+    }
+
+
+def _understanding_input_summary(player_text: str, node_context: NodeContext) -> dict[str, Any]:
+    return {
+        "player_text_preview": _preview(player_text),
+        "node_id": node_context.node_id,
+        "required_intents": node_context.required_intents,
+        "required_slots": node_context.required_slots,
+        "risk_keyword_count": len(node_context.risk_keywords),
+    }
+
+
+def _understanding_output_summary(output: UnderstandingOutput) -> dict[str, Any]:
+    return {
+        "intent": output.intent,
+        "intent_success": output.intent_success,
+        "confidence": output.confidence,
+        "answer_relevance": output.answer_relevance,
+        "risk_delta": output.risk_delta,
+        "missing_slots": output.missing_slots,
+        "needs_clarification": output.needs_clarification,
+    }
+
+
+def _duration_ms(started: float) -> int:
+    return max(0, round((perf_counter() - started) * 1000))
+
+
+def _preview(text: str, limit: int = 120) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[: limit - 3]}..."

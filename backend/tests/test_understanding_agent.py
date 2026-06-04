@@ -52,6 +52,12 @@ def test_understanding_agent_uses_llm_client_in_llm_mode() -> None:
     assert output.extracted_slots == {"visit_purpose": "tourism"}
     assert llm_client.calls[0]["player_text"] == "I want to visit museums."
     assert llm_client.calls[0]["node_context"]["node_id"] == "IMM_002_PURPOSE"
+    assert agent.last_trace["mode"] == "llm"
+    assert agent.last_trace["fallback_used"] is False
+    assert agent.last_trace["tool_calls"][0]["event"] == "tool_call"
+    assert agent.last_trace["tool_calls"][0]["tool_name"] == "understanding_llm_client.analyze"
+    assert agent.last_trace["tool_calls"][0]["status"] == "completed"
+    assert agent.last_trace["tool_calls"][0]["output_summary"]["intent"] == "state_visit_purpose"
 
 
 def test_understanding_agent_falls_back_to_rule_mode_when_llm_output_is_forbidden() -> None:
@@ -84,3 +90,7 @@ def test_understanding_agent_falls_back_to_rule_mode_when_llm_output_is_forbidde
     assert output.confidence == 0.94
     assert output.meaning_summary_kr == "The player said they are visiting for tourism."
     assert llm_client.calls
+    assert agent.last_trace["mode"] == "fallback"
+    assert agent.last_trace["fallback_used"] is True
+    assert agent.last_trace["tool_calls"][0]["status"] == "failed"
+    assert agent.last_trace["tool_calls"][0]["error_type"] == "UnderstandingLLMUnavailable"
