@@ -227,3 +227,83 @@ Developer A appends table-like JSONL records under:
 Developer C should decide whether NPC Dialogue AgentRun records become part of
 the shared backend DB, and whether Developer A artifacts are exposed in Unreal
 responses or kept as internal operation logs only.
+
+## Change Request - 2026-06-04 - Unified AgentRun JSONL and Markdown Log Contract
+
+### Requested By
+Developer A / kimyonghee
+
+### Affected Owner
+Developer B, Developer C / Sean Han
+
+### Reason
+The demo/debug flow needs one place where a reviewer can see which agent ran,
+what input summary it used, which tools/middleware steps executed, what output
+was produced, and where the final audio/text artifacts went. Developer A now
+appends NPC Dialogue Agent records to the shared log paths, but B/C entrypoints
+must opt in from their own owned code to complete the full turn trace.
+
+### Proposed Contract Change
+Append one structured record per agent execution to:
+
+- `backend/runtime/generated/agent_runs/unified_agent_runs.jsonl`
+- `backend/runtime/generated/agent_runs/unified_agent_runs.md`
+
+Use schema version `unified_agent_run.v1` with these top-level fields:
+
+- `agent_run_id`
+- `agent_name`
+- `owner`
+- `request_id`
+- `session_id`
+- `turn_index`
+- `status`
+- `started_at`
+- `completed_at`
+- `source_window`
+- `model`
+- `events`
+- `summary`
+- `metadata`
+
+Each developer should build `events` inside their own agent middleware/service.
+The shared writer only appends records and must not inspect or mutate another
+developer's business logic.
+
+### Requested Developer B Work
+Developer B should append `english_level_hint_agent` records that include:
+
+- agent start/end
+- scenario node and policy input summary
+- level/hint/scenario-state tool steps
+- branch/next-node decision summary
+- LLM feedback metadata when enabled
+- fallback/skip/failure reason when applicable
+
+### Requested Developer C Work
+Developer C should append orchestrator-level records that include:
+
+- request receipt and normalized source window
+- STT step result summary
+- OpenKB node lookup summary
+- Understanding Agent result summary
+- Developer B adapter call summary
+- Developer A adapter call summary
+- response builder and validator summary
+- final response/audio trace identifiers
+
+Developer C should also pass stable `request_id`, `session_id`, and
+`turn_index` into A/B calls so all agent records from one player turn can be
+grouped.
+
+### Compatibility Impact
+Additive only. Existing per-agent JSONL logs remain available. The shared JSONL
+and Markdown files are prototype runtime artifacts and should not be treated as
+authoritative game state.
+
+### Temporary Workaround
+Until B/C are connected, Developer A records its own runs in both:
+
+- `npc_dialogue_agent_runs.jsonl`
+- `unified_agent_runs.jsonl`
+- `unified_agent_runs.md`

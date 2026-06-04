@@ -215,13 +215,22 @@ def build_voice_output_from_level_design(
                 "fallback": dialogue.get("fallback"),
             },
         )
-        agent_run, artifact, agent_run_path, artifact_path = _record_agent_run(
+        (
+            agent_run,
+            artifact,
+            agent_run_path,
+            artifact_path,
+            unified_agent_run_path,
+            readable_agent_run_path,
+        ) = _record_agent_run(
             payload=payload,
             normalized=normalized,
             dialogue=dialogue,
             tts=tts,
             run_root=run_root,
             evidence_metadata=evidence_metadata,
+            request_id=request_id,
+            session_id=session_id,
         )
         output = {
             **dialogue,
@@ -229,6 +238,8 @@ def build_voice_output_from_level_design(
             "agent_run_id": agent_run["agent_run_id"],
             "agent_run_path": str(agent_run_path),
             "artifact_path": str(artifact_path),
+            "unified_agent_run_path": str(unified_agent_run_path),
+            "readable_agent_run_path": str(readable_agent_run_path),
             "agent_run": agent_run,
             "agent_run_artifact": artifact,
         }
@@ -264,12 +275,21 @@ def build_voice_output_from_level_design(
             status="failed",
             error=type(exc).__name__,
         )
-        agent_run, artifact, agent_run_path, artifact_path = _record_failed_agent_run(
+        (
+            agent_run,
+            artifact,
+            agent_run_path,
+            artifact_path,
+            unified_agent_run_path,
+            readable_agent_run_path,
+        ) = _record_failed_agent_run(
             payload=payload,
             fallback_tts=fallback_tts,
             run_root=run_root,
             error=exc,
             evidence_metadata=evidence_metadata,
+            request_id=request_id,
+            session_id=session_id,
         )
         return {
             "speaker": "Officer Miller",
@@ -283,6 +303,8 @@ def build_voice_output_from_level_design(
             "agent_run_id": agent_run["agent_run_id"],
             "agent_run_path": str(agent_run_path),
             "artifact_path": str(artifact_path),
+            "unified_agent_run_path": str(unified_agent_run_path),
+            "readable_agent_run_path": str(readable_agent_run_path),
             "agent_run": agent_run,
             "agent_run_artifact": artifact,
         }
@@ -344,7 +366,9 @@ def _record_agent_run(
     tts: dict[str, Any],
     run_root: Path,
     evidence_metadata: dict[str, Any],
-) -> tuple[dict[str, Any], dict[str, object], Path, Path]:
+    request_id: str | None,
+    session_id: str | None,
+) -> tuple[dict[str, Any], dict[str, object], Path, Path, Path, Path]:
     llm_metadata = _as_dict(dialogue.get("llm"))
     model_name = str(
         llm_metadata.get("model_name")
@@ -398,7 +422,23 @@ def _record_agent_run(
         source_snippet=str(evidence["snippet"]),
     )
     store = NPCDialogueAgentRunStore(run_root)
-    return agent_run, artifact, store.append_agent_run(agent_run), store.append_artifact(artifact)
+    agent_run_path = store.append_agent_run(agent_run)
+    artifact_path = store.append_artifact(artifact)
+    unified_path, readable_path = store.append_unified_agent_run(
+        agent_run,
+        owner="developer_a",
+        request_id=request_id or _optional_str(payload.get("request_id")),
+        session_id=session_id or _optional_str(payload.get("session_id")),
+        turn_index=_optional_int(payload.get("turn_index")),
+        summary={
+            "input": payload.get("player_text") or _as_dict(payload.get("player")).get("utterance"),
+            "output": dialogue.get("npc_text") or dialogue.get("text"),
+            "fallback_used": evidence_metadata["fallback"]["used"],
+            "audio_url": tts.get("audio_url"),
+        },
+        artifact_path=artifact_path,
+    )
+    return agent_run, artifact, agent_run_path, artifact_path, unified_path, readable_path
 
 
 def _record_failed_agent_run(
@@ -408,7 +448,9 @@ def _record_failed_agent_run(
     run_root: Path,
     error: Exception,
     evidence_metadata: dict[str, Any],
-) -> tuple[dict[str, Any], dict[str, object], Path, Path]:
+    request_id: str | None,
+    session_id: str | None,
+) -> tuple[dict[str, Any], dict[str, object], Path, Path, Path, Path]:
     evidence_metadata["fallback"] = {"used": True, "reason": type(error).__name__}
     evidence_metadata["tts_summary"] = _tts_summary(fallback_tts)
     middleware = NPCDialogueAgentRunMiddleware()
@@ -434,7 +476,23 @@ def _record_failed_agent_run(
         source_snippet=str(evidence["snippet"]),
     )
     store = NPCDialogueAgentRunStore(run_root)
-    return agent_run, artifact, store.append_agent_run(agent_run), store.append_artifact(artifact)
+    agent_run_path = store.append_agent_run(agent_run)
+    artifact_path = store.append_artifact(artifact)
+    unified_path, readable_path = store.append_unified_agent_run(
+        agent_run,
+        owner="developer_a",
+        request_id=request_id or _optional_str(payload.get("request_id")),
+        session_id=session_id or _optional_str(payload.get("session_id")),
+        turn_index=_optional_int(payload.get("turn_index")),
+        summary={
+            "input": payload.get("player_text") or _as_dict(payload.get("player")).get("utterance"),
+            "output": "Okay. Please continue.",
+            "fallback_used": True,
+            "audio_url": fallback_tts.get("audio_url"),
+        },
+        artifact_path=artifact_path,
+    )
+    return agent_run, artifact, agent_run_path, artifact_path, unified_path, readable_path
 
 
 def _source_window(payload: dict[str, Any], normalized: dict[str, Any]) -> dict[str, Any]:
@@ -479,3 +537,7 @@ def _int_from_metadata(value: Any) -> int:
 
 def _optional_str(value: Any) -> str | None:
     return str(value) if value is not None else None
+
+
+def _optional_int(value: Any) -> int | None:
+    return value if isinstance(value, int) else None

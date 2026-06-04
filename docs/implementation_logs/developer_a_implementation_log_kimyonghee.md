@@ -415,3 +415,24 @@
   - `uv run ruff check ...`: PASS
   - `uv run mypy ...`: PASS
   - `uv run pytest -q`: PASS, 47 passed, 13 warnings
+
+## 2026-06-04 01:10:00 +09:00
+
+- Developer A의 NPC Dialogue AgentRun을 공통 실행 로그에도 함께 저장하도록 구현했다.
+- 새 공통 저장소:
+  - `backend/app/services/shared/agent_run_log_store.py`
+  - `backend/app/services/shared/agent_run_markdown_formatter.py`
+  - `backend/app/services/shared/__init__.py`
+- 공통 로그 저장 위치:
+  - `backend/runtime/generated/agent_runs/unified_agent_runs.jsonl`
+  - `backend/runtime/generated/agent_runs/unified_agent_runs.md`
+- 기존 Developer A 전용 로그는 유지한다.
+  - `npc_dialogue_agent_runs.jsonl`
+  - `npc_dialogue_artifacts.jsonl`
+- `voice_output_service` 성공/실패 경로 모두에서 공통 로그 append를 호출하도록 연결했다.
+- 반환 payload에 추적용 경로를 추가했다.
+  - `unified_agent_run_path`
+  - `readable_agent_run_path`
+- B/C 구현 파일은 수정하지 않았고, B/C가 각자 owned entrypoint에서 같은 공통 writer를 호출하도록 `docs/contracts/change_requests.md`에 Change Request를 추가했다.
+- 검증:
+  - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 9 passed, 1 warning

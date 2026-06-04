@@ -15,13 +15,13 @@ is local-first with API fallback. Automated tests keep deterministic STT through
 
 ## Last Completed Task
 
-Enabled the real STT plus real Kokoro TTS endpoint demo path. The C-owned
-`DevANpcDialogueClient` now reads `MURPHY_TTS_MODE` and
-`MURPHY_NPC_DIALOGUE_MODE` from `AppSettings` and passes `use_real_tts` /
-`use_llm_dialogue` into Developer A's `build_voice_output_from_level_design()`
-service. Deterministic defaults remain `MURPHY_STT_MODE=mock`,
-`MURPHY_TTS_MODE=fake`, and `MURPHY_NPC_DIALOGUE_MODE=rule` for tests. A demo
-turn fixture now exists at `demo/input/imm_002_purpose.json`.
+Developer A now appends NPC Dialogue AgentRun records to shared unified runtime
+logs while keeping the existing A-only logs. The shared files are
+`backend/runtime/generated/agent_runs/unified_agent_runs.jsonl` for structured
+tracking and `backend/runtime/generated/agent_runs/unified_agent_runs.md` for
+human-readable demo/debug review. B/C implementation files were not modified;
+`docs/contracts/change_requests.md` now requests that B/C connect their own
+owned entrypoints to the same shared writer.
 
 ## Changed Files
 
@@ -44,6 +44,15 @@ turn fixture now exists at `demo/input/imm_002_purpose.json`.
 - `docs/contracts/developer_c_adapter_contracts.md`
 - `docs/contracts/developer_c_schema_contract.md`
 - `docs/handoff.md`
+- `backend/app/services/shared/__init__.py`
+- `backend/app/services/shared/agent_run_log_store.py`
+- `backend/app/services/shared/agent_run_markdown_formatter.py`
+- `backend/app/services/service_a/npc_dialogue_agent_run_store.py`
+- `backend/app/services/service_a/voice_output_service.py`
+- `backend/tests/test_developer_a_agent_run_logging.py`
+- `docs/implementation_logs/developer_a_implementation_log_kimyonghee.md`
+- `docs/contracts/change_requests.md`
+- `AGENTS.md`
 - `docs/preprototype_status_demo_plan.md`
 - `docs/superpowers/plans/2026-06-04-real-stt-kokoro-endpoint-demo.md`
 - `docs/superpowers/plans/2026-06-04-preprototype-abc-integration.md`
@@ -87,6 +96,8 @@ turn fixture now exists at `demo/input/imm_002_purpose.json`.
 - `uv run ruff check .` (passed)
 - `uv run mypy .` (passed)
 - `git diff --check` (passed with CRLF conversion warnings only)
+- `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`
+  (9 passed, 1 warning)
 
 ## Current Architecture
 

@@ -7,6 +7,8 @@ from backend.app.services.service_a.npc_dialogue_agent_run_store import (
     NPCDialogueAgentRunStore,
 )
 from backend.app.services.service_a.voice_output_service import build_voice_output_from_level_design
+from backend.app.services.shared.agent_run_log_store import AgentRunLogStore
+from backend.app.services.shared.agent_run_markdown_formatter import format_agent_run_markdown
 from backend.app.tools.tool_a.npc_dialogue_artifact_tool import (
     build_npc_dialogue_artifact,
     build_user_visible_run_summary,
@@ -99,6 +101,79 @@ def test_agent_run_store_appends_run_and_artifact_jsonl(tmp_path) -> None:
     assert json.loads(artifact_path.read_text(encoding="utf-8").splitlines()[0]) == artifact
 
 
+def test_unified_agent_run_log_store_appends_jsonl_and_markdown(tmp_path) -> None:
+    store = AgentRunLogStore(root=tmp_path)
+    record = {
+        "schema_version": "unified_agent_run.v1",
+        "agent_run_id": "run_1",
+        "agent_name": "npc_dialogue_agent",
+        "owner": "developer_a",
+        "request_id": "req_1",
+        "session_id": "session_1",
+        "turn_index": 1,
+        "status": "completed",
+        "started_at": "2026-06-04T00:00:00+00:00",
+        "completed_at": "2026-06-04T00:00:01+00:00",
+        "source_window": {"source_type": "level_design_json", "chapter_id": "CH0_IMMIGRATION"},
+        "model": {
+            "model_name": "rule_based",
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "estimated_cost_usd": 0.0,
+        },
+        "events": [],
+        "summary": {"input": "Player answered.", "output": "Okay.", "fallback_used": False},
+        "metadata": {},
+    }
+
+    jsonl_path, markdown_path = store.append_with_markdown(record)
+
+    assert json.loads(jsonl_path.read_text(encoding="utf-8").splitlines()[0]) == record
+    assert "## Agent Run: npc_dialogue_agent / developer_a" in markdown_path.read_text(encoding="utf-8")
+
+
+def test_format_agent_run_markdown_makes_readable_timeline() -> None:
+    markdown = format_agent_run_markdown(
+        {
+            "agent_run_id": "run_1",
+            "agent_name": "npc_dialogue_agent",
+            "owner": "developer_a",
+            "request_id": "req_1",
+            "session_id": "session_1",
+            "turn_index": 1,
+            "status": "completed",
+            "started_at": "2026-06-04T00:00:00+00:00",
+            "completed_at": "2026-06-04T00:00:01+00:00",
+            "source_window": {"source_type": "level_design_json", "node_id": "IMM_002_PURPOSE"},
+            "model": {"model_name": "rule_based", "total_tokens": 0, "estimated_cost_usd": 0.0},
+            "events": [
+                {
+                    "event": "agent_start",
+                    "status": "started",
+                    "data_loaded": {"payload_keys": ["node_id", "player_text"]},
+                },
+                {
+                    "event": "tool_call",
+                    "status": "completed",
+                    "tool_name": "tts_service.build_kokoro_provider_request",
+                    "output_summary": {"voice": "am_michael", "sample_rate": 24000},
+                },
+            ],
+            "summary": {
+                "input": "Player answered: I will stay five days.",
+                "output": "Okay. Please continue.",
+                "fallback_used": True,
+            },
+        }
+    )
+
+    assert "## Agent Run: npc_dialogue_agent / developer_a" in markdown
+    assert "| 1 | agent_start | started | -" in markdown
+    assert "tts_service.build_kokoro_provider_request" in markdown
+    assert "- Fallback Used: `True`" in markdown
+
+
 def test_build_npc_dialogue_artifact_links_to_agent_run() -> None:
     artifact = build_npc_dialogue_artifact(
         agent_run_id="run_1",
@@ -155,6 +230,8 @@ def test_voice_output_writes_agent_run_and_artifact_records(tmp_path) -> None:
     output = build_voice_output_from_level_design(
         payload,
         runtime_root=tmp_path / "runtime",
+        request_id="req_1",
+        session_id="session_1",
         use_llm_dialogue=False,
         use_real_tts=False,
         agent_run_root=tmp_path,
@@ -168,6 +245,11 @@ def test_voice_output_writes_agent_run_and_artifact_records(tmp_path) -> None:
         json.loads(line)
         for line in (tmp_path / "npc_dialogue_artifacts.jsonl").read_text(encoding="utf-8").splitlines()
     ]
+    unified_runs = [
+        json.loads(line)
+        for line in (tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    readable_log = (tmp_path / "unified_agent_runs.md").read_text(encoding="utf-8")
 
     assert runs[0]["agent_name"] == "npc_dialogue_agent"
     assert runs[0]["status"] == "completed"
@@ -187,3 +269,10 @@ def test_voice_output_writes_agent_run_and_artifact_records(tmp_path) -> None:
     assert artifacts[0]["agent_run_id"] == runs[0]["agent_run_id"]
     assert artifacts[0]["payload"]["npc_text"] == output["npc_text"]
     assert output["agent_run_id"] == runs[0]["agent_run_id"]
+    assert unified_runs[0]["agent_run_id"] == output["agent_run_id"]
+    assert unified_runs[0]["owner"] == "developer_a"
+    assert unified_runs[0]["request_id"] == "req_1"
+    assert "## Agent Run: npc_dialogue_agent / developer_a" in readable_log
+    assert "### Timeline" in readable_log
+    assert output["unified_agent_run_path"].endswith("unified_agent_runs.jsonl")
+    assert output["readable_agent_run_path"].endswith("unified_agent_runs.md")

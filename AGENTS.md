@@ -102,6 +102,12 @@ Rules:
   contain agent-internal pipeline middleware for each developer only.
 - FastAPI global middleware is Developer C owned. Developer A and Developer B
   must not add FastAPI global middleware directly.
+- Unified AgentRun logs are appended under
+  `backend/runtime/generated/agent_runs/` as both structured JSONL and
+  human-readable Markdown.
+- Each developer owns event construction for their own agent. The shared writer
+  may append records only and must not inspect or mutate another developer's
+  business logic.
 - Do not reformat the whole repository.
 - Do not rename, move, or delete another developer's files silently.
 - Do not change public contracts without updating docs and handoff notes.
