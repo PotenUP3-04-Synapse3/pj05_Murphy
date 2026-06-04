@@ -24,6 +24,8 @@ Completed:
   the integrated pre-prototype flow.
 - Developer C STT runtime: local Whisper large v3 turbo boundary is wired with
   API fallback and deterministic test mode.
+- Developer C Understanding Agent has deterministic rule mode and an optional
+  OpenAI-assisted `llm` mode with rule fallback.
 - Developer C adapter settings can enable real Kokoro TTS and optional OpenAI
   NPC dialogue generation through environment variables while keeping
   deterministic defaults for tests.
@@ -35,8 +37,12 @@ Completed:
 Not completed yet:
 
 - Live local Whisper model download and smoke test on the demo machine.
+- Live Developer C Understanding LLM smoke test on the demo machine.
 - Live real Kokoro TTS and optional OpenAI NPC dialogue smoke test on the demo
   machine.
+- Shared A/B/C tool-call and data-flow logging directory is not finalized yet;
+  Developer C orchestration debug events should wait for Developer A's shared
+  log file setup.
 - Out-game feedback logging and final report flow.
 - End-to-end retry, bad-ending, and STT fallback demos.
 - Real Unreal multipart bridge validation.
@@ -165,6 +171,27 @@ The fallback calls the OpenAI Transcriptions API only when the local runtime
 fails. `MURPHY_STT_API_MODEL` can be changed to another supported
 Transcriptions API model.
 
+## Understanding Runtime Setup
+
+Automated tests and contract demos should keep deterministic semantic analysis:
+
+```text
+MURPHY_UNDERSTANDING_MODE=rule
+```
+
+For a real AI Understanding Agent endpoint demo:
+
+```text
+OPENAI_API_KEY=<your-api-key>
+MURPHY_UNDERSTANDING_MODE=llm
+MURPHY_UNDERSTANDING_LLM_MODEL=gpt-4o-mini
+MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS=10
+```
+
+LLM mode can only produce Developer C `UnderstandingOutput` semantic evidence.
+If the API key is missing, the request fails, JSON is invalid, or the LLM emits
+forbidden branch/state/hint/NPC fields, the backend falls back to rule mode.
+
 ## TTS and NPC Dialogue Runtime Setup
 
 Automated tests and contract demos should keep deterministic voice output:
@@ -259,6 +286,11 @@ The current implementation includes `stt.player_text` and `npc.audio_url`.
 The automated endpoint path uses deterministic fake Kokoro wav output so tests
 do not require real TTS credentials or model downloads. The local demo endpoint
 can use real Kokoro by setting `MURPHY_TTS_MODE=real`.
+
+Developer C data-flow debug logging is intentionally not implemented yet. Once
+Developer A finalizes the shared log file directory, C should emit
+orchestration events such as `stt_completed`, `understanding_completed`,
+`dev_b_output_received`, and `response_validated` to that shared sink.
 
 ## Developer A Responsibilities for Demo
 
