@@ -15,6 +15,8 @@ from backend.app.schemas.game_turn import (
 )
 from backend.app.services.service_c.agent_run_summary_service import AgentRunSummaryService
 from backend.app.services.service_c.orchestrator import Orchestrator
+from backend.app.services.service_c.settings_service import AppSettings, get_settings
+from backend.app.services.service_c.unreal_request_capture_service import UnrealRequestCaptureService
 from backend.app.services.service_c.validator import Validator
 
 router = APIRouter(prefix="/api/game/ai", tags=["game-ai"])
@@ -23,9 +25,10 @@ AGENT_RUN_LOG_ROOT = Path("backend/runtime/generated/agent_runs")
 
 @router.post("/respond", response_model=UnrealResponse)
 async def respond(request: Request) -> UnrealResponse:
+    settings = get_settings()
     content_type = request.headers.get("content-type", "")
     if content_type.startswith("multipart/form-data"):
-        preprototype_request = await _parse_multipart_request(request)
+        preprototype_request = await _parse_multipart_request(request, settings=settings)
     else:
         preprototype_request = PrePrototypeRequest.model_validate(await request.json())
 
@@ -48,7 +51,11 @@ def result(session_id: str) -> UnrealResultResponse:
     return response
 
 
-async def _parse_multipart_request(request: Request) -> PrePrototypeRequest:
+async def _parse_multipart_request(
+    request: Request,
+    *,
+    settings: AppSettings,
+) -> PrePrototypeRequest:
     form = await request.form()
     turn_part = form.get("turn")
     audio_part = form.get("audio")
@@ -59,8 +66,21 @@ async def _parse_multipart_request(request: Request) -> PrePrototypeRequest:
     if not isinstance(audio_part, UploadFile):
         raise HTTPException(status_code=422, detail="Missing multipart wav file field: audio")
 
-    turn_payload = json.loads(await _read_form_text(turn_part))
+    turn_text = await _read_form_text(turn_part)
     audio_bytes = await audio_part.read()
+    if settings.murphy_unreal_request_capture_mode == "debug":
+        UnrealRequestCaptureService(settings.murphy_unreal_request_capture_root).capture_multipart_request(
+            request=request,
+            turn_text=turn_text,
+            audio_bytes=audio_bytes,
+            audio_filename=audio_part.filename,
+            audio_content_type=audio_part.content_type,
+        )
+
+    try:
+        turn_payload = json.loads(turn_text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid multipart turn JSON: {exc.msg}") from exc
 
     return PrePrototypeRequest(
         turn=UnrealTurnRequest.model_validate(turn_payload),

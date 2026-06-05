@@ -11,11 +11,9 @@ from backend.app.integrations.dev_a_npc_dialogue_client import DevANpcDialogueCl
 from backend.app.main import app
 from backend.app.schemas.game_turn import (
     DevADialogueInput,
-    DevBPolicyOutput,
     MockAudioInput,
     PrePrototypeRequest,
     UnrealTurnRequest,
-    UnderstandingOutput,
 )
 from backend.app.services.service_c.openkb_service import OpenKBService
 from backend.app.services.service_c.orchestrator import Orchestrator
@@ -54,6 +52,7 @@ def _use_deterministic_runtime_modes(monkeypatch: pytest.MonkeyPatch) -> Generat
     monkeypatch.setenv("MURPHY_TTS_MODE", "fake")
     monkeypatch.setenv("MURPHY_NPC_DIALOGUE_MODE", "rule")
     monkeypatch.setenv("MURPHY_UNDERSTANDING_MODE", "rule")
+    monkeypatch.setenv("MURPHY_UNREAL_REQUEST_CAPTURE_MODE", "off")
     monkeypatch.setenv("DEV_B_FEEDBACK_LLM_MODE", "rule")
     get_settings.cache_clear()
     yield
@@ -444,6 +443,80 @@ def test_api_accepts_multipart_turn_json_and_sample_wav() -> None:
     audio_response = client.get(body["npc"]["audio_url"])
     assert audio_response.status_code == 200
     assert audio_response.content.startswith(b"RIFF")
+
+
+def test_api_captures_unreal_multipart_request_when_debug_mode_is_enabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MURPHY_UNREAL_REQUEST_CAPTURE_MODE", "debug")
+    monkeypatch.setenv("MURPHY_UNREAL_REQUEST_CAPTURE_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+    client = TestClient(app)
+
+    with SAMPLE_WAV.open("rb") as audio_file:
+        original_audio = audio_file.read()
+    response = client.post(
+        "/api/game/ai/respond",
+        files={
+            "turn": (
+                "imm_002_purpose.json",
+                json.dumps(_turn_payload()),
+                "application/json",
+            ),
+            "audio": (
+                SAMPLE_WAV.name,
+                original_audio,
+                "audio/wav",
+            ),
+        },
+    )
+
+    assert response.status_code == 200
+    capture_dirs = list(tmp_path.iterdir())
+    assert len(capture_dirs) == 1
+    capture_dir = capture_dirs[0]
+    captured_turn = json.loads((capture_dir / "turn.json").read_text(encoding="utf-8"))
+    captured_metadata = json.loads((capture_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert (capture_dir / "audio.wav").read_bytes() == original_audio
+    assert captured_turn["request_id"] == "req_imm_0001"
+    assert captured_metadata["request_id"] == "req_imm_0001"
+    assert captured_metadata["audio_filename"] == SAMPLE_WAV.name
+    assert captured_metadata["audio_bytes"] == len(original_audio)
+    assert captured_metadata["content_type"].startswith("multipart/form-data")
+
+
+def test_api_captures_malformed_unreal_turn_json_before_returning_422(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MURPHY_UNREAL_REQUEST_CAPTURE_MODE", "debug")
+    monkeypatch.setenv("MURPHY_UNREAL_REQUEST_CAPTURE_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+    client = TestClient(app, raise_server_exceptions=False)
+
+    with SAMPLE_WAV.open("rb") as audio_file:
+        original_audio = audio_file.read()
+    response = client.post(
+        "/api/game/ai/respond",
+        files={
+            "turn": (
+                "bad_turn.json",
+                '{"request_id": "req_bad_json"',
+                "application/json",
+            ),
+            "audio": (
+                SAMPLE_WAV.name,
+                original_audio,
+                "audio/wav",
+            ),
+        },
+    )
+
+    assert response.status_code == 422
+    capture_dir = next(tmp_path.iterdir())
+    assert (capture_dir / "turn.json").read_text(encoding="utf-8") == '{"request_id": "req_bad_json"'
+    assert (capture_dir / "audio.wav").read_bytes() == original_audio
 
 
 def test_validator_rejects_developer_b_branch_outside_allowed_nodes() -> None:

@@ -108,6 +108,16 @@ The response includes `stt.player_text`, STT runtime metadata, Officer Miller's
 NPC text, and `npc.audio_url`. The audio URL is served by the same FastAPI app
 under `/runtime/audio/...`.
 
+To capture incoming Unreal multipart requests for debugging, enable:
+
+```powershell
+$env:MURPHY_UNREAL_REQUEST_CAPTURE_MODE="debug"
+$env:MURPHY_UNREAL_REQUEST_CAPTURE_ROOT="backend/runtime/generated/unreal_requests"
+```
+
+When enabled, each multipart request stores `turn.json`, `audio.wav`, and
+`metadata.json` under the capture root before turn validation/orchestration.
+
 ## Current Phase
 
 Current scope: integrated AI-only pre-prototype for Chapter 0 Immigration

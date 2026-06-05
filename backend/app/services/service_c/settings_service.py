@@ -29,6 +29,8 @@ class AppSettings(BaseSettings):
     murphy_understanding_llm_fallback: Literal["none", "gemma4_vllm"] = "none"
     murphy_understanding_llm_model: str = "gpt-4o-mini"
     murphy_understanding_llm_timeout_seconds: float = 10.0
+    murphy_unreal_request_capture_mode: Literal["off", "debug"] = "off"
+    murphy_unreal_request_capture_root: Path = Path("backend/runtime/generated/unreal_requests")
 
     @classmethod
     def from_env_file(cls, env_file: str | Path) -> "AppSettings":
