@@ -17,6 +17,15 @@ fallback.
 
 ## Last Completed Task
 
+Removed duplicate Developer A-only runtime logs from the NPC dialogue voice
+output path. Developer A now appends NPC dialogue AgentRun records only through
+the shared `unified_agent_run.v1` sink:
+`backend/runtime/generated/agent_runs/unified_agent_runs.jsonl` and
+`backend/runtime/generated/agent_runs/unified_agent_runs.md`. The old
+`npc_dialogue_agent_runs.jsonl`, `npc_dialogue_artifacts.jsonl`, and
+`backend/runtime/logs/developer_a_events.jsonl` write paths were removed from
+runtime behavior.
+
 Enabled the real STT plus real Kokoro TTS endpoint demo path. The C-owned
 `DevANpcDialogueClient` now reads `MURPHY_TTS_MODE` and
 `MURPHY_NPC_DIALOGUE_MODE` from `AppSettings` and passes `use_real_tts` /
@@ -78,6 +87,8 @@ rather than treating it as provider fallback.
 - `backend/app/services/shared/agent_run_markdown_formatter.py`
 - `backend/app/services/service_a/npc_dialogue_agent_run_store.py`
 - `backend/app/services/service_a/voice_output_service.py`
+- `backend/app/services/service_a/developer_a_runtime_log_service.py` (removed)
+- `backend/runtime/logs/developer_a_events.jsonl` (removed)
 - `backend/tests/test_developer_a_agent_run_logging.py`
 - `backend/tests/test_unified_agent_run_log.py`
 - `docs/implementation_logs/developer_a_implementation_log_kimyonghee.md`
@@ -168,6 +179,15 @@ rather than treating it as provider fallback.
 - `uv run ruff check .` (passed)
 - `uv run mypy .` (passed)
 - `git diff --check` (passed with CRLF conversion warnings only)
+- `uv sync` (removed stale `en-core-web-sm==3.8.0` from the local environment)
+- `uv run pytest backend/tests/test_developer_a_agent_run_logging.py::test_voice_output_writes_only_unified_agent_run_records backend/tests/test_developer_a_agent_run_logging.py::test_agent_run_store_appends_only_unified_agent_run_jsonl -q` (RED: old `npc_dialogue_agent_runs.jsonl` was still created)
+- `uv run pytest backend/tests/test_developer_a_agent_run_logging.py::test_voice_output_writes_only_unified_agent_run_records backend/tests/test_developer_a_agent_run_logging.py::test_agent_run_store_appends_only_unified_agent_run_jsonl -q` (GREEN: 2 passed, 1 warning)
+- `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q` (GREEN: 9 passed, 1 warning)
+- `uv run pytest backend/tests/test_unified_agent_run_log.py backend/tests/test_developer_a_agent_run_logging.py -q` (GREEN: 10 passed, 1 warning)
+- `uv run ruff check .` (passed)
+- `uv run mypy .` (passed)
+- `uv run pytest -q` (failed once because the current environment made Developer B log `model_name=gpt-4o-mini` instead of the test-expected `rule_based`)
+- `DEV_B_FEEDBACK_LLM_MODE=rule uv run pytest -q` (GREEN: 62 passed, 2 warnings)
 
 ## Current Architecture
 
