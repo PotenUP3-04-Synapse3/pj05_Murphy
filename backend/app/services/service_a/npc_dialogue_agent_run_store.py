@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from typing import Any
 
@@ -9,20 +8,10 @@ from backend.app.services.shared.agent_run_log_store import (
 
 
 class NPCDialogueAgentRunStore:
-    """Developer A 전용 AgentRun table-like JSONL 저장소."""
+    """Developer A AgentRun을 공통 로그 형식으로 저장한다."""
 
     def __init__(self, root: Path) -> None:
         self.root = root
-
-    def append_agent_run(self, run: dict[str, Any]) -> Path:
-        path = self.root / "npc_dialogue_agent_runs.jsonl"
-        self._append_jsonl(path, run)
-        return path
-
-    def append_artifact(self, artifact: dict[str, Any]) -> Path:
-        path = self.root / "npc_dialogue_artifacts.jsonl"
-        self._append_jsonl(path, artifact)
-        return path
 
     def append_unified_agent_run(
         self,
@@ -35,7 +24,7 @@ class NPCDialogueAgentRunStore:
         summary: dict[str, Any],
         artifact_path: Path | None,
     ) -> tuple[Path, Path]:
-        # 공통 로그는 원본 metadata를 보존하되, timeline event는 최상위 events로 분리한다.
+        # 공통 로그의 metadata는 보존하되 timeline event는 최상위 events로 분리한다.
         metadata = dict(run.get("metadata", {}))
         raw_events = metadata.pop("events", [])
         events = raw_events if isinstance(raw_events, list) else []
@@ -62,11 +51,6 @@ class NPCDialogueAgentRunStore:
             completed_at=run.get("completed_at"),
         )
         return AgentRunLogStore(self.root).append_with_markdown(record)
-
-    def _append_jsonl(self, path: Path, payload: dict[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
 def _int_or_zero(value: Any) -> int:

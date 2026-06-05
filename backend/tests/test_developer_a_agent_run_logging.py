@@ -89,16 +89,34 @@ def test_agent_run_middleware_builds_structured_agent_run() -> None:
     assert completed["metadata"]["events"][0]["data_loaded"]["node_id"] == "IMM_003_DURATION"
 
 
-def test_agent_run_store_appends_run_and_artifact_jsonl(tmp_path) -> None:
+def test_agent_run_store_appends_only_unified_agent_run_jsonl(tmp_path) -> None:
     store = NPCDialogueAgentRunStore(root=tmp_path)
-    run = {"agent_run_id": "run_1", "agent_name": "npc_dialogue_agent"}
-    artifact = {"artifact_id": "artifact_1", "agent_run_id": "run_1"}
+    run = {
+        "agent_run_id": "run_1",
+        "agent_name": "npc_dialogue_agent",
+        "status": "completed",
+        "source_window": {"source_type": "level_design_json"},
+        "model_name": "rule_based",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "estimated_cost_usd": 0.0,
+        "metadata": {"events": []},
+    }
 
-    run_path = store.append_agent_run(run)
-    artifact_path = store.append_artifact(artifact)
+    jsonl_path, markdown_path = store.append_unified_agent_run(
+        run,
+        owner="developer_a",
+        request_id="req_1",
+        session_id="session_1",
+        turn_index=1,
+        summary={"input": "hello", "output": "Okay.", "fallback_used": False},
+        artifact_path=None,
+    )
 
-    assert json.loads(run_path.read_text(encoding="utf-8").splitlines()[0]) == run
-    assert json.loads(artifact_path.read_text(encoding="utf-8").splitlines()[0]) == artifact
+    assert jsonl_path == tmp_path / "unified_agent_runs.jsonl"
+    assert markdown_path == tmp_path / "unified_agent_runs.md"
+    assert not (tmp_path / "npc_dialogue_agent_runs.jsonl").exists()
+    assert not (tmp_path / "npc_dialogue_artifacts.jsonl").exists()
 
 
 def test_unified_agent_run_log_store_appends_jsonl_and_markdown(tmp_path) -> None:
@@ -217,7 +235,7 @@ def test_build_user_visible_run_summary_formats_agent_run_for_demo() -> None:
     assert summary["TTS Voice"] == "am_michael"
 
 
-def test_voice_output_writes_agent_run_and_artifact_records(tmp_path) -> None:
+def test_voice_output_writes_only_unified_agent_run_records(tmp_path) -> None:
     payload = {
         "chapter_id": "chapter_0_immigration",
         "turn_id": "turn_003",
@@ -237,27 +255,26 @@ def test_voice_output_writes_agent_run_and_artifact_records(tmp_path) -> None:
         agent_run_root=tmp_path,
     )
 
-    runs = [
-        json.loads(line)
-        for line in (tmp_path / "npc_dialogue_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
-    artifacts = [
-        json.loads(line)
-        for line in (tmp_path / "npc_dialogue_artifacts.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
     unified_runs = [
         json.loads(line)
         for line in (tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     readable_log = (tmp_path / "unified_agent_runs.md").read_text(encoding="utf-8")
 
-    assert runs[0]["agent_name"] == "npc_dialogue_agent"
-    assert runs[0]["status"] == "completed"
-    assert runs[0]["metadata"]["evidence_summary"][0]["author"] == "level_design_agent"
-    event_names = [event["event"] for event in runs[0]["metadata"]["events"]]
+    assert not (tmp_path / "npc_dialogue_agent_runs.jsonl").exists()
+    assert not (tmp_path / "npc_dialogue_artifacts.jsonl").exists()
+    assert not (tmp_path / "runtime" / "logs").exists()
+    assert "agent_run_path" not in output
+    assert "artifact_path" not in output
+    assert "agent_run_artifact" not in output
+    assert unified_runs[0]["agent_name"] == "npc_dialogue_agent"
+    assert unified_runs[0]["status"] == "completed"
+    assert unified_runs[0]["metadata"]["evidence_summary"][0]["author"] == "level_design_agent"
+    assert "artifact_path" not in unified_runs[0]["metadata"]
+    event_names = [event["event"] for event in unified_runs[0]["events"]]
     tool_names = [
         event.get("tool_name")
-        for event in runs[0]["metadata"]["events"]
+        for event in unified_runs[0]["events"]
         if event.get("event") == "tool_call"
     ]
     assert event_names[0] == "agent_start"
@@ -266,9 +283,6 @@ def test_voice_output_writes_agent_run_and_artifact_records(tmp_path) -> None:
     assert "agent_a.npc_dialogue_agent.generate_npc_dialogue_from_level_design" in tool_names
     assert "tts_service.build_kokoro_provider_request" in tool_names
     assert "tts_provider_service.KokoroProvider.synthesize" in tool_names
-    assert artifacts[0]["agent_run_id"] == runs[0]["agent_run_id"]
-    assert artifacts[0]["payload"]["npc_text"] == output["npc_text"]
-    assert output["agent_run_id"] == runs[0]["agent_run_id"]
     assert unified_runs[0]["agent_run_id"] == output["agent_run_id"]
     assert unified_runs[0]["owner"] == "developer_a"
     assert unified_runs[0]["request_id"] == "req_1"

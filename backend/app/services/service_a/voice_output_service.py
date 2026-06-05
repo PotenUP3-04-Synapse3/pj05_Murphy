@@ -21,9 +21,6 @@ from backend.app.services.service_a.developer_a_fallback_service import build_au
 from backend.app.services.service_a.developer_a_input_service import (
     normalize_level_design_payload,
 )
-from backend.app.services.service_a.developer_a_runtime_log_service import (
-    write_developer_a_event,
-)
 from backend.app.services.service_a.npc_dialogue_agent_run_store import NPCDialogueAgentRunStore
 from backend.app.services.service_a.tts_provider_service import FakeKokoroProvider
 from backend.app.services.service_a.tts_provider_service import RealKokoroProvider
@@ -73,16 +70,6 @@ def build_voice_output_from_level_design(
     """Level Design JSON에서 NPC 대사와 fake Kokoro 음성 metadata를 함께 만든다."""
     root = runtime_root or Path("backend/runtime")
     run_root = agent_run_root or root / "agent_runs"
-    log_path = root / "logs" / "developer_a_events.jsonl"
-    write_developer_a_event(
-        log_path=log_path,
-        component_name="VoiceOutputService",
-        event="start",
-        status="running",
-        request_id=request_id,
-        session_id=session_id,
-    )
-
     agent_run_middleware = NPCDialogueAgentRunMiddleware()
     evidence_metadata = build_npc_dialogue_evidence_summary(payload)
     agent_run_middleware.record_event(
@@ -217,9 +204,6 @@ def build_voice_output_from_level_design(
         )
         (
             agent_run,
-            artifact,
-            agent_run_path,
-            artifact_path,
             unified_agent_run_path,
             readable_agent_run_path,
         ) = _record_agent_run(
@@ -236,22 +220,10 @@ def build_voice_output_from_level_design(
             **dialogue,
             "tts": tts,
             "agent_run_id": agent_run["agent_run_id"],
-            "agent_run_path": str(agent_run_path),
-            "artifact_path": str(artifact_path),
             "unified_agent_run_path": str(unified_agent_run_path),
             "readable_agent_run_path": str(readable_agent_run_path),
             "agent_run": agent_run,
-            "agent_run_artifact": artifact,
         }
-        write_developer_a_event(
-            log_path=log_path,
-            component_name="VoiceOutputService",
-            event="end",
-            status="ok",
-            request_id=request_id,
-            session_id=session_id,
-            metadata={"provider": tts["provider"], "voice_id": tts["voice_id"]},
-        )
         return output
     except Exception as exc:
         # Developer A는 branch를 바꾸지 않고 음성 실패 metadata만 반환한다.
@@ -259,15 +231,6 @@ def build_voice_output_from_level_design(
             provider="kokoro",
             voice_id="am_michael",
             reason=type(exc).__name__,
-        )
-        write_developer_a_event(
-            log_path=log_path,
-            component_name="VoiceOutputService",
-            event="error",
-            status="failed",
-            request_id=request_id,
-            session_id=session_id,
-            metadata={"error_type": type(exc).__name__},
         )
         agent_run_middleware.record_event(
             evidence_metadata,
@@ -277,9 +240,6 @@ def build_voice_output_from_level_design(
         )
         (
             agent_run,
-            artifact,
-            agent_run_path,
-            artifact_path,
             unified_agent_run_path,
             readable_agent_run_path,
         ) = _record_failed_agent_run(
@@ -301,12 +261,9 @@ def build_voice_output_from_level_design(
             "tts": fallback_tts,
             "fallback": {"used": True, "reason": "voice_output_error"},
             "agent_run_id": agent_run["agent_run_id"],
-            "agent_run_path": str(agent_run_path),
-            "artifact_path": str(artifact_path),
             "unified_agent_run_path": str(unified_agent_run_path),
             "readable_agent_run_path": str(readable_agent_run_path),
             "agent_run": agent_run,
-            "agent_run_artifact": artifact,
         }
 
 
@@ -368,7 +325,7 @@ def _record_agent_run(
     evidence_metadata: dict[str, Any],
     request_id: str | None,
     session_id: str | None,
-) -> tuple[dict[str, Any], dict[str, object], Path, Path, Path, Path]:
+) -> tuple[dict[str, Any], Path, Path]:
     llm_metadata = _as_dict(dialogue.get("llm"))
     model_name = str(
         llm_metadata.get("model_name")
@@ -409,21 +366,7 @@ def _record_agent_run(
         ),
     )
 
-    evidence = evidence_metadata["evidence_summary"][0]
-    artifact = build_npc_dialogue_artifact(
-        agent_run_id=str(agent_run["agent_run_id"]),
-        npc_id=_npc_id(payload),
-        npc_text=str(dialogue.get("npc_text") or dialogue.get("text") or ""),
-        tts_text=str(dialogue.get("tts_text") or dialogue.get("npc_text") or ""),
-        feedback_kr=str(dialogue.get("feedback_kr", "")),
-        audio_url=_optional_str(tts.get("audio_url")),
-        audio_path=_optional_str(tts.get("audio_path")),
-        source_id=str(evidence["source_id"]),
-        source_snippet=str(evidence["snippet"]),
-    )
     store = NPCDialogueAgentRunStore(run_root)
-    agent_run_path = store.append_agent_run(agent_run)
-    artifact_path = store.append_artifact(artifact)
     unified_path, readable_path = store.append_unified_agent_run(
         agent_run,
         owner="developer_a",
@@ -436,9 +379,9 @@ def _record_agent_run(
             "fallback_used": evidence_metadata["fallback"]["used"],
             "audio_url": tts.get("audio_url"),
         },
-        artifact_path=artifact_path,
+        artifact_path=None,
     )
-    return agent_run, artifact, agent_run_path, artifact_path, unified_path, readable_path
+    return agent_run, unified_path, readable_path
 
 
 def _record_failed_agent_run(
@@ -450,7 +393,7 @@ def _record_failed_agent_run(
     evidence_metadata: dict[str, Any],
     request_id: str | None,
     session_id: str | None,
-) -> tuple[dict[str, Any], dict[str, object], Path, Path, Path, Path]:
+) -> tuple[dict[str, Any], Path, Path]:
     evidence_metadata["fallback"] = {"used": True, "reason": type(error).__name__}
     evidence_metadata["tts_summary"] = _tts_summary(fallback_tts)
     middleware = NPCDialogueAgentRunMiddleware()
@@ -464,7 +407,7 @@ def _record_failed_agent_run(
     )
     agent_run = middleware.fail_run(agent_run, error=type(error).__name__)
     evidence = evidence_metadata["evidence_summary"][0]
-    artifact = build_npc_dialogue_artifact(
+    _artifact = build_npc_dialogue_artifact(
         agent_run_id=str(agent_run["agent_run_id"]),
         npc_id=_npc_id(payload),
         npc_text="Okay. Please continue.",
@@ -476,8 +419,6 @@ def _record_failed_agent_run(
         source_snippet=str(evidence["snippet"]),
     )
     store = NPCDialogueAgentRunStore(run_root)
-    agent_run_path = store.append_agent_run(agent_run)
-    artifact_path = store.append_artifact(artifact)
     unified_path, readable_path = store.append_unified_agent_run(
         agent_run,
         owner="developer_a",
@@ -490,9 +431,9 @@ def _record_failed_agent_run(
             "fallback_used": True,
             "audio_url": fallback_tts.get("audio_url"),
         },
-        artifact_path=artifact_path,
+        artifact_path=None,
     )
-    return agent_run, artifact, agent_run_path, artifact_path, unified_path, readable_path
+    return agent_run, unified_path, readable_path
 
 
 def _source_window(payload: dict[str, Any], normalized: dict[str, Any]) -> dict[str, Any]:
