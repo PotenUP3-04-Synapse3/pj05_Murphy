@@ -14,6 +14,7 @@ from backend.app.schemas.game_turn import (
     UnrealTurnRequest,
 )
 from backend.app.services.service_c.agent_run_summary_service import AgentRunSummaryService
+from backend.app.services.service_c.openkb_service import OpenKBService
 from backend.app.services.service_c.orchestrator import Orchestrator
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
 from backend.app.services.service_c.unreal_request_capture_service import UnrealRequestCaptureService
@@ -38,6 +39,28 @@ async def respond(request: Request) -> UnrealResponse:
 @router.get("/agent-runs/latest")
 def latest_agent_run(request_id: str | None = None) -> dict[str, Any]:
     return AgentRunSummaryService(AGENT_RUN_LOG_ROOT).latest(request_id=request_id)
+
+
+@router.get("/agent-runs/session-usage")
+def session_agent_run_usage(session_id: str | None = None) -> dict[str, Any]:
+    return AgentRunSummaryService(AGENT_RUN_LOG_ROOT).session_usage(session_id=session_id)
+
+
+@router.get("/demo/node/{node_id}")
+def demo_node_context(node_id: str) -> dict[str, Any]:
+    try:
+        node_context = OpenKBService().get_node_context("CH0_IMMIGRATION", node_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return {
+        "node_id": node_context.node_id,
+        "chapter_id": node_context.chapter_id,
+        "npc_question": node_context.npc_question,
+        "objective_kr": node_context.objective_kr,
+        "recommended_expression": node_context.recommended_expression,
+        "allowed_next_nodes": node_context.allowed_next_nodes,
+    }
 
 
 @router.get("/result/{session_id}", response_model=UnrealResultResponse)

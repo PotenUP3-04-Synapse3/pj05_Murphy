@@ -16,6 +16,188 @@ def test_demo_ai_respond_page_is_served() -> None:
     assert 'id="audioFile"' in response.text
 
 
+def test_respond_dialog_page_is_served_without_changing_original_demo() -> None:
+    client = TestClient(app)
+
+    original = client.get("/demo/ai-respond")
+    response = client.get("/respond-dialog")
+
+    assert original.status_code == 200
+    assert "Murphy AI Respond Tester" in original.text
+    assert response.status_code == 200
+    assert "Murphy Respond Dialog" in response.text
+    assert 'id="audioFile"' in response.text
+    assert 'id="turnFile"' in response.text
+    assert 'id="turnJson"' in response.text
+    assert 'id="transcript"' in response.text
+    assert 'id="elapsedTotal"' in response.text
+    assert 'id="httpStatus"' in response.text
+    assert 'id="sttRuntime"' in response.text
+    assert 'id="verdict"' in response.text
+    assert 'id="sessionTokens"' in response.text
+    assert 'id="sessionCost"' in response.text
+    assert 'id="runButton"' in response.text
+    assert 'id="quickAudioFile"' in response.text
+    assert 'id="continueButton"' in response.text
+    assert "submitAudio(audio, refs.continueButton)" in response.text
+
+
+def test_demo_node_endpoint_returns_safe_node_context() -> None:
+    client = TestClient(app)
+
+    purpose = client.get("/api/game/ai/demo/node/IMM_002_PURPOSE")
+    duration = client.get("/api/game/ai/demo/node/IMM_003_DURATION")
+
+    assert purpose.status_code == 200
+    purpose_body = purpose.json()
+    assert purpose_body == {
+        "node_id": "IMM_002_PURPOSE",
+        "chapter_id": "CH0_IMMIGRATION",
+        "npc_question": "What is the purpose of your visit?",
+        "objective_kr": purpose_body["objective_kr"],
+        "recommended_expression": "I'm here for tourism.",
+        "allowed_next_nodes": [
+            "IMM_003_DURATION",
+            "IMM_002_RETRY_PURPOSE",
+            "IMM_EXTRA_001_CLARIFY_PURPOSE",
+            "END_SECONDARY_INSPECTION",
+        ],
+    }
+    assert isinstance(purpose_body["objective_kr"], str)
+    assert purpose_body["objective_kr"]
+    assert duration.status_code == 200
+    assert duration.json()["node_id"] == "IMM_003_DURATION"
+    assert duration.json()["npc_question"] == "How long will you be staying?"
+
+
+def test_session_usage_endpoint_sums_top_level_model_usage(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(ai_respond, "AGENT_RUN_LOG_ROOT", tmp_path)
+    log_path = tmp_path / "unified_agent_runs.jsonl"
+    log_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "agent_run_id": "c_run_1",
+                        "request_id": "req_1",
+                        "session_id": "session_a",
+                        "model": {
+                            "input_tokens": 10,
+                            "output_tokens": 5,
+                            "total_tokens": 15,
+                            "estimated_cost_usd": 0.001,
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "agent_run_id": "a_run_1",
+                        "request_id": "req_1",
+                        "session_id": "session_a",
+                        "model": {
+                            "input_tokens": 20,
+                            "output_tokens": 7,
+                            "total_tokens": 27,
+                            "estimated_cost_usd": 0.0025,
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "agent_run_id": "c_run_2",
+                        "request_id": "req_2",
+                        "session_id": "session_b",
+                        "model": {
+                            "input_tokens": 100,
+                            "output_tokens": 50,
+                            "total_tokens": 150,
+                            "estimated_cost_usd": 0.01,
+                        },
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(app)
+
+    response = client.get("/api/game/ai/agent-runs/session-usage")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["found"] is True
+    assert body["sessions"] == [
+        {
+            "session_id": "session_b",
+            "agent_run_count": 1,
+            "request_count": 1,
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_tokens": 150,
+            "estimated_cost_usd": 0.01,
+        },
+        {
+            "session_id": "session_a",
+            "agent_run_count": 2,
+            "request_count": 1,
+            "input_tokens": 30,
+            "output_tokens": 12,
+            "total_tokens": 42,
+            "estimated_cost_usd": 0.0035,
+        },
+    ]
+
+
+def test_session_usage_endpoint_filters_by_session_id(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(ai_respond, "AGENT_RUN_LOG_ROOT", tmp_path)
+    log_path = tmp_path / "unified_agent_runs.jsonl"
+    log_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "agent_run_id": "run_a",
+                        "request_id": "req_a",
+                        "session_id": "session_a",
+                        "model": {"input_tokens": 1, "output_tokens": 2, "total_tokens": 3},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "agent_run_id": "run_b",
+                        "request_id": "req_b",
+                        "session_id": "session_b",
+                        "model": {"input_tokens": 4, "output_tokens": 5, "total_tokens": 9},
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/game/ai/agent-runs/session-usage",
+        params={"session_id": "session_a"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "found": True,
+        "sessions": [
+            {
+                "session_id": "session_a",
+                "agent_run_count": 1,
+                "request_count": 1,
+                "input_tokens": 1,
+                "output_tokens": 2,
+                "total_tokens": 3,
+                "estimated_cost_usd": 0.0,
+            }
+        ],
+    }
+
+
 def test_latest_agent_run_endpoint_returns_compact_node_summaries(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(ai_respond, "AGENT_RUN_LOG_ROOT", tmp_path)
     log_path = tmp_path / "unified_agent_runs.jsonl"
@@ -38,6 +220,13 @@ def test_latest_agent_run_endpoint_returns_compact_node_summaries(tmp_path, monk
                         "agent_name": "ai_backend_orchestrator",
                         "owner": "developer_c",
                         "request_id": "req_demo",
+                        "session_id": "session_demo",
+                        "model": {
+                            "input_tokens": 10,
+                            "output_tokens": 5,
+                            "total_tokens": 15,
+                            "estimated_cost_usd": 0.001,
+                        },
                         "status": "completed",
                         "events": [
                             {
@@ -114,6 +303,12 @@ def test_latest_agent_run_endpoint_returns_compact_node_summaries(tmp_path, monk
     assert body["found"] is True
     assert body["agent_run_id"] == "latest_run"
     assert body["request_id"] == "req_demo"
+    assert body["model_usage"] == {
+        "input_tokens": 10,
+        "output_tokens": 5,
+        "total_tokens": 15,
+        "estimated_cost_usd": 0.001,
+    }
     assert [node["tool_name"] for node in body["nodes"]] == [
         "stt_service.transcribe_wav",
         "understanding_agent.analyze_player_text",

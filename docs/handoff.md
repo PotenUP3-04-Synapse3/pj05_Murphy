@@ -17,6 +17,54 @@ fallback.
 
 ## Last Completed Task
 
+Developer C added a separate multi-turn browser tester at `/respond-dialog`
+without changing the existing `/demo/ai-respond` page. The new page starts at
+`IMM_002_PURPOSE`, keeps the left-side wav/Turn JSON upload workflow, and
+renders the right side as an iMessage-style transcript with user STT text, NPC
+text, per-message audio play buttons, and branch dividers. Browser-side state
+now advances playable nodes on `ADVANCE`, keeps the current playable node for
+`REASK`/`GIVE_HINT`, accumulates `state_delta`, appends
+`previous_node_results`, and regenerates `request_id`/`turn_index` per run.
+The page also shows per-turn timing metrics (`Total`, `Status`, `STT`,
+`Verdict`) above session token/cost usage. A separate `Next WAV` picker and
+`Continue` button let testers continue the current auto-updated scenario state
+with only a wav file after the first turn.
+
+Developer C also added demo-only helper APIs:
+
+- `GET /api/game/ai/demo/node/{node_id}` for safe Chapter 0 node context used
+  by the browser tester.
+- `GET /api/game/ai/agent-runs/session-usage?session_id=<optional>` for
+  session-level token and estimated USD cost totals from top-level unified
+  AgentRun `model` fields.
+- `GET /api/game/ai/agent-runs/latest` now includes `model_usage` while keeping
+  the previous compact node summary response fields.
+
+Changed files for this update:
+
+- `backend/app/main.py`
+- `backend/app/api/ai_respond.py`
+- `backend/app/services/service_c/agent_run_summary_service.py`
+- `demo/respond-dialog/index.html`
+- `backend/tests/test_demo_ai_respond_page.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/contracts/developer_c_adapter_contracts.md`
+- `docs/handoff.md`
+
+Verification for this update:
+
+- `uv sync`: PASS. It completed after approved escalation because sandboxed
+  `uv` cache access was denied.
+- `uv run pytest backend/tests/test_demo_ai_respond_page.py -q`: PASS, 6
+  passed, 2 warnings.
+- `uv run pytest backend/tests/test_preprototype_flow.py backend/tests/test_unified_agent_run_log.py -q`:
+  PASS, 15 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 106 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 86 source files. The sandboxed run hit a
+  `uv` cache access-denied error, so the same command was rerun with approved
+  escalation.
+
 Developer A NPC dialogue/voice path is now structured around an NPC roster.
 `backend/app/services/service_a/npc_roster_service.py` owns NPC display name,
 role, default animation, fallback text, mock voice id, and Kokoro voice

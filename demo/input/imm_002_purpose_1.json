@@ -1,71 +1,80 @@
 {
-  "contract_version": "dev_c_unreal_turn.v1",
+  "contract_version": "dev_c_unreal_response.v1",
   "request_id": "req_imm_0001",
-  "session": {
-    "session_id": "session_001",
-    "player_id": "player_001",
-    "chapter_id": "CH0_IMMIGRATION",
-    "scene_id": "JFK_IMMIGRATION_HALL",
-    "current_node_id": "IMM_002_PURPOSE",
-    "turn_index": 2
+  "session_id": "session_001",
+  "turn_index": 2,
+  "current_node_id": "IMM_002_PURPOSE",
+  "next_node_id": "IMM_003_DURATION",
+  "next_action": "ADVANCE",
+  "stt": {
+    "model": "whisper-large-v3-turbo",
+    "primary_runtime": "local",
+    "fallback_runtime": "api",
+    "runtime_used": "api",
+    "player_text": "I'm here for tourism.",
+    "confidence": null,
+    "language_detected": "en-US",
+    "needs_repeat": false
   },
   "npc": {
-    "npc_id": "OFFICER_MILLER",
-    "npc_role": "immigration_officer",
-    "last_npc_message": "What is the purpose of your visit?"
+    "speaker": "Officer Miller",
+    "text": "How long will you be staying?",
+    "tone": "formal_neutral",
+    "animation": "officer_check_passport",
+    "audio_url": "/runtime/audio/kokoro/IMM_002_PURPOSE_visit_purpose_success_am_michael_79729910.wav"
   },
-  "audio": {
-    "mime_type": "audio/wav",
-    "sample_rate_hz": 16000,
-    "channels": 1,
-    "duration_ms": 2800,
-    "language_hint": "en-US"
-  },
-  "player_profile": {
-    "nickname": "Sean",
-    "english_confidence": "beginner",
-    "tier": "Bronze",
-    "travel_speaking_level": "TSL_1_SURVIVAL"
-  },
-  "scenario_state": {
-    "patience": 100,
-    "suspicion": 0,
-    "retry_count": 0,
-    "hint_count": 0,
-    "previous_fail_count": 0
-  },
-  "game_state": {
-    "inventory": [
-      "passport",
-      "boarding_pass",
-      "return_ticket"
-    ],
-    "flags": [
-      "arrived_at_jfk",
-      "passport_submitted"
-    ],
-    "completed_intents": [
-      "submit_passport"
-    ],
-    "current_objective": "State the visit purpose"
-  },
-  "previous_node_results": [
-    {
-      "node_id": "IMM_001_PASSPORT",
-      "verdict": "SUCCESS",
-      "next_action": "ADVANCE"
+  "ui": {
+    "show_hint": false,
+    "hint_kr": null,
+    "recommended_expression": "I'm here for tourism.",
+    "in_game_feedback": {
+      "show": true,
+      "feedback_strategy": "recast",
+      "priority": "low"
     }
-  ],
-  "client_allowed_next_nodes": [
-    "IMM_003_DURATION",
-    "IMM_002_RETRY_PURPOSE",
-    "IMM_EXTRA_001_CLARIFY_PURPOSE",
-    "END_SECONDARY_INSPECTION"
-  ],
-  "client_context": {
-    "platform": "windows",
-    "input_device": "microphone",
-    "locale": "ko-KR",
-    "build_version": "0.1.0"
+  },
+  "state_delta": {
+    "patience_delta": 0,
+    "suspicion_delta": 0,
+    "retry_count_delta": 0,
+    "hint_count_delta": 0
+  },
+  "evaluation": {
+    "verdict": "SUCCESS",
+    "scores": {
+      "task_success": 3,
+      "clarity": 3,
+      "grammar": 2,
+      "vocabulary": 2,
+      "problem_solving": 2,
+      "politeness": 3
+    },
+    "feedback_tags": [
+      "intent_matched",
+      "required_slot_filled"
+    ]
+  },
+  "report": {
+    "recorded_error_count": 0,
+    "report_item": {
+      "summary": "The required immigration answer was understood.",
+      "improvement": "Keep answering with concise, clear travel details.",
+      "example_answer": "I'm here for tourism.",
+      "score_tags": [
+        "task_success_good"
+      ]
+    },
+    "final_result": null
+  },
+  "debug": {
+    "stt_model": "whisper-large-v3-turbo",
+    "stt_confidence": null,
+    "understanding_confidence": 0.95,
+    "contract_versions": [
+      "dev_c_unreal_turn.v1",
+      "dev_b_policy.v1",
+      "dev_a_dialogue.v1",
+      "dev_c_unreal_response.v1"
+    ]
   }
 }

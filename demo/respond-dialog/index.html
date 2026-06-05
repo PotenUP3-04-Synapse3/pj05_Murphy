@@ -1,0 +1,862 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Murphy Respond Dialog</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2428;
+      --muted: #5f6b62;
+      --line: #d8ded7;
+      --surface: #ffffff;
+      --surface-soft: #f5f7f2;
+      --blue: #1f6feb;
+      --blue-dark: #174ea6;
+      --green: #147c5d;
+      --green-dark: #0f5e47;
+      --red: #b42318;
+      --amber: #a86100;
+      --bubble-user: #1f6feb;
+      --bubble-npc: #eef2f6;
+      --focus: #2d6cdf;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--surface-soft);
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 15px;
+      line-height: 1.45;
+      letter-spacing: 0;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .header-inner,
+    main {
+      width: min(1220px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 72px;
+      gap: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .status-pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 10px;
+      color: var(--muted);
+      background: var(--surface);
+      white-space: nowrap;
+    }
+
+    .status-pill.error {
+      border-color: #f0b9b4;
+      color: var(--red);
+    }
+
+    .status-pill.warning {
+      border-color: #e7c88e;
+      color: var(--amber);
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(320px, 430px) minmax(0, 1fr);
+      gap: 20px;
+      padding: 20px 0 32px;
+    }
+
+    section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 16px;
+    }
+
+    .left-rail,
+    .right-rail {
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    input[type="file"],
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+    }
+
+    input[type="file"] {
+      padding: 9px;
+    }
+
+    textarea {
+      min-height: 360px;
+      resize: vertical;
+      padding: 10px;
+      font-family: Consolas, Monaco, "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      min-height: 40px;
+      padding: 0 14px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:focus,
+    input:focus,
+    textarea:focus {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    button.primary {
+      width: 100%;
+      margin-top: 14px;
+      background: var(--green);
+      color: #fff;
+    }
+
+    button.primary:hover {
+      background: var(--green-dark);
+    }
+
+    button.secondary,
+    button.play {
+      background: #eef3eb;
+      border-color: var(--line);
+      color: var(--ink);
+    }
+
+    button.play {
+      min-height: 32px;
+      margin-top: 8px;
+      padding: 0 10px;
+      font-size: 13px;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      border-left: 3px solid var(--blue);
+      background: #f7fafc;
+      padding: 10px;
+      min-height: 72px;
+    }
+
+    .metric strong {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 6px;
+      font-size: 17px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .dialog-shell {
+      min-height: 560px;
+      max-height: 720px;
+      overflow-y: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+      padding: 16px;
+    }
+
+    .transcript {
+      display: grid;
+      gap: 12px;
+    }
+
+    .message {
+      display: grid;
+      gap: 4px;
+      max-width: min(78%, 620px);
+    }
+
+    .message.user {
+      justify-self: end;
+    }
+
+    .message.npc {
+      justify-self: start;
+    }
+
+    .speaker {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .message.user .speaker {
+      text-align: right;
+    }
+
+    .bubble {
+      border-radius: 18px;
+      padding: 10px 13px;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+      box-shadow: 0 1px 2px rgba(31, 36, 40, 0.08);
+    }
+
+    .user .bubble {
+      background: var(--bubble-user);
+      color: #fff;
+      border-bottom-right-radius: 6px;
+    }
+
+    .npc .bubble {
+      background: var(--bubble-npc);
+      color: var(--ink);
+      border-bottom-left-radius: 6px;
+    }
+
+    .turn-divider {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+      margin: 4px 0;
+    }
+
+    .turn-divider::before,
+    .turn-divider::after {
+      content: "";
+      display: block;
+      height: 1px;
+      background: var(--line);
+    }
+
+    .divider-label {
+      display: grid;
+      gap: 2px;
+    }
+
+    .divider-label strong {
+      color: var(--ink);
+      font-size: 12px;
+    }
+
+    pre {
+      margin: 8px 0 0;
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fbfcfa;
+      padding: 10px;
+      font-family: Consolas, Monaco, "Courier New", monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .error {
+      color: var(--red);
+      font-weight: 700;
+    }
+
+    @media (max-width: 900px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+
+      .metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .message {
+        max-width: 90%;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .metric-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1>Murphy Respond Dialog</h1>
+      <div class="status-pill" id="runtimeStatus">Idle</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="left-rail">
+      <section>
+        <h2>Input</h2>
+        <label for="audioFile">WAV</label>
+        <input id="audioFile" type="file" accept=".wav,audio/wav,audio/x-wav">
+
+        <label for="turnFile">Turn JSON</label>
+        <input id="turnFile" type="file" accept=".json,application/json">
+
+        <label for="turnJson">Turn Payload</label>
+        <textarea id="turnJson" spellcheck="false"></textarea>
+
+        <div class="button-row">
+          <button class="secondary" id="resetTurn" type="button">Reset Dialog</button>
+        </div>
+        <button class="primary" id="runButton" type="button">Run</button>
+
+        <label for="quickAudioFile">Next WAV</label>
+        <input id="quickAudioFile" type="file" accept=".wav,audio/wav,audio/x-wav">
+        <button class="primary" id="continueButton" type="button">Continue</button>
+      </section>
+    </div>
+
+    <div class="right-rail">
+      <section>
+        <h2>Timing</h2>
+        <div class="metric-grid">
+          <div class="metric">
+            <strong>Total</strong>
+            <span id="elapsedTotal">-</span>
+          </div>
+          <div class="metric">
+            <strong>Status</strong>
+            <span id="httpStatus">-</span>
+          </div>
+          <div class="metric">
+            <strong>STT</strong>
+            <span id="sttRuntime">-</span>
+          </div>
+          <div class="metric">
+            <strong>Verdict</strong>
+            <span id="verdict">-</span>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Session Usage</h2>
+        <div class="metric-grid">
+          <div class="metric">
+            <strong>Session</strong>
+            <span id="sessionId">-</span>
+          </div>
+          <div class="metric">
+            <strong>Tokens</strong>
+            <span id="sessionTokens">0</span>
+          </div>
+          <div class="metric">
+            <strong>Cost USD</strong>
+            <span id="sessionCost">$0.000000</span>
+          </div>
+          <div class="metric">
+            <strong>Turn</strong>
+            <span id="turnIndex">1</span>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Dialog</h2>
+        <div class="dialog-shell" id="dialogShell">
+          <div class="transcript" id="transcript"></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Raw Response</h2>
+        <pre id="rawJson">-</pre>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const firstNodeId = "IMM_002_PURPOSE";
+
+    const refs = {
+      audioFile: document.getElementById("audioFile"),
+      turnFile: document.getElementById("turnFile"),
+      turnJson: document.getElementById("turnJson"),
+      resetTurn: document.getElementById("resetTurn"),
+      runButton: document.getElementById("runButton"),
+      quickAudioFile: document.getElementById("quickAudioFile"),
+      continueButton: document.getElementById("continueButton"),
+      runtimeStatus: document.getElementById("runtimeStatus"),
+      elapsedTotal: document.getElementById("elapsedTotal"),
+      httpStatus: document.getElementById("httpStatus"),
+      sttRuntime: document.getElementById("sttRuntime"),
+      verdict: document.getElementById("verdict"),
+      sessionId: document.getElementById("sessionId"),
+      sessionTokens: document.getElementById("sessionTokens"),
+      sessionCost: document.getElementById("sessionCost"),
+      turnIndex: document.getElementById("turnIndex"),
+      dialogShell: document.getElementById("dialogShell"),
+      transcript: document.getElementById("transcript"),
+      rawJson: document.getElementById("rawJson")
+    };
+
+    const dialogState = {
+      terminal: false,
+      currentNode: null
+    };
+
+    function makeRequestId(turn) {
+      return "req_respond_dialog_" + Date.now() + "_" + turn.session.turn_index;
+    }
+
+    function buildDefaultTurn() {
+      const sessionId = "session_respond_dialog_" + Date.now();
+      return {
+        contract_version: "dev_c_unreal_turn.v1",
+        request_id: "req_respond_dialog_" + Date.now() + "_1",
+        session: {
+          session_id: sessionId,
+          player_id: "player_001",
+          chapter_id: "CH0_IMMIGRATION",
+          scene_id: "JFK_IMMIGRATION_HALL",
+          current_node_id: firstNodeId,
+          turn_index: 1
+        },
+        npc: {
+          npc_id: "OFFICER_MILLER",
+          npc_role: "immigration_officer",
+          last_npc_message: "What is the purpose of your visit?"
+        },
+        audio: {
+          mime_type: "audio/wav",
+          sample_rate_hz: 16000,
+          channels: 1,
+          duration_ms: 3000,
+          language_hint: "en-US"
+        },
+        player_profile: {
+          nickname: "player",
+          english_confidence: "beginner",
+          tier: "Bronze",
+          travel_speaking_level: "TSL_1_SURVIVAL"
+        },
+        scenario_state: {
+          patience: 100,
+          suspicion: 0,
+          retry_count: 0,
+          hint_count: 0,
+          previous_fail_count: 0,
+          completed_intents: []
+        },
+        game_state: {
+          inventory: ["passport", "boarding_pass", "return_ticket"],
+          flags: ["arrived_at_jfk", "passport_submitted"],
+          completed_intents: ["submit_passport"],
+          current_objective: "State the visit purpose"
+        },
+        previous_node_results: [
+          {
+            node_id: "IMM_001_PASSPORT",
+            verdict: "SUCCESS",
+            next_action: "ADVANCE"
+          }
+        ],
+        client_allowed_next_nodes: [
+          "IMM_003_DURATION",
+          "IMM_002_RETRY_PURPOSE",
+          "IMM_EXTRA_001_CLARIFY_PURPOSE",
+          "END_SECONDARY_INSPECTION"
+        ],
+        client_context: {
+          platform: "windows",
+          input_device: "microphone",
+          locale: "ko-KR",
+          build_version: "respond-dialog"
+        }
+      };
+    }
+
+    function setStatus(text, kind) {
+      refs.runtimeStatus.textContent = text;
+      refs.runtimeStatus.className = "status-pill" + (kind ? " " + kind : "");
+    }
+
+    function formatDuration(ms) {
+      if (ms < 1000) {
+        return Math.round(ms) + " ms";
+      }
+      return (ms / 1000).toFixed(2) + " s";
+    }
+
+    function clearTiming() {
+      refs.elapsedTotal.textContent = "-";
+      refs.httpStatus.textContent = "-";
+      refs.sttRuntime.textContent = "-";
+      refs.verdict.textContent = "-";
+    }
+
+    function fillTiming(body, elapsedMs, statusCode) {
+      refs.elapsedTotal.textContent = formatDuration(elapsedMs);
+      refs.httpStatus.textContent = String(statusCode);
+      refs.sttRuntime.textContent = body?.stt?.runtime_used || "-";
+      refs.verdict.textContent = body?.evaluation?.verdict || "-";
+    }
+
+    function parseTurn() {
+      const turn = JSON.parse(refs.turnJson.value);
+      if (!turn.request_id) {
+        turn.request_id = makeRequestId(turn);
+      }
+      return turn;
+    }
+
+    function writeTurn(turn) {
+      refs.turnJson.value = JSON.stringify(turn, null, 2);
+      refs.sessionId.textContent = turn.session?.session_id || "-";
+      refs.turnIndex.textContent = String(turn.session?.turn_index || "-");
+    }
+
+    async function loadNode(nodeId) {
+      const response = await fetch("/api/game/ai/demo/node/" + encodeURIComponent(nodeId));
+      if (!response.ok) {
+        throw new Error("Node lookup failed: " + nodeId);
+      }
+      return response.json();
+    }
+
+    async function tryLoadNode(nodeId) {
+      try {
+        return await loadNode(nodeId);
+      } catch {
+        return null;
+      }
+    }
+
+    function applyNodeToTurn(turn, node) {
+      turn.session.current_node_id = node.node_id;
+      turn.client_allowed_next_nodes = node.allowed_next_nodes || [];
+      turn.game_state.current_objective = node.npc_question;
+      dialogState.currentNode = node;
+    }
+
+    function appendMessage(role, speaker, text, audioUrl) {
+      const item = document.createElement("article");
+      item.className = "message " + role;
+
+      const speakerNode = document.createElement("div");
+      speakerNode.className = "speaker";
+      speakerNode.textContent = speaker;
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = text || "-";
+
+      item.append(speakerNode, bubble);
+
+      if (audioUrl) {
+        const play = document.createElement("button");
+        play.className = "play";
+        play.type = "button";
+        play.textContent = "Play";
+        play.addEventListener("click", () => {
+          const audio = new Audio(audioUrl);
+          audio.play();
+        });
+        item.appendChild(play);
+      }
+
+      refs.transcript.appendChild(item);
+      refs.dialogShell.scrollTop = refs.dialogShell.scrollHeight;
+    }
+
+    function appendDivider(responseBody) {
+      const item = document.createElement("div");
+      item.className = "turn-divider";
+
+      const label = document.createElement("div");
+      label.className = "divider-label";
+
+      const marks = document.createElement("strong");
+      marks.textContent = "---";
+
+      const detail = document.createElement("span");
+      const verdict = responseBody.evaluation?.verdict || "-";
+      detail.textContent = [
+        responseBody.current_node_id + " -> " + responseBody.next_node_id,
+        responseBody.next_action || "-",
+        verdict
+      ].join(" | ");
+
+      label.append(marks, detail);
+      item.appendChild(label);
+      refs.transcript.appendChild(item);
+      refs.dialogShell.scrollTop = refs.dialogShell.scrollHeight;
+    }
+
+    function resetTranscript(initialText) {
+      refs.transcript.innerHTML = "";
+      appendMessage("npc", "Officer Miller", initialText, null);
+    }
+
+    function applyStateDelta(turn, delta) {
+      if (!delta) {
+        return;
+      }
+      const state = turn.scenario_state;
+      state.patience += Number(delta.patience_delta || 0);
+      state.suspicion += Number(delta.suspicion_delta || 0);
+      state.retry_count += Number(delta.retry_count_delta || 0);
+      state.hint_count += Number(delta.hint_count_delta || 0);
+      state.previous_fail_count = state.retry_count;
+    }
+
+    function appendPreviousNodeResult(turn, responseBody) {
+      turn.previous_node_results.push({
+        node_id: responseBody.current_node_id,
+        verdict: responseBody.evaluation?.verdict || "UNKNOWN",
+        next_action: responseBody.next_action || "UNKNOWN",
+        feedback_tags: responseBody.evaluation?.feedback_tags || []
+      });
+    }
+
+    async function updateNextTurn(turn, responseBody) {
+      applyStateDelta(turn, responseBody.state_delta);
+      appendPreviousNodeResult(turn, responseBody);
+
+      turn.session.turn_index = Number(turn.session.turn_index || 0) + 1;
+      turn.request_id = makeRequestId(turn);
+      turn.npc.last_npc_message = responseBody.npc?.text || turn.npc.last_npc_message;
+
+      const action = responseBody.next_action;
+      const nextNodeId = responseBody.next_node_id;
+      if (action === "ADVANCE" && nextNodeId && nextNodeId.startsWith("IMM_")) {
+        const nextNode = await tryLoadNode(nextNodeId);
+        if (nextNode) {
+          applyNodeToTurn(turn, nextNode);
+          writeTurn(turn);
+          return;
+        }
+      }
+
+      if (action === "REASK" || action === "GIVE_HINT") {
+        const currentNode = await tryLoadNode(responseBody.current_node_id);
+        if (currentNode) {
+          applyNodeToTurn(turn, currentNode);
+        } else {
+          turn.session.current_node_id = responseBody.current_node_id;
+        }
+        writeTurn(turn);
+        return;
+      }
+
+      dialogState.terminal = true;
+      writeTurn(turn);
+      setStatus("Terminal", action === "FAIL_END" ? "error" : "warning");
+    }
+
+    async function updateUsage(sessionId) {
+      const response = await fetch(
+        "/api/game/ai/agent-runs/session-usage?session_id=" + encodeURIComponent(sessionId)
+      );
+      if (!response.ok) {
+        return;
+      }
+      const body = await response.json();
+      const usage = body.sessions && body.sessions[0];
+      refs.sessionTokens.textContent = usage ? String(usage.total_tokens) : "0";
+      refs.sessionCost.textContent = usage
+        ? "$" + Number(usage.estimated_cost_usd).toFixed(6)
+        : "$0.000000";
+    }
+
+    async function resetDialog() {
+      dialogState.terminal = false;
+      refs.rawJson.textContent = "-";
+      clearTiming();
+      const turn = buildDefaultTurn();
+      const node = await loadNode(firstNodeId);
+      applyNodeToTurn(turn, node);
+      turn.npc.last_npc_message = node.npc_question;
+      writeTurn(turn);
+      resetTranscript(node.npc_question);
+      refs.sessionTokens.textContent = "0";
+      refs.sessionCost.textContent = "$0.000000";
+      setStatus("Idle", "");
+    }
+
+    async function loadTurnFile() {
+      const file = refs.turnFile.files[0];
+      if (!file) {
+        return;
+      }
+      refs.turnJson.value = await file.text();
+      try {
+        const turn = parseTurn();
+        const node = await loadNode(turn.session.current_node_id);
+        applyNodeToTurn(turn, node);
+        writeTurn(turn);
+        resetTranscript(turn.npc?.last_npc_message || node.npc_question);
+        dialogState.terminal = false;
+        setStatus("Turn Loaded", "");
+      } catch (error) {
+        setStatus("Invalid Turn", "error");
+        refs.rawJson.textContent = String(error);
+      }
+    }
+
+    async function runRequest() {
+      const audio = refs.audioFile.files[0];
+      if (!audio) {
+        setStatus("Select WAV", "warning");
+        return;
+      }
+
+      await submitAudio(audio, refs.runButton);
+    }
+
+    async function continueWithAudio() {
+      const audio = refs.quickAudioFile.files[0];
+      if (!audio) {
+        setStatus("Select WAV", "warning");
+        return;
+      }
+
+      await submitAudio(audio, refs.continueButton);
+    }
+
+    async function submitAudio(audio, activeButton) {
+      if (dialogState.terminal) {
+        setStatus("Reset Required", "warning");
+        return;
+      }
+
+      let turn;
+      try {
+        turn = parseTurn();
+      } catch (error) {
+        setStatus("Invalid JSON", "error");
+        refs.rawJson.textContent = String(error);
+        return;
+      }
+
+      turn.request_id = makeRequestId(turn);
+      writeTurn(turn);
+
+      const form = new FormData();
+      form.append("turn", new Blob([JSON.stringify(turn)], { type: "application/json" }), "turn.json");
+      form.append("audio", audio, audio.name);
+
+      refs.runButton.disabled = true;
+      refs.continueButton.disabled = true;
+      activeButton.disabled = true;
+      setStatus("Running", "");
+      const started = performance.now();
+      try {
+        const response = await fetch("/api/game/ai/respond", {
+          method: "POST",
+          body: form
+        });
+        const elapsedMs = performance.now() - started;
+        const text = await response.text();
+        const body = JSON.parse(text);
+        fillTiming(body, elapsedMs, response.status);
+        refs.rawJson.textContent = JSON.stringify(body, null, 2);
+
+        if (!response.ok) {
+          setStatus("Failed", "error");
+          return;
+        }
+
+        appendMessage("user", "You", body.stt?.player_text || "-");
+        appendMessage("npc", body.npc?.speaker || "Officer Miller", body.npc?.text || "-", body.npc?.audio_url);
+        appendDivider(body);
+        await updateUsage(body.session_id);
+        await updateNextTurn(turn, body);
+        if (activeButton === refs.continueButton) {
+          refs.quickAudioFile.value = "";
+        }
+        if (!dialogState.terminal) {
+          setStatus("Ready", "");
+        }
+      } catch (error) {
+        refs.elapsedTotal.textContent = "-";
+        refs.httpStatus.textContent = "-";
+        setStatus("Failed", "error");
+        refs.rawJson.textContent = String(error);
+      } finally {
+        refs.runButton.disabled = false;
+        refs.continueButton.disabled = false;
+      }
+    }
+
+    refs.turnFile.addEventListener("change", loadTurnFile);
+    refs.resetTurn.addEventListener("click", resetDialog);
+    refs.runButton.addEventListener("click", runRequest);
+    refs.continueButton.addEventListener("click", continueWithAudio);
+    resetDialog().catch((error) => {
+      setStatus("Init Failed", "error");
+      refs.rawJson.textContent = String(error);
+    });
+  </script>
+</body>
+</html>
