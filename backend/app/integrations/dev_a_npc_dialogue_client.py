@@ -72,11 +72,13 @@ class DevANpcDialogueClient:
         branch = policy.branch.model_dump()
         dialogue_directive = policy.dialogue_directive.model_dump() if policy.dialogue_directive else {}
 
-        candidate_text = "" if self.use_llm_dialogue else self._candidate_text(payload)
+        candidate_text = (
+            self._llm_candidate_text(payload) if self.use_llm_dialogue else self._candidate_text(payload)
+        )
         if candidate_text:
             feedback["npc_recast_line_candidate"] = candidate_text
         if self.use_llm_dialogue:
-            feedback["npc_recast_line_candidate"] = None
+            feedback["npc_recast_line_candidate"] = candidate_text or None
             feedback["recommended_expression"] = None
             level_hint["recommended_expression"] = None
             node_context["recommended_expression"] = None
@@ -101,6 +103,11 @@ class DevANpcDialogueClient:
             "branch": branch,
             "dialogue_directive": dialogue_directive,
         }
+
+    def _llm_candidate_text(self, payload: DevADialogueInput) -> str:
+        if payload.developer_b_policy.branch.branch_type not in {"success", "final"}:
+            return ""
+        return self._next_node_question(payload)
 
     def _candidate_text(self, payload: DevADialogueInput) -> str:
         policy = payload.developer_b_policy

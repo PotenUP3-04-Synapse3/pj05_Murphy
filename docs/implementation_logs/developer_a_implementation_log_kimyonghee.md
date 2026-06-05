@@ -590,3 +590,15 @@
   - `uv run pytest -q`: PASS, 93 passed, 2 warnings
   - `uv run ruff check .`: PASS
   - `uv run mypy .`: PASS
+
+## 2026-06-05 13:40:00 +09:00
+
+- LLM 모드에서 success branch가 다음 노드로 넘어갈 때 `Okay. Please continue.`처럼 generic fallback 대사가 나오는 문제를 수정했다.
+- C adapter가 LLM 모드에서 tourism recast/recommended expression은 계속 제거하되, success/final branch에서는 다음 노드의 `npc_question`만 seed로 전달하도록 바꿨다.
+- 예: `family_visit` 또는 `tourism`으로 `IMM_002_PURPOSE`가 성공하면 A LLM seed는 `You're here for tourism...`가 아니라 `How long will you stay?`가 된다.
+- rule 모드는 기존 recast 후보문 생성 흐름을 유지한다.
+- 검증
+  - `uv run pytest backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_next_question_seed_without_generic_recast_in_llm_mode backend/tests/test_preprototype_flow.py::test_orchestrator_uses_repaired_llm_visit_purpose_before_developer_a_dialogue backend/tests/test_developer_a_npc_dialogue.py -q`: PASS, 13 passed, 2 warnings
+  - `uv run pytest -q`: PASS, 95 passed, 2 warnings
+  - `uv run ruff check .`: PASS
+  - `uv run mypy .`: PASS
