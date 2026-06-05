@@ -67,12 +67,19 @@ class DevANpcDialogueClient:
         policy = payload.developer_b_policy
         evaluation = policy.evaluation
         feedback = policy.in_game_feedback.model_dump()
+        level_hint = policy.level_hint.model_dump()
+        node_context = payload.node_context.model_dump()
         branch = policy.branch.model_dump()
         dialogue_directive = policy.dialogue_directive.model_dump() if policy.dialogue_directive else {}
 
-        candidate_text = self._candidate_text(payload)
+        candidate_text = "" if self.use_llm_dialogue else self._candidate_text(payload)
         if candidate_text:
             feedback["npc_recast_line_candidate"] = candidate_text
+        if self.use_llm_dialogue:
+            feedback["npc_recast_line_candidate"] = None
+            feedback["recommended_expression"] = None
+            level_hint["recommended_expression"] = None
+            node_context["recommended_expression"] = None
 
         if policy.branch.branch_type in {"success", "final"}:
             dialogue_directive["do_not_generate_npc_text"] = False
@@ -81,7 +88,7 @@ class DevANpcDialogueClient:
             "node_id": payload.current_node_id,
             "player_text": payload.player_text,
             "npc": payload.npc.model_dump(),
-            "node_context": payload.node_context.model_dump(),
+            "node_context": node_context,
             "understanding": payload.understanding.model_dump(),
             "evaluation_summary": {
                 "feedback_note": evaluation.feedback_note or "",
@@ -89,7 +96,7 @@ class DevANpcDialogueClient:
                 "task_success": evaluation.scores.task_success,
                 "clarity": evaluation.scores.clarity,
             },
-            "level_hint": policy.level_hint.model_dump(),
+            "level_hint": level_hint,
             "in_game_feedback": feedback,
             "branch": branch,
             "dialogue_directive": dialogue_directive,

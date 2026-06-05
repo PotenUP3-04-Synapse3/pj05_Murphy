@@ -261,6 +261,69 @@ def test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings() -> None:
     assert builder_calls[0]["use_llm_dialogue"] is True
 
 
+def test_dev_a_adapter_does_not_inject_recast_candidate_in_llm_mode() -> None:
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": "Officer Miller",
+            "npc_text": "How long will you stay?",
+            "tone": "formal_neutral",
+            "animation": "officer_check_passport",
+            "feedback_kr": "Good.",
+            "tts": {"audio_url": "/runtime/audio/kokoro/test.wav"},
+        }
+
+    request = _preprototype_request(transcript="I'm here to visit my uncle.")
+    orchestrator = Orchestrator()
+    node_context = orchestrator.openkb_service.get_node_context(
+        request.turn.session.chapter_id,
+        request.turn.session.current_node_id,
+    )
+    normalized_input = orchestrator.stt_service.transcribe_wav(request.audio, request.turn.audio)
+    understanding = orchestrator.understanding_agent.analyze_player_text(
+        normalized_input.player_text,
+        node_context,
+    )
+    dev_b_output = orchestrator.dev_b_client.evaluate_turn(
+        orchestrator.build_dev_b_policy_input(
+            request,
+            normalized_input=normalized_input,
+            node_context=node_context,
+            understanding=understanding,
+        )
+    )
+    client = DevANpcDialogueClient(
+        settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+        voice_output_builder=fake_voice_output_builder,
+    )
+
+    client.generate_dialogue(
+        DevADialogueInput(
+            contract_version="dev_a_dialogue.v1",
+            request_id=request.turn.request_id,
+            session_id=request.turn.session.session_id,
+            current_node_id=request.turn.session.current_node_id,
+            player_text=normalized_input.player_text,
+            npc=request.turn.npc,
+            node_context=node_context,
+            understanding=understanding,
+            developer_b_policy=dev_b_output,
+        )
+    )
+
+    assert builder_payloads
+    assert builder_payloads[0]["in_game_feedback"]["npc_recast_line_candidate"] is None
+    assert builder_payloads[0]["in_game_feedback"]["recommended_expression"] is None
+    assert builder_payloads[0]["level_hint"]["recommended_expression"] is None
+    assert builder_payloads[0]["node_context"]["recommended_expression"] is None
+    assert builder_payloads[0]["player_text"] == "I'm here to visit my uncle."
+
+
 def test_dev_a_adapter_forwards_npc_context_to_voice_builder() -> None:
     builder_payloads: list[dict[str, Any]] = []
 
