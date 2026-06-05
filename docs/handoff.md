@@ -17,6 +17,53 @@ fallback.
 
 ## Last Completed Task
 
+2026-06-05 Developer C updated the `/respond-dialog` tester usage and audio
+input workflow.
+
+Changed:
+
+- `/respond-dialog` now shows a CSS stopwatch icon only while the top status is
+  `Running`.
+- The `Next WAV` area now includes browser microphone recording controls. The
+  browser captures PCM audio, encodes a RIFF WAV file client-side, and submits
+  it through the existing multipart `audio` field.
+- The browser tester tracks request ids sent by the current page and asks
+  `session-usage` for only those request ids. This prevents reused session ids
+  such as `session_001` from mixing historical or other-person runs into the
+  visible token total.
+- `GET /api/game/ai/agent-runs/session-usage` now accepts repeated optional
+  `request_ids` query params in addition to `session_id`.
+- Session usage normalization now accepts canonical unified usage fields and
+  OpenAI-compatible aliases such as `prompt_tokens`, `completion_tokens`, and
+  `cost_usd`.
+
+Known usage limitation:
+
+- If an upstream A/B/C AgentRun record stores `model_name` but records zero
+  token counts and zero cost, Developer C cannot reconstruct the missing
+  provider usage after the fact. The updated summary service will display
+  costs when token/cost fields are present or when known-model tokens can be
+  estimated.
+
+Changed files for this update:
+
+- `backend/app/api/ai_respond.py`
+- `backend/app/services/service_c/agent_run_summary_service.py`
+- `demo/respond-dialog/index.html`
+- `backend/tests/test_demo_ai_respond_page.py`
+- `docs/contracts/developer_c_adapter_contracts.md`
+- `docs/handoff.md`
+
+Verification for this update:
+
+- `uv sync`: PASS after approved escalation for uv user-cache access.
+- `uv run pytest backend/tests/test_demo_ai_respond_page.py -q`: PASS, 8
+  passed, 2 warnings.
+- `uv run pytest -q`: PASS, 110 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 87 source files after approved
+  escalation for uv user-cache access.
+
 Developer C added a separate multi-turn browser tester at `/respond-dialog`
 without changing the existing `/demo/ai-respond` page. The new page starts at
 `IMM_002_PURPOSE`, keeps the left-side wav/Turn JSON upload workflow, and

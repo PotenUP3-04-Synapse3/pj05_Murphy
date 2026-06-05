@@ -38,7 +38,11 @@ def test_respond_dialog_page_is_served_without_changing_original_demo() -> None:
     assert 'id="sessionCost"' in response.text
     assert 'id="runButton"' in response.text
     assert 'id="quickAudioFile"' in response.text
+    assert 'id="quickRecordButton"' in response.text
+    assert 'id="quickUseRecordingButton"' in response.text
     assert 'id="continueButton"' in response.text
+    assert 'id="runningStopwatch"' in response.text
+    assert "getUserMedia" in response.text
     assert "submitAudio(audio, refs.continueButton)" in response.text
 
 
@@ -68,6 +72,120 @@ def test_demo_node_endpoint_returns_safe_node_context() -> None:
     assert duration.status_code == 200
     assert duration.json()["node_id"] == "IMM_003_DURATION"
     assert duration.json()["npc_question"] == "How long will you be staying?"
+
+
+def test_session_usage_endpoint_can_filter_by_request_ids(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(ai_respond, "AGENT_RUN_LOG_ROOT", tmp_path)
+    log_path = tmp_path / "unified_agent_runs.jsonl"
+    log_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "agent_run_id": "old_run",
+                        "request_id": "req_old",
+                        "session_id": "shared_session",
+                        "model": {
+                            "input_tokens": 100,
+                            "output_tokens": 50,
+                            "total_tokens": 150,
+                            "estimated_cost_usd": 0.01,
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "agent_run_id": "current_c",
+                        "request_id": "req_current",
+                        "session_id": "shared_session",
+                        "model": {
+                            "input_tokens": 10,
+                            "output_tokens": 5,
+                            "total_tokens": 15,
+                            "estimated_cost_usd": 0.001,
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "agent_run_id": "current_a",
+                        "request_id": "req_current",
+                        "session_id": "shared_session",
+                        "model": {
+                            "input_tokens": 20,
+                            "output_tokens": 7,
+                            "total_tokens": 27,
+                            "estimated_cost_usd": 0.0025,
+                        },
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/game/ai/agent-runs/session-usage",
+        params=[
+            ("session_id", "shared_session"),
+            ("request_ids", "req_current"),
+        ],
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "found": True,
+        "sessions": [
+            {
+                "session_id": "shared_session",
+                "agent_run_count": 2,
+                "request_count": 1,
+                "input_tokens": 30,
+                "output_tokens": 12,
+                "total_tokens": 42,
+                "estimated_cost_usd": 0.0035,
+            }
+        ],
+    }
+
+
+def test_session_usage_endpoint_normalizes_alternate_usage_keys(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(ai_respond, "AGENT_RUN_LOG_ROOT", tmp_path)
+    log_path = tmp_path / "unified_agent_runs.jsonl"
+    log_path.write_text(
+        json.dumps(
+            {
+                "agent_run_id": "run_prompt_completion",
+                "request_id": "req_prompt_completion",
+                "session_id": "session_prompt_completion",
+                "model": {
+                    "prompt_tokens": "12",
+                    "completion_tokens": "8",
+                    "total_tokens": "20",
+                    "cost_usd": "0.000009",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/game/ai/agent-runs/session-usage",
+        params={"session_id": "session_prompt_completion"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["sessions"][0] == {
+        "session_id": "session_prompt_completion",
+        "agent_run_count": 1,
+        "request_count": 1,
+        "input_tokens": 12,
+        "output_tokens": 8,
+        "total_tokens": 20,
+        "estimated_cost_usd": 0.000009,
+    }
 
 
 def test_session_usage_endpoint_sums_top_level_model_usage(tmp_path, monkeypatch) -> None:

@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from starlette.datastructures import UploadFile
 
 from backend.app.integrations.dev_b_level_hint_client import DevBPolicyClient
@@ -42,8 +42,14 @@ def latest_agent_run(request_id: str | None = None) -> dict[str, Any]:
 
 
 @router.get("/agent-runs/session-usage")
-def session_agent_run_usage(session_id: str | None = None) -> dict[str, Any]:
-    return AgentRunSummaryService(AGENT_RUN_LOG_ROOT).session_usage(session_id=session_id)
+def session_agent_run_usage(
+    session_id: str | None = None,
+    request_ids: list[str] | None = Query(default=None),
+) -> dict[str, Any]:
+    return AgentRunSummaryService(AGENT_RUN_LOG_ROOT).session_usage(
+        session_id=session_id,
+        request_ids=request_ids,
+    )
 
 
 @router.get("/demo/node/{node_id}")

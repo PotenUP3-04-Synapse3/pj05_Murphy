@@ -52,6 +52,19 @@ Developer B now records policy-engine execution through the shared
 state-machine, level/hint, feedback, rubric, LLM/fallback, and OpenKB write
 steps without changing the public `dev_b_policy.v1` response contract.
 
+On 2026-06-05, Developer B completed the final result score policy path for
+the Chapter 0 pre-prototype. The new B-owned policy reads B OpenKB runtime
+records, converts per-turn 0-12 rubric totals into 0-100 scores, averages
+scored scenario turns, derives pass/secondary/comic-fail recommendations, and
+builds final report summaries with best node, weakest node, improvement target,
+and reason tags.
+
+Developer B also improved the local integrated demo workflow around
+`/respond-dialog`. The browser tester now supports direct microphone recording
+for the next wav turn, shows a running-only stopwatch indicator, and displays
+request-scoped AgentRun token/cost totals so reused session ids or other
+developers' runtime logs do not distort the visible demo usage.
+
 ## Architecture
 
 The Developer B implementation is split into a small public agent and focused
@@ -71,6 +84,9 @@ services:
   feedback text generation and schema validation.
 - `backend/app/services/service_b/tier_difficulty_controller.py` owns 0-12
   rubric scoring, TSL mapping, and difficulty profile generation.
+- `backend/app/services/service_b/final_result_score_policy.py` owns final
+  result scoring from B OpenKB records, including pass rank, quantitative
+  score averages, final recommendation, and report summary generation.
 - `backend/app/services/service_b/developer_b_agent_run_logger.py` owns B
   execution logging into the shared unified AgentRun JSONL/markdown files.
 - `backend/app/data/scenario_nodes.json` defines Chapter 0 immigration node
@@ -96,7 +112,9 @@ that Developer C should replace the current mock body of
 - OpenKB Feedback/Error Writer
 - LLM-assisted Feedback/Hint Generator
 - Travel Speaking Level Rubric Controller
+- Final Result Score Policy
 - Unified AgentRun Logger
+- Demo Usage and Recording Diagnostics
 - Dialogue Directive Metadata
 - Developer B pytest suite
 
@@ -130,6 +148,15 @@ The contract also includes optional learning-difficulty metadata:
 - `rubric_scores`
 - `difficulty_profile`
 - `feedback_generation`
+
+The contract now also supports final result delivery on final-branch outputs:
+
+- `final_result.final_recommendation`
+- `final_result.rank`
+- `final_result.final_score_100`
+- `final_result.reason_tags`
+- `final_result.quantitative_scores`
+- `final_result.report_summary`
 
 ## Rule-based Policy
 
@@ -182,6 +209,17 @@ Unified AgentRun logging is additive and best-effort. Runtime records append to
 `backend/runtime/generated/agent_runs/unified_agent_runs.md` with
 `agent_name=english_level_hint_agent` and `owner=developer_b`. Log summaries use
 short previews and policy metadata rather than storing full raw player text.
+The demo usage view can filter totals by the request ids submitted from the
+current browser run, and it normalizes common token/cost aliases such as
+`prompt_tokens`, `completion_tokens`, and `cost_usd` when reading AgentRun
+model metadata.
+
+Final result scoring is deterministic and local. It uses the B-authored
+OpenKB records for a session, ignores unscored records, excludes the
+`IMM_007_FINAL_DECISION` node from the average when prior scored turns exist,
+and returns an unranked result when no valid scored records are available.
+Feedback and focus-on-form records affect reason tags and report summary text,
+not hidden numeric penalties.
 
 Developer B coordination requests are recorded in
 `docs/contracts/change_requests.md`:
@@ -223,17 +261,30 @@ Covered scenarios:
 - OpenKB records include feedback generation and difficulty metadata.
 - Unified AgentRun records capture the B policy timeline and appear alongside
   C orchestrator records in the shared JSONL/markdown log files.
+- Demo usage summaries can be limited to the current browser run's request ids
+  to avoid mixing historical or other-developer costs into the visible total.
+- Browser-recorded wav input can be attached to the next `/respond-dialog` turn
+  through the same multipart audio path as uploaded wav files.
+- Final score policy converts 0-12 rubric totals to 0-100 quantitative scores.
+- Final recommendations distinguish pass, conditional pass, secondary room,
+  comic fail, and unranked outcomes.
+- Final result summaries identify best node, weakest node, main improvement,
+  focus-on-form targets, and included scored turn count.
+- Final branch responses can carry `report.final_result` through the C
+  response envelope.
 
 Latest verification:
 
 - `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/dev_b/test_developer_b_agent_run_log.py -q`:
   26 passed
+- `uv run pytest backend/tests/dev_b/test_final_result_score_policy.py backend/tests/test_final_result_payload.py backend/tests/test_preprototype_flow.py::test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_final_node_line_for_final_branch -q`:
+  9 passed, 2 warnings
 - `uv run pytest backend/tests/test_unified_agent_run_log.py -q`: 1 passed,
   1 warning
-- `uv run pytest -q`: 62 passed, 2 warnings
+- `uv run pytest -q`: 76 passed, 2 warnings
 - `uv run ruff check .`: passed
-- `uv run mypy .`: passed when run outside the sandbox because the sandboxed
-  run cannot access the user-level uv cache.
+- `uv run mypy .`: passed with no issues in 82 source files when run outside
+  the sandbox because the sandboxed run cannot access the user-level uv cache.
 
 ## Demo Scenarios
 
@@ -246,6 +297,8 @@ Latest verification:
 - Warning or bad-end path: illegal work, overstay, unknown item, or unsafe bag
   content expressions raise suspicion and branch to C-validated warning/fail
   outcomes.
+- Multi-turn demo path: testers can upload a wav or record the next wav turn
+  directly in the browser and inspect request-scoped token/cost totals.
 
 ## Resume Bullets
 
@@ -268,8 +321,14 @@ Latest verification:
 - Added optional LLM-assisted Korean hint, feedback, report, Focus-on-Form, and
   rubric candidate generation with deterministic fallback.
 - Added 0-12 Travel Speaking Level rubric and difficulty profile policy.
+- Implemented final result score policy that converts B OpenKB rubric records
+  into 0-100 scores, pass ranks, recommendations, reason tags, and report
+  summaries.
 - Added shared `unified_agent_run.v1` AgentRun logging for Developer B policy
   execution timelines.
+- Improved `/respond-dialog` demo diagnostics with browser-recorded wav input,
+  a running-only stopwatch indicator, and request-scoped AgentRun token/cost
+  totals.
 - Added focused pytest coverage for broken English, branch safety, risk
   handling, node spec completeness, feedback/report payload generation, and
   OpenKB write behavior.
