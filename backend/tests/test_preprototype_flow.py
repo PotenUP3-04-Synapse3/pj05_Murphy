@@ -11,11 +11,9 @@ from backend.app.integrations.dev_a_npc_dialogue_client import DevANpcDialogueCl
 from backend.app.main import app
 from backend.app.schemas.game_turn import (
     DevADialogueInput,
-    DevBPolicyOutput,
     MockAudioInput,
     PrePrototypeRequest,
     UnrealTurnRequest,
-    UnderstandingOutput,
 )
 from backend.app.services.service_c.openkb_service import OpenKBService
 from backend.app.services.service_c.orchestrator import Orchestrator
@@ -320,7 +318,7 @@ def test_dev_a_adapter_uses_next_question_seed_without_generic_recast_in_llm_mod
     )
 
     assert builder_payloads
-    assert builder_payloads[0]["in_game_feedback"]["npc_recast_line_candidate"] == "How long will you stay?"
+    assert builder_payloads[0]["in_game_feedback"]["npc_recast_line_candidate"] == "How long will you be staying?"
     assert builder_payloads[0]["in_game_feedback"]["recommended_expression"] is None
     assert builder_payloads[0]["level_hint"]["recommended_expression"] is None
     assert builder_payloads[0]["node_context"]["recommended_expression"] is None

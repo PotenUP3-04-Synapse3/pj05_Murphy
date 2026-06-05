@@ -8,6 +8,7 @@ from backend.app.api.ai_respond import router as ai_respond_router
 
 RUNTIME_AUDIO_DIR = Path("backend/runtime/generated/audio")
 DEMO_AI_RESPOND_PAGE = Path("demo/ai-respond/index.html")
+RESPOND_DIALOG_PAGE = Path("demo/respond-dialog/index.html")
 
 app = FastAPI(
     title="Murphy Developer C Backend",
@@ -33,3 +34,8 @@ def health() -> dict[str, str]:
 @app.get("/demo/ai-respond", tags=["demo"])
 def demo_ai_respond() -> FileResponse:
     return FileResponse(DEMO_AI_RESPOND_PAGE)
+
+
+@app.get("/respond-dialog", tags=["demo"])
+def respond_dialog() -> FileResponse:
+    return FileResponse(RESPOND_DIALOG_PAGE)
