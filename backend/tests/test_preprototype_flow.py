@@ -264,7 +264,7 @@ def test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings() -> None:
     assert builder_calls[0]["use_llm_dialogue"] is True
 
 
-def test_dev_a_adapter_does_not_inject_recast_candidate_in_llm_mode() -> None:
+def test_dev_a_adapter_uses_next_question_seed_without_generic_recast_in_llm_mode() -> None:
     builder_payloads: list[dict[str, Any]] = []
 
     def fake_voice_output_builder(
@@ -320,7 +320,7 @@ def test_dev_a_adapter_does_not_inject_recast_candidate_in_llm_mode() -> None:
     )
 
     assert builder_payloads
-    assert builder_payloads[0]["in_game_feedback"]["npc_recast_line_candidate"] is None
+    assert builder_payloads[0]["in_game_feedback"]["npc_recast_line_candidate"] == "How long will you stay?"
     assert builder_payloads[0]["in_game_feedback"]["recommended_expression"] is None
     assert builder_payloads[0]["level_hint"]["recommended_expression"] is None
     assert builder_payloads[0]["node_context"]["recommended_expression"] is None
