@@ -73,6 +73,11 @@ class UnderstandingAgent:
                 )
                 return output
 
+            output, postprocessing = _repair_missing_allowed_visit_purpose_slot(
+                output,
+                player_text,
+                node_context,
+            )
             self.last_trace = _build_llm_trace(
                 player_text=player_text,
                 node_context=node_context,
@@ -80,6 +85,7 @@ class UnderstandingAgent:
                 duration_ms=_duration_ms(started),
                 output=output,
                 model_usage=model_usage,
+                postprocessing=postprocessing,
             )
             return output
 
@@ -204,6 +210,63 @@ def _visit_purpose_summary(visit_purpose: str) -> str:
     return f"The player clearly stated a visit purpose: {visit_purpose}."
 
 
+def _repair_missing_allowed_visit_purpose_slot(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> tuple[UnderstandingOutput, dict[str, Any]]:
+    no_repair = {"slot_repair_applied": False}
+    if "visit_purpose" not in node_context.required_slots:
+        return output, no_repair
+    if output.extracted_slots.get("visit_purpose") is not None:
+        return output, no_repair
+    if _has_risk_expression(player_text, node_context):
+        return output, no_repair
+
+    visit_purpose = classify_visit_purpose(
+        player_text,
+        node_context.allowed_slot_values.get("visit_purpose"),
+    )
+    if visit_purpose is None:
+        return output, no_repair
+
+    missing_slots = [slot for slot in output.missing_slots if slot != "visit_purpose"]
+    repaired = output.model_copy(
+        update={
+            "intent": _required_intent_for_slot(node_context, "visit_purpose"),
+            "intent_success": len(missing_slots) == 0,
+            "confidence": max(output.confidence, 0.94),
+            "meaning_summary_kr": _visit_purpose_summary(visit_purpose),
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "none" if len(missing_slots) == 0 else output.ambiguity_type,
+            "risk_delta": 0,
+            "risk_reason": "The purpose is clear and no risk expression was found.",
+            "risk_tags": [],
+            "extracted_slots": {**output.extracted_slots, "visit_purpose": visit_purpose},
+            "missing_slots": missing_slots,
+            "needs_clarification": len(missing_slots) > 0,
+        }
+    )
+    return repaired, {
+        "slot_repair_applied": True,
+        "source": "rule_visit_purpose_classifier",
+        "slot": "visit_purpose",
+        "value": visit_purpose,
+        "reason": "llm_missing_allowed_slot",
+    }
+
+
+def _required_intent_for_slot(node_context: NodeContext, slot_name: str) -> str:
+    if slot_name == "visit_purpose" and "state_visit_purpose" in node_context.required_intents:
+        return "state_visit_purpose"
+    return node_context.required_intents[0] if node_context.required_intents else "unknown"
+
+
+def _has_risk_expression(player_text: str, node_context: NodeContext) -> bool:
+    normalized = player_text.lower()
+    return any(keyword in normalized for keyword in node_context.risk_keywords)
+
+
 def _build_rule_trace(output: UnderstandingOutput | None = None) -> dict[str, Any]:
     trace: dict[str, Any] = {
         "mode": "rule",
@@ -225,11 +288,13 @@ def _build_llm_trace(
     duration_ms: int,
     output: UnderstandingOutput,
     model_usage: dict[str, Any],
+    postprocessing: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "mode": "llm",
         "model_name": model_name,
         "model_usage": model_usage,
+        "postprocessing": postprocessing,
         "fallback_used": False,
         "fallback_reason": None,
         "tool_calls": [

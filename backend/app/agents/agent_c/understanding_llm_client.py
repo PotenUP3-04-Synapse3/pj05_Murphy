@@ -99,7 +99,11 @@ def _developer_instructions() -> str:
         "summary concise."
         " For extracted_slots.visit_purpose, use one of "
         f"{', '.join(VISIT_PURPOSE_VALUES)} when the purpose is clear, or null "
-        "when the visit purpose is missing."
+        "when the visit purpose is missing. Map family words such as uncle, "
+        "aunt, cousin, parents, family, or relative to family_visit; friend to "
+        "friend_visit; business, meeting, or conference to business; study or "
+        "school to study; transit or layover to transit; and tourism, travel, "
+        "vacation, or sightseeing to tourism."
     )
 
 

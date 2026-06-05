@@ -15,6 +15,11 @@ from backend.tests.dev_b.test_developer_b_policy_engine import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _use_rule_feedback_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEV_B_FEEDBACK_LLM_MODE", "rule")
+
+
 def _agent_run_records(root: Path) -> list[dict[str, Any]]:
     path = root / "unified_agent_runs.jsonl"
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]

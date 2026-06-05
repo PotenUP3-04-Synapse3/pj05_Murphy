@@ -6,6 +6,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 import pytest
 
+from backend.app.agents.agent_c.understanding_agent import UnderstandingAgent
 from backend.app.integrations.dev_a_npc_dialogue_client import DevANpcDialogueClient
 from backend.app.main import app
 from backend.app.schemas.game_turn import (
@@ -21,6 +22,28 @@ from backend.app.services.service_c.validator import ValidationError, Validator
 
 
 SAMPLE_WAV = Path("samples/utterance-20260603-163237.wav")
+
+
+class MissingVisitPurposeLLMClient:
+    model = "fake-understanding-model"
+
+    def analyze(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "intent": "state_visit_purpose",
+            "intent_success": False,
+            "confidence": 0.92,
+            "meaning_summary_kr": "The visit purpose is unclear.",
+            "emotion": "calm",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "unclear_purpose",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "extracted_slots": {},
+            "missing_slots": ["visit_purpose"],
+            "needs_clarification": True,
+            "__llm_usage": {"input_tokens": 753, "output_tokens": 153, "total_tokens": 906},
+        }
 
 
 @pytest.fixture(autouse=True)
@@ -154,6 +177,23 @@ def test_orchestrator_advances_family_visit_purpose_to_duration_node() -> None:
     assert response.next_action == "ADVANCE"
     assert response.next_node_id == "IMM_003_DURATION"
     assert response.debug.understanding_confidence == pytest.approx(0.94)
+
+
+def test_orchestrator_uses_repaired_llm_visit_purpose_before_developer_a_dialogue() -> None:
+    orchestrator = Orchestrator()
+    orchestrator.understanding_agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=MissingVisitPurposeLLMClient(),
+    )
+
+    response = orchestrator.run_turn(_preprototype_request(transcript="I'm here to visit my uncle."))
+
+    assert response.next_action == "ADVANCE"
+    assert response.next_node_id == "IMM_003_DURATION"
+    assert response.evaluation.verdict == "SUCCESS"
+    assert response.debug.understanding_confidence == pytest.approx(0.94)
+    assert response.npc.text != "Okay. Please continue."
+    assert "how long" in response.npc.text.lower()
 
 
 def test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings() -> None:

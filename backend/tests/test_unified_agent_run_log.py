@@ -92,7 +92,7 @@ def test_orchestrator_unified_agent_run_includes_understanding_llm_tokens_and_co
         json.loads(line)
         for line in (tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    record = records[0]
+    record = next(item for item in records if item["owner"] == "developer_c")
     understanding_event = next(
         event for event in record["events"] if event.get("tool_name") == "understanding_agent.analyze_player_text"
     )
