@@ -334,7 +334,7 @@ Canonical output returned by Developer B policy.
     "priority": "low",
     "purpose": "maintain_communication",
     "focus": "sentence_naturalness",
-    "npc_recast_line_candidate": "You're here for tourism. How long will you stay?",
+    "npc_recast_line_candidate": "You're here for tourism. How long will you be staying?",
     "clarification_prompt_candidate": null,
     "elicitation_cue_candidate": null,
     "scaffolding_hint": null,
@@ -891,6 +891,52 @@ This is the minimum shape Developer C can safely consume.
 ```
 
 ## 14. Change Control
+
+## 13.1 Final Result Score Payload
+
+Developer B owns the final score policy. In implementation v1, B may attach an
+optional `final_result` object to `DevBPolicyOutput` when the current branch is
+`final`.
+
+Required `final_result` fields:
+
+```json
+{
+  "final_recommendation": "PASS",
+  "rank": "Silver Pass",
+  "final_score_100": 87,
+  "reason_tags": ["score_at_least_80"],
+  "quantitative_scores": {
+    "overall": 87,
+    "comprehension": 90,
+    "fluency": 80,
+    "grammar_accuracy": 80,
+    "vocabulary_range": 90,
+    "clarity": 90,
+    "interaction_problem_solving": 90,
+    "scoring_policy": "simple_average"
+  },
+  "report_summary": {
+    "overall": "You passed the immigration check with clear, usable travel English.",
+    "best_node": "IMM_003_DURATION",
+    "weakest_node": "IMM_002_PURPOSE",
+    "main_improvement": "Keep answers concise and polite.",
+    "focus_on_form_targets": [],
+    "included_node_count": 6
+  }
+}
+```
+
+Policy rules:
+
+- Each per-turn `rubric_scores.total` is converted from 0-12 to 0-100.
+- Chapter 0 v1 uses simple unweighted average across scored nodes.
+- `IMM_007_FINAL_DECISION` is excluded when earlier scored nodes exist.
+- feedback/error/focus-on-form records do not add a separate numeric penalty in
+  v1; they affect `reason_tags` and `report_summary`.
+- `final_score_100` must match `quantitative_scores.overall`.
+- Valid recommendations are `PASS`, `CONDITIONAL_PASS`, `SECONDARY_ROOM`,
+  `COMIC_FAIL`, and `UNRANKED`.
 
 Contract changes must follow this process.
 

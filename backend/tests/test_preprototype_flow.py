@@ -11,9 +11,11 @@ from backend.app.integrations.dev_a_npc_dialogue_client import DevANpcDialogueCl
 from backend.app.main import app
 from backend.app.schemas.game_turn import (
     DevADialogueInput,
+    DevBPolicyOutput,
     MockAudioInput,
     PrePrototypeRequest,
     UnrealTurnRequest,
+    UnderstandingOutput,
 )
 from backend.app.services.service_c.openkb_service import OpenKBService
 from backend.app.services.service_c.orchestrator import Orchestrator
@@ -143,6 +145,7 @@ def test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response() -> N
     assert response.next_action == "ADVANCE"
     assert response.npc.speaker == "Officer Miller"
     assert "tourism" in response.npc.text.lower()
+    assert response.npc.text.startswith("All right.")
     assert response.evaluation.verdict == "SUCCESS"
     assert response.ui.in_game_feedback.feedback_strategy == "recast"
     assert response.debug.stt_model == "whisper-large-v3-turbo"
@@ -156,7 +159,7 @@ def test_openkb_loads_chapter_zero_duration_node_from_scenario_nodes() -> None:
     node_context = OpenKBService().get_node_context("CH0_IMMIGRATION", "IMM_003_DURATION")
 
     assert node_context.node_id == "IMM_003_DURATION"
-    assert node_context.npc_question == "How long will you stay?"
+    assert node_context.npc_question == "How long will you be staying?"
     assert node_context.objective_kr == "체류 기간 말하기"
     assert node_context.success_next_node == "IMM_004_STAY_LOCATION"
     assert "IMM_003_RETRY_DURATION" in node_context.allowed_next_nodes
@@ -192,7 +195,7 @@ def test_orchestrator_uses_repaired_llm_visit_purpose_before_developer_a_dialogu
     assert response.next_node_id == "IMM_003_DURATION"
     assert response.evaluation.verdict == "SUCCESS"
     assert response.debug.understanding_confidence == pytest.approx(0.94)
-    assert response.npc.text != "Okay. Please continue."
+    assert response.npc.text != "All right. Let's continue."
     assert "how long" in response.npc.text.lower()
 
 
@@ -206,7 +209,7 @@ def test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings() -> None:
         builder_calls.append(kwargs)
         return {
             "speaker": "Officer Miller",
-            "npc_text": "You're here for tourism. How long will you stay?",
+            "npc_text": "You're here for tourism. How long will you be staying?",
             "tone": "formal_neutral",
             "animation": "officer_check_passport",
             "feedback_kr": "Good.",

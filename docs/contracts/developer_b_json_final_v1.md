@@ -425,7 +425,7 @@ Developer B는 최종 응답 JSON을 만들지 않는다. 대신 Developer C가 
     "priority": "low",
     "purpose": "maintain_communication",
     "focus": "sentence_naturalness",
-    "npc_recast_line_candidate": "You're here for tourism. How long will you stay?",
+    "npc_recast_line_candidate": "You're here for tourism. How long will you be staying?",
     "clarification_prompt_candidate": null,
     "elicitation_cue_candidate": null,
     "scaffolding_hint": null,
@@ -535,7 +535,7 @@ Developer B는 어떤 피드백 전략을 써야 하는지 제안한다. NPC 최
     "priority": "medium",
     "purpose": "maintain_communication",
     "focus": "sentence_naturalness",
-    "npc_recast_line_candidate": "You're here for tourism. How long will you stay?",
+    "npc_recast_line_candidate": "You're here for tourism. How long will you be staying?",
     "clarification_prompt_candidate": null,
     "elicitation_cue_candidate": null,
     "scaffolding_hint": null,
@@ -907,6 +907,34 @@ Developer B는 CEFR를 그대로 쓰기보다 프로젝트용 Travel Speaking Le
 | patience <= 0 | `COMIC_FAIL` |
 | 필수 노드 3개 이상 `FAIL` | `COMIC_FAIL` |
 | 빈 입력, 무응답, 시스템 오류로 정상 평가 불가 | `UNRANKED` |
+
+### 14.1 Implemented FinalResultScorePolicy v1
+
+The implemented Chapter 0 final score policy is owned by Developer B and is
+returned as optional `DevBPolicyOutput.final_result` on final-branch outputs.
+
+V1 scoring rules:
+
+- Convert each per-turn `rubric_scores.total` from 0-12 to 0-100.
+- Average scored nodes with `simple_average`; no node weights are applied in
+  v1.
+- Exclude `IMM_007_FINAL_DECISION` from the average when earlier scored records
+  exist, so the closing acknowledgement does not inflate the result.
+- Use feedback/error/focus-on-form records for `reason_tags` and
+  `report_summary`; do not apply an additional numeric penalty outside the
+  rubric scores.
+- Return `final_recommendation`, `rank`, `final_score_100`,
+  `quantitative_scores`, and `report_summary`.
+
+Recommendation thresholds:
+
+| Condition | final_recommendation |
+| --- | --- |
+| No scored rubric records | `UNRANKED` |
+| Any `CRITICAL_FAIL`, patience <= 0, suspicion >= 70, or score < 40 | `COMIC_FAIL` |
+| suspicion >= 50 or score < 60 | `SECONDARY_ROOM` |
+| score < 80 or any included node verdict is `FAIL`, `PARTIAL`, or `UNCLEAR` | `CONDITIONAL_PASS` |
+| Otherwise | `PASS` |
 
 ## 15. Chapter 0 노드별 B 평가 기준 요약
 
