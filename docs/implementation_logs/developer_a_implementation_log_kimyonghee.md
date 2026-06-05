@@ -567,3 +567,26 @@
   - `uv run pytest -q`: PASS, 91 passed, 2 warnings
   - `uv run ruff check .`: PASS
   - `uv run mypy .`: PASS
+
+## 2026-06-05 13:10:00 +09:00
+
+- LLM 모드에서 C adapter가 Developer B의 generic `npc_recast_line_candidate`와 `recommended_expression`을 그대로 A LLM payload에 전달하지 않도록 정리했다.
+- `tourism` 같은 scenario 기본 추천 표현이 LLM seed로 들어가면 NPC가 같은 대사를 반복할 수 있어서, `MURPHY_NPC_DIALOGUE_MODE=llm`일 때는 `in_game_feedback.npc_recast_line_candidate`, `in_game_feedback.recommended_expression`, `level_hint.recommended_expression`, `node_context.recommended_expression`을 비운다.
+- A LLM prompt에는 `player_text`와 `understanding.extracted_slots`를 fallback 후보보다 우선하라고 추가했다.
+- rule 모드에서는 기존 후보문 생성 흐름을 유지한다.
+- 검증
+  - `uv run pytest backend/tests/test_preprototype_flow.py::test_dev_a_adapter_does_not_inject_recast_candidate_in_llm_mode backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings backend/tests/test_developer_a_npc_dialogue.py -q`: PASS, 12 passed, 2 warnings
+  - `uv run pytest -q`: PASS, 92 passed, 2 warnings
+  - `uv run ruff check .`: PASS
+  - `uv run mypy .`: PASS
+
+## 2026-06-05 13:25:00 +09:00
+
+- `npc_recast_line_candidate=None` 같은 Python `None` 값이 `str(None)` 처리로 `"None"` 문자열이 되어 NPC 대사와 TTS 텍스트로 흘러가던 문제를 수정했다.
+- Developer A 입력 정규화에서 문자열 필드는 `_optional_text()`를 통해 `None`을 빈 문자열로 처리하도록 바꿨다.
+- 이제 LLM timeout이나 실패가 발생해도 `None`이라는 대사를 읽지 않고, 안전한 fallback 대사로 내려간다.
+- 검증
+  - `uv run pytest backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py::test_dev_a_adapter_does_not_inject_recast_candidate_in_llm_mode -q`: PASS, 12 passed, 2 warnings
+  - `uv run pytest -q`: PASS, 93 passed, 2 warnings
+  - `uv run ruff check .`: PASS
+  - `uv run mypy .`: PASS

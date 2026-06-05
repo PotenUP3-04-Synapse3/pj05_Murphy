@@ -343,3 +343,29 @@ def test_level_design_llm_dialogue_rejects_non_english_npc_text() -> None:
     assert result["llm"]["used"] is False
     assert result["llm"]["fallback_used"] is True
     assert result["llm"]["reason"] == "invalid_llm_dialogue_language"
+
+
+def test_level_design_dialogue_does_not_convert_none_candidate_to_text() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "officer_miller"},
+            "node_id": "IMM_002_PURPOSE",
+            "player_text": "I'm here for tourism.",
+            "node_context": {
+                "npc_question": "What is the purpose of your visit?",
+                "recommended_expression": None,
+            },
+            "evaluation_summary": {"task_success": 3, "clarity": 3},
+            "level_hint": {"english_level": "beginner", "recommended_expression": None},
+            "in_game_feedback": {
+                "npc_recast_line_candidate": None,
+                "recommended_expression": None,
+            },
+            "branch": {"branch_type": "success", "next_node_id": "IMM_003_DURATION"},
+        },
+        use_llm=False,
+    )
+
+    assert result["npc_text"] != "None"
+    assert result["tts_text"] != "Alright. None"
+    assert result["fallback"]["used"] is True

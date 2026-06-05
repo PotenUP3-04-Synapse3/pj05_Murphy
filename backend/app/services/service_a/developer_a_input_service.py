@@ -19,31 +19,37 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
     )
 
     return {
-        "node_id": str(payload.get("node_id", "")),
-        "player_text": str(payload.get("player_text", "")),
-        "npc_question": str(node_context.get("npc_question", "")),
-        "recommended_expression": str(recommended_expression),
-        "english_level": str(level_hint.get("english_level", "beginner")),
+        "node_id": _optional_text(payload.get("node_id")),
+        "player_text": _optional_text(payload.get("player_text")),
+        "npc_question": _optional_text(node_context.get("npc_question")),
+        "recommended_expression": _optional_text(recommended_expression),
+        "english_level": _optional_text(level_hint.get("english_level")) or "beginner",
         "needs_hint": bool(level_hint.get("needs_hint", False)),
-        "feedback_note": str(evaluation_summary.get("feedback_note", "")),
-        "feedback_tag": str(evaluation_summary.get("main_feedback_tag", "")),
+        "feedback_note": _optional_text(evaluation_summary.get("feedback_note")),
+        "feedback_tag": _optional_text(evaluation_summary.get("main_feedback_tag")),
         "task_success": int(evaluation_summary.get("task_success", 0) or 0),
         "clarity": int(evaluation_summary.get("clarity", 0) or 0),
-        "candidate_text": str(in_game_feedback.get("npc_recast_line_candidate", "")),
-        "feedback_strategy": str(in_game_feedback.get("feedback_strategy", "")),
-        "priority": str(in_game_feedback.get("priority", "low")),
+        "candidate_text": _optional_text(in_game_feedback.get("npc_recast_line_candidate")),
+        "feedback_strategy": _optional_text(in_game_feedback.get("feedback_strategy")),
+        "priority": _optional_text(in_game_feedback.get("priority")) or "low",
         "retry_count": _optional_int(
             dialogue_directive.get("retry_count")
             or in_game_feedback.get("retry_count")
             or branch.get("retry_count")
             or payload.get("retry_count")
         ),
-        "branch_type": str(branch.get("branch_type", "")),
-        "next_node_id": str(branch.get("next_node_id", "")),
-        "dialogue_purpose": str(dialogue_directive.get("purpose", "")),
-        "tone_hint": str(dialogue_directive.get("tone_hint", "neutral")),
-        "target_slot": str(dialogue_directive.get("target_slot", "")),
+        "branch_type": _optional_text(branch.get("branch_type")),
+        "next_node_id": _optional_text(branch.get("next_node_id")),
+        "dialogue_purpose": _optional_text(dialogue_directive.get("purpose")),
+        "tone_hint": _optional_text(dialogue_directive.get("tone_hint")) or "neutral",
+        "target_slot": _optional_text(dialogue_directive.get("target_slot")),
     }
+
+
+def _optional_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value)
 
 
 def _optional_int(value: Any) -> int:
