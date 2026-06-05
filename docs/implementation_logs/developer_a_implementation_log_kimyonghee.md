@@ -602,3 +602,12 @@
   - `uv run pytest -q`: PASS, 95 passed, 2 warnings
   - `uv run ruff check .`: PASS
   - `uv run mypy .`: PASS
+
+## 2026-06-05 13:55:00 +09:00
+
+- 실제 Kokoro provider가 `KPipeline`을 만들 때 `repo_id="hexgrad/Kokoro-82M"`를 명시하도록 수정했다.
+- 사용하는 모델은 기존 default와 동일하지만, 서버 콘솔에 `Defaulting repo_id to hexgrad/Kokoro-82M` warning이 출력되지 않도록 했다.
+- 검증
+  - `uv run pytest backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 23 passed, 1 warning
+  - `uv run ruff check backend/app/services/service_a/tts_provider_service.py`: PASS
+  - `uv run mypy backend/app/services/service_a/tts_provider_service.py`: PASS

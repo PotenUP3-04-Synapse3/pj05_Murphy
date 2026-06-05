@@ -25,6 +25,7 @@ KOKORO_CAPABILITIES = TTSCapabilities(
     supports_pitch=False,
     output_sample_rates=(24000,),
 )
+KOKORO_DEFAULT_REPO_ID = "hexgrad/Kokoro-82M"
 
 
 @dataclass(frozen=True)
@@ -93,7 +94,10 @@ class RealKokoroProvider:
         started_at = time.perf_counter()
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        pipeline = pipeline_type(lang_code=str(request.provider_options.get("lang_code", "a")))
+        pipeline = pipeline_type(
+            lang_code=str(request.provider_options.get("lang_code", "a")),
+            repo_id=KOKORO_DEFAULT_REPO_ID,
+        )
         generator = pipeline(
             request.text,
             voice=str(request.provider_options.get("voice", "am_michael")),
