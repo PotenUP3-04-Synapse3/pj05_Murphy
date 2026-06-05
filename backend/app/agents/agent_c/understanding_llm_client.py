@@ -99,7 +99,11 @@ def _developer_instructions() -> str:
         "summary concise."
         " For extracted_slots.visit_purpose, use one of "
         f"{', '.join(VISIT_PURPOSE_VALUES)} when the purpose is clear, or null "
-        "when the visit purpose is missing."
+        "when the visit purpose is missing. Map family words such as uncle, "
+        "aunt, cousin, parents, family, or relative to family_visit; friend to "
+        "friend_visit; business, meeting, or conference to business; study or "
+        "school to study; transit or layover to transit; and tourism, travel, "
+        "vacation, or sightseeing to tourism."
     )
 
 
@@ -155,11 +159,15 @@ def _understanding_schema() -> dict[str, Any]:
 
 def _extract_structured_json(data: dict[str, Any]) -> dict[str, Any]:
     if isinstance(data.get("output_text"), str):
-        return _normalize_structured_result(json.loads(data["output_text"]))
+        result = _normalize_structured_result(json.loads(data["output_text"]))
+        result["__llm_usage"] = _extract_usage(data)
+        return result
     for output_item in data.get("output", []):
         for content_item in output_item.get("content", []):
             if content_item.get("type") == "output_text":
-                return _normalize_structured_result(json.loads(str(content_item.get("text", ""))))
+                result = _normalize_structured_result(json.loads(str(content_item.get("text", ""))))
+                result["__llm_usage"] = _extract_usage(data)
+                return result
     raise UnderstandingLLMUnavailable("OpenAI response did not include output_text.")
 
 
@@ -189,3 +197,21 @@ def _http_status_error_detail(exc: httpx.HTTPStatusError) -> str:
         message = error.get("message") or response.text[:500]
         return f"status={response.status_code} code={code} message={message}"
     return f"status={response.status_code} body={response.text[:500]}"
+
+
+def _extract_usage(data: dict[str, Any]) -> dict[str, int]:
+    usage = data.get("usage")
+    if not isinstance(usage, dict):
+        return {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    input_tokens = _int_or_zero(usage.get("input_tokens"))
+    output_tokens = _int_or_zero(usage.get("output_tokens"))
+    total_tokens = _int_or_zero(usage.get("total_tokens")) or input_tokens + output_tokens
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
+def _int_or_zero(value: Any) -> int:
+    return value if isinstance(value, int) else 0

@@ -268,6 +268,7 @@ class Orchestrator:
                     "fallback_used": _understanding_fallback_used(self.understanding_agent.last_trace),
                     "audio_url": response.npc.audio_url,
                 },
+                model_usage=_agent_run_model_usage(self.understanding_agent.last_trace),
             )
             return response
         except Exception as exc:
@@ -286,6 +287,7 @@ class Orchestrator:
                     "fallback_used": _understanding_fallback_used(self.understanding_agent.last_trace),
                     "audio_url": None,
                 },
+                model_usage=_agent_run_model_usage(self.understanding_agent.last_trace),
             )
             raise
 
@@ -466,6 +468,11 @@ def _response_summary(response: UnrealResponse) -> dict[str, Any]:
 
 def _understanding_fallback_used(trace: dict[str, Any]) -> bool:
     return bool(trace.get("fallback_used"))
+
+
+def _agent_run_model_usage(trace: dict[str, Any]) -> dict[str, Any] | None:
+    usage = trace.get("model_usage")
+    return usage if isinstance(usage, dict) else None
 
 
 def _preview(text: str, limit: int = 120) -> str:

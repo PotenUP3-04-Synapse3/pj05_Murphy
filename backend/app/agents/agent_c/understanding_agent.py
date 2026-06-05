@@ -3,6 +3,7 @@ from pydantic import ValidationError as PydanticValidationError
 from time import perf_counter
 from typing import Any
 
+from backend.app.agents.agent_c.llm_cost_estimator import build_model_usage_summary
 from backend.app.agents.agent_c.understanding_llm_client import (
     OpenAIUnderstandingLLMClient,
     UnderstandingLLMClient,
@@ -54,7 +55,7 @@ class UnderstandingAgent:
             started = perf_counter()
             model_name = self._llm_model_name()
             try:
-                output = self._analyze_with_llm(player_text, node_context)
+                output, model_usage = self._analyze_with_llm(player_text, node_context)
             except (UnderstandingLLMUnavailable, PydanticValidationError, TypeError, ValueError) as exc:
                 _LOGGER.warning(
                     "Understanding Agent LLM failed; using rule fallback. error_type=%s error=%s",
@@ -72,12 +73,19 @@ class UnderstandingAgent:
                 )
                 return output
 
+            output, postprocessing = _repair_missing_allowed_visit_purpose_slot(
+                output,
+                player_text,
+                node_context,
+            )
             self.last_trace = _build_llm_trace(
                 player_text=player_text,
                 node_context=node_context,
                 model_name=model_name,
                 duration_ms=_duration_ms(started),
                 output=output,
+                model_usage=model_usage,
+                postprocessing=postprocessing,
             )
             return output
 
@@ -89,7 +97,7 @@ class UnderstandingAgent:
         self,
         player_text: str,
         node_context: NodeContext,
-    ) -> UnderstandingOutput:
+    ) -> tuple[UnderstandingOutput, dict[str, Any]]:
         result = self._get_llm_client().analyze(
             {
                 "player_text": player_text,
@@ -109,8 +117,12 @@ class UnderstandingAgent:
                 },
             }
         )
+        model_usage = build_model_usage_summary(
+            model_name=self._llm_model_name(),
+            usage=_dict_or_none(result.get("__llm_usage")),
+        )
         _reject_forbidden_llm_keys(result)
-        return UnderstandingOutput.model_validate(result)
+        return UnderstandingOutput.model_validate(result), model_usage
 
     def _get_llm_client(self) -> UnderstandingLLMClient:
         if self.llm_client is not None:
@@ -198,6 +210,63 @@ def _visit_purpose_summary(visit_purpose: str) -> str:
     return f"The player clearly stated a visit purpose: {visit_purpose}."
 
 
+def _repair_missing_allowed_visit_purpose_slot(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> tuple[UnderstandingOutput, dict[str, Any]]:
+    no_repair = {"slot_repair_applied": False}
+    if "visit_purpose" not in node_context.required_slots:
+        return output, no_repair
+    if output.extracted_slots.get("visit_purpose") is not None:
+        return output, no_repair
+    if _has_risk_expression(player_text, node_context):
+        return output, no_repair
+
+    visit_purpose = classify_visit_purpose(
+        player_text,
+        node_context.allowed_slot_values.get("visit_purpose"),
+    )
+    if visit_purpose is None:
+        return output, no_repair
+
+    missing_slots = [slot for slot in output.missing_slots if slot != "visit_purpose"]
+    repaired = output.model_copy(
+        update={
+            "intent": _required_intent_for_slot(node_context, "visit_purpose"),
+            "intent_success": len(missing_slots) == 0,
+            "confidence": max(output.confidence, 0.94),
+            "meaning_summary_kr": _visit_purpose_summary(visit_purpose),
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "none" if len(missing_slots) == 0 else output.ambiguity_type,
+            "risk_delta": 0,
+            "risk_reason": "The purpose is clear and no risk expression was found.",
+            "risk_tags": [],
+            "extracted_slots": {**output.extracted_slots, "visit_purpose": visit_purpose},
+            "missing_slots": missing_slots,
+            "needs_clarification": len(missing_slots) > 0,
+        }
+    )
+    return repaired, {
+        "slot_repair_applied": True,
+        "source": "rule_visit_purpose_classifier",
+        "slot": "visit_purpose",
+        "value": visit_purpose,
+        "reason": "llm_missing_allowed_slot",
+    }
+
+
+def _required_intent_for_slot(node_context: NodeContext, slot_name: str) -> str:
+    if slot_name == "visit_purpose" and "state_visit_purpose" in node_context.required_intents:
+        return "state_visit_purpose"
+    return node_context.required_intents[0] if node_context.required_intents else "unknown"
+
+
+def _has_risk_expression(player_text: str, node_context: NodeContext) -> bool:
+    normalized = player_text.lower()
+    return any(keyword in normalized for keyword in node_context.risk_keywords)
+
+
 def _build_rule_trace(output: UnderstandingOutput | None = None) -> dict[str, Any]:
     trace: dict[str, Any] = {
         "mode": "rule",
@@ -218,10 +287,14 @@ def _build_llm_trace(
     model_name: str,
     duration_ms: int,
     output: UnderstandingOutput,
+    model_usage: dict[str, Any],
+    postprocessing: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "mode": "llm",
         "model_name": model_name,
+        "model_usage": model_usage,
+        "postprocessing": postprocessing,
         "fallback_used": False,
         "fallback_reason": None,
         "tool_calls": [
@@ -230,9 +303,13 @@ def _build_llm_trace(
                 "status": "completed",
                 "tool_name": "understanding_llm_client.analyze",
                 "model_name": model_name,
+                "model_usage": model_usage,
                 "duration_ms": duration_ms,
                 "input_summary": _understanding_input_summary(player_text, node_context),
-                "output_summary": _understanding_output_summary(output),
+                "output_summary": {
+                    **_understanding_output_summary(output),
+                    "estimated_cost_usd": model_usage["estimated_cost_usd"],
+                },
             }
         ],
     }
@@ -293,6 +370,10 @@ def _understanding_output_summary(output: UnderstandingOutput) -> dict[str, Any]
 
 def _duration_ms(started: float) -> int:
     return max(0, round((perf_counter() - started) * 1000))
+
+
+def _dict_or_none(value: Any) -> dict[str, Any] | None:
+    return value if isinstance(value, dict) else None
 
 
 def _preview(text: str, limit: int = 120) -> str:

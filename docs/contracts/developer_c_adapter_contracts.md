@@ -239,6 +239,13 @@ Rules:
   slot values are represented as required nullable schema fields, then
   normalized back into `extracted_slots: dict[str, str]` before Pydantic
   validation.
+- In LLM mode, Developer C applies a narrow semantic slot guard after a valid
+  LLM response. If the current node requires `visit_purpose`, the LLM leaves
+  that slot missing, no risk expression is present, and the deterministic
+  allowed-value classifier detects a clear purpose such as `uncle ->
+  family_visit`, C repairs the Understanding output before sending it to
+  Developer B. This is recorded in `last_trace.postprocessing` and is not
+  counted as LLM fallback.
 - Rule fallback recognizes the current `visit_purpose` allowed values:
   `family_visit`, `friend_visit`, `business`, `study`, `transit`, and
   `tourism`.
@@ -535,6 +542,14 @@ Rules:
   validator, error-capture, Developer A, response-builder, and final validator
   boundaries.
 - The log must not include wav bytes, API keys, or full provider prompts.
+- When Developer C directly calls the Understanding LLM and the provider
+  returns token usage, the unified record's top-level `model` object stores
+  `model_name`, `input_tokens`, `output_tokens`, `total_tokens`, and
+  `estimated_cost_usd`.
+- The same token/cost summary is also copied into the Understanding trace so
+  the exact paid tool boundary is visible in the event timeline.
+- Developer C does not estimate Developer A or Developer B costs inside the C
+  orchestration record. Those costs belong in each owner's own AgentRun record.
 - `metadata.data_flow` stores safe summaries of payload movement between
   agents/services so JSON flow can be debugged from the AI backend side.
 

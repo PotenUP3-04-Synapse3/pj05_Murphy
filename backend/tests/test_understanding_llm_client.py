@@ -49,6 +49,42 @@ def test_extract_structured_json_drops_null_optional_slot_values() -> None:
     assert result["extracted_slots"] == {}
 
 
+def test_extract_structured_json_preserves_llm_usage() -> None:
+    result = _extract_structured_json(
+        {
+            "output_text": json.dumps(
+                {
+                    "intent": "state_visit_purpose",
+                    "intent_success": True,
+                    "confidence": 0.91,
+                    "meaning_summary_kr": "방문 목적을 말했다.",
+                    "emotion": "calm",
+                    "answer_relevance": "on_topic",
+                    "ambiguity_type": "none",
+                    "risk_delta": 0,
+                    "risk_reason": "No risk expression was found.",
+                    "risk_tags": [],
+                    "extracted_slots": {"visit_purpose": "family_visit"},
+                    "missing_slots": [],
+                    "needs_clarification": False,
+                },
+                ensure_ascii=False,
+            ),
+            "usage": {
+                "input_tokens": 1000,
+                "output_tokens": 500,
+                "total_tokens": 1500,
+            },
+        }
+    )
+
+    assert result["__llm_usage"] == {
+        "input_tokens": 1000,
+        "output_tokens": 500,
+        "total_tokens": 1500,
+    }
+
+
 def test_openai_understanding_client_includes_responses_api_error_detail(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_post(*args: Any, **kwargs: Any) -> httpx.Response:
         return httpx.Response(

@@ -123,6 +123,48 @@ def test_understanding_agent_logs_llm_failure_before_rule_fallback(caplog) -> No
     )
 
 
+def test_understanding_agent_repairs_llm_missing_allowed_visit_purpose_slot() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_visit_purpose",
+            "intent_success": False,
+            "confidence": 0.92,
+            "meaning_summary_kr": "The visit purpose is unclear.",
+            "emotion": "calm",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "unclear_purpose",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "extracted_slots": {},
+            "missing_slots": ["visit_purpose"],
+            "needs_clarification": True,
+            "__llm_usage": {"input_tokens": 753, "output_tokens": 153, "total_tokens": 906},
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text("I'm here to visit my uncle.", _purpose_node_context())
+
+    assert output.intent == "state_visit_purpose"
+    assert output.intent_success is True
+    assert output.extracted_slots == {"visit_purpose": "family_visit"}
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
+    assert agent.last_trace["mode"] == "llm"
+    assert agent.last_trace["fallback_used"] is False
+    assert agent.last_trace["postprocessing"] == {
+        "slot_repair_applied": True,
+        "source": "rule_visit_purpose_classifier",
+        "slot": "visit_purpose",
+        "value": "family_visit",
+        "reason": "llm_missing_allowed_slot",
+    }
+
+
 def test_understanding_agent_rule_mode_recognizes_allowed_visit_purpose_values() -> None:
     agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
 

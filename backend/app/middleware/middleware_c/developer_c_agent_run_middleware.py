@@ -116,10 +116,11 @@ class DeveloperCAgentRunMiddleware:
         *,
         status: str,
         summary: dict[str, Any],
-        model_name: str = "mixed_runtime",
+        model_usage: dict[str, Any] | None = None,
     ) -> tuple[Path, Path]:
         run["status"] = status
         run["completed_at"] = datetime.now(UTC).isoformat()
+        resolved_model_usage = _model_usage_or_default(model_usage)
         record = build_unified_agent_run_record(
             agent_run_id=str(run["agent_run_id"]),
             agent_name=str(run["agent_name"]),
@@ -129,10 +130,10 @@ class DeveloperCAgentRunMiddleware:
             turn_index=_optional_int(run.get("turn_index")),
             status=status,
             source_window=_dict_or_empty(run.get("source_window")),
-            model_name=model_name,
-            input_tokens=0,
-            output_tokens=0,
-            estimated_cost_usd=0.0,
+            model_name=resolved_model_usage["model_name"],
+            input_tokens=resolved_model_usage["input_tokens"],
+            output_tokens=resolved_model_usage["output_tokens"],
+            estimated_cost_usd=resolved_model_usage["estimated_cost_usd"],
             events=[event for event in _list_or_empty(run.get("events")) if isinstance(event, dict)],
             summary=summary,
             metadata=_dict_or_empty(run.get("metadata")),
@@ -158,3 +159,27 @@ def _dict_or_empty(value: Any) -> dict[str, Any]:
 
 def _list_or_empty(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def _model_usage_or_default(value: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {
+            "model_name": "mixed_runtime",
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "estimated_cost_usd": 0.0,
+        }
+    return {
+        "model_name": str(value.get("model_name", "mixed_runtime")),
+        "input_tokens": _int_or_zero(value.get("input_tokens")),
+        "output_tokens": _int_or_zero(value.get("output_tokens")),
+        "estimated_cost_usd": _float_or_zero(value.get("estimated_cost_usd")),
+    }
+
+
+def _int_or_zero(value: Any) -> int:
+    return value if isinstance(value, int) else 0
+
+
+def _float_or_zero(value: Any) -> float:
+    return float(value) if isinstance(value, int | float) else 0.0
