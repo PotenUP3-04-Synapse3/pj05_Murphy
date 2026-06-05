@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from backend.app.agents.agent_c.llm_cost_estimator import estimate_openai_llm_cost_usd
+
 
 DEFAULT_AGENT_RUN_ROOT = Path("backend/runtime/generated/agent_runs")
 IMPORTANT_TOOL_LABELS = {
@@ -54,14 +56,26 @@ class AgentRunSummaryService:
             "nodes": [_event_summary(event) for event in _tool_call_events(record)],
         }
 
-    def session_usage(self, session_id: str | None = None) -> dict[str, Any]:
+    def session_usage(
+        self,
+        session_id: str | None = None,
+        request_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
         sessions: dict[str, dict[str, Any]] = {}
+        request_id_filter = {
+            request_id
+            for request_id in request_ids or []
+            if isinstance(request_id, str) and request_id
+        }
 
         for order, record in enumerate(self._records()):
             record_session_id = record.get("session_id")
             if not isinstance(record_session_id, str) or not record_session_id:
                 continue
             if session_id is not None and record_session_id != session_id:
+                continue
+            request_id = record.get("request_id")
+            if request_id_filter and request_id not in request_id_filter:
                 continue
 
             usage = _model_usage(record.get("model"))
@@ -79,7 +93,6 @@ class AgentRunSummaryService:
                 },
             )
             aggregate["agent_run_count"] += 1
-            request_id = record.get("request_id")
             if isinstance(request_id, str) and request_id:
                 aggregate["request_ids"].add(request_id)
             aggregate["input_tokens"] += usage["input_tokens"]
@@ -169,12 +182,42 @@ def _model_usage(value: Any) -> dict[str, Any]:
             "estimated_cost_usd": 0.0,
         }
 
+    model_name = str(value.get("model_name") or value.get("model") or "")
+    nested_usage = value.get("usage")
+    usage = nested_usage if isinstance(nested_usage, dict) else value
+    input_tokens = _first_int(usage, "input_tokens", "prompt_tokens")
+    output_tokens = _first_int(usage, "output_tokens", "completion_tokens")
+    total_tokens = _first_int(usage, "total_tokens") or input_tokens + output_tokens
+    estimated_cost_usd = _first_float(usage, "estimated_cost_usd", "cost_usd")
+    if estimated_cost_usd == 0.0 and model_name and (input_tokens or output_tokens):
+        estimated_cost_usd = estimate_openai_llm_cost_usd(
+            model_name=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+
     return {
-        "input_tokens": _int_value(value.get("input_tokens")),
-        "output_tokens": _int_value(value.get("output_tokens")),
-        "total_tokens": _int_value(value.get("total_tokens")),
-        "estimated_cost_usd": _float_value(value.get("estimated_cost_usd")),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "estimated_cost_usd": estimated_cost_usd,
     }
+
+
+def _first_int(value: dict[str, Any], *keys: str) -> int:
+    for key in keys:
+        resolved = _int_value(value.get(key))
+        if resolved:
+            return resolved
+    return 0
+
+
+def _first_float(value: dict[str, Any], *keys: str) -> float:
+    for key in keys:
+        resolved = _float_value(value.get(key))
+        if resolved:
+            return resolved
+    return 0.0
 
 
 def _int_value(value: Any) -> int:

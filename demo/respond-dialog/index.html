@@ -63,12 +63,20 @@
     }
 
     .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       border: 1px solid var(--line);
       border-radius: 999px;
       padding: 6px 10px;
       color: var(--muted);
       background: var(--surface);
       white-space: nowrap;
+    }
+
+    .status-pill.running {
+      border-color: #9fc7b5;
+      color: var(--green);
     }
 
     .status-pill.error {
@@ -79,6 +87,45 @@
     .status-pill.warning {
       border-color: #e7c88e;
       color: var(--amber);
+    }
+
+    .running-stopwatch {
+      display: none;
+      position: relative;
+      width: 14px;
+      height: 14px;
+      border: 2px solid currentColor;
+      border-radius: 50%;
+      flex: 0 0 auto;
+    }
+
+    .running-stopwatch::before {
+      content: "";
+      position: absolute;
+      top: -5px;
+      left: 50%;
+      width: 6px;
+      height: 3px;
+      border-radius: 3px;
+      background: currentColor;
+      transform: translateX(-50%);
+    }
+
+    .running-stopwatch::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 50%;
+      width: 2px;
+      height: 5px;
+      border-radius: 2px;
+      background: currentColor;
+      transform: translateX(-50%) rotate(35deg);
+      transform-origin: 50% 100%;
+    }
+
+    .status-pill.running .running-stopwatch {
+      display: inline-block;
     }
 
     main {
@@ -168,11 +215,27 @@
       background: var(--green-dark);
     }
 
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    button.primary:disabled,
+    button.primary:disabled:hover {
+      background: #7aa895;
+    }
+
     button.secondary,
     button.play {
       background: #eef3eb;
       border-color: var(--line);
       color: var(--ink);
+    }
+
+    button.secondary:disabled,
+    button.play:disabled {
+      background: #f2f4f0;
+      color: #7a837b;
     }
 
     button.play {
@@ -186,6 +249,33 @@
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
+    }
+
+    .record-panel {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .record-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .record-actions button {
+      min-width: 0;
+    }
+
+    #quickUseRecordingButton {
+      grid-column: 1 / -1;
+    }
+
+    .recording-meta {
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
     }
 
     .metric-grid {
@@ -348,7 +438,10 @@
   <header>
     <div class="header-inner">
       <h1>Murphy Respond Dialog</h1>
-      <div class="status-pill" id="runtimeStatus">Idle</div>
+      <div class="status-pill" id="runtimeStatus">
+        <span class="running-stopwatch" id="runningStopwatch" aria-hidden="true"></span>
+        <span id="runtimeStatusText">Idle</span>
+      </div>
     </div>
   </header>
 
@@ -372,6 +465,14 @@
 
         <label for="quickAudioFile">Next WAV</label>
         <input id="quickAudioFile" type="file" accept=".wav,audio/wav,audio/x-wav">
+        <div class="record-panel">
+          <div class="record-actions">
+            <button class="secondary" id="quickRecordButton" type="button">Record</button>
+            <button class="secondary" id="quickStopRecordButton" type="button" disabled>Stop</button>
+            <button class="secondary" id="quickUseRecordingButton" type="button" disabled>Upload Recording</button>
+          </div>
+          <div class="recording-meta" id="quickRecordingStatus">No recording</div>
+        </div>
         <button class="primary" id="continueButton" type="button">Continue</button>
       </section>
     </div>
@@ -445,8 +546,14 @@
       resetTurn: document.getElementById("resetTurn"),
       runButton: document.getElementById("runButton"),
       quickAudioFile: document.getElementById("quickAudioFile"),
+      quickRecordButton: document.getElementById("quickRecordButton"),
+      quickStopRecordButton: document.getElementById("quickStopRecordButton"),
+      quickUseRecordingButton: document.getElementById("quickUseRecordingButton"),
+      quickRecordingStatus: document.getElementById("quickRecordingStatus"),
       continueButton: document.getElementById("continueButton"),
       runtimeStatus: document.getElementById("runtimeStatus"),
+      runtimeStatusText: document.getElementById("runtimeStatusText"),
+      runningStopwatch: document.getElementById("runningStopwatch"),
       elapsedTotal: document.getElementById("elapsedTotal"),
       httpStatus: document.getElementById("httpStatus"),
       sttRuntime: document.getElementById("sttRuntime"),
@@ -462,7 +569,14 @@
 
     const dialogState = {
       terminal: false,
-      currentNode: null
+      currentNode: null,
+      submittedRequestIds: [],
+      submitting: false,
+      quickRecording: null,
+      quickRecordingFile: null,
+      quickRecordingDurationMs: null,
+      quickRecordingSampleRate: null,
+      quickRecordingTimer: null
     };
 
     function makeRequestId(turn) {
@@ -537,7 +651,7 @@
     }
 
     function setStatus(text, kind) {
-      refs.runtimeStatus.textContent = text;
+      refs.runtimeStatusText.textContent = text;
       refs.runtimeStatus.className = "status-pill" + (kind ? " " + kind : "");
     }
 
@@ -546,6 +660,25 @@
         return Math.round(ms) + " ms";
       }
       return (ms / 1000).toFixed(2) + " s";
+    }
+
+    function setSubmitting(isSubmitting) {
+      dialogState.submitting = isSubmitting;
+      updateRecordingControls();
+    }
+
+    function updateRecordingControls() {
+      const isRecording = Boolean(dialogState.quickRecording);
+      refs.runButton.disabled = dialogState.submitting || isRecording;
+      refs.continueButton.disabled = dialogState.submitting || isRecording;
+      refs.quickRecordButton.disabled = dialogState.submitting || isRecording;
+      refs.quickStopRecordButton.disabled = dialogState.submitting || !isRecording;
+      refs.quickUseRecordingButton.disabled =
+        dialogState.submitting || isRecording || !dialogState.quickRecordingFile;
+    }
+
+    function setRecordingStatus(text) {
+      refs.quickRecordingStatus.textContent = text;
     }
 
     function clearTiming() {
@@ -574,6 +707,205 @@
       refs.turnJson.value = JSON.stringify(turn, null, 2);
       refs.sessionId.textContent = turn.session?.session_id || "-";
       refs.turnIndex.textContent = String(turn.session?.turn_index || "-");
+    }
+
+    function resetUsageDisplay() {
+      refs.sessionTokens.textContent = "0";
+      refs.sessionCost.textContent = "$0.000000";
+    }
+
+    function rememberSubmittedRequestId(requestId) {
+      if (!requestId || dialogState.submittedRequestIds.includes(requestId)) {
+        return;
+      }
+      dialogState.submittedRequestIds.push(requestId);
+    }
+
+    async function startQuickRecording() {
+      if (dialogState.quickRecording) {
+        return;
+      }
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+        setStatus("Recording Unsupported", "warning");
+        setRecordingStatus("Browser microphone recording is unavailable.");
+        return;
+      }
+
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCtor) {
+        setStatus("Recording Unsupported", "warning");
+        setRecordingStatus("Browser audio capture is unavailable.");
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true
+          }
+        });
+        const audioContext = new AudioContextCtor();
+        await audioContext.resume();
+        const source = audioContext.createMediaStreamSource(stream);
+        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+        const chunks = [];
+
+        processor.onaudioprocess = (event) => {
+          const input = event.inputBuffer.getChannelData(0);
+          chunks.push(new Float32Array(input));
+          event.outputBuffer.getChannelData(0).fill(0);
+        };
+
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+        dialogState.quickRecording = {
+          stream,
+          audioContext,
+          source,
+          processor,
+          chunks,
+          sampleRate: audioContext.sampleRate,
+          startedAt: performance.now()
+        };
+        dialogState.quickRecordingFile = null;
+        dialogState.quickRecordingDurationMs = null;
+        dialogState.quickRecordingSampleRate = audioContext.sampleRate;
+        setStatus("Recording", "warning");
+        setRecordingStatus("Recording 0.0 s");
+        updateRecordingControls();
+        dialogState.quickRecordingTimer = window.setInterval(updateRecordingTimer, 200);
+      } catch (error) {
+        setStatus("Mic Blocked", "warning");
+        setRecordingStatus(String(error));
+        updateRecordingControls();
+      }
+    }
+
+    function updateRecordingTimer() {
+      const recording = dialogState.quickRecording;
+      if (!recording) {
+        return;
+      }
+      const elapsedSeconds = (performance.now() - recording.startedAt) / 1000;
+      setRecordingStatus("Recording " + elapsedSeconds.toFixed(1) + " s");
+    }
+
+    function stopQuickRecording() {
+      const recording = dialogState.quickRecording;
+      if (!recording) {
+        return;
+      }
+
+      if (dialogState.quickRecordingTimer) {
+        window.clearInterval(dialogState.quickRecordingTimer);
+        dialogState.quickRecordingTimer = null;
+      }
+      recording.processor.disconnect();
+      recording.source.disconnect();
+      recording.stream.getTracks().forEach((track) => track.stop());
+      recording.audioContext.close().catch(() => {});
+      dialogState.quickRecording = null;
+
+      if (!recording.chunks.length) {
+        dialogState.quickRecordingFile = null;
+        dialogState.quickRecordingDurationMs = null;
+        setRecordingStatus("No audio captured.");
+        setStatus("Ready", "");
+        updateRecordingControls();
+        return;
+      }
+
+      const durationMs = Math.max(1, Math.round(performance.now() - recording.startedAt));
+      const wavBlob = encodeWavRecording(recording.chunks, recording.sampleRate);
+      const fileName = "quick-recording-" + new Date().toISOString().replace(/[:.]/g, "-") + ".wav";
+      dialogState.quickRecordingFile = new File([wavBlob], fileName, { type: "audio/wav" });
+      dialogState.quickRecordingDurationMs = durationMs;
+      dialogState.quickRecordingSampleRate = recording.sampleRate;
+      refs.quickAudioFile.value = "";
+      setRecordingStatus("Recorded " + formatDuration(durationMs) + " as " + fileName);
+      setStatus("Ready", "");
+      updateRecordingControls();
+    }
+
+    function clearQuickRecordingFile() {
+      discardActiveRecording();
+      dialogState.quickRecordingFile = null;
+      dialogState.quickRecordingDurationMs = null;
+      dialogState.quickRecordingSampleRate = null;
+      setRecordingStatus("No recording");
+      updateRecordingControls();
+    }
+
+    function discardActiveRecording() {
+      const recording = dialogState.quickRecording;
+      if (!recording) {
+        return;
+      }
+      if (dialogState.quickRecordingTimer) {
+        window.clearInterval(dialogState.quickRecordingTimer);
+        dialogState.quickRecordingTimer = null;
+      }
+      recording.processor.disconnect();
+      recording.source.disconnect();
+      recording.stream.getTracks().forEach((track) => track.stop());
+      recording.audioContext.close().catch(() => {});
+      dialogState.quickRecording = null;
+    }
+
+    async function uploadQuickRecording() {
+      if (!dialogState.quickRecordingFile) {
+        setStatus("Record First", "warning");
+        return;
+      }
+      await submitAudio(dialogState.quickRecordingFile, refs.quickUseRecordingButton);
+    }
+
+    function encodeWavRecording(chunks, sampleRate) {
+      const samples = mergeFloat32Chunks(chunks);
+      const buffer = new ArrayBuffer(44 + samples.length * 2);
+      const view = new DataView(buffer);
+
+      writeAscii(view, 0, "RIFF");
+      view.setUint32(4, 36 + samples.length * 2, true);
+      writeAscii(view, 8, "WAVE");
+      writeAscii(view, 12, "fmt ");
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeAscii(view, 36, "data");
+      view.setUint32(40, samples.length * 2, true);
+
+      let offset = 44;
+      for (let index = 0; index < samples.length; index += 1) {
+        const sample = Math.max(-1, Math.min(1, samples[index]));
+        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+        offset += 2;
+      }
+
+      return new Blob([view], { type: "audio/wav" });
+    }
+
+    function mergeFloat32Chunks(chunks) {
+      const length = chunks.reduce((total, chunk) => total + chunk.length, 0);
+      const merged = new Float32Array(length);
+      let offset = 0;
+      chunks.forEach((chunk) => {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+      });
+      return merged;
+    }
+
+    function writeAscii(view, offset, text) {
+      for (let index = 0; index < text.length; index += 1) {
+        view.setUint8(offset + index, text.charCodeAt(index));
+      }
     }
 
     async function loadNode(nodeId) {
@@ -715,9 +1047,12 @@
     }
 
     async function updateUsage(sessionId) {
-      const response = await fetch(
-        "/api/game/ai/agent-runs/session-usage?session_id=" + encodeURIComponent(sessionId)
-      );
+      const params = new URLSearchParams();
+      params.set("session_id", sessionId);
+      dialogState.submittedRequestIds.forEach((requestId) => {
+        params.append("request_ids", requestId);
+      });
+      const response = await fetch("/api/game/ai/agent-runs/session-usage?" + params.toString());
       if (!response.ok) {
         return;
       }
@@ -731,16 +1066,17 @@
 
     async function resetDialog() {
       dialogState.terminal = false;
+      dialogState.submittedRequestIds = [];
       refs.rawJson.textContent = "-";
       clearTiming();
+      clearQuickRecordingFile();
       const turn = buildDefaultTurn();
       const node = await loadNode(firstNodeId);
       applyNodeToTurn(turn, node);
       turn.npc.last_npc_message = node.npc_question;
       writeTurn(turn);
       resetTranscript(node.npc_question);
-      refs.sessionTokens.textContent = "0";
-      refs.sessionCost.textContent = "$0.000000";
+      resetUsageDisplay();
       setStatus("Idle", "");
     }
 
@@ -757,6 +1093,8 @@
         writeTurn(turn);
         resetTranscript(turn.npc?.last_npc_message || node.npc_question);
         dialogState.terminal = false;
+        dialogState.submittedRequestIds = [];
+        resetUsageDisplay();
         setStatus("Turn Loaded", "");
       } catch (error) {
         setStatus("Invalid Turn", "error");
@@ -800,16 +1138,20 @@
       }
 
       turn.request_id = makeRequestId(turn);
+      if (audio === dialogState.quickRecordingFile) {
+        turn.audio.mime_type = "audio/wav";
+        turn.audio.channels = 1;
+        turn.audio.duration_ms = dialogState.quickRecordingDurationMs || turn.audio.duration_ms;
+        turn.audio.sample_rate_hz = dialogState.quickRecordingSampleRate || turn.audio.sample_rate_hz;
+      }
       writeTurn(turn);
 
       const form = new FormData();
       form.append("turn", new Blob([JSON.stringify(turn)], { type: "application/json" }), "turn.json");
       form.append("audio", audio, audio.name);
 
-      refs.runButton.disabled = true;
-      refs.continueButton.disabled = true;
-      activeButton.disabled = true;
-      setStatus("Running", "");
+      setSubmitting(true);
+      setStatus("Running", "running");
       const started = performance.now();
       try {
         const response = await fetch("/api/game/ai/respond", {
@@ -830,10 +1172,14 @@
         appendMessage("user", "You", body.stt?.player_text || "-");
         appendMessage("npc", body.npc?.speaker || "Officer Miller", body.npc?.text || "-", body.npc?.audio_url);
         appendDivider(body);
-        await updateUsage(body.session_id);
+        rememberSubmittedRequestId(body.request_id || turn.request_id);
+        await updateUsage(body.session_id || turn.session.session_id);
         await updateNextTurn(turn, body);
         if (activeButton === refs.continueButton) {
           refs.quickAudioFile.value = "";
+        }
+        if (activeButton === refs.quickUseRecordingButton) {
+          clearQuickRecordingFile();
         }
         if (!dialogState.terminal) {
           setStatus("Ready", "");
@@ -844,8 +1190,7 @@
         setStatus("Failed", "error");
         refs.rawJson.textContent = String(error);
       } finally {
-        refs.runButton.disabled = false;
-        refs.continueButton.disabled = false;
+        setSubmitting(false);
       }
     }
 
@@ -853,6 +1198,9 @@
     refs.resetTurn.addEventListener("click", resetDialog);
     refs.runButton.addEventListener("click", runRequest);
     refs.continueButton.addEventListener("click", continueWithAudio);
+    refs.quickRecordButton.addEventListener("click", startQuickRecording);
+    refs.quickStopRecordButton.addEventListener("click", stopQuickRecording);
+    refs.quickUseRecordingButton.addEventListener("click", uploadQuickRecording);
     resetDialog().catch((error) => {
       setStatus("Init Failed", "error");
       refs.rawJson.textContent = String(error);

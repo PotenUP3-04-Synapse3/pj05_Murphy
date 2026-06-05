@@ -407,12 +407,15 @@ Routes:
 - `GET /respond-dialog` serves the C-owned multi-turn browser tester.
 - `GET /api/game/ai/demo/node/{node_id}` returns safe Chapter 0 node context
   fields used by the browser tester to prepare the next turn payload.
-- `GET /api/game/ai/agent-runs/session-usage?session_id=<optional>` sums
-  top-level unified AgentRun `model` usage by session.
+- `GET /api/game/ai/agent-runs/session-usage?session_id=<optional>&request_ids=<optional repeated>`
+  sums unified AgentRun `model` usage by session, optionally restricted to the
+  provided request ids.
 
-Session usage counts only each record's top-level `model` fields:
-`input_tokens`, `output_tokens`, `total_tokens`, and `estimated_cost_usd`.
-Nested event traces are not included so the same LLM call is not counted twice.
+Session usage counts only each record's top-level `model` object so nested event
+traces are not counted twice. It accepts the canonical unified keys
+`input_tokens`, `output_tokens`, `total_tokens`, and `estimated_cost_usd`, and
+also normalizes OpenAI-compatible aliases such as `prompt_tokens`,
+`completion_tokens`, and `cost_usd`.
 
 ## Developer A Dialogue Adapter
 
