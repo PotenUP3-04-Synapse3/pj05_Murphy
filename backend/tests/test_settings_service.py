@@ -24,6 +24,8 @@ def _clear_runtime_env(monkeypatch) -> None:
         "MURPHY_UNDERSTANDING_LLM_FALLBACK",
         "MURPHY_UNDERSTANDING_LLM_MODEL",
         "MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS",
+        "MURPHY_UNREAL_REQUEST_CAPTURE_MODE",
+        "MURPHY_UNREAL_REQUEST_CAPTURE_ROOT",
     ]:
         monkeypatch.delenv(key, raising=False)
 
@@ -50,6 +52,8 @@ def test_app_settings_reads_values_from_env_file(tmp_path, monkeypatch) -> None:
                 "MURPHY_UNDERSTANDING_LLM_FALLBACK=gemma4_vllm",
                 "MURPHY_UNDERSTANDING_LLM_MODEL=gpt-4o-mini",
                 "MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS=10.5",
+                "MURPHY_UNREAL_REQUEST_CAPTURE_MODE=debug",
+                f"MURPHY_UNREAL_REQUEST_CAPTURE_ROOT={tmp_path / 'captures'}",
             ]
         ),
         encoding="utf-8",
@@ -73,6 +77,8 @@ def test_app_settings_reads_values_from_env_file(tmp_path, monkeypatch) -> None:
     assert settings.murphy_understanding_llm_fallback == "gemma4_vllm"
     assert settings.murphy_understanding_llm_model == "gpt-4o-mini"
     assert settings.murphy_understanding_llm_timeout_seconds == 10.5
+    assert settings.murphy_unreal_request_capture_mode == "debug"
+    assert settings.murphy_unreal_request_capture_root == tmp_path / "captures"
 
 
 def test_stt_runtimes_use_settings_loaded_from_env_file(tmp_path, monkeypatch) -> None:
