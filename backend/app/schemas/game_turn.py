@@ -197,6 +197,55 @@ class RubricScores(BaseModel):
     total: int = Field(ge=0, le=12)
 
 
+class FinalScoreState(BaseModel):
+    patience: int = 100
+    suspicion: int = 0
+    retry_count: int = 0
+    hint_count: int = 0
+
+
+class QuantitativeScores(BaseModel):
+    overall: int = Field(ge=0, le=100)
+    comprehension: int = Field(ge=0, le=100)
+    fluency: int = Field(ge=0, le=100)
+    grammar_accuracy: int = Field(ge=0, le=100)
+    vocabulary_range: int = Field(ge=0, le=100)
+    clarity: int = Field(ge=0, le=100)
+    interaction_problem_solving: int = Field(ge=0, le=100)
+    scoring_policy: Literal["simple_average"]
+
+
+class FinalReportSummary(BaseModel):
+    overall: str
+    best_node: str | None = None
+    weakest_node: str | None = None
+    main_improvement: str
+    focus_on_form_targets: list[str] = Field(default_factory=list)
+    included_node_count: int = Field(ge=0)
+
+
+class FinalResult(BaseModel):
+    final_recommendation: Literal[
+        "PASS",
+        "CONDITIONAL_PASS",
+        "SECONDARY_ROOM",
+        "COMIC_FAIL",
+        "UNRANKED",
+    ]
+    rank: Literal[
+        "Gold Pass",
+        "Silver Pass",
+        "Bronze Pass",
+        "Secondary Review",
+        "Comic Fail",
+        "Unranked",
+    ]
+    final_score_100: int = Field(ge=0, le=100)
+    reason_tags: list[str] = Field(default_factory=list)
+    quantitative_scores: QuantitativeScores
+    report_summary: FinalReportSummary
+
+
 class DifficultyProfile(BaseModel):
     travel_speaking_level: str
     npc_speech_speed: Literal["slow", "normal", "natural"]
@@ -345,6 +394,7 @@ class DevBPolicyOutput(BaseModel):
     rubric_scores: RubricScores | None = None
     difficulty_profile: DifficultyProfile | None = None
     feedback_generation: FeedbackGenerationTrace | None = None
+    final_result: FinalResult | None = None
 
 
 class DevADialogueInput(BaseModel):
@@ -406,6 +456,7 @@ class EvaluationResponse(BaseModel):
 class ReportResponse(BaseModel):
     recorded_error_count: int
     report_item: ReportItem
+    final_result: FinalResult | None = None
 
 
 class DebugInfo(BaseModel):
@@ -441,3 +492,9 @@ class UnrealResponse(BaseModel):
     evaluation: EvaluationResponse
     report: ReportResponse
     debug: DebugInfo
+
+
+class UnrealResultResponse(BaseModel):
+    contract_version: Literal["dev_c_unreal_result.v1"]
+    session_id: str
+    final_result: FinalResult
