@@ -5,9 +5,9 @@ from typing import Any
 
 from backend.app.agents.agent_c.llm_cost_estimator import build_model_usage_summary
 from backend.app.agents.agent_c.understanding_llm_client import (
-    OpenAIUnderstandingLLMClient,
     UnderstandingLLMClient,
     UnderstandingLLMUnavailable,
+    build_understanding_llm_client_from_settings,
 )
 from backend.app.agents.agent_c.visit_purpose_classifier import classify_visit_purpose
 from backend.app.schemas.game_turn import NodeContext, UnderstandingOutput
@@ -127,7 +127,7 @@ class UnderstandingAgent:
     def _get_llm_client(self) -> UnderstandingLLMClient:
         if self.llm_client is not None:
             return self.llm_client
-        return OpenAIUnderstandingLLMClient.from_settings(self.settings)
+        return build_understanding_llm_client_from_settings(self.settings)
 
     def _llm_model_name(self) -> str:
         if self.llm_client is not None:

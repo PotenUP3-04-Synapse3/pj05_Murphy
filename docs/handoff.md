@@ -17,6 +17,68 @@ fallback.
 
 ## Last Completed Task
 
+Developer A NPC dialogue/voice path is now structured around an NPC roster.
+`backend/app/services/service_a/npc_roster_service.py` owns NPC display name,
+role, default animation, fallback text, mock voice id, and Kokoro voice
+candidates. The current roster contains `officer_miller`; unknown or missing
+NPC ids fall back to that profile. Kokoro voice ids are configured per NPC
+through `kokoro_voices`, with Korean code comments marking that the values must
+come from the installed Kokoro model's supported voice list.
+
+Developer C's `DevANpcDialogueClient` forwards Unreal `npc` context into
+Developer A's level-design payload, while final NPC dialogue text and voice
+style remain Developer A-owned. Developer A AgentRun metadata now includes
+`dialogue_source_trace`, which records the node context, player text preview,
+Developer B feedback/directive, branch, NPC profile, and voice profile data
+used to shape the next NPC line and TTS selection.
+LLM dialogue mode also keeps roster-owned speaker and animation values instead
+of trusting model-provided presentation identifiers.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_developer_a_npc_roster.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 22 passed, 1 warning.
+- `uv run pytest backend/tests/test_preprototype_flow.py backend/tests/test_unified_agent_run_log.py -q`: PASS, 14 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS.
+- `git diff --check`: PASS.
+- `uv run pytest -q`: PASS, 76 passed, 2 warnings.
+
+Automated tests remain deterministic and do not require real API keys. User-local
+manual verification may enable real API-backed LLM/TTS modes through environment
+settings when explicitly requested.
+
+Gemma4 vLLM fallback support replaces the previous temporary Gemini provider
+path for the GPT key outage case. OpenAI remains the primary provider, and the
+academy server is tried only when the fallback flags are enabled:
+
+- `GEMMA4_VLLM_BASE_URL=http://100.95.34.69:8001/v1`
+- `GEMMA4_VLLM_MODEL=google/gemma-4-26B-A4B-it`
+- `GEMMA4_VLLM_API_KEY=dummy`
+- `MURPHY_UNDERSTANDING_LLM_FALLBACK=gemma4_vllm`
+- `NPC_DIALOGUE_LLM_FALLBACK=gemma4_vllm`
+
+The academy server is a vLLM OpenAI-compatible `/v1/chat/completions` endpoint.
+Smoke verification on 2026-06-05 confirmed:
+
+- `GET http://100.95.34.69:8001/v1/models`: PASS, model
+  `google/gemma-4-26B-A4B-it`, owned by `vllm`.
+- `POST /v1/chat/completions`: PASS, returned `OK`.
+- Developer A real path with `NPC_DIALOGUE_LLM_FALLBACK=gemma4_vllm` and
+  `use_real_tts=True`: PASS, generated
+  `backend\runtime\generated\gemma4_wav_smoke\audio\kokoro\IMM_002_PURPOSE_unknown_slot_success_am_michael_737b8af0.wav`.
+- Latest AgentRun log includes TTS speed:
+  `generation_seconds=4.129077799996594`,
+  `audio_seconds=3.575`,
+  `real_time_factor=1.1549867972018444`.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_developer_a_npc_llm_client.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_understanding_llm_client.py backend/tests/test_settings_service.py -q`: PASS, 19 passed, 1 warning.
+- `uv run pytest -q`: PASS, 87 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS.
+- `git diff --check`: PASS.
+
 Removed duplicate Developer A-only runtime logs from the NPC dialogue voice
 output path. Developer A now appends NPC dialogue AgentRun records only through
 the shared `unified_agent_run.v1` sink:
@@ -86,12 +148,19 @@ rather than treating it as provider fallback.
 - `backend/app/services/shared/agent_run_log_store.py`
 - `backend/app/services/shared/agent_run_markdown_formatter.py`
 - `backend/app/services/service_a/npc_dialogue_agent_run_store.py`
+- `backend/app/services/service_a/npc_roster_service.py`
+- `backend/app/services/service_a/voice_profile_service.py`
+- `backend/app/services/service_a/tts_service.py`
 - `backend/app/services/service_a/voice_output_service.py`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
 - `backend/app/services/service_a/developer_a_runtime_log_service.py` (removed)
 - `backend/runtime/logs/developer_a_events.jsonl` (removed)
 - `backend/tests/test_developer_a_agent_run_logging.py`
+- `backend/tests/test_developer_a_npc_roster.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
 - `backend/tests/test_unified_agent_run_log.py`
 - `docs/implementation_logs/developer_a_implementation_log_kimyonghee.md`
+- `docs/contracts/developer_a_agent_spec.md`
 - `docs/contracts/change_requests.md`
 - `AGENTS.md`
 - `docs/preprototype_status_demo_plan.md`

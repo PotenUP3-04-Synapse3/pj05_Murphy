@@ -1,5 +1,5 @@
 ## powershell -ExecutionPolicy Bypass -File .\scripts\run_real_wav_test.ps1 -AudioPath "samples\uncle.wav"
-
+## uv run uvicorn backend.app.main:app --reload --port 8000
 param(
     [string]$ServerUrl = "http://localhost:8000/api/game/ai/respond",
     [string]$AudioPath = "C:\potenup3\pj05_Murphy\samples\uncle.wav"

@@ -193,9 +193,14 @@ analyze_player_text(player_text, node_context) -> understanding
 Runtime modes:
 
 - `MURPHY_UNDERSTANDING_MODE=rule` uses the deterministic local analyzer.
-- `MURPHY_UNDERSTANDING_MODE=llm` calls Developer C's OpenAI-backed semantic
-  analyzer and falls back to rule mode on missing API key, request failure,
-  invalid JSON, schema failure, or forbidden authority fields.
+- `MURPHY_UNDERSTANDING_MODE=llm` calls Developer C's configured LLM-backed
+  semantic analyzer and falls back to rule mode on missing API key, request
+  failure, invalid JSON, schema failure, or forbidden authority fields.
+- `MURPHY_UNDERSTANDING_LLM_PROVIDER` defaults to `openai`.
+- `MURPHY_UNDERSTANDING_LLM_FALLBACK=gemma4_vllm` tries the academy Gemma4
+  vLLM OpenAI-compatible server after the primary OpenAI client is unavailable.
+- Gemma4 fallback uses `GEMMA4_VLLM_BASE_URL`,
+  `GEMMA4_VLLM_MODEL`, and `GEMMA4_VLLM_API_KEY`.
 - `MURPHY_UNDERSTANDING_LLM_MODEL` defaults to `gpt-4o-mini`.
 - `MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS` defaults to `10`.
 

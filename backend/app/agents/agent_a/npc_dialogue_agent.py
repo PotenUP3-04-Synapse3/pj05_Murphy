@@ -7,12 +7,13 @@ import httpx
 from backend.app.agents.agent_a.npc_llm_client import (
     NPCDialogueLLMClient,
     NPCDialogueLLMUnavailable,
-    OpenAINPCDialogueLLMClient,
+    build_npc_dialogue_llm_client_from_environment,
 )
 from backend.app.services.service_a.developer_a_fallback_service import build_text_fallback
 from backend.app.services.service_a.developer_a_input_service import normalize_level_design_payload
 from backend.app.services.service_a.dialogue_policy_service import build_dialogue_policy
 from backend.app.services.service_a.npc_emotion_service import infer_npc_emotion_state
+from backend.app.services.service_a.npc_roster_service import NPCProfile, resolve_npc_profile
 from backend.app.services.service_a.player_language_profile_service import (
     build_player_language_profile,
 )
@@ -22,7 +23,13 @@ from backend.app.services.service_a.tts_text_polisher_service import (
 )
 
 BranchType = Literal["success", "retry", "fail", "neutral"]
-DialogueTone = Literal["formal_neutral", "formal_firm", "formal_supportive"]
+DialogueTone = Literal[
+    "formal_neutral",
+    "formal_firm",
+    "formal_stern",
+    "formal_warning",
+    "formal_supportive",
+]
 
 
 @dataclass(frozen=True)
@@ -120,40 +127,38 @@ def generate_npc_dialogue_from_level_design(
 ) -> dict[str, Any]:
     """Level Design Agent JSON을 기반으로 Developer A 대사 결과를 만든다."""
     normalized = normalize_level_design_payload(payload)
+    npc_profile = resolve_npc_profile(_npc_id_from_payload(payload))
     profile = build_player_language_profile(normalized)
     emotion_state = infer_npc_emotion_state(normalized)
     policy = build_dialogue_policy(normalized, profile, emotion_state)
-    if normalized["do_not_generate_npc_text"] or normalized["blocks_progression"]:
-        return _with_generation_metadata(build_text_fallback(normalized), profile, emotion_state, policy)
-
     candidate_text = str(normalized.get("candidate_text", "")).strip()
     if not candidate_text:
-        return _with_generation_metadata(build_text_fallback(normalized), profile, emotion_state, policy)
+        result = _apply_npc_profile(build_text_fallback(normalized), npc_profile)
+    else:
+        recommended = str(normalized.get("recommended_expression", "")).strip()
+        feedback_note = str(normalized.get("feedback_note", "")).strip()
+        feedback_kr = _level_design_feedback(feedback_note, recommended)
+        npc_text = _compose_level_design_text(
+            candidate_text=candidate_text,
+            recommended_expression=recommended,
+            policy=policy,
+        )
+        tts_text = polish_tts_text(npc_text, profile, emotion_state, policy)
 
-    recommended = str(normalized.get("recommended_expression", "")).strip()
-    feedback_note = str(normalized.get("feedback_note", "")).strip()
-    feedback_kr = _level_design_feedback(feedback_note, recommended)
-    npc_text = _compose_level_design_text(
-        candidate_text=candidate_text,
-        recommended_expression=recommended,
-        policy=policy,
-    )
-    tts_text = polish_tts_text(npc_text, profile, emotion_state, policy)
-
-    result = {
-        "speaker": "Officer Miller",
-        "npc_text": npc_text,
-        "text": npc_text,
-        "tts_text": tts_text,
-        "feedback_kr": feedback_kr,
-        "tone": policy.tone,
-        "animation": "officer_check_passport",
-        "fallback": {"used": False, "reason": None},
-    }
+        result = {
+            "speaker": npc_profile.display_name,
+            "npc_text": npc_text,
+            "text": npc_text,
+            "tts_text": tts_text,
+            "feedback_kr": feedback_kr,
+            "tone": policy.tone,
+            "animation": npc_profile.default_animation,
+            "fallback": {"used": False, "reason": None},
+        }
     result = _with_generation_metadata(result, profile, emotion_state, policy)
     if not use_llm:
         return result
-    return _generate_with_llm_or_fallback(payload, normalized, result, llm_client)
+    return _generate_with_llm_or_fallback(payload, normalized, result, llm_client, npc_profile)
 
 
 def _level_design_feedback(feedback_note: str, recommended_expression: str) -> str:
@@ -223,23 +228,42 @@ def _with_generation_metadata(
     return result
 
 
+def _apply_npc_profile(result: dict[str, Any], npc_profile: NPCProfile) -> dict[str, Any]:
+    return {
+        **result,
+        "speaker": npc_profile.display_name,
+        "animation": npc_profile.default_animation,
+    }
+
+
+def _npc_id_from_payload(payload: dict[str, Any]) -> str | None:
+    npc = payload.get("npc")
+    if not isinstance(npc, dict):
+        return None
+    value = npc.get("npc_id") or npc.get("id")
+    return str(value) if value is not None else None
+
+
 def _generate_with_llm_or_fallback(
     source_payload: dict[str, Any],
     normalized: dict[str, Any],
     fallback_result: dict[str, Any],
     llm_client: NPCDialogueLLMClient | None,
+    npc_profile: NPCProfile,
 ) -> dict[str, Any]:
     try:
-        client = llm_client or OpenAINPCDialogueLLMClient.from_environment()
+        client = llm_client or build_npc_dialogue_llm_client_from_environment()
         llm_result = client.generate(
             {
                 "level_design_payload": source_payload,
                 "normalized": normalized,
                 "fallback_candidate": {
+                    "speaker": fallback_result["speaker"],
                     "npc_text": fallback_result["npc_text"],
                     "tts_text": fallback_result["tts_text"],
                     "tone": fallback_result["tone"],
                     "feedback_kr": fallback_result["feedback_kr"],
+                    "fallback": fallback_result.get("fallback"),
                 },
                 "generation_profile": fallback_result["generation_profile"],
             }
@@ -253,19 +277,36 @@ def _generate_with_llm_or_fallback(
         return fallback_result
 
     llm_usage = llm_result.get("__llm_usage", {})
+    npc_text = str(llm_result.get("npc_text") or "").strip()
+    tts_text = str(llm_result.get("tts_text") or "").strip()
+    if not _is_safe_english_dialogue_text(npc_text) or not _is_safe_english_dialogue_text(tts_text):
+        fallback_result["llm"] = {
+            "used": False,
+            "fallback_used": True,
+            "reason": "invalid_llm_dialogue_language",
+            "model_name": str(llm_result.get("__fallback_model") or getattr(client, "model", "unknown")),
+            "input_tokens": int(llm_usage.get("input_tokens", 0)),
+            "output_tokens": int(llm_usage.get("output_tokens", 0)),
+            "total_tokens": int(llm_usage.get("total_tokens", 0)),
+        }
+        return fallback_result
+
+    seed_fallback = _dict_value(fallback_result.get("fallback"))
     merged = {
         **fallback_result,
-        "speaker": str(llm_result["speaker"]),
-        "npc_text": str(llm_result["npc_text"]),
-        "text": str(llm_result["npc_text"]),
-        "tts_text": str(llm_result["tts_text"]),
-        "feedback_kr": str(llm_result["feedback_kr"]),
-        "tone": str(llm_result["tone"]),
-        "animation": str(llm_result["animation"]),
+        "speaker": npc_profile.display_name,
+        "npc_text": npc_text,
+        "text": npc_text,
+        "tts_text": tts_text,
+        "feedback_kr": str(llm_result.get("feedback_kr") or fallback_result["feedback_kr"]),
+        "tone": str(llm_result.get("tone") or fallback_result["tone"]),
+        "animation": npc_profile.default_animation,
+        "fallback": {"used": False, "reason": None},
         "llm": {
             "used": True,
-            "fallback_used": False,
-            "model_name": getattr(client, "model", "unknown"),
+            "fallback_used": bool(llm_result.get("__fallback_model")),
+            "seed_fallback_used": bool(seed_fallback.get("used")),
+            "model_name": str(llm_result.get("__fallback_model") or getattr(client, "model", "unknown")),
             "input_tokens": int(llm_usage.get("input_tokens", 0)),
             "output_tokens": int(llm_usage.get("output_tokens", 0)),
             "total_tokens": int(llm_usage.get("total_tokens", 0)),
@@ -273,3 +314,19 @@ def _generate_with_llm_or_fallback(
         },
     }
     return merged
+
+
+def _dict_value(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _is_safe_english_dialogue_text(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if not stripped.isascii():
+        return False
+    letters = [character for character in stripped if character.isalpha()]
+    if not letters:
+        return False
+    return True

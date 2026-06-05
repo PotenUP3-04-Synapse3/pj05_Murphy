@@ -25,9 +25,28 @@ def build_dialogue_policy(
     """언어 실력과 NPC 감정상태를 실제 대사 생성 정책으로 바꾼다."""
     branch_type = str(normalized.get("branch_type", ""))
     feedback_strategy = str(normalized.get("feedback_strategy", ""))
-    blocks_progression = bool(normalized.get("blocks_progression", False))
 
-    if blocks_progression or branch_type in {"retry", "fail"}:
+    if emotion_state.emotion == "warning_official":
+        return DialoguePolicy(
+            action="ask_retry",
+            tone="formal_warning",
+            max_sentence_count=1,
+            use_recast=False,
+            add_officer_ack=False,
+            next_question_style="direct_warning",
+        )
+
+    if emotion_state.emotion == "stern_official":
+        return DialoguePolicy(
+            action="ask_retry",
+            tone="formal_stern",
+            max_sentence_count=1,
+            use_recast=False,
+            add_officer_ack=False,
+            next_question_style="direct_repeat_stern",
+        )
+
+    if branch_type in {"retry", "fail"}:
         return DialoguePolicy(
             action="ask_retry",
             tone="formal_firm",
@@ -48,6 +67,10 @@ def build_dialogue_policy(
 
 
 def _tone_from_emotion(emotion_state: NPCEmotionState) -> str:
+    if emotion_state.emotion == "warning_official":
+        return "formal_warning"
+    if emotion_state.emotion == "stern_official":
+        return "formal_stern"
     if emotion_state.emotion == "firm_official":
         return "formal_firm"
     if emotion_state.emotion == "patient":

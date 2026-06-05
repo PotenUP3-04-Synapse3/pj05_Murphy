@@ -88,6 +88,98 @@ class OpenAIUnderstandingLLMClient:
         return _extract_structured_json(data)
 
 
+@dataclass(frozen=True)
+class OpenAICompatibleUnderstandingLLMClient:
+    api_key: str
+    model: str
+    base_url: str
+    timeout_seconds: float = 10.0
+
+    @property
+    def endpoint(self) -> str:
+        return f"{self.base_url.rstrip('/')}/chat/completions"
+
+    def analyze(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            response = httpx.post(
+                self.endpoint,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": _developer_instructions()},
+                        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+                    ],
+                    "temperature": 0.2,
+                    "max_tokens": 600,
+                },
+                timeout=self.timeout_seconds,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPStatusError as exc:
+            raise UnderstandingLLMUnavailable(
+                "OpenAI-compatible Understanding LLM request failed: "
+                f"{_http_status_error_detail(exc)}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise UnderstandingLLMUnavailable(
+                f"OpenAI-compatible Understanding LLM request failed: {exc}"
+            ) from exc
+        except ValueError as exc:
+            raise UnderstandingLLMUnavailable(
+                "OpenAI-compatible Understanding LLM returned non-JSON response."
+            ) from exc
+
+        return _extract_chat_completion_structured_json(data)
+
+
+@dataclass(frozen=True)
+class FallbackUnderstandingLLMClient:
+    primary: UnderstandingLLMClient
+    fallback: UnderstandingLLMClient
+
+    @property
+    def model(self) -> str:
+        return self.primary.model
+
+    def analyze(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self.primary.analyze(payload)
+        except UnderstandingLLMUnavailable:
+            result = self.fallback.analyze(payload)
+            result["__fallback_model"] = self.fallback.model
+            return result
+
+
+def build_understanding_llm_client_from_settings(
+    settings: AppSettings | None = None,
+) -> UnderstandingLLMClient:
+    resolved_settings = settings or get_settings()
+    fallback = None
+    if resolved_settings.murphy_understanding_llm_fallback == "gemma4_vllm":
+        fallback = OpenAICompatibleUnderstandingLLMClient(
+            api_key=resolved_settings.gemma4_vllm_api_key,
+            model=resolved_settings.gemma4_vllm_model,
+            base_url=resolved_settings.gemma4_vllm_base_url,
+            timeout_seconds=resolved_settings.murphy_understanding_llm_timeout_seconds,
+        )
+
+    try:
+        primary = OpenAIUnderstandingLLMClient.from_settings(resolved_settings)
+    except UnderstandingLLMUnavailable:
+        if fallback is not None:
+            return fallback
+        raise
+
+    if fallback is not None:
+        return FallbackUnderstandingLLMClient(primary=primary, fallback=fallback)
+    return primary
+
+
 def _developer_instructions() -> str:
     return (
         "You are Developer C's Understanding Agent for Murphy's Trippin. "
@@ -171,6 +263,34 @@ def _extract_structured_json(data: dict[str, Any]) -> dict[str, Any]:
     raise UnderstandingLLMUnavailable("OpenAI response did not include output_text.")
 
 
+def _extract_chat_completion_structured_json(data: dict[str, Any]) -> dict[str, Any]:
+    choices = data.get("choices")
+    if not isinstance(choices, list):
+        raise UnderstandingLLMUnavailable("OpenAI-compatible response did not include choices.")
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            continue
+        text = str(message.get("content") or "").strip()
+        if text:
+            result = _normalize_structured_result(json.loads(_strip_json_fence(text)))
+            result["__llm_usage"] = _extract_chat_completion_usage(data)
+            return result
+    raise UnderstandingLLMUnavailable(
+        "OpenAI-compatible response did not include message content."
+    )
+
+
+def _strip_json_fence(text: str) -> str:
+    if text.startswith("```json"):
+        return text.removeprefix("```json").removesuffix("```").strip()
+    if text.startswith("```"):
+        return text.removeprefix("```").removesuffix("```").strip()
+    return text
+
+
 def _normalize_structured_result(result: dict[str, Any]) -> dict[str, Any]:
     extracted_slots = result.get("extracted_slots")
     if isinstance(extracted_slots, dict):
@@ -205,6 +325,20 @@ def _extract_usage(data: dict[str, Any]) -> dict[str, int]:
         return {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
     input_tokens = _int_or_zero(usage.get("input_tokens"))
     output_tokens = _int_or_zero(usage.get("output_tokens"))
+    total_tokens = _int_or_zero(usage.get("total_tokens")) or input_tokens + output_tokens
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
+def _extract_chat_completion_usage(data: dict[str, Any]) -> dict[str, int]:
+    usage = data.get("usage")
+    if not isinstance(usage, dict):
+        return {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    input_tokens = _int_or_zero(usage.get("prompt_tokens"))
+    output_tokens = _int_or_zero(usage.get("completion_tokens"))
     total_tokens = _int_or_zero(usage.get("total_tokens")) or input_tokens + output_tokens
     return {
         "input_tokens": input_tokens,

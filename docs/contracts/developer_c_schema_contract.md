@@ -43,8 +43,13 @@ through `backend/app/services/service_c/settings_service.py`:
 | `MURPHY_STT_LOCAL_MODEL` | `turbo` | `openai-whisper` local model alias for Whisper large-v3-turbo |
 | `MURPHY_STT_API_MODEL` | `whisper-1` | OpenAI Transcriptions API fallback model |
 | `OPENAI_API_KEY` | unset | Required only when API fallback is needed |
-| `MURPHY_UNDERSTANDING_MODE` | `rule` | `rule` is deterministic; `llm` enables OpenAI-assisted semantic analysis |
-| `MURPHY_UNDERSTANDING_LLM_MODEL` | `gpt-4o-mini` | Understanding Agent LLM model |
+| `GEMMA4_VLLM_BASE_URL` | `http://100.95.34.69:8001/v1` | Academy vLLM OpenAI-compatible base URL |
+| `GEMMA4_VLLM_MODEL` | `google/gemma-4-26B-A4B-it` | Gemma4 fallback model |
+| `GEMMA4_VLLM_API_KEY` | `dummy` | vLLM fallback API key placeholder |
+| `MURPHY_UNDERSTANDING_MODE` | `rule` | `rule` is deterministic; `llm` enables LLM-assisted semantic analysis |
+| `MURPHY_UNDERSTANDING_LLM_PROVIDER` | `openai` | Primary Understanding Agent LLM provider |
+| `MURPHY_UNDERSTANDING_LLM_FALLBACK` | `none` | `none` or `gemma4_vllm` |
+| `MURPHY_UNDERSTANDING_LLM_MODEL` | `gpt-4o-mini` | Primary Understanding Agent LLM model |
 | `MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS` | `10` | Understanding Agent LLM timeout |
 
 This keeps the Unreal request simple while still satisfying the Developer B

@@ -32,13 +32,23 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "candidate_text": str(in_game_feedback.get("npc_recast_line_candidate", "")),
         "feedback_strategy": str(in_game_feedback.get("feedback_strategy", "")),
         "priority": str(in_game_feedback.get("priority", "low")),
-        "blocks_progression": bool(in_game_feedback.get("blocks_progression", False)),
+        "retry_count": _optional_int(
+            dialogue_directive.get("retry_count")
+            or in_game_feedback.get("retry_count")
+            or branch.get("retry_count")
+            or payload.get("retry_count")
+        ),
         "branch_type": str(branch.get("branch_type", "")),
         "next_node_id": str(branch.get("next_node_id", "")),
         "dialogue_purpose": str(dialogue_directive.get("purpose", "")),
         "tone_hint": str(dialogue_directive.get("tone_hint", "neutral")),
         "target_slot": str(dialogue_directive.get("target_slot", "")),
-        "do_not_generate_npc_text": bool(
-            dialogue_directive.get("do_not_generate_npc_text", False)
-        ),
     }
+
+
+def _optional_int(value: Any) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value)
+    return 0

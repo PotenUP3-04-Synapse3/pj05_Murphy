@@ -5,8 +5,11 @@ import httpx
 import pytest
 
 from backend.app.agents.agent_c.understanding_llm_client import (
+    FallbackUnderstandingLLMClient,
+    OpenAICompatibleUnderstandingLLMClient,
     OpenAIUnderstandingLLMClient,
     UnderstandingLLMUnavailable,
+    _extract_chat_completion_structured_json,
     _extract_structured_json,
     _understanding_schema,
 )
@@ -85,7 +88,48 @@ def test_extract_structured_json_preserves_llm_usage() -> None:
     }
 
 
-def test_openai_understanding_client_includes_responses_api_error_detail(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_extract_chat_completion_structured_json_preserves_usage() -> None:
+    result = _extract_chat_completion_structured_json(
+        {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "intent": "state_visit_purpose",
+                                "intent_success": True,
+                                "confidence": 0.91,
+                                "meaning_summary_kr": "방문 목적을 말했다.",
+                                "emotion": "calm",
+                                "answer_relevance": "on_topic",
+                                "ambiguity_type": "none",
+                                "risk_delta": 0,
+                                "risk_reason": "No risk expression was found.",
+                                "risk_tags": [],
+                                "extracted_slots": {"visit_purpose": "tourism"},
+                                "missing_slots": [],
+                                "needs_clarification": False,
+                            },
+                            ensure_ascii=False,
+                        )
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20},
+        }
+    )
+
+    assert result["extracted_slots"] == {"visit_purpose": "tourism"}
+    assert result["__llm_usage"] == {
+        "input_tokens": 12,
+        "output_tokens": 8,
+        "total_tokens": 20,
+    }
+
+
+def test_openai_understanding_client_includes_responses_api_error_detail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def fake_post(*args: Any, **kwargs: Any) -> httpx.Response:
         return httpx.Response(
             400,
@@ -103,6 +147,107 @@ def test_openai_understanding_client_includes_responses_api_error_detail(monkeyp
 
     with pytest.raises(UnderstandingLLMUnavailable, match="invalid_json_schema.*Invalid schema"):
         client.analyze({"player_text": "I'm here to visit my uncle."})
+
+
+def test_openai_compatible_understanding_client_calls_vllm_chat_completions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def fake_post(*args: Any, **kwargs: Any) -> httpx.Response:
+        calls.append({"args": args, "kwargs": kwargs})
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "intent": "state_visit_purpose",
+                                    "intent_success": True,
+                                    "confidence": 0.91,
+                                    "meaning_summary_kr": "방문 목적을 말했다.",
+                                    "emotion": "calm",
+                                    "answer_relevance": "on_topic",
+                                    "ambiguity_type": "none",
+                                    "risk_delta": 0,
+                                    "risk_reason": "No risk expression was found.",
+                                    "risk_tags": [],
+                                    "extracted_slots": {"visit_purpose": "tourism"},
+                                    "missing_slots": [],
+                                    "needs_clarification": False,
+                                },
+                                ensure_ascii=False,
+                            )
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18},
+            },
+            request=httpx.Request("POST", "http://100.95.34.69:8001/v1/chat/completions"),
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    client = OpenAICompatibleUnderstandingLLMClient(
+        api_key="dummy",
+        model="google/gemma-4-26B-A4B-it",
+        base_url="http://100.95.34.69:8001/v1",
+    )
+
+    result = client.analyze({"player_text": "I'm here for tourism."})
+
+    assert result["intent"] == "state_visit_purpose"
+    assert calls[0]["args"][0] == "http://100.95.34.69:8001/v1/chat/completions"
+    assert calls[0]["kwargs"]["headers"]["Authorization"] == "Bearer dummy"
+    assert calls[0]["kwargs"]["json"]["model"] == "google/gemma-4-26B-A4B-it"
+
+
+class _UnavailableUnderstandingClient:
+    model = "primary"
+
+    def analyze(self, payload: dict[str, Any]) -> dict[str, Any]:
+        raise UnderstandingLLMUnavailable("primary unavailable")
+
+
+class _SuccessfulUnderstandingClient:
+    model = "google/gemma-4-26B-A4B-it"
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def analyze(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append(payload)
+        return {
+            "intent": "state_visit_purpose",
+            "intent_success": True,
+            "confidence": 0.91,
+            "meaning_summary_kr": "방문 목적을 말했다.",
+            "emotion": "calm",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "none",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "extracted_slots": {"visit_purpose": "tourism"},
+            "missing_slots": [],
+            "needs_clarification": False,
+            "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+        }
+
+
+def test_fallback_understanding_client_uses_gemma4_after_primary_failure() -> None:
+    fallback = _SuccessfulUnderstandingClient()
+    client = FallbackUnderstandingLLMClient(
+        primary=_UnavailableUnderstandingClient(),
+        fallback=fallback,
+    )
+
+    result = client.analyze({"player_text": "I'm here for tourism."})
+
+    assert result["intent"] == "state_visit_purpose"
+    assert result["__fallback_model"] == "google/gemma-4-26B-A4B-it"
+    assert fallback.calls == [{"player_text": "I'm here for tourism."}]
 
 
 def _assert_strict_object_schema(schema: dict[str, Any]) -> None:
