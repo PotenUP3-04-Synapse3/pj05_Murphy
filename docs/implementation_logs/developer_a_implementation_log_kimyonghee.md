@@ -436,3 +436,106 @@
 - B/C 구현 파일은 수정하지 않았고, B/C가 각자 owned entrypoint에서 같은 공통 writer를 호출하도록 `docs/contracts/change_requests.md`에 Change Request를 추가했다.
 - 검증:
   - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 9 passed, 1 warning
+
+## 2026-06-05 00:00:00 +09:00
+
+- NPC Dialogue AgentRun 로그 저장 정책을 공통 `unified_agent_run.v1` 로그로 단일화했다.
+- 더 이상 Developer A 전용 런타임 로그 파일을 생성하지 않는다.
+  - `npc_dialogue_agent_runs.jsonl`
+  - `npc_dialogue_artifacts.jsonl`
+  - `backend/runtime/logs/developer_a_events.jsonl`
+- `NPCDialogueAgentRunStore`는 `unified_agent_runs.jsonl`과 `unified_agent_runs.md` append만 담당하도록 정리했다.
+- `voice_output_service`에서 `runtime/logs/developer_a_events.jsonl` start/end/error 기록을 제거했다.
+- `build_voice_output_from_level_design` 반환 payload에서 중복 로그 경로 필드를 제거했다.
+  - 제거: `agent_run_path`
+  - 제거: `artifact_path`
+  - 제거: `agent_run_artifact`
+- 유지되는 추적 필드는 다음과 같다.
+  - `agent_run_id`
+  - `unified_agent_run_path`
+  - `readable_agent_run_path`
+  - `agent_run`
+- 검증:
+  - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py::test_voice_output_writes_only_unified_agent_run_records backend/tests/test_developer_a_agent_run_logging.py::test_agent_run_store_appends_only_unified_agent_run_jsonl -q`: PASS, 2 passed, 1 warning
+  - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 9 passed, 1 warning
+  - `uv run pytest backend/tests/test_unified_agent_run_log.py backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 10 passed, 1 warning
+  - `uv run ruff check .`: PASS
+  - `uv run mypy .`: PASS
+
+## 2026-06-05 00:10:00 +09:00
+
+- TTS 생성 속도 로그를 Developer A unified AgentRun에 추가했다.
+- `FakeKokoroProvider`와 `RealKokoroProvider` 모두 TTS metadata에 다음 값을 남긴다.
+  - `generation_seconds`: TTS wav 생성에 걸린 시간(초)
+  - `audio_seconds`: 생성된 음성 길이(초)
+  - `real_time_factor`: 생성 시간 / 음성 길이
+- `voice_output_service`는 `tts_provider_service.KokoroProvider.synthesize` timeline event의 `output_summary.generation_speed`에 같은 값을 기록한다.
+- `metadata.tts_summary.generation_speed`에도 같은 값을 기록해 사람이 읽는 로그와 JSONL 분석 양쪽에서 확인할 수 있게 했다.
+- 검증:
+  - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py::test_voice_output_writes_only_unified_agent_run_records -q`: PASS, 1 passed, 1 warning
+
+## 2026-06-05 00:30:00 +09:00
+
+- 향후 NPC 추가를 쉽게 하기 위해 `npc_roster_service.py`를 추가했다.
+- `officer_miller` 하드코딩을 voice profile, dialogue result, TTS mock voice, AgentRun metadata 경로에서 roster 조회 방식으로 줄였다.
+- Kokoro voice는 모델에서 지원하는 voice id 중 NPC별 후보를 `kokoro_voices`에 명시하고, 새 NPC를 추가할 때 선택 의도를 한국어 주석으로 남기도록 했다.
+- 현재 `officer_miller`의 Kokoro voice 후보는 사용자 환경의 최근 기본값에 맞춰 `am_onyx`로 유지했다.
+- Developer C adapter가 Unreal `npc` context를 Developer A level-design payload의 `npc` 필드로 전달하도록 했다.
+- LLM dialogue 경로에서도 LLM 응답의 `speaker`와 `animation`을 그대로 신뢰하지 않고 roster profile의 표시 이름과 기본 animation으로 고정하도록 했다.
+- AgentRun metadata에 `dialogue_source_trace`를 추가해 다음 NPC 대사 생성에 사용한 node context, player text preview, Developer B feedback/directive, branch, NPC profile, voice profile을 기록한다.
+- TTS 결과 metadata에 `voice_profile_id`와 `speaker_id`를 포함해 로그와 반환 payload에서 같은 voice 선택 근거를 추적할 수 있게 했다.
+- 검증:
+  - `uv run pytest backend/tests/test_developer_a_npc_roster.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 22 passed, 1 warning
+  - `uv run pytest backend/tests/test_preprototype_flow.py backend/tests/test_unified_agent_run_log.py -q`: PASS, 14 passed, 2 warnings
+  - `uv run ruff check .`: PASS
+  - `uv run mypy .`: PASS
+  - `git diff --check`: PASS
+  - `uv run pytest -q`: PASS, 76 passed, 2 warnings
+
+## 2026-06-05 00:45:00 +09:00
+
+- NPC 감정상태를 더 세분화했다.
+- 기존 `firm_official` 하나로 처리하던 재시도/차단 상황을 `firm_official`, `stern_official`, `warning_official` 단계로 나눴다.
+- `retry_count`, `branch_type`, `tone_hint`, `blocks_progression`을 기준으로 NPC 감정 강도가 올라가도록 했다.
+- 대사 정책에는 다음 tone을 추가했다.
+  - `formal_stern`: 반복 재시도 후 더 짧고 딱딱한 톤
+  - `formal_warning`: 실패 또는 경고 상황에서 추가 심사 가능성을 암시하는 톤
+- Kokoro 요청 생성 시 강한 tone일수록 speaking rate를 낮춰 더 단호하게 들리도록 했다.
+  - `formal_firm`: `0.90`
+  - `formal_stern`: `0.87`
+  - `formal_warning`: `0.84`
+- Kokoro가 emotion prompt를 직접 지원하지 않는 한계는 유지되므로, 감정 표현은 대사 문체, 문장 길이, pause 제거, speaking rate 조합으로 구현한다.
+- 검증:
+  - `uv run pytest backend/tests/test_developer_a_npc_emotion_escalation.py -q`: PASS, 4 passed
+  - `uv run pytest backend/tests/test_developer_a_npc_emotion_escalation.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 21 passed, 1 warning
+  - `uv run ruff check backend/app/services/service_a backend/app/agents/agent_a backend/tests/test_developer_a_npc_emotion_escalation.py`: PASS
+  - `uv run mypy backend/app/services/service_a backend/app/agents/agent_a`: PASS
+
+## 2026-06-05 01:00:00 +09:00
+
+- 사용자 요청에 따라 Officer Miller의 Kokoro voice 후보를 다시 `am_michael`로 변경했다.
+- `npc_roster_service.py`, Kokoro provider fallback 기본값, voice output fallback, Developer A 테스트 fixture, C 계약 예시, 실제 Kokoro 테스트 방법 문서를 같은 voice 기준으로 맞췄다.
+- 현재 실행 경로에서 Officer Miller의 실제 Kokoro voice는 `am_michael`이다.
+
+## 2026-06-05 01:15:00 +09:00
+
+- GPT key 문제를 임시 우회할 수 있도록 Developer A NPC Dialogue LLM 경로에 Gemini provider를 추가했다.
+- `NPC_DIALOGUE_LLM_PROVIDER=openai|gemini`로 provider를 선택할 수 있고, Gemini 사용 시 `GEMINI_API_KEY`와 `NPC_DIALOGUE_LLM_MODEL=gemini-2.5-flash`를 사용한다.
+- SDK dependency는 추가하지 않고 기존 `httpx`로 Gemini `generateContent` REST API를 호출한다.
+- OpenAI provider는 기본값으로 유지해 언제든 되돌릴 수 있게 했다.
+## 2026-06-05 01:35:00 +09:00
+
+- 임시 Gemini provider 경로를 제거하고 학원 서버 Gemma4 vLLM fallback 방식으로 전환했다.
+- 기본 provider는 계속 `NPC_DIALOGUE_LLM_PROVIDER=openai`이며, GPT key가 없거나 OpenAI 요청이 실패하는 경우 `NPC_DIALOGUE_LLM_FALLBACK=gemma4_vllm` 설정으로 학원 서버를 사용할 수 있다.
+- Gemma4 fallback은 OpenAI 호환 `chat/completions` endpoint를 사용하며, 공통 설정은 `GEMMA4_VLLM_BASE_URL`, `GEMMA4_VLLM_MODEL`, `GEMMA4_VLLM_API_KEY`로 관리한다.
+- LLM fallback이 실제로 사용되면 AgentRun 로그의 `model_name`에 `google/gemma-4-26B-A4B-it` 같은 fallback 모델명이 남도록 보정했다.
+- 검증
+  - `uv run pytest backend/tests/test_developer_a_npc_llm_client.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_agent_run_logging.py backend/tests/test_developer_a_npc_roster.py backend/tests/test_developer_a_npc_emotion_escalation.py -q`: PASS, 29 passed, 1 warning
+
+## 2026-06-05 12:10:00 +09:00
+
+- Developer B 전용 진행 제어 필드인 `blocks_progression`, `do_not_generate_npc_text`를 Developer A 대사 생성 판단에서 제외했다.
+- `normalize_level_design_payload()`가 더 이상 두 필드를 Developer A 정규화 결과에 넣지 않으며, AgentRun 이벤트 요약에서도 해당 값을 읽지 않는다.
+- NPC 감정/정책 판단도 `blocks_progression` 대신 `branch_type`, `tone_hint`, `retry_count`, `task_success`, `clarity` 같은 A가 실제로 쓰는 입력만 사용하도록 정리했다.
+- 검증
+  - `uv run pytest backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_npc_emotion_escalation.py backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 23 passed, 1 warning

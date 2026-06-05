@@ -22,6 +22,7 @@ from backend.app.services.service_a.developer_a_input_service import (
     normalize_level_design_payload,
 )
 from backend.app.services.service_a.npc_dialogue_agent_run_store import NPCDialogueAgentRunStore
+from backend.app.services.service_a.npc_roster_service import resolve_npc_profile
 from backend.app.services.service_a.tts_provider_service import FakeKokoroProvider
 from backend.app.services.service_a.tts_provider_service import RealKokoroProvider
 from backend.app.services.service_a.tts_service import (
@@ -102,11 +103,10 @@ def build_voice_output_from_level_design(
             },
             output_summary={
                 "candidate_text_available": bool(normalized.get("candidate_text")),
-                "do_not_generate_npc_text": normalized.get("do_not_generate_npc_text"),
-                "blocks_progression": normalized.get("blocks_progression"),
             },
         )
         dialogue = generate_npc_dialogue_from_level_design(payload, use_llm=use_llm_dialogue)
+        npc_profile = resolve_npc_profile(_npc_id(payload))
         agent_run_middleware.record_event(
             evidence_metadata,
             event="tool_call",
@@ -124,8 +124,8 @@ def build_voice_output_from_level_design(
             },
         )
         voice_profile = resolve_voice_profile(
-            user_id=user_id or str(payload.get("user_id", "")),
-            npc_id="officer_miller",
+            user_id=user_id or session_id or str(payload.get("user_id", "")),
+            npc_id=npc_profile.npc_id,
         )
         agent_run_middleware.record_event(
             evidence_metadata,
@@ -133,14 +133,14 @@ def build_voice_output_from_level_design(
             status="completed",
             tool_name="voice_profile_service.resolve_voice_profile",
             data_loaded={
-                "npc_id": "officer_miller",
+                "npc_id": npc_profile.npc_id,
                 "voice_profile_id": voice_profile.voice_profile_id,
                 "voice_id": voice_profile.voice_id,
             },
         )
         tts_request = build_kokoro_provider_request(
             text=str(dialogue.get("tts_text") or dialogue["npc_text"]),
-            speaker_id="officer_miller",
+            speaker_id=npc_profile.npc_id,
             voice_profile_id=voice_profile.voice_profile_id,
             kokoro_voice=voice_profile.voice_id,
             tone=str(dialogue["tone"]),
@@ -190,6 +190,7 @@ def build_voice_output_from_level_design(
                 "audio_url": tts.get("audio_url"),
                 "audio_path": tts.get("audio_path"),
                 "status": tts.get("status"),
+                "generation_speed": _tts_generation_speed(tts),
             },
         )
         agent_run_middleware.record_event(
@@ -302,6 +303,8 @@ def _build_kokoro_audio(
     return {
         **metadata,
         "audio_url": audio_url,
+        "speaker_id": tts_request.speaker_id,
+        "voice_profile_id": tts_request.voice_profile_id,
         "cache_key": cache_key,
         "quality_metadata": quality_metadata,
         "postprocess_policy": build_postprocess_policy(provider=str(metadata["provider"])),
@@ -341,6 +344,12 @@ def _record_agent_run(
         "tone": dialogue.get("tone"),
     }
     evidence_metadata["tts_summary"] = _tts_summary(tts)
+    evidence_metadata["dialogue_source_trace"] = _dialogue_source_trace(
+        payload=payload,
+        normalized=normalized,
+        dialogue=dialogue,
+        tts=tts,
+    )
     evidence_metadata["fallback"] = {
         "used": bool(fallback.get("used", False)),
         "reason": fallback.get("reason"),
@@ -396,6 +405,11 @@ def _record_failed_agent_run(
 ) -> tuple[dict[str, Any], Path, Path]:
     evidence_metadata["fallback"] = {"used": True, "reason": type(error).__name__}
     evidence_metadata["tts_summary"] = _tts_summary(fallback_tts)
+    evidence_metadata["dialogue_source_trace"] = _failed_dialogue_source_trace(
+        payload=payload,
+        fallback_tts=fallback_tts,
+        error=error,
+    )
     middleware = NPCDialogueAgentRunMiddleware()
     agent_run = middleware.start_run(
         prompt_version=PROMPT_VERSION,
@@ -453,12 +467,125 @@ def _tts_summary(tts: dict[str, Any]) -> dict[str, Any]:
         "audio_url": tts.get("audio_url"),
         "audio_path": tts.get("audio_path"),
         "status": tts.get("status"),
+        "generation_speed": _tts_generation_speed(tts),
+    }
+
+
+def _tts_generation_speed(tts: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "generation_seconds": _optional_float(tts.get("generation_seconds")),
+        "audio_seconds": _optional_float(tts.get("audio_seconds")),
+        "real_time_factor": _optional_float(tts.get("real_time_factor")),
+    }
+
+
+def _dialogue_source_trace(
+    *,
+    payload: dict[str, Any],
+    normalized: dict[str, Any],
+    dialogue: dict[str, Any],
+    tts: dict[str, Any],
+) -> dict[str, Any]:
+    npc_profile = resolve_npc_profile(_npc_id(payload))
+    node_context = _as_dict(payload.get("node_context"))
+    evaluation_summary = _as_dict(payload.get("evaluation_summary") or payload.get("evaluation"))
+    level_hint = _as_dict(payload.get("level_hint"))
+    in_game_feedback = _as_dict(payload.get("in_game_feedback"))
+    branch = _as_dict(payload.get("branch"))
+    candidate_text = str(normalized.get("candidate_text") or "").strip()
+
+    return {
+        "npc_profile": {
+            "npc_id": npc_profile.npc_id,
+            "display_name": npc_profile.display_name,
+            "role": npc_profile.role,
+        },
+        "used_inputs": {
+            "node_context": {
+                "used_for": "next_question_and_goal",
+                "node_id": normalized.get("node_id") or payload.get("node_id"),
+                "npc_question_goal": node_context.get("npc_question_goal"),
+            },
+            "player_text": {
+                "used_for": "dialogue_evidence_preview",
+                "value_preview": _preview_text(
+                    payload.get("player_text") or _as_dict(payload.get("player")).get("utterance")
+                ),
+            },
+            "developer_b_evaluation": {
+                "used_for": "tone_and_progression_context",
+                "branch_type": normalized.get("branch_type"),
+                "task_success": evaluation_summary.get("task_success"),
+                "clarity": evaluation_summary.get("clarity"),
+                "feedback_note": evaluation_summary.get("feedback_note"),
+            },
+            "developer_b_feedback": {
+                "used_for": "recast_candidate_and_feedback_note",
+                "npc_recast_line_candidate": in_game_feedback.get("npc_recast_line_candidate"),
+                "feedback_strategy": in_game_feedback.get("feedback_strategy"),
+                "recommended_expression": level_hint.get("recommended_expression"),
+                "needs_hint": level_hint.get("needs_hint"),
+            },
+            "branch": {
+                "used_for": "next_node_continuity",
+                "branch_type": branch.get("branch_type") or normalized.get("branch_type"),
+                "next_node_id": branch.get("next_node_id"),
+            },
+            "voice_profile": {
+                "used_for": "tts_voice_selection",
+                "voice_profile_id": tts.get("voice_profile_id"),
+                "voice_id": tts.get("voice_id"),
+                "speaker_id": tts.get("speaker_id"),
+                "provider": tts.get("provider"),
+            },
+        },
+        "voice_profile": {
+            "voice_profile_id": tts.get("voice_profile_id"),
+            "voice_id": tts.get("voice_id"),
+            "speaker_id": tts.get("speaker_id"),
+            "provider": tts.get("provider"),
+        },
+        "output_decision": {
+            "npc_text_source": "developer_b_recast_candidate" if candidate_text else "developer_a_fallback",
+            "tts_text_source": "tts_text_polisher_service",
+            "npc_text_preview": _preview_text(dialogue.get("npc_text") or dialogue.get("text")),
+            "tts_text_preview": _preview_text(dialogue.get("tts_text")),
+            "audio_url": tts.get("audio_url"),
+        },
+    }
+
+
+def _failed_dialogue_source_trace(
+    *,
+    payload: dict[str, Any],
+    fallback_tts: dict[str, Any],
+    error: Exception,
+) -> dict[str, Any]:
+    npc_profile = resolve_npc_profile(_npc_id(payload))
+    return {
+        "npc_profile": {
+            "npc_id": npc_profile.npc_id,
+            "display_name": npc_profile.display_name,
+            "role": npc_profile.role,
+        },
+        "used_inputs": {
+            "payload_keys": sorted(payload.keys()),
+        },
+        "voice_profile": {
+            "voice_id": fallback_tts.get("voice_id"),
+            "provider": fallback_tts.get("provider"),
+        },
+        "output_decision": {
+            "npc_text_source": "developer_a_error_fallback",
+            "tts_text_source": "developer_a_error_fallback",
+            "error": type(error).__name__,
+        },
     }
 
 
 def _npc_id(payload: dict[str, Any]) -> str:
     npc = _as_dict(payload.get("npc"))
-    return str(npc.get("npc_id") or npc.get("id") or "officer_miller")
+    return resolve_npc_profile(_optional_str(npc.get("npc_id") or npc.get("id"))).npc_id
 
 
 def _npc_emotion(payload: dict[str, Any], dialogue: dict[str, Any]) -> str:
@@ -482,3 +609,16 @@ def _optional_str(value: Any) -> str | None:
 
 def _optional_int(value: Any) -> int | None:
     return value if isinstance(value, int) else None
+
+
+def _optional_float(value: Any) -> float | None:
+    return float(value) if isinstance(value, int | float) else None
+
+
+def _preview_text(value: Any, limit: int = 120) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}..."

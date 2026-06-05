@@ -1,5 +1,33 @@
 # Developer A Agent Specification
 
+## NPC Roster Contract
+
+Developer A는 NPC 표시 이름, 기본 animation, mock voice, Kokoro voice 후보를
+`backend/app/services/service_a/npc_roster_service.py`에서 조회한다.
+
+Developer C adapter가 전달하는 payload는 다음 `npc` 필드를 포함할 수 있다.
+
+```json
+{
+  "npc": {
+    "npc_id": "OFFICER_MILLER",
+    "npc_role": "immigration_officer",
+    "last_npc_message": "What is the purpose of your visit?"
+  }
+}
+```
+
+규칙은 다음과 같다.
+
+- `npc.npc_id`는 내부에서 lowercase로 정규화(normalize)한다. 예: `OFFICER_MILLER` -> `officer_miller`.
+- 알 수 없거나 누락된 `npc_id`는 안전 기본값인 `officer_miller` profile로 fallback한다.
+- NPC별 speaker 표시 이름, 기본 animation, mock voice id, Kokoro voice 후보는 roster에서 가져온다.
+- `kokoro_voices`에는 설치된 Kokoro 모델이 실제 지원하는 voice id만 넣는다.
+- 새 NPC를 추가할 때는 각 NPC의 `kokoro_voices` tuple 옆에 그 voice 후보를 선택한 의도를 한국어 주석으로 남긴다.
+- Developer A unified AgentRun metadata는 `dialogue_source_trace`를 포함한다.
+- `dialogue_source_trace`는 node context, player text preview, Developer B feedback/directive, branch, NPC profile, voice profile 중 어떤 데이터가 다음 NPC 대사와 TTS 선택에 사용됐는지 설명한다.
+- Developer C는 adapter를 통해 NPC context를 전달할 수 있지만, 최종 NPC 대사와 voice style 결정은 Developer A 소유다.
+
 ## 목적
 
 Developer A는 Murphy's Trippin Chapter 0, Immigration Check 장면에서
@@ -113,6 +141,8 @@ Developer A는 다음 형태의 NPC dialogue result를 반환한다.
 
 - `formal_neutral`: 정상 진행 또는 성공 분기에서 사용하는 차분한 심사관 톤
 - `formal_firm`: 답변이 불명확해 재시도가 필요할 때 사용하는 단호한 톤
+- `formal_stern`: 반복 재시도 후 더 짧고 딱딱하게 압박하는 톤
+- `formal_warning`: 진행 차단이나 실패 직전 상황에서 추가 심사 가능성을 암시하는 경고 톤
 - `formal_supportive`: 기본 fallback 또는 당황한 플레이어를 질서 있게 돕는 톤
 
 톤은 감정 연출을 위한 값이다. 톤 값이 scenario branch를 변경해서는 안 된다.

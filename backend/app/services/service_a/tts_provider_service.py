@@ -58,8 +58,11 @@ class FakeKokoroProvider:
 
     def synthesize(self, request: TTSProviderRequest, output_path: Path) -> dict[str, Any]:
         """실제 Kokoro dependency 없이 분석 가능한 최소 wav 파일을 만든다."""
+        started_at = time.perf_counter()
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_valid_fake_wav(output_path, sample_rate=request.sample_rate, seconds=1.0)
+        audio_seconds = 1.0
+        _write_valid_fake_wav(output_path, sample_rate=request.sample_rate, seconds=audio_seconds)
+        generation_seconds = time.perf_counter() - started_at
         return {
             "provider": self.provider_name,
             "voice_id": str(request.provider_options.get("voice", "am_michael")),
@@ -67,6 +70,9 @@ class FakeKokoroProvider:
             "audio_url": None,
             "sample_rate": request.sample_rate,
             "format": request.output_format,
+            "audio_seconds": audio_seconds,
+            "generation_seconds": generation_seconds,
+            "real_time_factor": generation_seconds / audio_seconds if audio_seconds else None,
             "status": "ok",
         }
 

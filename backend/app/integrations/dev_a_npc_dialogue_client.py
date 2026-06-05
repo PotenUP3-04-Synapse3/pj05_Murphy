@@ -80,6 +80,7 @@ class DevANpcDialogueClient:
         return {
             "node_id": payload.current_node_id,
             "player_text": payload.player_text,
+            "npc": payload.npc.model_dump(),
             "node_context": payload.node_context.model_dump(),
             "understanding": payload.understanding.model_dump(),
             "evaluation_summary": {
