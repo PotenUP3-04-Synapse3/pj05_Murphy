@@ -384,3 +384,54 @@ def test_voice_output_logs_dialogue_source_trace_for_next_line_generation(tmp_pa
     assert trace["used_inputs"]["voice_profile"]["voice_id"] == "am_michael"
     assert trace["output_decision"]["npc_text_source"] == "developer_b_recast_candidate"
     assert trace["output_decision"]["tts_text_source"] == "tts_text_polisher_service"
+
+
+def test_voice_output_logs_llm_dialogue_as_output_source(tmp_path, monkeypatch) -> None:
+    class FakeLLMClient:
+        model = "google/gemma-4-26B-A4B-it"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "npc_text": "Please answer the question directly.",
+                "tts_text": "Please answer the question directly.",
+                "feedback_kr": "방문 목적을 짧게 말하면 됩니다.",
+                "tone": "formal_firm",
+                "animation": "ignored_by_roster",
+                "llm_reason": "source trace test",
+                "__fallback_model": "google/gemma-4-26B-A4B-it",
+                "__llm_usage": {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30},
+            }
+
+    monkeypatch.setattr(
+        "backend.app.agents.agent_a.npc_dialogue_agent.build_npc_dialogue_llm_client_from_environment",
+        lambda: FakeLLMClient(),
+    )
+
+    payload = {
+        "chapter_id": "chapter_0_immigration",
+        "turn_id": "turn_003",
+        "node_id": "IMM_002_PURPOSE",
+        "npc": {"npc_id": "officer_miller"},
+        "player_text": "I am Korean.",
+        "node_context": {"recommended_expression": "I'm here for tourism."},
+        "evaluation_summary": {"feedback_note": "Purpose was unclear.", "task_success": 0, "clarity": 1},
+        "level_hint": {"english_level": "beginner", "recommended_expression": "I'm here for tourism."},
+        "in_game_feedback": {},
+        "branch": {"branch_type": "clarify", "next_node_id": "IMM_002_PURPOSE"},
+    }
+
+    build_voice_output_from_level_design(
+        payload,
+        runtime_root=tmp_path / "runtime",
+        request_id="req_1",
+        session_id="session_1",
+        use_llm_dialogue=True,
+        use_real_tts=False,
+        agent_run_root=tmp_path,
+    )
+
+    record = json.loads((tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    trace = record["metadata"]["dialogue_source_trace"]
+
+    assert trace["output_decision"]["npc_text_source"] == "llm_dialogue_from_fallback_seed"
+    assert trace["output_decision"]["tts_text_source"] == "llm_dialogue"

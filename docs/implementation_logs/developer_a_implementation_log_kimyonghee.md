@@ -555,3 +555,15 @@
   - `uv run pytest -q`: PASS, 89 passed, 2 warnings
   - `uv run ruff check .`: PASS
   - `uv run mypy .`: PASS
+
+## 2026-06-05 12:55:00 +09:00
+
+- NPC Dialogue LLM 결과에서 `npc_text`와 `tts_text`는 영어 ASCII 대사만 허용하도록 검증을 추가했다.
+- LLM이 한글, 깨진 한글, 비영어 문자를 NPC 대사/TTS 대사에 넣으면 해당 LLM 결과를 버리고 rule fallback 대사로 내려간다.
+- LLM prompt에도 `npc_text`, `tts_text`는 영어 전용이고 `feedback_kr`만 한국어를 허용한다고 명시했다.
+- AgentRun `dialogue_source_trace.output_decision`이 실제 LLM 대사를 쓴 경우 `llm_dialogue` 또는 `llm_dialogue_from_fallback_seed`로 남도록 수정했다.
+- 검증
+  - `uv run pytest backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 22 passed, 1 warning
+  - `uv run pytest -q`: PASS, 91 passed, 2 warnings
+  - `uv run ruff check .`: PASS
+  - `uv run mypy .`: PASS

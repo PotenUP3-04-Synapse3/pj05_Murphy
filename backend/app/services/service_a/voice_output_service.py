@@ -493,6 +493,9 @@ def _dialogue_source_trace(
     in_game_feedback = _as_dict(payload.get("in_game_feedback"))
     branch = _as_dict(payload.get("branch"))
     candidate_text = str(normalized.get("candidate_text") or "").strip()
+    llm = _as_dict(dialogue.get("llm"))
+    llm_used = bool(llm.get("used"))
+    seed_fallback_used = bool(llm.get("seed_fallback_used"))
 
     return {
         "npc_profile": {
@@ -546,13 +549,25 @@ def _dialogue_source_trace(
             "provider": tts.get("provider"),
         },
         "output_decision": {
-            "npc_text_source": "developer_b_recast_candidate" if candidate_text else "developer_a_fallback",
-            "tts_text_source": "tts_text_polisher_service",
+            "npc_text_source": _npc_text_source(
+                llm_used=llm_used,
+                seed_fallback_used=seed_fallback_used,
+                candidate_text=candidate_text,
+            ),
+            "tts_text_source": "llm_dialogue" if llm_used else "tts_text_polisher_service",
             "npc_text_preview": _preview_text(dialogue.get("npc_text") or dialogue.get("text")),
             "tts_text_preview": _preview_text(dialogue.get("tts_text")),
             "audio_url": tts.get("audio_url"),
         },
     }
+
+
+def _npc_text_source(*, llm_used: bool, seed_fallback_used: bool, candidate_text: str) -> str:
+    if llm_used and seed_fallback_used:
+        return "llm_dialogue_from_fallback_seed"
+    if llm_used:
+        return "llm_dialogue"
+    return "developer_b_recast_candidate" if candidate_text else "developer_a_fallback"
 
 
 def _failed_dialogue_source_trace(

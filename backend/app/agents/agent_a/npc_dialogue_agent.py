@@ -277,13 +277,27 @@ def _generate_with_llm_or_fallback(
         return fallback_result
 
     llm_usage = llm_result.get("__llm_usage", {})
+    npc_text = str(llm_result.get("npc_text") or "").strip()
+    tts_text = str(llm_result.get("tts_text") or "").strip()
+    if not _is_safe_english_dialogue_text(npc_text) or not _is_safe_english_dialogue_text(tts_text):
+        fallback_result["llm"] = {
+            "used": False,
+            "fallback_used": True,
+            "reason": "invalid_llm_dialogue_language",
+            "model_name": str(llm_result.get("__fallback_model") or getattr(client, "model", "unknown")),
+            "input_tokens": int(llm_usage.get("input_tokens", 0)),
+            "output_tokens": int(llm_usage.get("output_tokens", 0)),
+            "total_tokens": int(llm_usage.get("total_tokens", 0)),
+        }
+        return fallback_result
+
     seed_fallback = _dict_value(fallback_result.get("fallback"))
     merged = {
         **fallback_result,
         "speaker": npc_profile.display_name,
-        "npc_text": str(llm_result.get("npc_text") or fallback_result["npc_text"]),
-        "text": str(llm_result.get("npc_text") or fallback_result["npc_text"]),
-        "tts_text": str(llm_result.get("tts_text") or fallback_result["tts_text"]),
+        "npc_text": npc_text,
+        "text": npc_text,
+        "tts_text": tts_text,
         "feedback_kr": str(llm_result.get("feedback_kr") or fallback_result["feedback_kr"]),
         "tone": str(llm_result.get("tone") or fallback_result["tone"]),
         "animation": npc_profile.default_animation,
@@ -304,3 +318,15 @@ def _generate_with_llm_or_fallback(
 
 def _dict_value(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _is_safe_english_dialogue_text(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if not stripped.isascii():
+        return False
+    letters = [character for character in stripped if character.isalpha()]
+    if not letters:
+        return False
+    return True

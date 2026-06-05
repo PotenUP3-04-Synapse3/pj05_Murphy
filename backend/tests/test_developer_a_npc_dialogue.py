@@ -306,3 +306,40 @@ def test_level_design_llm_dialogue_calls_llm_even_without_candidate_text() -> No
     assert result["llm"]["fallback_used"] is True
     assert result["llm"]["seed_fallback_used"] is True
     assert result["llm"]["model_name"] == "google/gemma-4-26B-A4B-it"
+
+
+def test_level_design_llm_dialogue_rejects_non_english_npc_text() -> None:
+    class NonEnglishLLMClient:
+        model = "gpt-4o-mini"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "npc_text": "방문 목적을 명확히 말해주세요.",
+                "tts_text": "방문 목적을 명확히 말해주세요.",
+                "feedback_kr": "방문 목적을 말하면 됩니다.",
+                "tone": "formal_supportive",
+                "animation": "ignored_by_roster",
+                "llm_reason": "invalid language test",
+                "__llm_usage": {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "officer_miller"},
+            "node_id": "IMM_002_PURPOSE",
+            "player_text": "I am Korean.",
+            "node_context": {"recommended_expression": "I'm here for tourism."},
+            "evaluation_summary": {"task_success": 0, "clarity": 1},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": "Please answer the question."},
+            "branch": {"branch_type": "clarify"},
+        },
+        use_llm=True,
+        llm_client=NonEnglishLLMClient(),
+    )
+
+    assert result["npc_text"] == "Please answer the question."
+    assert result["tts_text"].isascii()
+    assert result["llm"]["used"] is False
+    assert result["llm"]["fallback_used"] is True
+    assert result["llm"]["reason"] == "invalid_llm_dialogue_language"
