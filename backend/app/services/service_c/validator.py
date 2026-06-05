@@ -1,4 +1,4 @@
-from backend.app.schemas.game_turn import DevBPolicyOutput, UnrealResponse
+from backend.app.schemas.game_turn import DevBPolicyOutput, FinalResult, UnrealResponse, UnrealResultResponse
 
 
 class ValidationError(ValueError):
@@ -63,6 +63,11 @@ class Validator:
             if not policy_output.out_game_feedback_seed.focus_on_form_targets:
                 raise ValidationError("out_game_feedback_seed.focus_on_form_targets must not be empty")
 
+        if policy_output.final_result is not None:
+            if policy_output.branch.branch_type != "final":
+                raise ValidationError("final_result is only allowed on final branch outputs")
+            self.validate_final_result(policy_output.final_result)
+
     def validate_unreal_response(self, response: UnrealResponse) -> None:
         if response.contract_version != "dev_c_unreal_response.v1":
             raise ValidationError("Unreal response contract_version must be dev_c_unreal_response.v1")
@@ -75,3 +80,41 @@ class Validator:
 
         if not response.npc.audio_url.startswith("/runtime/audio/"):
             raise ValidationError("Unreal response npc.audio_url must point to /runtime/audio/")
+
+        if response.report.final_result is not None:
+            self.validate_final_result(response.report.final_result)
+
+    def validate_unreal_result_response(self, response: UnrealResultResponse) -> None:
+        if response.contract_version != "dev_c_unreal_result.v1":
+            raise ValidationError("Unreal result contract_version must be dev_c_unreal_result.v1")
+
+        self.validate_final_result(response.final_result)
+
+    def validate_final_result(self, final_result: FinalResult) -> None:
+        if not 0 <= final_result.final_score_100 <= 100:
+            raise ValidationError("final_result.final_score_100 is out of range")
+
+        scores = final_result.quantitative_scores
+        score_values = [
+            scores.overall,
+            scores.comprehension,
+            scores.fluency,
+            scores.grammar_accuracy,
+            scores.vocabulary_range,
+            scores.clarity,
+            scores.interaction_problem_solving,
+        ]
+        if any(not 0 <= value <= 100 for value in score_values):
+            raise ValidationError("final_result.quantitative_scores contains an out-of-range score")
+
+        if scores.overall != final_result.final_score_100:
+            raise ValidationError("final_result.final_score_100 must match quantitative_scores.overall")
+
+        if scores.scoring_policy != "simple_average":
+            raise ValidationError("final_result.quantitative_scores.scoring_policy must be simple_average")
+
+        if final_result.report_summary.included_node_count < 0:
+            raise ValidationError("final_result.report_summary.included_node_count is out of range")
+
+        if final_result.final_recommendation == "UNRANKED" and final_result.final_score_100 != 0:
+            raise ValidationError("UNRANKED final_result.final_score_100 must be 0")

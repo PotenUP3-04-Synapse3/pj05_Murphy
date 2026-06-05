@@ -657,6 +657,47 @@ Rules:
 - `debug` may be omitted in production.
 - Developer C may redact, omit, or transform internal fields before returning
   to Unreal.
+- On final-branch responses, `report.final_result` may include Developer B's
+  validated final score payload. Developer C does not calculate the score.
+
+Dedicated result UI endpoint:
+
+```text
+GET /api/game/ai/result/{session_id}
+```
+
+Response envelope:
+
+```json
+{
+  "contract_version": "dev_c_unreal_result.v1",
+  "session_id": "session_001",
+  "final_result": {
+    "final_recommendation": "PASS",
+    "rank": "Silver Pass",
+    "final_score_100": 87,
+    "reason_tags": ["score_at_least_80"],
+    "quantitative_scores": {
+      "overall": 87,
+      "comprehension": 90,
+      "fluency": 80,
+      "grammar_accuracy": 80,
+      "vocabulary_range": 90,
+      "clarity": 90,
+      "interaction_problem_solving": 90,
+      "scoring_policy": "simple_average"
+    },
+    "report_summary": {
+      "overall": "You passed the immigration check with clear, usable travel English.",
+      "best_node": "IMM_003_DURATION",
+      "weakest_node": "IMM_002_PURPOSE",
+      "main_improvement": "Keep answers concise and polite.",
+      "focus_on_form_targets": [],
+      "included_node_count": 6
+    }
+  }
+}
+```
 
 ## Validator Requirements
 
@@ -683,3 +724,9 @@ Developer C validator must enforce at least these rules:
 14. Developer B optional `rubric_scores.total` stays in the 0-12 range.
 15. Developer B optional `feedback_generation` is trace metadata only and does
     not grant LLM branch or state authority.
+16. Developer B optional `final_result.final_score_100` is 0-100 and must match
+    `final_result.quantitative_scores.overall`.
+17. Developer B optional `final_result.quantitative_scores.scoring_policy` must
+    be `simple_average` in v1.
+18. Developer C may expose `final_result` inside `/respond` on final branches
+    and through `GET /api/game/ai/result/{session_id}`.

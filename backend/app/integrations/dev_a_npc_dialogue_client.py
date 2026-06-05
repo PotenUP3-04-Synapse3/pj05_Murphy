@@ -56,7 +56,9 @@ class DevANpcDialogueClient:
         return DevADialogueOutput(
             contract_version="dev_a_dialogue.v1",
             speaker=str(result.get("speaker", "Officer Miller")),
-            text=str(result.get("npc_text") or result.get("text") or "Okay. Please continue."),
+            text=_normalize_dialogue_text(
+                str(result.get("npc_text") or result.get("text") or "Okay. Please continue.")
+            ),
             tone=str(result.get("tone", "formal_neutral")),
             animation=str(result.get("animation", "officer_check_passport")),
             feedback_kr=_optional_string(result.get("feedback_kr")),
@@ -100,6 +102,9 @@ class DevANpcDialogueClient:
         if policy.branch.branch_type not in {"success", "final"}:
             return feedback.npc_recast_line_candidate or ""
 
+        if policy.branch.branch_type == "final":
+            return payload.node_context.npc_question
+
         next_question = self._next_node_question(payload)
         recast = _second_person_recast(
             feedback.npc_recast_line_candidate
@@ -136,6 +141,15 @@ def _second_person_recast(text: str | None) -> str:
     if normalized.startswith("I'm "):
         normalized = "You're " + normalized.removeprefix("I'm ")
     return normalized if normalized.endswith((".", "?", "!")) else f"{normalized}."
+
+
+def _normalize_dialogue_text(text: str) -> str:
+    normalized = text.strip()
+    if normalized.startswith("Alright."):
+        return "All right." + normalized.removeprefix("Alright.")
+    if normalized.startswith("Alright,"):
+        return "All right," + normalized.removeprefix("Alright,")
+    return normalized
 
 
 def _extract_audio_url(result: dict[str, Any]) -> str | None:

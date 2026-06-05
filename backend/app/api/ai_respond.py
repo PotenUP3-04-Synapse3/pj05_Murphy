@@ -5,9 +5,17 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from starlette.datastructures import UploadFile
 
-from backend.app.schemas.game_turn import MockAudioInput, PrePrototypeRequest, UnrealResponse, UnrealTurnRequest
+from backend.app.integrations.dev_b_level_hint_client import DevBPolicyClient
+from backend.app.schemas.game_turn import (
+    MockAudioInput,
+    PrePrototypeRequest,
+    UnrealResponse,
+    UnrealResultResponse,
+    UnrealTurnRequest,
+)
 from backend.app.services.service_c.agent_run_summary_service import AgentRunSummaryService
 from backend.app.services.service_c.orchestrator import Orchestrator
+from backend.app.services.service_c.validator import Validator
 
 router = APIRouter(prefix="/api/game/ai", tags=["game-ai"])
 AGENT_RUN_LOG_ROOT = Path("backend/runtime/generated/agent_runs")
@@ -27,6 +35,17 @@ async def respond(request: Request) -> UnrealResponse:
 @router.get("/agent-runs/latest")
 def latest_agent_run(request_id: str | None = None) -> dict[str, Any]:
     return AgentRunSummaryService(AGENT_RUN_LOG_ROOT).latest(request_id=request_id)
+
+
+@router.get("/result/{session_id}", response_model=UnrealResultResponse)
+def result(session_id: str) -> UnrealResultResponse:
+    response = UnrealResultResponse(
+        contract_version="dev_c_unreal_result.v1",
+        session_id=session_id,
+        final_result=DevBPolicyClient().final_result_for_session(session_id),
+    )
+    Validator().validate_unreal_result_response(response)
+    return response
 
 
 async def _parse_multipart_request(request: Request) -> PrePrototypeRequest:

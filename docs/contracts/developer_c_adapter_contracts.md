@@ -368,6 +368,23 @@ Developer C owns:
 - OpenKB retrieval execution
 - final response assembly
 
+Implemented pre-prototype final score bridge:
+
+```text
+DevBPolicyClient.final_result_for_session(session_id) -> FinalResult
+```
+
+Rules:
+
+- Developer B owns `FinalResultScorePolicy` and the numeric scoring policy.
+- Developer C may read B-owned runtime records through the Developer B adapter
+  and may not mutate records under `backend/runtime/openkb/dev_b/`.
+- Final-branch `evaluate_turn(...)` may attach `DevBPolicyOutput.final_result`.
+- `GET /api/game/ai/result/{session_id}` returns
+  `dev_c_unreal_result.v1` with the validated B `final_result`.
+- `/api/game/ai/respond` includes the same object under
+  `report.final_result` when B returns it on a final branch.
+
 Developer B owns:
 
 - final recommendation policy

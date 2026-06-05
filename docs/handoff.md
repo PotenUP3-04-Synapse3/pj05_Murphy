@@ -514,10 +514,51 @@ Unified AgentRun logging:
   It intentionally stores compact summaries, not wav bytes, API keys, or full
   provider prompts.
 
+## 2026-06-05 Final Result Score Policy Update
+
+Implemented the remaining Developer B/C pre-prototype final score path.
+
+Changed:
+
+- Added B-owned `FinalResultScorePolicy` and B OpenKB final-result record
+  reader under `backend/app/services/service_b/`.
+- Added typed `FinalResult`, `FinalScoreState`, `QuantitativeScores`, and
+  `UnrealResultResponse` schemas in the C-owned schema layer.
+- `DevBPolicyClient.evaluate_turn(...)` now attaches B-scored
+  `final_result` on final-branch outputs, and
+  `DevBPolicyClient.final_result_for_session(session_id)` exposes the same B
+  policy for result UI lookups.
+- `/api/game/ai/respond` includes final score data under `report.final_result`
+  when B returns it.
+- Added `GET /api/game/ai/result/{session_id}` returning
+  `dev_c_unreal_result.v1`.
+- Developer C validator now checks `final_result.final_score_100`,
+  `quantitative_scores.overall`, and `scoring_policy`.
+- C-owned Developer A adapter normalizes leading `Alright` to `All right` and
+  uses the final node's NPC line for final-branch candidate text.
+
+Score policy:
+
+- Per-turn `rubric_scores.total` is converted from 0-12 to 0-100.
+- Chapter 0 v1 uses simple unweighted average.
+- `IMM_007_FINAL_DECISION` is excluded from the average when prior scored
+  records exist.
+- feedback/error/focus-on-form records affect `reason_tags` and
+  `report_summary`, not a separate numeric penalty.
+
+Verification so far:
+
+- `uv run pytest backend/tests/dev_b/test_final_result_score_policy.py backend/tests/test_final_result_payload.py backend/tests/test_preprototype_flow.py::test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_final_node_line_for_final_branch -q`
+  passed with 9 tests and 2 warnings.
+- `uv sync` passed after using the known uv cache escalation workaround.
+- `uv run pytest -q` passed with 76 tests and 2 warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 82 source files after using the
+  known uv cache escalation workaround.
+
 The sandboxed `uv sync`, `uv lock`, and `uv run ...` attempts can fail while
 initializing the user-level uv cache. Rerunning with approved escalation is the
-known workaround in this environment. The latest `uv run pytest` passed with
-60 tests and 2 warnings. `uv run ruff check .` passed. `uv run mypy .` passed.
+known workaround in this environment.
 
 ## Known Issues
 
@@ -529,8 +570,9 @@ first real local run needs `uv sync --extra local-stt`, `ffmpeg`, and time to
 download/load the Whisper model. Real Kokoro can execute with
 `MURPHY_TTS_MODE=real`, but the first run may download/load model assets and
 can emit known torch/Kokoro warnings. Developer C Understanding is still a
-deterministic prototype analyzer. Out-game final report generation is not yet
-implemented. Generated runtime artifacts for the integrated endpoint are
+deterministic prototype analyzer. The final score/result payload is implemented,
+but full out-game practice-card generation from Focus-on-Form records is still
+not implemented. Generated runtime artifacts for the integrated endpoint are
 written under `backend/runtime/generated/` and ignored by git.
 
 ## Next Recommended Step

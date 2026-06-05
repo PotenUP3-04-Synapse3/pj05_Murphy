@@ -11,9 +11,11 @@ from backend.app.integrations.dev_a_npc_dialogue_client import DevANpcDialogueCl
 from backend.app.main import app
 from backend.app.schemas.game_turn import (
     DevADialogueInput,
+    DevBPolicyOutput,
     MockAudioInput,
     PrePrototypeRequest,
     UnrealTurnRequest,
+    UnderstandingOutput,
 )
 from backend.app.services.service_c.openkb_service import OpenKBService
 from backend.app.services.service_c.orchestrator import Orchestrator
@@ -143,6 +145,7 @@ def test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response() -> N
     assert response.next_action == "ADVANCE"
     assert response.npc.speaker == "Officer Miller"
     assert "tourism" in response.npc.text.lower()
+    assert response.npc.text.startswith("All right.")
     assert response.evaluation.verdict == "SUCCESS"
     assert response.ui.in_game_feedback.feedback_strategy == "recast"
     assert response.debug.stt_model == "whisper-large-v3-turbo"
@@ -156,7 +159,7 @@ def test_openkb_loads_chapter_zero_duration_node_from_scenario_nodes() -> None:
     node_context = OpenKBService().get_node_context("CH0_IMMIGRATION", "IMM_003_DURATION")
 
     assert node_context.node_id == "IMM_003_DURATION"
-    assert node_context.npc_question == "How long will you stay?"
+    assert node_context.npc_question == "How long will you be staying?"
     assert node_context.objective_kr == "체류 기간 말하기"
     assert node_context.success_next_node == "IMM_004_STAY_LOCATION"
     assert "IMM_003_RETRY_DURATION" in node_context.allowed_next_nodes
@@ -192,7 +195,7 @@ def test_orchestrator_uses_repaired_llm_visit_purpose_before_developer_a_dialogu
     assert response.next_node_id == "IMM_003_DURATION"
     assert response.evaluation.verdict == "SUCCESS"
     assert response.debug.understanding_confidence == pytest.approx(0.94)
-    assert response.npc.text != "Okay. Please continue."
+    assert response.npc.text != "All right. Let's continue."
     assert "how long" in response.npc.text.lower()
 
 
@@ -206,7 +209,7 @@ def test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings() -> None:
         builder_calls.append(kwargs)
         return {
             "speaker": "Officer Miller",
-            "npc_text": "You're here for tourism. How long will you stay?",
+            "npc_text": "You're here for tourism. How long will you be staying?",
             "tone": "formal_neutral",
             "animation": "officer_check_passport",
             "feedback_kr": "Good.",
@@ -259,6 +262,153 @@ def test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings() -> None:
     assert output.audio_url == "/runtime/audio/kokoro/real-demo.wav"
     assert builder_calls[0]["use_real_tts"] is True
     assert builder_calls[0]["use_llm_dialogue"] is True
+
+
+def test_dev_a_adapter_uses_final_node_line_for_final_branch() -> None:
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        npc_text = str(payload["in_game_feedback"]["npc_recast_line_candidate"])
+        return {
+            "speaker": "Officer Miller",
+            "npc_text": npc_text,
+            "tone": "formal_neutral",
+            "animation": "officer_check_passport",
+            "feedback_kr": "Good.",
+            "tts": {"audio_url": "/runtime/audio/kokoro/final-demo.wav"},
+        }
+
+    openkb_service = OpenKBService()
+    node_context = openkb_service.get_node_context("CH0_IMMIGRATION", "IMM_007_FINAL_DECISION")
+    understanding = UnderstandingOutput(
+        intent="summarize_final_result",
+        intent_success=True,
+        confidence=0.95,
+        meaning_summary_kr="The final immigration result is ready.",
+        emotion="calm",
+        answer_relevance="on_topic",
+        ambiguity_type="none",
+        risk_delta=0,
+        risk_reason="No risk expression was found.",
+        risk_tags=[],
+        extracted_slots={"final_recommendation": "PASS"},
+        missing_slots=[],
+        needs_clarification=False,
+    )
+    policy_output = DevBPolicyOutput.model_validate(
+        {
+            "contract_version": "dev_b_policy.v1",
+            "node_id": "IMM_007_FINAL_DECISION",
+            "evaluation": {
+                "verdict": "SUCCESS",
+                "detected_intents": ["summarize_final_result"],
+                "required_intents_passed": True,
+                "filled_slots": {"final_recommendation": "PASS"},
+                "missing_slots": [],
+                "scores": {
+                    "task_success": 3,
+                    "clarity": 3,
+                    "grammar": 2,
+                    "vocabulary": 2,
+                    "problem_solving": 2,
+                    "politeness": 3,
+                },
+                "feedback_tags": ["intent_matched", "required_slot_filled"],
+                "feedback_note": "The final result is ready.",
+            },
+            "level_hint": {
+                "english_level": "beginner",
+                "travel_speaking_level": "TSL_1_SURVIVAL",
+                "cefr_estimate": "A1",
+                "needs_hint": False,
+                "hint_level": "none",
+                "hint_type": None,
+                "hint_kr": None,
+                "example_en": "Thank you, officer.",
+                "avoid_expression": None,
+                "recommended_expression": "Thank you, officer.",
+            },
+            "in_game_feedback": {
+                "show": False,
+                "feedback_strategy": "none",
+                "timing": "during_dialogue_turn",
+                "priority": "low",
+                "purpose": "maintain_communication",
+                "focus": "summarize_final_result",
+                "npc_recast_line_candidate": None,
+                "clarification_prompt_candidate": None,
+                "elicitation_cue_candidate": None,
+                "scaffolding_hint": None,
+                "recommended_expression": "Thank you, officer.",
+                "display_duration_ms": None,
+                "blocks_progression": False,
+            },
+            "error_capture": {
+                "should_record": False,
+                "storage_format": "markdown",
+                "error_items": [],
+                "markdown_entry": None,
+            },
+            "out_game_feedback_seed": {
+                "include_in_final_report": False,
+                "openkb_query_tags": [],
+                "focus_on_form_targets": [],
+                "report_priority": "low",
+            },
+            "branch": {
+                "branch_type": "final",
+                "next_action": "FINAL_DECISION",
+                "next_node_id": "END_PASS",
+                "branch_reason": "Required intent and required slots were satisfied.",
+                "allowed_next_node_checked": True,
+            },
+            "state_delta": {
+                "patience_delta": 0,
+                "suspicion_delta": 0,
+                "retry_count_delta": 0,
+                "hint_count_delta": 0,
+            },
+            "report_item": {
+                "summary": "The traveler completed the immigration check.",
+                "improvement": "Keep answers concise and polite.",
+                "example_answer": "Thank you, officer.",
+                "score_tags": ["task_success_good"],
+            },
+            "dialogue_directive": {
+                "purpose": "continue_to_next_question",
+                "tone_hint": "neutral_official",
+                "target_slot": "final_recommendation",
+                "do_not_generate_npc_text": True,
+            },
+        }
+    )
+    request = _preprototype_request()
+    client = DevANpcDialogueClient(
+        openkb_service=openkb_service,
+        voice_output_builder=fake_voice_output_builder,
+    )
+
+    output = client.generate_dialogue(
+        DevADialogueInput(
+            contract_version="dev_a_dialogue.v1",
+            request_id=request.turn.request_id,
+            session_id=request.turn.session.session_id,
+            current_node_id="IMM_007_FINAL_DECISION",
+            player_text="Thank you.",
+            npc=request.turn.npc,
+            node_context=node_context,
+            understanding=understanding,
+            developer_b_policy=policy_output,
+        )
+    )
+
+    assert output.text == node_context.npc_question
+    assert output.text != "Thank you, officer."
+    assert builder_payloads[0]["in_game_feedback"]["npc_recast_line_candidate"] == node_context.npc_question
 
 
 def test_api_accepts_mock_unreal_turn_json() -> None:

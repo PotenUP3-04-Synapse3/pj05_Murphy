@@ -70,6 +70,7 @@ class ResponseBuilder:
             report=ReportResponse(
                 recorded_error_count=logging_summary.recorded_error_count,
                 report_item=dev_b_output.report_item,
+                final_result=dev_b_output.final_result,
             ),
             debug=DebugInfo(
                 stt_model=normalized_input.stt_model,
