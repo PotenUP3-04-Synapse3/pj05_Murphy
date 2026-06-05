@@ -59,6 +59,12 @@ scored scenario turns, derives pass/secondary/comic-fail recommendations, and
 builds final report summaries with best node, weakest node, improvement target,
 and reason tags.
 
+Developer B also improved the local integrated demo workflow around
+`/respond-dialog`. The browser tester now supports direct microphone recording
+for the next wav turn, shows a running-only stopwatch indicator, and displays
+request-scoped AgentRun token/cost totals so reused session ids or other
+developers' runtime logs do not distort the visible demo usage.
+
 ## Architecture
 
 The Developer B implementation is split into a small public agent and focused
@@ -108,6 +114,7 @@ that Developer C should replace the current mock body of
 - Travel Speaking Level Rubric Controller
 - Final Result Score Policy
 - Unified AgentRun Logger
+- Demo Usage and Recording Diagnostics
 - Dialogue Directive Metadata
 - Developer B pytest suite
 
@@ -202,6 +209,10 @@ Unified AgentRun logging is additive and best-effort. Runtime records append to
 `backend/runtime/generated/agent_runs/unified_agent_runs.md` with
 `agent_name=english_level_hint_agent` and `owner=developer_b`. Log summaries use
 short previews and policy metadata rather than storing full raw player text.
+The demo usage view can filter totals by the request ids submitted from the
+current browser run, and it normalizes common token/cost aliases such as
+`prompt_tokens`, `completion_tokens`, and `cost_usd` when reading AgentRun
+model metadata.
 
 Final result scoring is deterministic and local. It uses the B-authored
 OpenKB records for a session, ignores unscored records, excludes the
@@ -250,6 +261,10 @@ Covered scenarios:
 - OpenKB records include feedback generation and difficulty metadata.
 - Unified AgentRun records capture the B policy timeline and appear alongside
   C orchestrator records in the shared JSONL/markdown log files.
+- Demo usage summaries can be limited to the current browser run's request ids
+  to avoid mixing historical or other-developer costs into the visible total.
+- Browser-recorded wav input can be attached to the next `/respond-dialog` turn
+  through the same multipart audio path as uploaded wav files.
 - Final score policy converts 0-12 rubric totals to 0-100 quantitative scores.
 - Final recommendations distinguish pass, conditional pass, secondary room,
   comic fail, and unranked outcomes.
@@ -282,6 +297,8 @@ Latest verification:
 - Warning or bad-end path: illegal work, overstay, unknown item, or unsafe bag
   content expressions raise suspicion and branch to C-validated warning/fail
   outcomes.
+- Multi-turn demo path: testers can upload a wav or record the next wav turn
+  directly in the browser and inspect request-scoped token/cost totals.
 
 ## Resume Bullets
 
@@ -309,6 +326,9 @@ Latest verification:
   summaries.
 - Added shared `unified_agent_run.v1` AgentRun logging for Developer B policy
   execution timelines.
+- Improved `/respond-dialog` demo diagnostics with browser-recorded wav input,
+  a running-only stopwatch indicator, and request-scoped AgentRun token/cost
+  totals.
 - Added focused pytest coverage for broken English, branch safety, risk
   handling, node spec completeness, feedback/report payload generation, and
   OpenKB write behavior.
