@@ -133,8 +133,9 @@ def test_npc_dialogue_llm_factory_uses_gemma4_fallback_when_openai_key_is_missin
 
     client = build_npc_dialogue_llm_client_from_environment(env_file)
 
-    assert isinstance(client, OpenAICompatibleNPCDialogueLLMClient)
-    assert client.api_key == "dummy"
-    assert client.model == "google/gemma-4-26B-A4B-it"
-    assert client.base_url == "http://100.95.34.69:8001/v1"
-    assert client.timeout_seconds == 12
+    assert isinstance(client, FallbackNPCDialogueLLMClient)
+    assert isinstance(client.fallback, OpenAICompatibleNPCDialogueLLMClient)
+    assert client.fallback.api_key == "dummy"
+    assert client.fallback.model == "google/gemma-4-26B-A4B-it"
+    assert client.fallback.base_url == "http://100.95.34.69:8001/v1"
+    assert client.fallback.timeout_seconds == 12

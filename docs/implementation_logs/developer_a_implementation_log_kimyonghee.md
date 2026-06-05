@@ -539,3 +539,19 @@
 - NPC 감정/정책 판단도 `blocks_progression` 대신 `branch_type`, `tone_hint`, `retry_count`, `task_success`, `clarity` 같은 A가 실제로 쓰는 입력만 사용하도록 정리했다.
 - 검증
   - `uv run pytest backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_npc_emotion_escalation.py backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 23 passed, 1 warning
+
+## 2026-06-05 12:35:00 +09:00
+
+- `MURPHY_NPC_DIALOGUE_MODE=llm`일 때는 Developer B의 `npc_recast_line_candidate`가 없어도 먼저 NPC Dialogue LLM을 호출하도록 순서를 변경했다.
+- 이제 후보 대사가 없으면 rule fallback 문장을 최종 결과로 바로 쓰지 않고, LLM에 전달할 seed 후보로만 사용한다.
+- LLM/Gemma4가 대사와 `tts_text`를 생성하면 최종 TTS는 해당 LLM 결과를 사용하고, rule fallback은 실제 LLM 실패 시에만 최종 대사로 사용된다.
+- OpenAI key가 없어 Gemma4 fallback client가 직접 사용되는 경우도 fallback wrapper를 통과하게 해서 `llm.fallback_used=true`, `model_name=google/gemma-4-26B-A4B-it`로 로그에 남긴다.
+- 실제 smoke 결과
+  - 입력에 `npc_recast_line_candidate`가 없는 상태에서 `OPENAI_API_KEY=''`, `NPC_DIALOGUE_LLM_FALLBACK=gemma4_vllm`, `use_real_tts=True`, `use_llm_dialogue=True`로 실행했다.
+  - Gemma4가 생성한 `npc_text`/`tts_text`가 Kokoro TTS 입력으로 사용됐고 WAV 생성이 성공했다.
+  - 결과 로그: `llm.used=true`, `llm.fallback_used=true`, `llm.seed_fallback_used=true`, `tts_status=ok`.
+- 검증
+  - `uv run pytest backend/tests/test_developer_a_npc_llm_client.py backend/tests/test_developer_a_npc_dialogue.py -q`: PASS, 12 passed, 1 warning
+  - `uv run pytest -q`: PASS, 89 passed, 2 warnings
+  - `uv run ruff check .`: PASS
+  - `uv run mypy .`: PASS

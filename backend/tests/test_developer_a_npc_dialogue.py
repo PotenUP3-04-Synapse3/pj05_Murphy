@@ -255,3 +255,54 @@ def test_level_design_llm_dialogue_uses_rule_fields_when_llm_omits_optional_sche
     assert result["tone"] == "formal_supportive"
     assert result["feedback_kr"]
     assert result["llm"]["model_name"] == "google/gemma-4-26B-A4B-it"
+
+
+def test_level_design_llm_dialogue_calls_llm_even_without_candidate_text() -> None:
+    class FakeLLMClient:
+        model = "google/gemma-4-26B-A4B-it"
+
+        def __init__(self) -> None:
+            self.payloads: list[dict] = []
+
+        def generate(self, payload: dict) -> dict:
+            self.payloads.append(payload)
+            return {
+                "npc_text": "Tell me your travel purpose clearly.",
+                "tts_text": "Tell me your travel purpose clearly.",
+                "feedback_kr": "방문 목적을 짧게 말하면 됩니다.",
+                "tone": "formal_firm",
+                "animation": "ignored_by_roster",
+                "llm_reason": "no candidate text, generated from context",
+                "__fallback_model": "google/gemma-4-26B-A4B-it",
+                "__llm_usage": {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30},
+            }
+
+    client = FakeLLMClient()
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "officer_miller"},
+            "node_id": "IMM_002_PURPOSE",
+            "player_text": "uncle",
+            "node_context": {
+                "npc_question": "What is the purpose of your visit?",
+                "recommended_expression": "I'm here to visit my uncle.",
+            },
+            "evaluation_summary": {"task_success": 1, "clarity": 1},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {},
+            "branch": {"branch_type": "retry"},
+        },
+        use_llm=True,
+        llm_client=client,
+    )
+
+    assert client.payloads
+    assert client.payloads[0]["fallback_candidate"]["fallback"]["used"] is True
+    assert result["npc_text"] == "Tell me your travel purpose clearly."
+    assert result["tts_text"] == "Tell me your travel purpose clearly."
+    assert result["fallback"] == {"used": False, "reason": None}
+    assert result["llm"]["used"] is True
+    assert result["llm"]["fallback_used"] is True
+    assert result["llm"]["seed_fallback_used"] is True
+    assert result["llm"]["model_name"] == "google/gemma-4-26B-A4B-it"

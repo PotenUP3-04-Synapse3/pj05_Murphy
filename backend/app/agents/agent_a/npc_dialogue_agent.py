@@ -134,28 +134,27 @@ def generate_npc_dialogue_from_level_design(
     candidate_text = str(normalized.get("candidate_text", "")).strip()
     if not candidate_text:
         result = _apply_npc_profile(build_text_fallback(normalized), npc_profile)
-        return _with_generation_metadata(result, profile, emotion_state, policy)
+    else:
+        recommended = str(normalized.get("recommended_expression", "")).strip()
+        feedback_note = str(normalized.get("feedback_note", "")).strip()
+        feedback_kr = _level_design_feedback(feedback_note, recommended)
+        npc_text = _compose_level_design_text(
+            candidate_text=candidate_text,
+            recommended_expression=recommended,
+            policy=policy,
+        )
+        tts_text = polish_tts_text(npc_text, profile, emotion_state, policy)
 
-    recommended = str(normalized.get("recommended_expression", "")).strip()
-    feedback_note = str(normalized.get("feedback_note", "")).strip()
-    feedback_kr = _level_design_feedback(feedback_note, recommended)
-    npc_text = _compose_level_design_text(
-        candidate_text=candidate_text,
-        recommended_expression=recommended,
-        policy=policy,
-    )
-    tts_text = polish_tts_text(npc_text, profile, emotion_state, policy)
-
-    result = {
-        "speaker": npc_profile.display_name,
-        "npc_text": npc_text,
-        "text": npc_text,
-        "tts_text": tts_text,
-        "feedback_kr": feedback_kr,
-        "tone": policy.tone,
-        "animation": npc_profile.default_animation,
-        "fallback": {"used": False, "reason": None},
-    }
+        result = {
+            "speaker": npc_profile.display_name,
+            "npc_text": npc_text,
+            "text": npc_text,
+            "tts_text": tts_text,
+            "feedback_kr": feedback_kr,
+            "tone": policy.tone,
+            "animation": npc_profile.default_animation,
+            "fallback": {"used": False, "reason": None},
+        }
     result = _with_generation_metadata(result, profile, emotion_state, policy)
     if not use_llm:
         return result
@@ -259,10 +258,12 @@ def _generate_with_llm_or_fallback(
                 "level_design_payload": source_payload,
                 "normalized": normalized,
                 "fallback_candidate": {
+                    "speaker": fallback_result["speaker"],
                     "npc_text": fallback_result["npc_text"],
                     "tts_text": fallback_result["tts_text"],
                     "tone": fallback_result["tone"],
                     "feedback_kr": fallback_result["feedback_kr"],
+                    "fallback": fallback_result.get("fallback"),
                 },
                 "generation_profile": fallback_result["generation_profile"],
             }
@@ -276,6 +277,7 @@ def _generate_with_llm_or_fallback(
         return fallback_result
 
     llm_usage = llm_result.get("__llm_usage", {})
+    seed_fallback = _dict_value(fallback_result.get("fallback"))
     merged = {
         **fallback_result,
         "speaker": npc_profile.display_name,
@@ -285,9 +287,11 @@ def _generate_with_llm_or_fallback(
         "feedback_kr": str(llm_result.get("feedback_kr") or fallback_result["feedback_kr"]),
         "tone": str(llm_result.get("tone") or fallback_result["tone"]),
         "animation": npc_profile.default_animation,
+        "fallback": {"used": False, "reason": None},
         "llm": {
             "used": True,
-            "fallback_used": False,
+            "fallback_used": bool(llm_result.get("__fallback_model")),
+            "seed_fallback_used": bool(seed_fallback.get("used")),
             "model_name": str(llm_result.get("__fallback_model") or getattr(client, "model", "unknown")),
             "input_tokens": int(llm_usage.get("input_tokens", 0)),
             "output_tokens": int(llm_usage.get("output_tokens", 0)),
@@ -296,3 +300,7 @@ def _generate_with_llm_or_fallback(
         },
     }
     return merged
+
+
+def _dict_value(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}

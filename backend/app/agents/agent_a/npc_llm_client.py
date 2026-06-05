@@ -23,6 +23,15 @@ class NPCDialogueLLMUnavailable(RuntimeError):
 
 
 @dataclass(frozen=True)
+class _UnavailableNPCDialogueLLMClient:
+    reason: str
+    model: str = "openai_unavailable"
+
+    def generate(self, payload: dict[str, Any]) -> dict[str, Any]:
+        raise NPCDialogueLLMUnavailable(self.reason)
+
+
+@dataclass(frozen=True)
 class OpenAINPCDialogueLLMClient:
     api_key: str
     model: str = "gpt-4o-mini"
@@ -158,9 +167,12 @@ def build_npc_dialogue_llm_client_from_environment(
 
     try:
         primary = OpenAINPCDialogueLLMClient.from_environment(env_path)
-    except NPCDialogueLLMUnavailable:
+    except NPCDialogueLLMUnavailable as exc:
         if fallback is not None:
-            return fallback
+            return FallbackNPCDialogueLLMClient(
+                primary=_UnavailableNPCDialogueLLMClient(reason=str(exc)),
+                fallback=fallback,
+            )
         raise
 
     if fallback is not None:
