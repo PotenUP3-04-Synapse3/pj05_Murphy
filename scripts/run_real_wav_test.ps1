@@ -1,3 +1,5 @@
+## powershell -ExecutionPolicy Bypass -File .\scripts\run_real_wav_test.ps1 -AudioPath "samples\uncle.wav"
+
 param(
     [string]$ServerUrl = "http://localhost:8000/api/game/ai/respond",
     [string]$AudioPath = "C:\5th_project\pj05_Murphy\samples\utterance-20260603-163237.wav"
