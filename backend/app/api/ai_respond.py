@@ -1,13 +1,16 @@
 import json
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from starlette.datastructures import UploadFile
 
 from backend.app.schemas.game_turn import MockAudioInput, PrePrototypeRequest, UnrealResponse, UnrealTurnRequest
+from backend.app.services.service_c.agent_run_summary_service import AgentRunSummaryService
 from backend.app.services.service_c.orchestrator import Orchestrator
 
 router = APIRouter(prefix="/api/game/ai", tags=["game-ai"])
+AGENT_RUN_LOG_ROOT = Path("backend/runtime/generated/agent_runs")
 
 
 @router.post("/respond", response_model=UnrealResponse)
@@ -19,6 +22,11 @@ async def respond(request: Request) -> UnrealResponse:
         preprototype_request = PrePrototypeRequest.model_validate(await request.json())
 
     return Orchestrator().run_turn(preprototype_request)
+
+
+@router.get("/agent-runs/latest")
+def latest_agent_run(request_id: str | None = None) -> dict[str, Any]:
+    return AgentRunSummaryService(AGENT_RUN_LOG_ROOT).latest(request_id=request_id)
 
 
 async def _parse_multipart_request(request: Request) -> PrePrototypeRequest:

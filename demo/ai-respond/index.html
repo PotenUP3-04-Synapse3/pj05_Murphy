@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Murphy AI Respond Tester</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2428;
+      --muted: #5f6b62;
+      --line: #d8ded7;
+      --surface: #ffffff;
+      --surface-soft: #f5f7f2;
+      --green: #147c5d;
+      --green-dark: #0f5e47;
+      --amber: #a86100;
+      --red: #b42318;
+      --focus: #2d6cdf;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--surface-soft);
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 15px;
+      line-height: 1.45;
+      letter-spacing: 0;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .header-inner,
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 72px;
+      gap: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .status-pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 10px;
+      color: var(--muted);
+      background: var(--surface);
+      white-space: nowrap;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(320px, 430px) minmax(0, 1fr);
+      gap: 20px;
+      padding: 20px 0 32px;
+    }
+
+    section,
+    .node {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    section {
+      padding: 16px;
+    }
+
+    .left-rail {
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+
+    .results {
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    input[type="file"],
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+    }
+
+    input[type="file"] {
+      padding: 9px;
+    }
+
+    textarea {
+      min-height: 330px;
+      resize: vertical;
+      padding: 10px;
+      font-family: Consolas, Monaco, "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      min-height: 40px;
+      padding: 0 14px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:focus,
+    input:focus,
+    textarea:focus {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    button.primary {
+      width: 100%;
+      margin-top: 14px;
+      background: var(--green);
+      color: #fff;
+    }
+
+    button.primary:hover {
+      background: var(--green-dark);
+    }
+
+    button.secondary {
+      background: #eef3eb;
+      border-color: var(--line);
+      color: var(--ink);
+    }
+
+    .button-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      border-left: 3px solid var(--green);
+      background: #f7faf6;
+      padding: 10px;
+      min-height: 72px;
+    }
+
+    .metric strong,
+    .kv strong {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 6px;
+      font-size: 17px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .kv-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 14px;
+    }
+
+    .kv {
+      min-width: 0;
+    }
+
+    .kv span,
+    .mono {
+      overflow-wrap: anywhere;
+    }
+
+    .mono,
+    pre {
+      font-family: Consolas, Monaco, "Courier New", monospace;
+    }
+
+    pre {
+      margin: 8px 0 0;
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fbfcfa;
+      padding: 10px;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .node-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .node {
+      padding: 12px;
+    }
+
+    .node-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .node-title {
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .node-status {
+      color: var(--green-dark);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    details {
+      border-top: 1px solid var(--line);
+      padding-top: 8px;
+    }
+
+    summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .error {
+      color: var(--red);
+      font-weight: 700;
+    }
+
+    .warning {
+      color: var(--amber);
+      font-weight: 700;
+    }
+
+    audio {
+      width: 100%;
+      margin-top: 10px;
+    }
+
+    @media (max-width: 900px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+
+      .metric-grid,
+      .kv-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1>Murphy AI Respond Tester</h1>
+      <div class="status-pill" id="runtimeStatus">Idle</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="left-rail">
+      <section>
+        <h2>Input</h2>
+        <label for="audioFile">WAV</label>
+        <input id="audioFile" type="file" accept=".wav,audio/wav,audio/x-wav">
+
+        <label for="turnFile">Turn JSON</label>
+        <input id="turnFile" type="file" accept=".json,application/json">
+
+        <label for="turnJson">Turn Payload</label>
+        <textarea id="turnJson" spellcheck="false"></textarea>
+
+        <div class="button-row">
+          <button class="secondary" id="resetTurn" type="button">Reset Turn</button>
+        </div>
+        <button class="primary" id="runButton" type="button">Run</button>
+      </section>
+    </div>
+
+    <div class="results">
+      <section>
+        <h2>Timing</h2>
+        <div class="metric-grid">
+          <div class="metric">
+            <strong>Total</strong>
+            <span id="elapsedTotal">-</span>
+          </div>
+          <div class="metric">
+            <strong>Status</strong>
+            <span id="httpStatus">-</span>
+          </div>
+          <div class="metric">
+            <strong>STT</strong>
+            <span id="sttRuntime">-</span>
+          </div>
+          <div class="metric">
+            <strong>Verdict</strong>
+            <span id="verdict">-</span>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Response</h2>
+        <div class="kv-grid">
+          <div class="kv">
+            <strong>Player Text</strong>
+            <span id="playerText">-</span>
+          </div>
+          <div class="kv">
+            <strong>Next Node</strong>
+            <span id="nextNode">-</span>
+          </div>
+          <div class="kv">
+            <strong>Next Action</strong>
+            <span id="nextAction">-</span>
+          </div>
+          <div class="kv">
+            <strong>NPC Audio</strong>
+            <span id="audioUrl" class="mono">-</span>
+          </div>
+        </div>
+        <audio id="npcAudio" controls hidden></audio>
+        <label for="npcText">NPC Text</label>
+        <pre id="npcText">-</pre>
+      </section>
+
+      <section>
+        <h2>Agent Nodes</h2>
+        <div class="node-list" id="nodeList"></div>
+      </section>
+
+      <section>
+        <h2>Raw JSON</h2>
+        <pre id="rawJson">-</pre>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const defaultTurn = {
+      contract_version: "dev_c_unreal_turn.v1",
+      request_id: "req_web_demo_" + Date.now(),
+      session: {
+        session_id: "session_web_demo_001",
+        player_id: "player_001",
+        chapter_id: "CH0_IMMIGRATION",
+        scene_id: "JFK_IMMIGRATION_HALL",
+        current_node_id: "IMM_002_PURPOSE",
+        turn_index: 1
+      },
+      npc: {
+        npc_id: "OFFICER_MILLER",
+        npc_role: "immigration_officer",
+        last_npc_message: "What is the purpose of your visit?"
+      },
+      audio: {
+        mime_type: "audio/wav",
+        sample_rate_hz: 16000,
+        channels: 1,
+        duration_ms: 3000,
+        language_hint: "en-US"
+      },
+      player_profile: {
+        nickname: "player",
+        english_confidence: "beginner",
+        tier: "Bronze",
+        travel_speaking_level: "TSL_1_SURVIVAL"
+      },
+      scenario_state: {
+        patience: 100,
+        suspicion: 0,
+        retry_count: 0,
+        hint_count: 0,
+        previous_fail_count: 0,
+        completed_intents: []
+      },
+      game_state: {
+        inventory: ["passport", "boarding_pass", "return_ticket"],
+        flags: ["arrived_at_jfk", "passport_submitted"],
+        completed_intents: ["submit_passport"],
+        current_objective: "State the visit purpose"
+      },
+      previous_node_results: [
+        {
+          node_id: "IMM_001_PASSPORT",
+          verdict: "SUCCESS",
+          next_action: "ADVANCE"
+        }
+      ],
+      client_allowed_next_nodes: [
+        "IMM_003_DURATION",
+        "IMM_002_RETRY_PURPOSE",
+        "IMM_EXTRA_001_CLARIFY_PURPOSE",
+        "END_SECONDARY_INSPECTION"
+      ],
+      client_context: {
+        platform: "windows",
+        input_device: "microphone",
+        locale: "ko-KR",
+        build_version: "web-demo"
+      }
+    };
+
+    const refs = {
+      audioFile: document.getElementById("audioFile"),
+      turnFile: document.getElementById("turnFile"),
+      turnJson: document.getElementById("turnJson"),
+      resetTurn: document.getElementById("resetTurn"),
+      runButton: document.getElementById("runButton"),
+      runtimeStatus: document.getElementById("runtimeStatus"),
+      elapsedTotal: document.getElementById("elapsedTotal"),
+      httpStatus: document.getElementById("httpStatus"),
+      sttRuntime: document.getElementById("sttRuntime"),
+      verdict: document.getElementById("verdict"),
+      playerText: document.getElementById("playerText"),
+      nextNode: document.getElementById("nextNode"),
+      nextAction: document.getElementById("nextAction"),
+      audioUrl: document.getElementById("audioUrl"),
+      npcAudio: document.getElementById("npcAudio"),
+      npcText: document.getElementById("npcText"),
+      nodeList: document.getElementById("nodeList"),
+      rawJson: document.getElementById("rawJson")
+    };
+
+    function setDefaultTurn() {
+      const nextTurn = structuredClone(defaultTurn);
+      nextTurn.request_id = "req_web_demo_" + Date.now();
+      refs.turnJson.value = JSON.stringify(nextTurn, null, 2);
+    }
+
+    function setStatus(text, kind) {
+      refs.runtimeStatus.textContent = text;
+      refs.runtimeStatus.className = "status-pill" + (kind ? " " + kind : "");
+    }
+
+    function clearResults() {
+      refs.elapsedTotal.textContent = "-";
+      refs.httpStatus.textContent = "-";
+      refs.sttRuntime.textContent = "-";
+      refs.verdict.textContent = "-";
+      refs.playerText.textContent = "-";
+      refs.nextNode.textContent = "-";
+      refs.nextAction.textContent = "-";
+      refs.audioUrl.textContent = "-";
+      refs.npcAudio.hidden = true;
+      refs.npcAudio.removeAttribute("src");
+      refs.npcText.textContent = "-";
+      refs.rawJson.textContent = "-";
+      refs.nodeList.innerHTML = "";
+    }
+
+    function parseTurn() {
+      const turn = JSON.parse(refs.turnJson.value);
+      if (!turn.request_id) {
+        turn.request_id = "req_web_demo_" + Date.now();
+        refs.turnJson.value = JSON.stringify(turn, null, 2);
+      }
+      return turn;
+    }
+
+    function formatDuration(ms) {
+      if (ms < 1000) {
+        return Math.round(ms) + " ms";
+      }
+      return (ms / 1000).toFixed(2) + " s";
+    }
+
+    function fillResponse(responseBody, elapsedMs, statusCode) {
+      refs.elapsedTotal.textContent = formatDuration(elapsedMs);
+      refs.httpStatus.textContent = String(statusCode);
+      refs.sttRuntime.textContent = responseBody.stt?.runtime_used || "-";
+      refs.verdict.textContent = responseBody.evaluation?.verdict || "-";
+      refs.playerText.textContent = responseBody.stt?.player_text || "-";
+      refs.nextNode.textContent = responseBody.next_node_id || "-";
+      refs.nextAction.textContent = responseBody.next_action || "-";
+      refs.audioUrl.textContent = responseBody.npc?.audio_url || "-";
+      refs.npcText.textContent = responseBody.npc?.text || "-";
+      refs.rawJson.textContent = JSON.stringify(responseBody, null, 2);
+
+      if (responseBody.npc?.audio_url) {
+        refs.npcAudio.src = responseBody.npc.audio_url;
+        refs.npcAudio.hidden = false;
+      }
+    }
+
+    function renderNodes(summary) {
+      refs.nodeList.innerHTML = "";
+      if (!summary || !summary.found || !summary.nodes.length) {
+        const empty = document.createElement("div");
+        empty.className = "warning";
+        empty.textContent = "No AgentRun summary found.";
+        refs.nodeList.appendChild(empty);
+        return;
+      }
+
+      for (const node of summary.nodes) {
+        const item = document.createElement("article");
+        item.className = "node";
+
+        const header = document.createElement("div");
+        header.className = "node-header";
+
+        const title = document.createElement("div");
+        title.className = "node-title";
+        title.textContent = node.label || node.tool_name;
+
+        const status = document.createElement("div");
+        status.className = "node-status";
+        status.textContent = node.status || "";
+
+        header.append(title, status);
+        item.appendChild(header);
+
+        if (node.error) {
+          const error = document.createElement("div");
+          error.className = "error";
+          error.textContent = node.error;
+          item.appendChild(error);
+        }
+
+        const output = document.createElement("pre");
+        output.textContent = JSON.stringify(node.output || {}, null, 2);
+        item.appendChild(output);
+
+        const details = document.createElement("details");
+        const summaryLabel = document.createElement("summary");
+        summaryLabel.textContent = "Input";
+        const input = document.createElement("pre");
+        input.textContent = JSON.stringify(node.input || {}, null, 2);
+        details.append(summaryLabel, input);
+        item.appendChild(details);
+
+        refs.nodeList.appendChild(item);
+      }
+    }
+
+    async function loadAgentRun(requestId) {
+      const response = await fetch("/api/game/ai/agent-runs/latest?request_id=" + encodeURIComponent(requestId));
+      if (!response.ok) {
+        throw new Error("AgentRun lookup failed: HTTP " + response.status);
+      }
+      return response.json();
+    }
+
+    async function runRequest() {
+      clearResults();
+      const audio = refs.audioFile.files[0];
+      if (!audio) {
+        setStatus("Select WAV", "warning");
+        return;
+      }
+
+      let turn;
+      try {
+        turn = parseTurn();
+      } catch (error) {
+        setStatus("Invalid JSON", "error");
+        refs.rawJson.textContent = String(error);
+        return;
+      }
+
+      const form = new FormData();
+      form.append("turn", new Blob([JSON.stringify(turn)], { type: "application/json" }), "turn.json");
+      form.append("audio", audio, audio.name);
+
+      refs.runButton.disabled = true;
+      setStatus("Running", "");
+      const started = performance.now();
+      try {
+        const response = await fetch("/api/game/ai/respond", {
+          method: "POST",
+          body: form
+        });
+        const elapsedMs = performance.now() - started;
+        const text = await response.text();
+        const body = JSON.parse(text);
+
+        if (!response.ok) {
+          refs.httpStatus.textContent = String(response.status);
+          refs.elapsedTotal.textContent = formatDuration(elapsedMs);
+          refs.rawJson.textContent = JSON.stringify(body, null, 2);
+          setStatus("Failed", "error");
+          return;
+        }
+
+        fillResponse(body, elapsedMs, response.status);
+        const agentRun = await loadAgentRun(turn.request_id);
+        renderNodes(agentRun);
+        setStatus("Complete", "");
+      } catch (error) {
+        setStatus("Failed", "error");
+        refs.rawJson.textContent = String(error);
+      } finally {
+        refs.runButton.disabled = false;
+      }
+    }
+
+    refs.turnFile.addEventListener("change", async () => {
+      const file = refs.turnFile.files[0];
+      if (!file) {
+        return;
+      }
+      refs.turnJson.value = await file.text();
+    });
+    refs.resetTurn.addEventListener("click", setDefaultTurn);
+    refs.runButton.addEventListener("click", runRequest);
+    setDefaultTurn();
+  </script>
+</body>
+</html>
