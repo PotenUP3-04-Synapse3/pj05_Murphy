@@ -1,11 +1,13 @@
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.api.ai_respond import router as ai_respond_router
 
 RUNTIME_AUDIO_DIR = Path("backend/runtime/generated/audio")
+DEMO_AI_RESPOND_PAGE = Path("demo/ai-respond/index.html")
 
 app = FastAPI(
     title="Murphy Developer C Backend",
@@ -26,3 +28,8 @@ def health() -> dict[str, str]:
         "status": "ok",
         "service": "developer_c_backend",
     }
+
+
+@app.get("/demo/ai-respond", tags=["demo"])
+def demo_ai_respond() -> FileResponse:
+    return FileResponse(DEMO_AI_RESPOND_PAGE)
