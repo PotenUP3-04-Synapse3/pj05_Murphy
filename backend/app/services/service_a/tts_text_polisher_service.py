@@ -15,7 +15,7 @@ def polish_tts_text(
     text = _normalize_spaces(npc_text)
     if policy.action == "recast_and_advance" and profile.complexity == "simple":
         text = _add_sentence_pause(text)
-    if emotion_state.emotion == "firm_official":
+    if emotion_state.emotion in {"firm_official", "stern_official", "warning_official"}:
         return text.replace("...", ".")
     if policy.add_officer_ack and not text.startswith(("Alright.", "Okay.")):
         return f"Alright. {text}"

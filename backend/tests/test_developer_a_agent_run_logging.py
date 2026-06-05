@@ -283,6 +283,16 @@ def test_voice_output_writes_only_unified_agent_run_records(tmp_path) -> None:
     assert "agent_a.npc_dialogue_agent.generate_npc_dialogue_from_level_design" in tool_names
     assert "tts_service.build_kokoro_provider_request" in tool_names
     assert "tts_provider_service.KokoroProvider.synthesize" in tool_names
+    tts_event = next(
+        event
+        for event in unified_runs[0]["events"]
+        if event.get("tool_name") == "tts_provider_service.KokoroProvider.synthesize"
+    )
+    tts_speed = tts_event["output_summary"]["generation_speed"]
+    assert tts_speed["generation_seconds"] >= 0
+    assert tts_speed["audio_seconds"] > 0
+    assert tts_speed["real_time_factor"] >= 0
+    assert unified_runs[0]["metadata"]["tts_summary"]["generation_speed"] == tts_speed
     assert unified_runs[0]["agent_run_id"] == output["agent_run_id"]
     assert unified_runs[0]["owner"] == "developer_a"
     assert unified_runs[0]["request_id"] == "req_1"
@@ -290,3 +300,138 @@ def test_voice_output_writes_only_unified_agent_run_records(tmp_path) -> None:
     assert "### Timeline" in readable_log
     assert output["unified_agent_run_path"].endswith("unified_agent_runs.jsonl")
     assert output["readable_agent_run_path"].endswith("unified_agent_runs.md")
+
+
+def test_voice_output_uses_npc_id_from_payload_for_voice_profile_and_log(tmp_path) -> None:
+    payload = {
+        "chapter_id": "chapter_0_immigration",
+        "turn_id": "turn_003",
+        "node_id": "IMM_003_DURATION",
+        "npc": {"npc_id": "OFFICER_MILLER", "npc_role": "immigration_officer"},
+        "player": {"utterance": "I will stay five days", "language_level": "beginner"},
+        "evaluation": {"branch_type": "success", "target_slot": "stay_address"},
+    }
+
+    output = build_voice_output_from_level_design(
+        payload,
+        runtime_root=tmp_path / "runtime",
+        request_id="req_1",
+        session_id="session_1",
+        use_llm_dialogue=False,
+        use_real_tts=False,
+        agent_run_root=tmp_path,
+    )
+
+    record = json.loads((tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()[0])
+
+    assert output["tts"]["voice_profile_id"] == "session_1:officer_miller"
+    assert output["tts"]["voice_id"] == "am_michael"
+    assert record["metadata"]["npc_context"]["npc_id"] == "officer_miller"
+
+
+def test_voice_output_logs_dialogue_source_trace_for_next_line_generation(tmp_path) -> None:
+    payload = {
+        "chapter_id": "chapter_0_immigration",
+        "turn_id": "turn_003",
+        "node_id": "IMM_003_DURATION",
+        "npc": {"npc_id": "OFFICER_MILLER", "npc_role": "immigration_officer"},
+        "player_text": "I will stay five days",
+        "node_context": {
+            "npc_question": "How long will you stay?",
+            "npc_question_goal": "ask_stay_duration",
+            "recommended_expression": "I will stay for five days.",
+        },
+        "evaluation_summary": {
+            "feedback_note": "Duration was understood.",
+            "task_success": True,
+            "clarity": 0.9,
+        },
+        "level_hint": {
+            "english_level": "beginner",
+            "needs_hint": False,
+            "recommended_expression": "I will stay for five days.",
+        },
+        "in_game_feedback": {
+            "npc_recast_line_candidate": "You'll stay for five days. Where are you staying?",
+            "feedback_strategy": "recast",
+        },
+        "branch": {"branch_type": "success", "next_node_id": "IMM_004_ADDRESS"},
+        "dialogue_directive": {"do_not_generate_npc_text": False},
+    }
+
+    build_voice_output_from_level_design(
+        payload,
+        runtime_root=tmp_path / "runtime",
+        request_id="req_1",
+        session_id="session_1",
+        use_llm_dialogue=False,
+        use_real_tts=False,
+        agent_run_root=tmp_path,
+    )
+
+    record = json.loads((tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    trace = record["metadata"]["dialogue_source_trace"]
+
+    assert trace["npc_profile"]["npc_id"] == "officer_miller"
+    assert trace["used_inputs"]["node_context"] == {
+        "used_for": "next_question_and_goal",
+        "node_id": "IMM_003_DURATION",
+        "npc_question_goal": "ask_stay_duration",
+    }
+    assert trace["used_inputs"]["player_text"]["used_for"] == "dialogue_evidence_preview"
+    assert trace["used_inputs"]["developer_b_feedback"]["used_for"] == "recast_candidate_and_feedback_note"
+    assert trace["used_inputs"]["branch"]["next_node_id"] == "IMM_004_ADDRESS"
+    assert trace["used_inputs"]["voice_profile"]["voice_id"] == "am_michael"
+    assert trace["output_decision"]["npc_text_source"] == "developer_b_recast_candidate"
+    assert trace["output_decision"]["tts_text_source"] == "tts_text_polisher_service"
+
+
+def test_voice_output_logs_llm_dialogue_as_output_source(tmp_path, monkeypatch) -> None:
+    class FakeLLMClient:
+        model = "google/gemma-4-26B-A4B-it"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "npc_text": "Please answer the question directly.",
+                "tts_text": "Please answer the question directly.",
+                "feedback_kr": "방문 목적을 짧게 말하면 됩니다.",
+                "tone": "formal_firm",
+                "animation": "ignored_by_roster",
+                "llm_reason": "source trace test",
+                "__fallback_model": "google/gemma-4-26B-A4B-it",
+                "__llm_usage": {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30},
+            }
+
+    monkeypatch.setattr(
+        "backend.app.agents.agent_a.npc_dialogue_agent.build_npc_dialogue_llm_client_from_environment",
+        lambda: FakeLLMClient(),
+    )
+
+    payload = {
+        "chapter_id": "chapter_0_immigration",
+        "turn_id": "turn_003",
+        "node_id": "IMM_002_PURPOSE",
+        "npc": {"npc_id": "officer_miller"},
+        "player_text": "I am Korean.",
+        "node_context": {"recommended_expression": "I'm here for tourism."},
+        "evaluation_summary": {"feedback_note": "Purpose was unclear.", "task_success": 0, "clarity": 1},
+        "level_hint": {"english_level": "beginner", "recommended_expression": "I'm here for tourism."},
+        "in_game_feedback": {},
+        "branch": {"branch_type": "clarify", "next_node_id": "IMM_002_PURPOSE"},
+    }
+
+    build_voice_output_from_level_design(
+        payload,
+        runtime_root=tmp_path / "runtime",
+        request_id="req_1",
+        session_id="session_1",
+        use_llm_dialogue=True,
+        use_real_tts=False,
+        agent_run_root=tmp_path,
+    )
+
+    record = json.loads((tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    trace = record["metadata"]["dialogue_source_trace"]
+
+    assert trace["output_decision"]["npc_text_source"] == "llm_dialogue_from_fallback_seed"
+    assert trace["output_decision"]["tts_text_source"] == "llm_dialogue"

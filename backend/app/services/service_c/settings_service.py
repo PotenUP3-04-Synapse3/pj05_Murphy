@@ -14,6 +14,9 @@ class AppSettings(BaseSettings):
     )
 
     openai_api_key: str | None = None
+    gemma4_vllm_base_url: str = "http://100.95.34.69:8001/v1"
+    gemma4_vllm_model: str = "google/gemma-4-26B-A4B-it"
+    gemma4_vllm_api_key: str = "dummy"
     murphy_stt_mode: Literal["local", "mock"] = "local"
     murphy_stt_local_model: str = "turbo"
     murphy_stt_api_model: str = "whisper-1"
@@ -22,6 +25,8 @@ class AppSettings(BaseSettings):
     murphy_tts_mode: Literal["fake", "real"] = "fake"
     murphy_npc_dialogue_mode: Literal["rule", "llm"] = "rule"
     murphy_understanding_mode: Literal["rule", "llm"] = "rule"
+    murphy_understanding_llm_provider: Literal["openai"] = "openai"
+    murphy_understanding_llm_fallback: Literal["none", "gemma4_vllm"] = "none"
     murphy_understanding_llm_model: str = "gpt-4o-mini"
     murphy_understanding_llm_timeout_seconds: float = 10.0
 

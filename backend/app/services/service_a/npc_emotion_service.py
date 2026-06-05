@@ -1,7 +1,14 @@
 from dataclasses import dataclass
 from typing import Any, Literal
 
-NPCEmotion = Literal["calm_official", "patient", "firm_official", "procedural"]
+NPCEmotion = Literal[
+    "calm_official",
+    "patient",
+    "procedural",
+    "firm_official",
+    "stern_official",
+    "warning_official",
+]
 
 
 @dataclass(frozen=True)
@@ -16,12 +23,16 @@ def infer_npc_emotion_state(normalized: dict[str, Any]) -> NPCEmotionState:
     branch_type = str(normalized.get("branch_type", ""))
     tone_hint = str(normalized.get("tone_hint", "neutral"))
     priority = str(normalized.get("priority", "low"))
-    blocks_progression = bool(normalized.get("blocks_progression", False))
     task_success = int(normalized.get("task_success", 0) or 0)
     clarity = int(normalized.get("clarity", 0) or 0)
+    retry_count = int(normalized.get("retry_count", 0) or 0)
 
-    if blocks_progression or branch_type in {"retry", "fail"} or tone_hint == "firm":
-        return NPCEmotionState("firm_official", 0.7, "progression_block_or_retry")
+    if tone_hint == "warning" or branch_type == "fail" or retry_count >= 3:
+        return NPCEmotionState("warning_official", 0.92, "repeated_block_or_warning")
+    if retry_count >= 2:
+        return NPCEmotionState("stern_official", 0.82, "repeated_retry")
+    if branch_type == "retry" or tone_hint == "firm":
+        return NPCEmotionState("firm_official", 0.7, "retry_or_firm_tone_hint")
     if task_success >= 3 and clarity >= 2 and priority == "low":
         return NPCEmotionState("calm_official", 0.35, "successful_low_priority_answer")
     if clarity <= 1:

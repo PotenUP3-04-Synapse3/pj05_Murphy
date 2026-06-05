@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from backend.app.services.service_a.npc_roster_service import resolve_npc_profile_by_display_name
 from backend.app.services.service_a.tts_provider_service import TTSProviderRequest
 
 TTSStatus = Literal["ok", "failed", "fallback_mock"]
@@ -37,14 +38,19 @@ def synthesize_speech(request: TTSRequest) -> TTSAudio:
 
 
 def _voice_id(speaker: str) -> str:
-    if speaker == "Officer Miller":
-        return "officer_miller_mock_baritone"
+    profile = resolve_npc_profile_by_display_name(speaker)
+    if profile is not None:
+        return profile.mock_voice_id
     return "generic_mock_voice"
 
 
 def _duration_ms(tone: str) -> int:
     if tone == "formal_neutral":
         return 2400
+    if tone == "formal_warning":
+        return 1800
+    if tone == "formal_stern":
+        return 1900
     if tone == "formal_firm":
         return 2100
     return 2000
@@ -81,6 +87,10 @@ def build_kokoro_provider_request(
 
 
 def _kokoro_speed(tone: str, english_level: str) -> float:
+    if tone == "formal_warning":
+        return 0.84
+    if tone == "formal_stern":
+        return 0.87
     if tone == "formal_firm":
         return 0.9
     if tone == "formal_supportive":
@@ -91,6 +101,10 @@ def _kokoro_speed(tone: str, english_level: str) -> float:
 
 
 def _emotion_for_tone(tone: str) -> str:
+    if tone == "formal_warning":
+        return "warning_official"
+    if tone == "formal_stern":
+        return "stern_official"
     if tone == "formal_firm":
         return "firm_official"
     if tone == "formal_supportive":
@@ -99,6 +113,10 @@ def _emotion_for_tone(tone: str) -> str:
 
 
 def _intensity_for_emotion(emotion: str) -> float:
+    if emotion == "warning_official":
+        return 0.92
+    if emotion == "stern_official":
+        return 0.82
     if emotion == "firm_official":
         return 0.7
     if emotion == "supportive_official":

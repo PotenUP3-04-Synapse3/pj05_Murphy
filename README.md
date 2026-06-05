@@ -60,6 +60,7 @@ these values in `.env`:
 MURPHY_STT_MODE=local
 MURPHY_STT_LOCAL_MODEL=turbo
 MURPHY_UNDERSTANDING_MODE=llm
+MURPHY_UNDERSTANDING_LLM_PROVIDER=openai
 MURPHY_UNDERSTANDING_LLM_MODEL=gpt-4o-mini
 MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS=10
 MURPHY_TTS_MODE=real
@@ -67,11 +68,27 @@ MURPHY_NPC_DIALOGUE_MODE=rule
 ```
 
 `MURPHY_UNDERSTANDING_MODE=rule` keeps Developer C semantic analysis
-deterministic. `MURPHY_UNDERSTANDING_MODE=llm` enables OpenAI-assisted
+deterministic. `MURPHY_UNDERSTANDING_MODE=llm` enables LLM-assisted
 Understanding Agent output with rule fallback. `MURPHY_NPC_DIALOGUE_MODE=llm`
-can be used for optional OpenAI NPC dialogue generation. These LLM modes need
-`OPENAI_API_KEY`; NPC dialogue may also use `NPC_DIALOGUE_LLM_MODEL` plus
-`NPC_DIALOGUE_LLM_TIMEOUT_SECONDS`.
+can be used for optional LLM NPC dialogue generation. OpenAI remains the
+primary provider. When the GPT key is unavailable, enable the academy Gemma4
+vLLM fallback:
+
+```text
+OPENAI_API_KEY=...
+
+GEMMA4_VLLM_BASE_URL=http://100.95.34.69:8001/v1
+GEMMA4_VLLM_MODEL=google/gemma-4-26B-A4B-it
+GEMMA4_VLLM_API_KEY=dummy
+
+MURPHY_UNDERSTANDING_LLM_PROVIDER=openai
+MURPHY_UNDERSTANDING_LLM_FALLBACK=gemma4_vllm
+MURPHY_UNDERSTANDING_LLM_MODEL=gpt-4o-mini
+
+NPC_DIALOGUE_LLM_PROVIDER=openai
+NPC_DIALOGUE_LLM_FALLBACK=gemma4_vllm
+NPC_DIALOGUE_LLM_MODEL=gpt-4o-mini
+```
 
 Run the development server after the backend endpoint exists:
 
