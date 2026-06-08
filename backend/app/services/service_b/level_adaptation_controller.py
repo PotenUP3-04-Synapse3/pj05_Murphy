@@ -44,7 +44,7 @@ class LevelAdaptationController:
             return False
         if len(text.split()) <= 3 and payload.understanding.intent_success:
             return True
-        broken_patterns = ["i here", "i go travel", "i will stay five days"]
+        broken_patterns = ["i here", "i go travel", "i will stay five days", "my bag no come"]
         return any(pattern in text for pattern in broken_patterns)
 
     def hint_policy(self, payload: DevBPolicyInput, decision: ScenarioDecision) -> tuple[bool, HintLevel, HintType, str | None]:

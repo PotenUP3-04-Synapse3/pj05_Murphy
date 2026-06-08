@@ -1,0 +1,40 @@
+{
+  "contract_version": "dev_b_focus_on_form_cards.v1",
+  "cards": {
+    "sentence_completion": {
+      "title_kr": "완전한 문장으로 답하기",
+      "rule_summary_kr": "입국심사와 공항 문제 해결에서는 단어만 말하기보다 주어와 동사를 포함한 짧은 문장이 더 안전합니다.",
+      "good_examples": ["I'm here for tourism.", "My suitcase didn't arrive."],
+      "practice_prompt_kr": "상황을 완전한 영어 문장으로 말해보세요.",
+      "answer_example": "I'm here for tourism."
+    },
+    "return_ticket_statement": {
+      "title_kr": "귀국 항공권을 명확히 말하기",
+      "rule_summary_kr": "귀국 계획은 yes/no 뒤에 날짜나 항공편 정보를 짧게 붙이면 더 신뢰도가 높습니다.",
+      "good_examples": ["Yes, I do. My return flight is next Friday."],
+      "practice_prompt_kr": "귀국 항공권이 있다는 것을 날짜와 함께 말해보세요.",
+      "answer_example": "Yes, I do. My return flight is next Friday."
+    },
+    "bag_content_explanation": {
+      "title_kr": "짐 내용물 설명하기",
+      "rule_summary_kr": "짐 내용물 질문에는 주요 물건을 구체적으로 말하고 신고할 물건이 있는지 분명히 답해야 합니다.",
+      "good_examples": ["I packed clothes, toiletries, and my laptop. I have nothing else to declare."],
+      "practice_prompt_kr": "짐 안의 주요 물건과 신고 여부를 한 문장으로 말해보세요.",
+      "answer_example": "I packed clothes, toiletries, and my laptop. I have nothing else to declare."
+    },
+    "problem_statement": {
+      "title_kr": "문제 상황을 직접 말하기",
+      "rule_summary_kr": "공항 직원에게는 문제가 무엇인지 짧고 직접적으로 말하는 것이 좋습니다.",
+      "good_examples": ["My suitcase didn't arrive."],
+      "practice_prompt_kr": "수화물이 도착하지 않았다는 문제를 말해보세요.",
+      "answer_example": "My suitcase didn't arrive."
+    },
+    "bag_description": {
+      "title_kr": "수화물 외형 설명하기",
+      "rule_summary_kr": "색, 크기, 종류, 태그 같은 식별 정보를 함께 말하면 직원이 찾기 쉽습니다.",
+      "good_examples": ["It's a black medium-sized suitcase with a red luggage tag."],
+      "practice_prompt_kr": "가방의 색, 크기, 특징을 말해보세요.",
+      "answer_example": "It's a black medium-sized suitcase with a red luggage tag."
+    }
+  }
+}
