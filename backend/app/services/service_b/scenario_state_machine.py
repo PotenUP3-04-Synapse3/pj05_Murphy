@@ -10,6 +10,9 @@ BranchType = Literal["success", "retry", "clarify", "hint", "warning", "bad_end"
 NextAction = Literal["ADVANCE", "REASK", "GIVE_HINT", "WARNING", "FAIL_END", "FINAL_DECISION"]
 Verdict = Literal["SUCCESS", "PARTIAL", "UNCLEAR", "FAIL", "CRITICAL_FAIL"]
 
+GOLD_CHALLENGE_SOURCE_NODE_ID = "IMM_005_RETURN_TICKET"
+GOLD_BAG_CONTENT_CHALLENGE_NODE_ID = "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK"
+
 
 @dataclass(frozen=True)
 class ScenarioDecision:
@@ -90,7 +93,7 @@ class ScenarioStateMachine:
         branch_type: BranchType,
         next_action: NextAction,
     ) -> ScenarioDecision:
-        next_node_id = self._checked_next_node(payload.node_context.success_next_node, payload)
+        next_node_id = self._checked_next_node(self._preferred_success_node(payload), payload)
         return ScenarioDecision(
             verdict="SUCCESS",
             branch_type=branch_type,
@@ -101,6 +104,20 @@ class ScenarioStateMachine:
             suspicion_delta=max(payload.understanding.risk_delta, 0),
             retry_count_delta=0,
             hint_count_delta=0,
+        )
+
+    def _preferred_success_node(self, payload: DevBPolicyInput) -> str:
+        if self._should_route_gold_bag_content_challenge(payload):
+            return GOLD_BAG_CONTENT_CHALLENGE_NODE_ID
+        return payload.node_context.success_next_node
+
+    def _should_route_gold_bag_content_challenge(self, payload: DevBPolicyInput) -> bool:
+        return (
+            payload.current_node_id == GOLD_CHALLENGE_SOURCE_NODE_ID
+            and payload.player_profile.tier == "Gold"
+            and payload.understanding.confidence >= 0.85
+            and not payload.understanding.missing_slots
+            and GOLD_BAG_CONTENT_CHALLENGE_NODE_ID in payload.node_context.allowed_next_nodes
         )
 
     def _clarify(self, payload: DevBPolicyInput) -> ScenarioDecision:

@@ -212,6 +212,7 @@ class EnglishLevelHintAgent:
                     "feedback_generation": feedback_generation.trace,
                 }
             )
+            _validate_b_policy_output(payload, output)
             try:
                 openkb_write = self.openkb_writer.write_policy_output(payload, output)
             except Exception as exc:
@@ -550,10 +551,17 @@ class EnglishLevelHintAgent:
         return "clarity"
 
     def _focus_on_form_target(self, payload: DevBPolicyInput, error_type: str) -> str:
-        if error_type == "grammar":
-            return "sentence_completion"
         if error_type == "risk_expression":
             return f"{payload.current_node_id.lower()}_risk_expression"
+        if payload.current_node_id.startswith("BAG_"):
+            node_target = _immigration_focus_target(payload.current_node_id)
+            if node_target:
+                return node_target
+        if error_type == "grammar":
+            return "sentence_completion"
+        node_target = _immigration_focus_target(payload.current_node_id)
+        if node_target:
+            return node_target
         if payload.node_context.required_slots:
             return f"{payload.node_context.required_slots[0]}_answer_pattern"
         return "clarity_repair"
@@ -603,12 +611,15 @@ def _decision_summary(decision: ScenarioDecision) -> dict[str, Any]:
 
 def _feedback_generation_summary(feedback_generation: Any) -> dict[str, Any]:
     trace = feedback_generation.trace
-    return {
+    summary = {
         "mode": trace.mode,
         "model": trace.model,
         "used_llm": trace.used_llm,
         "fallback_reason": trace.fallback_reason,
     }
+    if getattr(feedback_generation, "llm_usage", None):
+        summary["llm_usage"] = feedback_generation.llm_usage
+    return summary
 
 
 def _openkb_write_summary(openkb_write: OpenKBWriteResult) -> dict[str, Any]:
@@ -653,3 +664,48 @@ def _preview(text: str, limit: int = 120) -> str:
     if len(compact) <= limit:
         return compact
     return f"{compact[: limit - 3]}..."
+
+
+def _validate_b_policy_output(payload: DevBPolicyInput, output: DevBPolicyOutput) -> None:
+    if output.node_id != payload.current_node_id:
+        raise ValueError("DevBPolicyOutput.node_id must match input current_node_id")
+    if output.branch.next_node_id not in payload.node_context.allowed_next_nodes:
+        raise ValueError("DevB branch.next_node_id is outside node_context.allowed_next_nodes")
+    if payload.client_allowed_next_nodes and output.branch.next_node_id not in payload.client_allowed_next_nodes:
+        raise ValueError("DevB branch.next_node_id is outside client_allowed_next_nodes")
+    if not output.level_hint.needs_hint and (
+        output.level_hint.hint_type is not None or output.level_hint.hint_kr is not None
+    ):
+        raise ValueError("DevB hint payload must be empty when needs_hint is false")
+    if output.in_game_feedback.feedback_strategy == "recast" and not output.in_game_feedback.npc_recast_line_candidate:
+        raise ValueError("DevB recast feedback requires npc_recast_line_candidate")
+    if (
+        output.in_game_feedback.feedback_strategy == "clarification_request"
+        and not output.in_game_feedback.clarification_prompt_candidate
+    ):
+        raise ValueError("DevB clarification feedback requires clarification_prompt_candidate")
+    if output.error_capture.should_record is False and (
+        output.error_capture.error_items or output.error_capture.markdown_entry is not None
+    ):
+        raise ValueError("DevB error capture must be empty when should_record is false")
+    if output.out_game_feedback_seed.include_in_final_report and not output.out_game_feedback_seed.focus_on_form_targets:
+        raise ValueError("DevB final-report seed requires focus_on_form_targets")
+    if output.rubric_scores is not None and not 0 <= output.rubric_scores.total <= 12:
+        raise ValueError("DevB rubric_scores.total must be between 0 and 12")
+
+
+def _immigration_focus_target(node_id: str) -> str | None:
+    return {
+        "IMM_002_PURPOSE": "purpose_statement",
+        "IMM_003_DURATION": "duration_statement",
+        "IMM_004_STAY_LOCATION": "stay_location_statement",
+        "IMM_005_RETURN_TICKET": "return_ticket_statement",
+        "IMM_006_DECLARATION_CHECK": "declaration_explanation",
+        "IMM_006B_PACKED_BAG_CHECK": "bag_content_explanation",
+        "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK": "bag_content_explanation",
+        "BAG_003_REPORT_MISSING_BAG": "problem_statement",
+        "BAG_004_DESCRIBE_BAG": "bag_description",
+        "BAG_005_PROVIDE_FLIGHT_OR_TAG": "flight_or_tag_statement",
+        "BAG_006_CONTACT_AND_DELIVERY": "delivery_request",
+        "BAG_007_RESOLUTION": "follow_up_question",
+    }.get(node_id)

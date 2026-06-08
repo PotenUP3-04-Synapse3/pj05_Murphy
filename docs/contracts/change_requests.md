@@ -205,3 +205,31 @@ Developer A dialogue, and response builder behavior can ignore it.
 ### Temporary Workaround
 Until C adds a UI response field, `objective_kr` is available in the internal
 node context only.
+
+## Change Request - 2026-06-08 - Expose Developer B Focus-on-Form Report v1
+
+### Requested By
+Developer B
+
+### Affected Owner
+Developer C / Sean Han
+
+### Reason
+Developer B now has a B-owned `FocusOnFormReportPolicy` that can build an
+out-game Focus-on-Form report from B-owned OpenKB `dev_b` records and static
+B-owned learning cards. Developer C owns final result endpoint shape and Unreal
+response assembly, so Developer B cannot expose this report directly.
+
+### Proposed Contract Change
+Add an optional `out_game_feedback` object to the C-owned final result response
+or a C-owned result detail endpoint. Treat it as learning feedback metadata
+only. It must not affect branch, verdict, next node, state delta, or numeric
+score authority.
+
+### Compatibility Impact
+Additive optional field only. Existing clients may ignore it.
+
+### Temporary Workaround
+Developer B keeps the report builder as a directly tested B-owned service.
+Developer C can continue returning the existing final result payload until the
+response surface is ready.

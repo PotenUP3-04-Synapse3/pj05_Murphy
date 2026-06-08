@@ -746,6 +746,93 @@ Next, run a live endpoint smoke test on the demo machine with
 clarify, warning, and bad-end demo cases. After that, implement out-game
 feedback/final report and prepare the real Unreal multipart bridge.
 
+## 2026-06-08 Developer B IMMIGRATION_ALPHA Tier Policy Update
+
+Developer B extended the current immigration prototype toward the Alpha
+`IMMIGRATION_ALPHA` plan without editing Developer A or Developer C
+implementation files.
+
+Changed:
+
+- Added a B-owned Gold-only immigration challenge node,
+  `IMM_ALPHA_GOLD_BAG_CONTENT_CHECK`, to `backend/app/data/scenario_nodes.json`.
+- Updated B-owned scenario policy so Gold players can route from
+  `IMM_005_RETURN_TICKET` into the bag-content challenge when the return-ticket
+  answer is strong and the node is allowed.
+- Kept Bronze on the baseline immigration route and preserved rule-based branch
+  authority.
+- Added B-owned output self-checks before OpenKB writes for allowed next-node,
+  hint payload, feedback payload, error capture, final-report seed, and rubric
+  invariants.
+- Added immigration-specific Focus-on-Form target names for final-report seeds,
+  including `return_ticket_statement` and `bag_content_explanation`.
+- Tightened optional LLM feedback handling so forbidden authority keys such as
+  `branch`, `state_delta`, or `verdict` force rule fallback instead of being
+  accepted as LLM feedback.
+- Expanded `backend/tests/dev_b/test_developer_b_policy_engine.py` to cover
+  Bronze baseline routing, Gold challenge routing, final-report seed behavior,
+  Dev B output self-checks, and forbidden LLM fallback.
+
+Verification so far:
+
+- `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py -q`
+  passed with 29 tests.
+- `uv run pytest backend/tests/dev_b -q` passed with 37 tests.
+- `uv run pytest backend/tests/test_preprototype_flow.py backend/tests/test_final_result_payload.py backend/tests/test_demo_ai_respond_page.py -q`
+  passed with 26 tests and 2 existing warnings.
+- `uv run pytest -q` passed with 117 tests and 2 existing warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 87 source files after using the
+  known uv cache permission workaround.
+
+## 2026-06-08 Developer B Direct Next Work Update
+
+Developer B completed the next B-owned Alpha/Chapter 0 package without editing
+Developer A or Developer C implementation files.
+
+Changed:
+
+- Expanded Chapter 0 policy tests to cover success and retry behavior across
+  playable immigration nodes, the Gold challenge node, and new baggage nodes.
+- Added `FocusOnFormReportPolicy` as a B-owned out-game report builder under
+  `backend/app/services/service_b/`.
+- Added static B-owned Focus-on-Form learning cards under
+  `backend/app/kb/dev_b/focus_on_form_cards.json`.
+- Added additive OpenKB v2 record metadata:
+  `record_schema_version=dev_b_openkb_record.v2` and
+  `record_kind=policy_turn_feedback`.
+- Added B-owned `BAGGAGE_MISSING` node definitions:
+  `BAG_002_FIND_STAFF` through `BAG_007_RESOLUTION`.
+- Added baggage Focus-on-Form target mapping for problem statement, bag
+  description, flight/tag statement, delivery request, and follow-up question.
+- Preserved existing OpenKB record keys for compatibility.
+- Added optional LLM usage capture in AgentRun feedback-generator event
+  summaries without exposing usage on public `DevBPolicyOutput`.
+- Kept forbidden LLM authority keys in fallback-only mode.
+- Converted `backend/app/services/service_b/__init__.py` to lazy exports to
+  avoid package import cycles while preserving exported service names.
+
+Change requests:
+
+- Added a C-owned request to expose optional Developer B Focus-on-Form report v1
+  metadata through the final result response or a result detail endpoint.
+
+Verification:
+
+- `uv run pytest backend/tests/dev_b/test_focus_on_form_report_policy.py -q`
+  passed with 5 tests.
+- `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py -q`
+  passed with 63 tests.
+- `uv run pytest backend/tests/dev_b/test_developer_b_agent_run_log.py -q`
+  passed with 6 tests.
+- `uv run pytest backend/tests/dev_b -q` passed with 78 tests.
+- `uv run pytest backend/tests/test_preprototype_flow.py backend/tests/test_final_result_payload.py backend/tests/test_demo_ai_respond_page.py -q`
+  passed with 26 tests and 2 existing warnings.
+- `uv run pytest -q` passed with 158 tests and 2 existing warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 89 source files after using the
+  known uv cache permission workaround.
+
 ## Resume Instructions
 
 Run `uv sync` from the repository root, then run `uv run pytest`,

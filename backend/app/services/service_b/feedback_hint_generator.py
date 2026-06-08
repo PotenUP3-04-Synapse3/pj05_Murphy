@@ -23,6 +23,21 @@ from backend.app.services.service_b.tier_difficulty_controller import TierDiffic
 
 FeedbackMode = Literal["rule", "llm"]
 
+FORBIDDEN_FEEDBACK_LLM_KEYS = {
+    "branch",
+    "next_node_id",
+    "next_action",
+    "state_delta",
+    "verdict",
+    "evaluation",
+    "npc_dialogue",
+    "npc_text",
+    "tts",
+    "audio_url",
+    "unreal_command",
+    "unreal_commands",
+}
+
 
 class _LLMRubricScores(BaseModel):
     comprehension: int = Field(ge=0, le=2)
@@ -53,6 +68,7 @@ class FeedbackHintGeneration:
     focus_on_form_explanation_kr: str
     rubric_scores: RubricScores | None
     trace: FeedbackGenerationTrace
+    llm_usage: dict[str, int] | None = None
 
 
 class FeedbackHintGenerator:
@@ -96,7 +112,12 @@ class FeedbackHintGenerator:
                     focus_on_form_explanation_kr=focus_on_form_explanation_kr,
                 )
             )
-            validated = _LLMFeedbackPayload.model_validate(raw_result)
+            forbidden_keys = FORBIDDEN_FEEDBACK_LLM_KEYS.intersection(raw_result)
+            if forbidden_keys:
+                raise ValueError(f"Feedback LLM returned forbidden keys: {', '.join(sorted(forbidden_keys))}")
+            llm_usage = self._llm_usage(raw_result.get("__llm_usage"))
+            validation_payload = {key: value for key, value in raw_result.items() if key != "__llm_usage"}
+            validated = _LLMFeedbackPayload.model_validate(validation_payload)
         except Exception as exc:
             return self._fallback_generation(
                 base_output=base_output,
@@ -121,6 +142,7 @@ class FeedbackHintGenerator:
                 used_llm=True,
                 fallback_reason=None,
             ),
+            llm_usage=llm_usage,
         )
 
     def _fallback_generation(
@@ -146,7 +168,18 @@ class FeedbackHintGenerator:
                 used_llm=False,
                 fallback_reason=reason,
             ),
+            llm_usage=None,
         )
+
+    def _llm_usage(self, raw_usage: object) -> dict[str, int] | None:
+        if not isinstance(raw_usage, dict):
+            return None
+        usage: dict[str, int] = {}
+        for key in ["input_tokens", "output_tokens", "total_tokens"]:
+            value = raw_usage.get(key)
+            if isinstance(value, int):
+                usage[key] = value
+        return usage or None
 
     def _llm_payload(
         self,
