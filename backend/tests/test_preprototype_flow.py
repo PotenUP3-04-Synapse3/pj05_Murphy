@@ -152,6 +152,45 @@ def test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response() -> N
     assert response.stt.primary_runtime == "local"
     assert response.stt.fallback_runtime == "api"
     assert response.stt.runtime_used == "local"
+    assert response.interaction.initiator == "npc"
+    assert response.interaction.interaction_type == "quest"
+    assert response.interaction.time_limit_s is None
+    assert response.debug.timing_ms.total_ms >= response.debug.timing_ms.stt_ms
+    assert response.debug.timing_ms.developer_b_ms >= 0
+    assert response.debug.timing_ms.developer_a_ms >= 0
+
+
+def test_orchestrator_accepts_player_initiated_quest_interaction_context() -> None:
+    turn_payload = _turn_payload()
+    turn_payload["interaction"] = {
+        "initiator": "player",
+        "interaction_type": "quest",
+        "quest_id": "QUEST_BAGGAGE_DECLARATION_CHECK",
+        "interaction_id": "airport_counter_user_opener_001",
+        "time_limit_s": 30,
+        "first_contact": True,
+        "npc_can_initiate": False,
+        "player_can_initiate": True,
+    }
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://airport/player_opener.wav",
+            transcript="Excuse me, can you help me with my declaration form?",
+        ),
+    )
+
+    response = Orchestrator().run_turn(request)
+
+    assert response.interaction.initiator == "player"
+    assert response.interaction.interaction_type == "quest"
+    assert response.interaction.quest_id == "QUEST_BAGGAGE_DECLARATION_CHECK"
+    assert response.interaction.interaction_id == "airport_counter_user_opener_001"
+    assert response.interaction.time_limit_s == 30
+    assert response.interaction.first_contact is True
+    assert response.interaction.npc_can_initiate is False
+    assert response.interaction.player_can_initiate is True
+    assert "dev_c_interaction_context.v1" in response.debug.contract_versions
 
 
 def test_openkb_loads_chapter_zero_duration_node_from_scenario_nodes() -> None:

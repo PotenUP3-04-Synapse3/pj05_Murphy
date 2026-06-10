@@ -15,6 +15,56 @@ is local-first with API fallback. Automated tests keep deterministic STT through
 deterministic `rule` mode and optional OpenAI-assisted `llm` mode with rule
 fallback.
 
+## Developer C Alpha Plan Notice
+
+2026-06-10 Developer C / Sean Han is moving the prototype toward Alpha in
+phases while preserving A/B/C ownership boundaries.
+
+Alpha gameplay direction captured from the latest planning discussion:
+
+- The current prototype is NPC-prompt-first: Unreal sends the fixed current
+  NPC question context and player wav, Developer C runs STT and Understanding,
+  Developer B evaluates the answer and branch, Developer A returns NPC
+  dialogue/TTS, then Developer C assembles AI-to-Unreal JSON.
+- Alpha must also support player-initiated interactions where the player walks
+  up to an NPC and speaks first.
+- NPC interactions must distinguish quest dialogue from ambient daily dialogue.
+  Both NPC-first and player-first starts are valid.
+- The rough Alpha flow is: start screen, single/multi select, takeoff
+  cinematic, name entry on a customs declaration UI, seatmate level-test
+  conversation on the plane, JFK arrival objective UI, immigration, baggage
+  claim, odd baggage-item explanation, airport exit cinematic, and scoreboard.
+- Immigration officer NPCs are fixed-question, NPC-first scenario agents. Desk
+  and roaming staff may remain interactable after their main scenario beats.
+- Time pressure and failure policy remain gameplay constraints: 30-second
+  answers, repeated timeouts or unsatisfactory answers can fail, and dangerous
+  words can trigger an immediate bad ending.
+- Random baggage item/location keywords should be authored by humans in table
+  data for Unreal to consume. AI may generate dialogue around those authored
+  keywords but must not invent branch authority.
+
+Developer C Alpha phases:
+
+1. Alpha 0 - Team notice and contract alignment. Document the C-owned plan for
+   A/B, keep A/B implementation files read-only, and use
+   `docs/contracts/change_requests.md` for any cross-owner behavior changes.
+2. Alpha 1 - Request context and timing baseline. Add a C-owned interaction
+   context so Unreal can mark NPC-first vs player-first, quest vs ambient, and
+   time-limit metadata. Add stage timing to responses/log summaries so STT,
+   Understanding, Developer B, Developer A/TTS, response build, and validation
+   latency can be measured.
+3. Alpha 2 - Scenario flow contract. Map Alpha scene ids, quest ids, and
+   interactability rules without replacing Developer B's branch authority or
+   Developer A's NPC wording authority.
+4. Alpha 3 - STT provider benchmark. Compare the current local-first Whisper
+   path with an API provider path behind the C-owned STT adapter.
+5. Alpha 4 - Realtime voice path. Evaluate WebSocket streaming STT for player
+   speech turns if timing data shows batch wav STT is the main latency issue.
+
+No immediate Developer A or Developer B implementation change is required for
+Alpha 1. Developer C added additive request/response metadata only; any future
+change requiring A/B logic changes must be filed as a change request first.
+
 ## Last Completed Task
 
 2026-06-05 Developer C updated the `/respond-dialog` tester usage and audio

@@ -28,6 +28,18 @@ class AudioMetadata(BaseModel):
     language_hint: str | None = None
 
 
+class InteractionContext(BaseModel):
+    contract_version: Literal["dev_c_interaction_context.v1"] = "dev_c_interaction_context.v1"
+    initiator: Literal["npc", "player"] = "npc"
+    interaction_type: Literal["quest", "ambient", "tutorial", "system"] = "quest"
+    quest_id: str | None = None
+    interaction_id: str | None = None
+    time_limit_s: int | None = Field(default=None, ge=1)
+    first_contact: bool = False
+    npc_can_initiate: bool | None = None
+    player_can_initiate: bool | None = None
+
+
 class PlayerProfile(BaseModel):
     nickname: str | None = None
     english_confidence: Literal["beginner", "intermediate", "advanced"] | None = None
@@ -76,6 +88,7 @@ class UnrealTurnRequest(BaseModel):
     session: SessionContext
     npc: NpcContext
     audio: AudioMetadata
+    interaction: InteractionContext = Field(default_factory=InteractionContext)
     player_profile: PlayerProfile
     scenario_state: ScenarioState
     game_state: GameState
@@ -170,6 +183,7 @@ class DevBPolicyInput(BaseModel):
     turn_index: int
     player_text: str
     input_source: InputSource
+    interaction: InteractionContext = Field(default_factory=InteractionContext)
     player_profile: PlayerProfile
     scenario_state: ScenarioState
     node_context: NodeContext
@@ -459,11 +473,24 @@ class ReportResponse(BaseModel):
     final_result: FinalResult | None = None
 
 
+class TurnTimingMs(BaseModel):
+    total_ms: int = Field(default=0, ge=0)
+    stt_ms: int = Field(default=0, ge=0)
+    openkb_ms: int = Field(default=0, ge=0)
+    understanding_ms: int = Field(default=0, ge=0)
+    developer_b_ms: int = Field(default=0, ge=0)
+    logging_ms: int = Field(default=0, ge=0)
+    developer_a_ms: int = Field(default=0, ge=0)
+    response_build_ms: int = Field(default=0, ge=0)
+    validation_ms: int = Field(default=0, ge=0)
+
+
 class DebugInfo(BaseModel):
     stt_model: str
     stt_confidence: float | None
     understanding_confidence: float
     contract_versions: list[str]
+    timing_ms: TurnTimingMs = Field(default_factory=TurnTimingMs)
 
 
 class SttResponse(BaseModel):
@@ -485,6 +512,7 @@ class UnrealResponse(BaseModel):
     current_node_id: str
     next_node_id: str
     next_action: str
+    interaction: InteractionContext
     stt: SttResponse
     npc: NpcResponse
     ui: UiResponse
