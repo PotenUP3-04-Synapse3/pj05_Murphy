@@ -27,6 +27,11 @@ from backend.app.services.service_b.tier_difficulty_controller import TierDiffic
 SCENARIO_NODE_PATH = Path("backend/app/data/scenario_nodes.json")
 
 
+@pytest.fixture(autouse=True)
+def _use_rule_feedback_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEV_B_FEEDBACK_LLM_MODE", "rule")
+
+
 def _agent(tmp_path: Path) -> EnglishLevelHintAgent:
     return EnglishLevelHintAgent(openkb_writer=OpenKBFeedbackWriter(runtime_root=tmp_path / "openkb" / "dev_b"))
 
@@ -267,6 +272,7 @@ def test_all_chapter_zero_nodes_define_branch_candidates_and_allowed_next_nodes(
     node_data = json.loads(SCENARIO_NODE_PATH.read_text(encoding="utf-8"))
 
     assert set(node_data["nodes"]) == {
+        "FLIGHT_001_SEATMATE_SMALLTALK",
         "IMM_001_PASSPORT",
         "IMM_002_PURPOSE",
         "IMM_003_DURATION",
@@ -290,6 +296,37 @@ def test_all_chapter_zero_nodes_define_branch_candidates_and_allowed_next_nodes(
         for branch_name in ["retry", "clarify", "warning", "bad_end"]:
             assert branch_name in node["branch_candidates"]
             assert node["branch_candidates"][branch_name] in allowed_next_nodes
+
+
+def test_flight_smalltalk_node_exists_as_alpha_diagnostic_node() -> None:
+    context = _node_context("FLIGHT_001_SEATMATE_SMALLTALK")
+
+    assert context.node_id == "FLIGHT_001_SEATMATE_SMALLTALK"
+    assert context.npc_question_goal == "friendly_seatmate_smalltalk"
+    assert context.required_intents == ["respond_to_smalltalk"]
+    assert context.required_slots == ["smalltalk_response"]
+    assert "FLIGHT_001_SEATMATE_SMALLTALK" in context.allowed_next_nodes
+    assert "IMM_001_PASSPORT" in context.allowed_next_nodes
+
+
+def test_flight_smalltalk_creates_deferred_out_game_feedback_seed(tmp_path: Path) -> None:
+    context = _node_context("FLIGHT_001_SEATMATE_SMALLTALK")
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="I go New York. First time.",
+            intent_success=True,
+            confidence=0.88,
+            extracted_slots={"smalltalk_response": "answered"},
+            missing_slots=[],
+            client_allowed_next_nodes=context.allowed_next_nodes,
+        )
+    )
+
+    assert result.out_game_feedback_seed.include_in_final_report is True
+    assert result.out_game_feedback_seed.focus_on_form_targets == ["smalltalk_response_clarity"]
+    assert "deferred_out_game_feedback" in result.out_game_feedback_seed.openkb_query_tags
+    assert result.branch.next_node_id in context.allowed_next_nodes
 
 
 def test_report_item_and_feedback_tags_are_returned(tmp_path: Path) -> None:

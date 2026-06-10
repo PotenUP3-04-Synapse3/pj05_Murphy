@@ -10,8 +10,9 @@ PRIORITY_RANK = {"low": 1, "medium": 2, "high": 3}
 
 
 class FocusOnFormReportPolicy:
-    def __init__(self, card_path: Path | None = None) -> None:
+    def __init__(self, card_path: Path | None = None, runtime_root: Path | None = None) -> None:
         self.card_path = card_path or DEFAULT_CARD_PATH
+        self.runtime_root = runtime_root or Path("backend/runtime/openkb/dev_b")
 
     def build_report(self, records: list[dict[str, Any]]) -> dict[str, Any]:
         cards = self._load_cards()
@@ -46,6 +47,23 @@ class FocusOnFormReportPolicy:
                 "answer_example": top_item["answer_example"],
             },
         }
+
+    def build_session_report(self, session_id: str) -> dict[str, Any]:
+        jsonl_path = self.runtime_root / f"{session_id}.jsonl"
+        if not jsonl_path.exists():
+            return self.build_report([])
+
+        records: list[dict[str, Any]] = []
+        for line in jsonl_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(record, dict):
+                records.append(record)
+        return self.build_report(records)
 
     def _group_records(
         self,
@@ -90,6 +108,8 @@ class FocusOnFormReportPolicy:
     def _focus_targets(self, record: dict[str, Any]) -> list[str]:
         seed = record.get("out_game_feedback_seed")
         if isinstance(seed, dict):
+            if seed.get("include_in_final_report") is False:
+                return []
             values = seed.get("focus_on_form_targets")
             if isinstance(values, list) and values:
                 return _unique_strings(values)

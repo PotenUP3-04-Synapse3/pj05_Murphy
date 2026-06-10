@@ -3,6 +3,43 @@
   "chapter_id": "CH0_IMMIGRATION",
   "scene_id": "JFK_IMMIGRATION_HALL",
   "nodes": {
+    "FLIGHT_001_SEATMATE_SMALLTALK": {
+      "node_id": "FLIGHT_001_SEATMATE_SMALLTALK",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Hi, I'm Emily. Are you heading to New York too?",
+      "npc_question_goal": "friendly_seatmate_smalltalk",
+      "objective_kr": "Talk with the passenger next to you.",
+      "required_intents": ["respond_to_smalltalk"],
+      "required_slots": ["smalltalk_response"],
+      "optional_slots": ["travel_reason", "first_time_visit", "interest", "duration"],
+      "critical_slots": [],
+      "allowed_slot_values": {
+        "smalltalk_response": ["answered", "short_answer", "asked_back", "shared_travel_detail"]
+      },
+      "risk_keywords": [],
+      "recommended_expression": "Yes, I'm going to New York for a short trip.",
+      "base_hint_kr": "Answer in a friendly short sentence, then add one travel detail if you can.",
+      "hint_policy": {
+        "keyword": ["yes", "New York", "trip"],
+        "sentence_pattern": "Yes, I'm going to New York for ___.",
+        "situation_hint": "The seatmate is making friendly small talk.",
+        "action_hint": "Answer briefly and ask a simple question back if you can."
+      },
+      "branch_candidates": {
+        "success": "FLIGHT_001_SEATMATE_SMALLTALK",
+        "retry": "FLIGHT_001_RETRY_SMALLTALK",
+        "clarify": "FLIGHT_001_CLARIFY_SMALLTALK",
+        "hint": "FLIGHT_001_RETRY_SMALLTALK",
+        "warning": "FLIGHT_001_SEATMATE_SMALLTALK",
+        "bad_end": "FLIGHT_001_SEATMATE_SMALLTALK"
+      },
+      "allowed_next_nodes": [
+        "FLIGHT_001_SEATMATE_SMALLTALK",
+        "FLIGHT_001_RETRY_SMALLTALK",
+        "FLIGHT_001_CLARIFY_SMALLTALK",
+        "IMM_001_PASSPORT"
+      ]
+    },
     "IMM_001_PASSPORT": {
       "node_id": "IMM_001_PASSPORT",
       "chapter_id": "CH0_IMMIGRATION",

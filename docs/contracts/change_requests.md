@@ -1,6 +1,7 @@
 # Change Requests
 
-No cross-owner change requests have been filed.
+Cross-owner change requests are listed below. Status lines describe the current
+repository state as of the latest handoff entry.
 
 ## Change Request - 2026-06-03 - Developer A NPC Dialogue/TTS Implementation
 
@@ -61,6 +62,9 @@ What Developer C will do until the change is accepted.
 
 ## Change Request - 2026-06-04 - Wire Developer B Policy Engine
 
+Status: Resolved in the integrated pre-prototype. Keep this entry for contract
+history.
+
 ### Requested By
 Developer B
 
@@ -68,10 +72,10 @@ Developer B
 Developer C / Sean Han
 
 ### Reason
-Developer B now exposes a real deterministic `dev_b_policy.v1` policy engine
+Developer B exposes a real deterministic `dev_b_policy.v1` policy engine
 under `backend/app/agents/agent_b/` and `backend/app/services/service_b/`.
-The current runtime still calls the C-owned mock adapter at
-`backend/app/integrations/dev_b_level_hint_client.py`.
+At the time this request was filed, the runtime still called the C-owned mock
+adapter at `backend/app/integrations/dev_b_level_hint_client.py`.
 
 ### Proposed Contract Change
 Keep the existing `DevBPolicyInput` and `DevBPolicyOutput` schemas unchanged.
@@ -94,6 +98,11 @@ Developer C can keep using the existing mock adapter until the adapter handoff i
 accepted. Developer B tests call the B engine directly.
 
 ## Change Request - 2026-06-04 - Consume Developer B OpenKB Write References
+
+Status: Partially resolved. Developer B writes local `dev_b` OpenKB records and
+Developer C can read B session records for `final_result`, but C-owned
+validation of successful `openkb_write.namespace` and path references is still
+not implemented.
 
 ### Requested By
 Developer B
@@ -140,6 +149,10 @@ payload fields. Any duplicate C-side markdown logging should be treated as a
 known integration cleanup item.
 
 ## Change Request - 2026-06-04 - Consume Developer B LLM Feedback Metadata
+
+Status: Partially resolved. Developer C accepts the additive B metadata and
+validates final-result output, but C-owned validation of `feedback_generation`
+and `difficulty_profile` metadata is still not implemented.
 
 ### Requested By
 Developer B
@@ -233,3 +246,128 @@ Additive optional field only. Existing clients may ignore it.
 Developer B keeps the report builder as a directly tested B-owned service.
 Developer C can continue returning the existing final result payload until the
 response surface is ready.
+
+## Change Request - 2026-06-09 - Support Alpha Scene Flow Beyond Immigration
+
+Status: Open.
+
+### Requested By
+Developer B
+
+### Affected Owner
+Developer A and Developer C / Sean Han
+
+### Reason
+Developer B now has Alpha scenario plan artifacts and B-owned baggage policy
+nodes, but the integrated runtime still primarily behaves like an immigration
+prototype. Alpha requires the scene order
+`FLIGHT_001_SEATMATE_SMALLTALK -> IMMIGRATION_ALPHA -> BAGGAGE_MISSING`, silent
+level carryover from flight small talk, no immediate out-game feedback after
+small talk, cutscene/skip signals, non-immigration NPC roles, and a final
+scenario-end result UI containing B-owned `evaluation` plus `out_game_feedback`.
+
+### Proposed Contract Change
+Developer C should add or approve request/response fields and orchestration for:
+
+- Alpha scene transitions, including cutscene and skip eligibility.
+- Silent carryover of the B-measured `tier`, `travel_speaking_level`,
+  `rubric_scores`, and `difficulty_profile` from flight into immigration.
+- Rule or LLM Understanding coverage for non-purpose slots such as
+  `stay_duration`, `return_ticket_status`, baggage report details, baggage
+  description, tag/flight info, delivery contact, and resolution acknowledgement.
+- Final result or result-detail exposure of B-owned
+  `FocusOnFormReportPolicy.build_report(...)` output as optional
+  `out_game_feedback`.
+- Final scenario-end `evaluation` payload from Developer B using
+  `scene_normalized_dimension_average`:
+  - convert each rubric dimension from 0..2 to 0..100,
+  - average each dimension inside each scene first,
+  - combine present Alpha scenes with default weights: flight 20%,
+    immigration 50%, baggage 30%,
+  - compute `overall` as the average of the weighted dimension scores,
+  - keep optional events out of numeric scoring unless a later explicit weight
+    is added.
+- Update C-owned schema/validator acceptance for the new score policy name when
+  C adopts the contract. Current C-owned `QuantitativeScores.scoring_policy`
+  and `Validator` still accept only `simple_average`, so Developer B keeps the
+  runtime-compatible field value until C widens the contract.
+
+Developer A should consume B difficulty metadata and scene/NPC role context for:
+
+- Friendly seatmate small-talk dialogue.
+- Tier-aware immigration officer response speed/strictness.
+- Baggage service staff dialogue.
+
+### Compatibility Impact
+All fields should be additive until Alpha scene contracts are finalized. Existing
+Chapter 0 immigration tests should continue to pass.
+
+### Temporary Workaround
+Developer B can keep authoring B-owned scenario nodes, hint policy, diagnostic
+policy, and report seeds, but integrated Alpha runtime behavior remains blocked
+on A/C orchestration and dialogue support.
+
+## Change Request - 2026-06-09 - Remove Developer B NPC Wording From A Adapter Payload
+
+Status: Open.
+
+### Requested By
+Developer B
+
+### Affected Owner
+Developer A and Developer C / Sean Han
+
+### Reason
+Developer B should not author final NPC dialogue. The current integrated path
+allows C to pass `node_context.npc_question` and generated next-question text to
+Developer A as candidate dialogue, which makes B-owned scenario data behave like
+NPC utterance text. This blocks tier-aware and emotionally dynamic NPC dialogue
+because Developer A receives text to polish instead of metadata to generate
+from.
+
+### Proposed Contract Change
+Developer C should update the internal C-to-A adapter payload only. Do not
+change the external Unreal request/response contract for this migration.
+
+Remove these fields from the A-facing payload:
+
+- `node_context.npc_question`
+- `in_game_feedback.npc_recast_line_candidate` when it contains next-question
+  text derived from `npc_question`
+- `dialogue_directive.do_not_generate_npc_text`
+- A-facing `hint_frequency`
+- A-facing `pressure_level`
+
+Keep or pass these metadata fields instead:
+
+| Key | Value | Meaning |
+| --- | --- | --- |
+| `npc_question_goal` | string such as `ask_stay_duration` | Communicative goal for Developer A generation |
+| `required_slots` | list of strings | Information Developer A should prompt for |
+| `target_slot` | string or null | Primary slot for the current dialogue turn |
+| `npc_speech_speed` | integer `0-10` | `0` = very slow and learner-friendly, `10` = near-native fast |
+| `question_complexity` | integer `0-10` | `0` = very simple one-part question, `10` = complex multi-part question |
+| `emotion_change` | `positive`, `neutral`, `negative` | NPC emotional/tone direction caused by the current turn |
+
+`hint_frequency` remains Developer B feedback policy and should not be passed
+as Developer A NPC-generation input.
+
+`pressure_level` should be replaced by word-only `emotion_change` for
+A/Unreal-facing tone and facial-expression direction. `emotion_change` is not a
+numeric score and should not allow an LLM to manage score state.
+
+Developer A owns final NPC utterance generation and TTS wording. Developer B
+provides scenario goal, required intent/slot, difficulty policy, emotion-change
+direction, hint policy, scoring policy, and report seeds only.
+
+### Compatibility Impact
+This is an internal adapter contract change. External Unreal payloads do not
+need to change. Existing deterministic A/C tests that assert exact static
+`npc_question` output will need to be updated to assert goal/slot metadata and
+A-owned generated text behavior instead.
+
+### Temporary Workaround
+Until C updates the adapter and schema, Developer B may keep `npc_question` in
+`scenario_nodes.json` as legacy node context required by current schemas, but it
+must be treated as fallback/debug context rather than final NPC dialogue
+authority.

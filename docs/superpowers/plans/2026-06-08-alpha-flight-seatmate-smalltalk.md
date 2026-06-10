@@ -10,7 +10,7 @@ Scenario design draft for Alpha. This document is a Markdown scenario artifact o
 
 ## Placement
 
-This is the opening Alpha scene. The player starts inside an airplane before arriving in the United States. The scene happens before the immigration hall and before any explicit tutorial or out-game feedback.
+This is the opening Alpha scene. The player starts inside an airplane before arriving in the United States. The scene happens before the immigration hall and before any immediate tutorial or feedback screen. Developer B still records deferred evaluation and `out_game_feedback_seed` data for the scenario-end report.
 
 ```text
 Alpha start
@@ -50,8 +50,9 @@ NPC -> player -> NPC -> player -> NPC -> player
 
 - If the conversation naturally continues for 5 or more player turns, show a `skip` button at the bottom right of the screen.
 - The skip button should let the player move to the next scene without penalizing them.
-- There is no out-game feedback after this scene.
-- The player should not see a score, grade, correction screen, or focus-on-form report after the flight small talk.
+- There is no immediate out-game feedback screen after this scene.
+- Developer B should create a deferred `out_game_feedback_seed` for the final scenario-end report.
+- The player should not see a score, grade, correction screen, or focus-on-form report immediately after the flight small talk.
 - The measured tier should silently affect later Alpha difficulty, especially `IMMIGRATION_ALPHA`.
 
 ## Opening Beat
@@ -155,24 +156,28 @@ The result should update the player's internal profile before immigration. It sh
 
 ## Final Report And Feedback Policy
 
-This scene has a strict no-immediate-feedback rule.
+This scene has a strict no-immediate-feedback-display rule and a required deferred-feedback-seed rule.
 
 After `FLIGHT_001_SEATMATE_SMALLTALK`, the player must not see:
 
-- out-game feedback
+- an out-game feedback screen
 - Focus-on-Form cards
 - grammar corrections
 - a score screen
 - a visible tier or TSL result
 
-Developer B may still keep diagnostic evidence internally so the later Alpha flow can adapt. That diagnostic evidence should be treated as level-measurement metadata, not as a scene feedback report.
+Developer B must still keep diagnostic evidence internally so the later Alpha flow can adapt and the scenario-end report can include the small-talk sample. That evidence is not shown immediately. It is written as a deferred `out_game_feedback_seed` and consumed only when the full Alpha scenario ends.
+
+Because the player is not told this is a test during the flight scene, the final report should present this evidence as a gentle calibration sample, not as a surprise grading event. The report tone should emphasize practical travel communication, for example whether the player could answer casual questions clearly and keep a friendly exchange moving.
 
 Allowed final-report use:
 
 - update the player's silent `tier`
 - update `travel_speaking_level`
 - update aggregate rubric evidence
-- explain the final Alpha difficulty selection only if the final report later needs a short level summary
+- contribute to scenario-end `evaluation`
+- contribute to scenario-end `out_game_feedback`
+- explain the final Alpha difficulty selection if the final report needs a short level summary
 
 Disallowed immediate use:
 
@@ -180,7 +185,13 @@ Disallowed immediate use:
 - do not show correction cards immediately after this scene
 - do not interrupt the cutscene transition with a learning report
 
-If the final Alpha report later includes small-talk evidence, it should be summarized broadly, for example "You handled casual travel small talk with short but understandable answers." Detailed Focus-on-Form correction cards should primarily come from immigration and baggage problem-solving turns unless the product owner explicitly enables small-talk correction in the final report.
+Scenario-end use:
+
+- create an `out_game_feedback_seed` target such as `smalltalk_response_clarity`
+- include the small-talk record in scene-normalized rubric scoring so longer small-talk runs do not dominate the final score
+- show the player the final `evaluation` and `out_game_feedback` only after the full scenario has ended
+- keep the final report tone broad and practical, for example "You handled casual travel small talk with short but understandable answers."
+- prefer a summary-style final note over correction-heavy cards unless the same small-talk issue appears repeatedly across later scenes
 
 ## Exit Conditions
 
@@ -203,17 +214,18 @@ After exit, play the arrival/cutscene transition and move into `IMMIGRATION_ALPH
 Dev B-owned work:
 
 - Add a flight small-talk scenario definition when implementation begins.
-- Add diagnostic-only evaluation behavior: no pass/fail branch, no out-game feedback, but tier and TSL estimation must be updated.
-- Add tests that verify the minimum 3 player turns, 5-turn skip eligibility, fallback question behavior, and no out-game feedback output.
+- Add diagnostic evaluation behavior: no pass/fail branch, deferred `out_game_feedback_seed`, and updated tier/TSL evidence.
+- Add tests that verify the minimum 3 player turns, 5-turn skip eligibility, fallback question behavior, and deferred `out_game_feedback_seed` output.
 - Ensure the policy output can carry a measured `tier`, `travel_speaking_level`, `rubric_scores`, and `difficulty_profile` into later scenes.
-- Ensure Dev B self-checks reject any accidental visible `out_game_feedback` payload for this scene.
+- Ensure Dev B self-checks allow deferred final-report seeds but do not imply immediate feedback display.
 - Ensure AgentRun logging marks this scene as diagnostic-only so later debugging can distinguish it from scored scenario nodes.
 
 Cross-team coordination needed:
 
 - Developer A should generate the actual NPC lines from the small-talk policy and NPC profile.
 - Developer C should orchestrate the cutscene transition, skip button signal, and scene transition into immigration.
-- If new request/response fields are required for skip eligibility or silent level carryover, document them in `docs/contracts/change_requests.md` before changing contracts.
+- Developer C should show scenario-end `evaluation` and `out_game_feedback` after the full Alpha scenario, not after this scene.
+- If new request/response fields are required for skip eligibility, silent level carryover, scenario-end `evaluation`, or scenario-end `out_game_feedback`, document them in `docs/contracts/change_requests.md` before changing contracts.
 
 ## Acceptance Criteria
 
@@ -222,6 +234,8 @@ Cross-team coordination needed:
 - Conversation follow-ups are dynamic and based on player content.
 - Fallback questions are available when the conversation stalls.
 - A skip button becomes eligible only after 5 or more player turns.
-- No out-game feedback appears after the scene.
+- No immediate out-game feedback appears after the scene.
+- A deferred `out_game_feedback_seed` is available for the final scenario-end report.
 - A player level estimate is available for `IMMIGRATION_ALPHA`.
-- Any final-report use of this scene is delayed and aggregate-only unless explicitly changed later.
+- Final-report use of this scene is delayed until the full Alpha scenario ends.
+- Final-report wording treats this scene as a low-pressure calibration sample, not as an immediate pass/fail test.

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from backend.app.services.service_b.developer_b_agent_run_logger import DeveloperBAgentRunLogger
     from backend.app.services.service_b.feedback_hint_generator import FeedbackHintGenerator
+    from backend.app.services.service_b.flight_smalltalk_diagnostic_policy import FlightSmallTalkDiagnosticPolicy
     from backend.app.services.service_b.focus_on_form_report_policy import FocusOnFormReportPolicy
     from backend.app.services.service_b.level_adaptation_controller import LevelAdaptationController
     from backend.app.services.service_b.openkb_feedback_writer import OpenKBFeedbackWriter
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
 __all__ = [
     "DeveloperBAgentRunLogger",
     "FeedbackHintGenerator",
+    "FlightSmallTalkDiagnosticPolicy",
     "FocusOnFormReportPolicy",
     "LevelAdaptationController",
     "OpenKBFeedbackWriter",
@@ -34,6 +36,10 @@ def __getattr__(name: str) -> Any:
         from backend.app.services.service_b.feedback_hint_generator import FeedbackHintGenerator
 
         return FeedbackHintGenerator
+    if name == "FlightSmallTalkDiagnosticPolicy":
+        from backend.app.services.service_b.flight_smalltalk_diagnostic_policy import FlightSmallTalkDiagnosticPolicy
+
+        return FlightSmallTalkDiagnosticPolicy
     if name == "FocusOnFormReportPolicy":
         from backend.app.services.service_b.focus_on_form_report_policy import FocusOnFormReportPolicy
 

@@ -735,9 +735,10 @@ download/load the Whisper model. Real Kokoro can execute with
 `MURPHY_TTS_MODE=real`, but the first run may download/load model assets and
 can emit known torch/Kokoro warnings. Developer C Understanding is still a
 deterministic prototype analyzer. The final score/result payload is implemented,
-but full out-game practice-card generation from Focus-on-Form records is still
-not implemented. Generated runtime artifacts for the integrated endpoint are
-written under `backend/runtime/generated/` and ignored by git.
+and Developer B has a directly tested Focus-on-Form practice-card report
+builder, but C still needs to expose that report as optional out-game feedback.
+Generated runtime artifacts for the integrated endpoint are written under
+`backend/runtime/generated/` and ignored by git.
 
 ## Next Recommended Step
 
@@ -832,6 +833,151 @@ Verification:
 - `uv run ruff check .` passed.
 - `uv run mypy .` passed with no issues in 89 source files after using the
   known uv cache permission workaround.
+
+## 2026-06-09 Developer B Code Review and Remaining Alpha Plan Update
+
+Developer B reviewed the current Dev B implementation and the 2026-06-08 plan
+artifacts.
+
+Dev B-owned fixes:
+
+- `FocusOnFormReportPolicy` now treats
+  `out_game_feedback_seed.include_in_final_report=false` as an explicit
+  exclusion signal, even when legacy `focus_on_form_targets` are present.
+- `FinalResultScorePolicy` now applies the same exclusion rule before adding
+  `focus_on_form_recorded` reason tags or report-summary targets.
+- Added regression tests for both exclusion paths.
+- `backend/app/kb/dev_b/focus_on_form_cards.json` now covers every current
+  Dev B Focus-on-Form target emitted by immigration, the Gold challenge, and
+  baggage policy nodes.
+- `backend/tests/dev_b/test_developer_b_policy_engine.py` now pins
+  `DEV_B_FEEDBACK_LLM_MODE=rule` during tests so local `.env` values cannot
+  accidentally send default policy tests through the external LLM path.
+
+Cross-owner findings:
+
+- Developer C rule-based `UnderstandingAgent` still handles the deterministic
+  prototype mostly through visit-purpose classification. Alpha baggage and
+  flight nodes need C-owned understanding coverage for their required slots, or
+  an approved LLM-mode/runtime contract.
+- Developer A/C dialogue integration currently looks up next-node questions
+  only for `IMM_` node ids, so `BAG_` follow-up dialogue will not naturally
+  advance in the integrated runtime until that adapter path is expanded.
+- Developer C response/result surfaces return B `final_result`, but do not yet
+  expose B `FocusOnFormReportPolicy.build_report(...)` as optional
+  `out_game_feedback`.
+- Alpha scene orchestration for
+  `FLIGHT_001_SEATMATE_SMALLTALK -> IMMIGRATION_ALPHA -> BAGGAGE_MISSING`,
+  cutscene transition, skip eligibility, and silent level carryover is not yet
+  implemented in C-owned runtime code.
+- Developer A still needs to consume B difficulty metadata for tier-aware NPC
+  response speed/strictness and scene-specific roles such as friendly seatmate
+  and baggage service staff.
+
+Docs updated:
+
+- `docs/contracts/change_requests.md` now marks older B integration requests as
+  resolved or partially resolved and adds an open Alpha scene-flow request for
+  A/C.
+- `docs/portfolio_dev_b.md` now reflects that the C adapter delegates to the
+  real B engine and that remaining work is Alpha scene/runtime exposure.
+
+## 2026-06-09 Alpha Flow Planning Adjustment
+
+Developer B updated the Alpha planning artifacts after the product direction
+changed to include final scenario-end `evaluation` and `out_game_feedback`.
+
+Planning changes:
+
+- Final Alpha scoring should use `scene_normalized_dimension_average` rather
+  than raw per-turn averaging, with default scene weights of flight 20%,
+  immigration 50%, and baggage 30%.
+- Flight small talk still produces a deferred `out_game_feedback_seed`, but the
+  final report should frame it as a low-pressure calibration sample rather than
+  a surprise grading event.
+- Gold immigration strictness should prioritize missing facts, contradictions,
+  evasive answers, and credibility risk over harmless grammar mistakes.
+- Baggage missing should remain a practical service-desk problem-solving scene,
+  not another high-pressure interview.
+- Optional post-baggage events should be feature-gated, with at most one enabled
+  for the first Alpha pass. Seatmate reunion is the recommended first candidate.
+
+Updated docs:
+
+- `docs/superpowers/plans/2026-06-09-dev-b-remaining-alpha-work.md`
+- `docs/superpowers/plans/2026-06-08-alpha-flight-seatmate-smalltalk.md`
+- `docs/superpowers/plans/2026-06-08-alpha-immigration.md`
+- `docs/superpowers/plans/2026-06-08-alpha-baggage-missing.md`
+- `docs/contracts/change_requests.md`
+
+## 2026-06-09 Developer B Remaining Alpha Work Implementation
+
+Developer B implemented the B-owned portions of
+`docs/superpowers/plans/2026-06-09-dev-b-remaining-alpha-work.md` without
+editing Developer A or Developer C runtime code.
+
+Changed:
+
+- Added `FlightSmallTalkDiagnosticPolicy` with minimum-turn, skip-eligibility,
+  deferred-feedback, and fallback-question decisions.
+- Added `FLIGHT_001_SEATMATE_SMALLTALK` to B-owned scenario node data.
+- Updated `EnglishLevelHintAgent` so `FLIGHT_` nodes always create a deferred
+  `out_game_feedback_seed` with `smalltalk_response_clarity`.
+- Added a `smalltalk_response_clarity` static Focus-on-Form card.
+- Updated `FinalResultScorePolicy` numeric computation to scene-normalized
+  dimension averages with default Alpha weights: flight 20%, immigration 50%,
+  and baggage 30%.
+- Added `FocusOnFormReportPolicy.build_session_report(session_id)` for
+  scenario-end `out_game_feedback` generation from local `dev_b` JSONL records.
+- Added optional Alpha event seed documentation for customs declaration problem,
+  stolen passport, and seatmate reunion.
+
+Still C-owned:
+
+- C-owned `QuantitativeScores.scoring_policy` and validator currently allow only
+  `simple_average`. Developer B therefore keeps that field runtime-compatible
+  while exposing the new policy through numeric behavior and
+  `scene_normalized_dimension_average_policy` reason tags.
+- C still needs to orchestrate
+  `FLIGHT_001_SEATMATE_SMALLTALK -> IMMIGRATION_ALPHA -> BAGGAGE_MISSING ->
+  scenario_end` and expose final UI `evaluation` plus `out_game_feedback`.
+
+## 2026-06-09 NPC Metadata Ownership Follow-Up
+
+Developer B recorded the next contract-cleanup plan and cross-owner handoff for
+removing B-authored NPC wording from the A-facing dialogue path.
+
+Decision summary:
+
+- Developer B must not author final NPC dialogue.
+- Developer C should stop passing `node_context.npc_question` to Developer A as
+  candidate dialogue.
+- Developer C should stop deriving `in_game_feedback.npc_recast_line_candidate`
+  from next-node `npc_question`.
+- Developer B should not send `dialogue_directive.do_not_generate_npc_text` once
+  C removes or relaxes the current schema field.
+- `npc_speech_speed` and `question_complexity` should become 0-10 numeric
+  metadata after C updates the schema.
+- `hint_frequency` is cancelled as A-facing NPC-generation metadata and remains
+  B-owned feedback policy only.
+- `pressure_level` is cancelled as A-facing NPC-generation metadata and should
+  be replaced by word-only `emotion_change`: `positive`, `neutral`, or
+  `negative`.
+- Runtime JSON should not include `_comment_*` keys. Value explanations belong
+  in contract/plan tables.
+
+Docs added or updated:
+
+- `docs/superpowers/plans/2026-06-09-dev-b-npc-metadata-contract-cleanup.md`
+- `docs/contracts/change_requests.md`
+
+Ownership split:
+
+- B-owned later work: update B difficulty/emotion policy output after C schema
+  support is available.
+- C-owned work: update schemas, validators, and the C-to-A adapter payload.
+- A-owned work: generate final NPC utterances and TTS wording from metadata
+  rather than polishing B/C-provided dialogue text.
 
 ## Resume Instructions
 
