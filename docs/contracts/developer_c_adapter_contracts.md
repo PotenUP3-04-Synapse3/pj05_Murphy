@@ -78,6 +78,28 @@ Unreal wav
   -> Unreal
 ```
 
+## Alpha Interaction Direction
+
+Alpha keeps the existing wav turn endpoint as the stable baseline, but the turn
+metadata now includes an additive C-owned `interaction` context:
+
+- `initiator`: `npc` for fixed-prompt NPC-first turns, `player` for the player
+  walking up and speaking first.
+- `interaction_type`: `quest`, `ambient`, `tutorial`, or `system`.
+- `quest_id` and `interaction_id`: optional client ids for quest and
+  interactable correlation.
+- `time_limit_s`: optional timer metadata such as the 30-second immigration
+  answer window.
+
+Developer C echoes this metadata in `dev_c_unreal_response.v1` and includes it
+in safe AgentRun summaries. The field does not change Developer B branch
+authority or Developer A dialogue/TTS ownership.
+
+Developer C also records diagnostic `debug.timing_ms` values for STT, OpenKB,
+Understanding, Developer B, C logging, Developer A/TTS, response building, and
+validation. Timing values are for Alpha latency analysis only and must not be
+used as gameplay branch decisions.
+
 ## File Ownership
 
 Developer C may implement these adapters under:
@@ -583,6 +605,9 @@ Rules:
 - Events are recorded at the STT, OpenKB, Understanding, Developer B,
   validator, error-capture, Developer A, response-builder, and final validator
   boundaries.
+- Safe summaries include the Alpha `interaction` metadata and timing breakdown
+  so A/B/C can distinguish NPC-first quest turns from player-first quest or
+  ambient turns during review.
 - The log must not include wav bytes, API keys, or full provider prompts.
 - When Developer C directly calls the Understanding LLM and the provider
   returns token usage, the unified record's top-level `model` object stores
@@ -609,6 +634,8 @@ Inputs:
 - validated Developer A output
 - normalized input metadata
 - current session and node metadata
+- C-owned Alpha interaction metadata
+- C-owned diagnostic timing metadata
 - logging summary
 
 Output contract:

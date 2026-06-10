@@ -251,6 +251,12 @@ response surface is ready.
 
 Status: Open.
 
+Developer C Alpha 1 update, 2026-06-10: C added an additive
+`dev_c_interaction_context.v1` request/response context for NPC-first vs
+player-first and quest vs ambient turns, plus diagnostic response timing. This
+does not yet implement the full Alpha scene flow, but it gives Unreal and A/B/C
+logs a stable metadata surface for the next scenario-flow phase.
+
 ### Requested By
 Developer B
 

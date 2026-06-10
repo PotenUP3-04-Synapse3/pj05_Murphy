@@ -9,6 +9,7 @@ from backend.app.schemas.game_turn import (
     RecordedErrorSummary,
     ReportResponse,
     SttResponse,
+    TurnTimingMs,
     UiFeedback,
     UiResponse,
     UnderstandingOutput,
@@ -25,6 +26,7 @@ class ResponseBuilder:
         dev_b_output: DevBPolicyOutput,
         dev_a_output: DevADialogueOutput,
         logging_summary: RecordedErrorSummary,
+        timing_ms: TurnTimingMs | None = None,
     ) -> UnrealResponse:
         return UnrealResponse(
             contract_version="dev_c_unreal_response.v1",
@@ -34,6 +36,7 @@ class ResponseBuilder:
             current_node_id=request.turn.session.current_node_id,
             next_node_id=dev_b_output.branch.next_node_id,
             next_action=dev_b_output.branch.next_action,
+            interaction=request.turn.interaction,
             stt=SttResponse(
                 model=normalized_input.stt_model,
                 primary_runtime=normalized_input.stt_primary_runtime,
@@ -78,9 +81,11 @@ class ResponseBuilder:
                 understanding_confidence=understanding.confidence,
                 contract_versions=[
                     request.turn.contract_version,
+                    request.turn.interaction.contract_version,
                     dev_b_output.contract_version,
                     dev_a_output.contract_version,
                     "dev_c_unreal_response.v1",
                 ],
+                timing_ms=timing_ms or TurnTimingMs(),
             ),
         )
