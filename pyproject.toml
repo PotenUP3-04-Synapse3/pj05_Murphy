@@ -3,8 +3,10 @@ name = "pj05-murphy"
 version = "0.1.0"
 description = "Developer C AI backend harness for Murphy's Trippin"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
+    "chatterbox-tts==0.1.7",
+    "edge-tts>=7.2.8",
     "espeakng-loader>=0.2.4",
     "fastapi>=0.136.3",
     "httpx>=0.28.1",
@@ -15,7 +17,7 @@ dependencies = [
     "pydantic-settings>=2.14.1",
     "python-multipart>=0.0.30",
     "soundfile>=0.13.1",
-    "torch>=2.12.0",
+    "torch==2.6.0",
     "uvicorn[standard]>=0.48.0",
 ]
 
@@ -33,3 +35,16 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu124", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+]
+torchaudio = [
+    { index = "pytorch-cu124", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+]

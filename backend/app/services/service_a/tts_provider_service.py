@@ -2,11 +2,16 @@ from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Protocol, cast
+import httpx
 import math
 import os
+import subprocess
 import struct
+import sys
 import time
 import wave
+
+_CHATTERBOX_MODEL_CACHE: dict[str, Any] = {}
 
 
 @dataclass(frozen=True)
@@ -26,6 +31,27 @@ KOKORO_CAPABILITIES = TTSCapabilities(
     output_sample_rates=(24000,),
 )
 KOKORO_DEFAULT_REPO_ID = "hexgrad/Kokoro-82M"
+EDGE_TTS_CAPABILITIES = TTSCapabilities(
+    supports_emotion_prompt=False,
+    supports_voice_clone=False,
+    supports_speed=True,
+    supports_pitch=True,
+    output_sample_rates=(24000,),
+)
+CHATTERBOX_TTS_CAPABILITIES = TTSCapabilities(
+    supports_emotion_prompt=True,
+    supports_voice_clone=True,
+    supports_speed=False,
+    supports_pitch=False,
+    output_sample_rates=(24000,),
+)
+ELEVENLABS_TTS_CAPABILITIES = TTSCapabilities(
+    supports_emotion_prompt=True,
+    supports_voice_clone=True,
+    supports_speed=True,
+    supports_pitch=False,
+    output_sample_rates=(24000,),
+)
 
 
 @dataclass(frozen=True)
@@ -121,6 +147,271 @@ class RealKokoroProvider:
             "real_time_factor": generation_seconds / audio_seconds if audio_seconds else None,
             "status": "ok",
         }
+
+
+class EdgeTTSProvider:
+    provider_name = "edge"
+    capabilities = EDGE_TTS_CAPABILITIES
+
+    def synthesize(self, request: TTSProviderRequest, output_path: Path) -> dict[str, Any]:
+        """Edge TTS로 MP3를 생성한 뒤, 요청 format이 wav이면 ffmpeg로 PCM WAV로 변환한다."""
+        started_at = time.perf_counter()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        voice = str(request.provider_options.get("voice", "en-US-GuyNeural"))
+        rate = str(request.provider_options.get("rate", "+0%"))
+        volume = str(request.provider_options.get("volume", "+0%"))
+        pitch = str(request.provider_options.get("pitch", "+0Hz"))
+        media_path = output_path if request.output_format == "mp3" else output_path.with_suffix(".edge.mp3")
+
+        _run_edge_tts_cli(
+            text=request.text,
+            voice=voice,
+            rate=rate,
+            volume=volume,
+            pitch=pitch,
+            output_path=media_path,
+        )
+
+        conversion_seconds = 0.0
+        if request.output_format == "wav":
+            conversion_started_at = time.perf_counter()
+            _convert_mp3_to_wav(
+                input_path=media_path,
+                output_path=output_path,
+                sample_rate=request.sample_rate,
+            )
+            conversion_seconds = time.perf_counter() - conversion_started_at
+
+        generation_seconds = time.perf_counter() - started_at
+        audio_seconds = _wav_duration_seconds(output_path) if request.output_format == "wav" else 0.0
+        return {
+            "provider": self.provider_name,
+            "voice_id": voice,
+            "audio_path": str(output_path),
+            "audio_url": None,
+            "sample_rate": request.sample_rate,
+            "format": request.output_format,
+            "audio_seconds": audio_seconds,
+            "generation_seconds": generation_seconds,
+            "conversion_seconds": conversion_seconds,
+            "real_time_factor": generation_seconds / audio_seconds if audio_seconds else None,
+            "status": "ok",
+            "provider_options": {
+                "rate": rate,
+                "volume": volume,
+                "pitch": pitch,
+                "edge_media_path": str(media_path),
+            },
+        }
+
+
+class ChatterboxTTSProvider:
+    provider_name = "chatterbox"
+    capabilities = CHATTERBOX_TTS_CAPABILITIES
+
+    def synthesize(self, request: TTSProviderRequest, output_path: Path) -> dict[str, Any]:
+        """Chatterbox TTS 모델로 감정 파라미터와 참조 음성을 반영한 wav를 생성한다."""
+        started_at = time.perf_counter()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        sf = import_module("soundfile")
+        device = _resolve_chatterbox_device(str(request.provider_options.get("device", "auto")))
+        model = _load_chatterbox_model(device=device)
+
+        generate_kwargs: dict[str, Any] = {
+            "exaggeration": float(request.provider_options.get("exaggeration", request.intensity)),
+            "cfg_weight": float(request.provider_options.get("cfg_weight", 0.4)),
+            "temperature": float(request.provider_options.get("temperature", 0.6)),
+        }
+        audio_prompt_path = str(request.provider_options.get("audio_prompt_path", "")).strip()
+        if audio_prompt_path and Path(audio_prompt_path).exists():
+            generate_kwargs["audio_prompt_path"] = audio_prompt_path
+
+        audio = model.generate(request.text, **generate_kwargs)
+        sample_rate = int(getattr(model, "sr", request.sample_rate))
+        cast(Any, sf).write(output_path, _to_soundfile_audio(audio), sample_rate)
+
+        generation_seconds = time.perf_counter() - started_at
+        info = cast(Any, sf).info(output_path)
+        audio_seconds = info.frames / info.samplerate if info.samplerate else 0.0
+        return {
+            "provider": self.provider_name,
+            "voice_id": str(request.provider_options.get("voice", request.voice_profile_id)),
+            "audio_path": str(output_path),
+            "audio_url": None,
+            "sample_rate": info.samplerate,
+            "format": request.output_format,
+            "audio_seconds": audio_seconds,
+            "generation_seconds": generation_seconds,
+            "real_time_factor": generation_seconds / audio_seconds if audio_seconds else None,
+            "status": "ok",
+            "provider_options": {
+                "audio_prompt_path": str(request.provider_options.get("audio_prompt_path", "")),
+                "exaggeration": generate_kwargs["exaggeration"],
+                "cfg_weight": generate_kwargs["cfg_weight"],
+                "temperature": generate_kwargs["temperature"],
+                "device": device,
+                "language_id": request.provider_options.get("language_id"),
+                "reference_audio_exists": bool(audio_prompt_path and Path(audio_prompt_path).exists()),
+            },
+        }
+
+
+class ElevenLabsTTSProvider:
+    provider_name = "elevenlabs"
+    capabilities = ELEVENLABS_TTS_CAPABILITIES
+
+    def synthesize(self, request: TTSProviderRequest, output_path: Path) -> dict[str, Any]:
+        """ElevenLabs API로 음성을 생성하고 Unreal 전달용 wav로 변환한다."""
+        started_at = time.perf_counter()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        api_key = str(request.provider_options.get("api_key", "")).strip()
+        if not api_key:
+            raise ValueError("ELEVENLABS_API_KEY is required")
+
+        base_url = str(request.provider_options.get("base_url", "https://api.elevenlabs.io/v1")).rstrip("/")
+        voice_id = str(request.provider_options.get("voice", "CwhRBWXzGAHq8TQ4Fs17"))
+        model_id = str(request.provider_options.get("model_id", "eleven_flash_v2_5"))
+        api_output_format = str(request.provider_options.get("api_output_format", "mp3_44100_128"))
+        media_path = output_path if request.output_format == "mp3" else output_path.with_suffix(".elevenlabs.mp3")
+
+        with httpx.Client(timeout=float(request.provider_options.get("timeout_seconds", 60.0))) as client:
+            response = client.post(
+                f"{base_url}/text-to-speech/{voice_id}",
+                params={"output_format": api_output_format},
+                headers={"xi-api-key": api_key, "Content-Type": "application/json"},
+                json={
+                    "text": request.text,
+                    "model_id": model_id,
+                    "voice_settings": {
+                        "stability": float(request.provider_options.get("stability", 0.52)),
+                        "similarity_boost": float(request.provider_options.get("similarity_boost", 0.82)),
+                        "style": float(request.provider_options.get("style", 0.42)),
+                        "speed": float(request.provider_options.get("speed", request.speaking_rate)),
+                        "use_speaker_boost": bool(request.provider_options.get("use_speaker_boost", True)),
+                    },
+                },
+            )
+            response.raise_for_status()
+            media_path.write_bytes(response.content)
+
+        conversion_seconds = 0.0
+        if request.output_format == "wav":
+            conversion_started_at = time.perf_counter()
+            _convert_mp3_to_wav(
+                input_path=media_path,
+                output_path=output_path,
+                sample_rate=request.sample_rate,
+            )
+            conversion_seconds = time.perf_counter() - conversion_started_at
+
+        generation_seconds = time.perf_counter() - started_at
+        audio_seconds = _wav_duration_seconds(output_path) if request.output_format == "wav" else 0.0
+        return {
+            "provider": self.provider_name,
+            "voice_id": voice_id,
+            "audio_path": str(output_path),
+            "audio_url": None,
+            "sample_rate": request.sample_rate,
+            "format": request.output_format,
+            "audio_seconds": audio_seconds,
+            "generation_seconds": generation_seconds,
+            "conversion_seconds": conversion_seconds,
+            "real_time_factor": generation_seconds / audio_seconds if audio_seconds else None,
+            "status": "ok",
+            "provider_options": {
+                "model_id": model_id,
+                "api_output_format": api_output_format,
+                "stability": float(request.provider_options.get("stability", 0.52)),
+                "similarity_boost": float(request.provider_options.get("similarity_boost", 0.82)),
+                "style": float(request.provider_options.get("style", 0.42)),
+                "speed": float(request.provider_options.get("speed", request.speaking_rate)),
+                "use_speaker_boost": bool(request.provider_options.get("use_speaker_boost", True)),
+                "elevenlabs_media_path": str(media_path),
+            },
+        }
+
+
+def _run_edge_tts_cli(
+    *,
+    text: str,
+    voice: str,
+    rate: str,
+    volume: str,
+    pitch: str,
+    output_path: Path,
+) -> None:
+    command = [
+        sys.executable,
+        "-m",
+        "edge_tts",
+        f"--voice={voice}",
+        f"--rate={rate}",
+        f"--volume={volume}",
+        f"--pitch={pitch}",
+        "--text",
+        text,
+        "--write-media",
+        str(output_path),
+    ]
+    subprocess.run(command, check=True, capture_output=True, text=True)
+
+
+def _convert_mp3_to_wav(input_path: Path, output_path: Path, sample_rate: int) -> None:
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(input_path),
+        "-acodec",
+        "pcm_s16le",
+        "-ac",
+        "1",
+        "-ar",
+        str(sample_rate),
+        str(output_path),
+    ]
+    subprocess.run(command, check=True, capture_output=True, text=True)
+
+
+def _wav_duration_seconds(path: Path) -> float:
+    with wave.open(str(path), "rb") as wav:
+        frame_rate = wav.getframerate()
+        return wav.getnframes() / frame_rate if frame_rate else 0.0
+
+
+def _load_chatterbox_model(*, device: str) -> Any:
+    cached = _CHATTERBOX_MODEL_CACHE.get(device)
+    if cached is not None:
+        return cached
+    chatterbox_module = import_module("chatterbox.tts")
+    model_type = cast(Any, chatterbox_module).ChatterboxTTS
+    model = model_type.from_pretrained(device=device)
+    _CHATTERBOX_MODEL_CACHE[device] = model
+    return model
+
+
+def _resolve_chatterbox_device(device: str) -> str:
+    if device != "auto":
+        return device
+    try:
+        torch_module = import_module("torch")
+    except ImportError:
+        return "cpu"
+    cuda = getattr(cast(Any, torch_module), "cuda", None)
+    if cuda is not None and cuda.is_available():
+        return "cuda"
+    return "cpu"
+
+
+def _to_soundfile_audio(audio: Any) -> Any:
+    if hasattr(audio, "detach"):
+        audio = audio.detach().cpu().numpy()
+    if getattr(audio, "ndim", 1) == 2 and audio.shape[0] < audio.shape[1]:
+        return audio.T
+    return audio
 
 
 def configure_espeak_runtime() -> None:

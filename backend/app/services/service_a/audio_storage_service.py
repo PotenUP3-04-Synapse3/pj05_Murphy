@@ -10,9 +10,10 @@ def build_audio_cache_key(
     sample_rate: int,
     output_format: str,
     model_version: str,
+    provider: str = "kokoro",
 ) -> str:
-    """대사와 voice 설정이 같으면 같은 wav path를 쓰도록 stable cache key를 만든다."""
-    raw = "|".join([text, voice, f"{speed:.3f}", str(sample_rate), output_format, model_version])
+    """같은 provider, 대사, 음성 설정이면 같은 파일 경로를 쓰도록 cache key를 만든다."""
+    raw = "|".join([provider, text, voice, f"{speed:.3f}", str(sample_rate), output_format, model_version])
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -24,6 +25,7 @@ def audio_output_path(
     target_slot: str | None = None,
     branch_type: str | None = None,
     voice_id: str | None = None,
+    provider: str = "kokoro",
 ) -> Path:
     filename = build_audio_filename(
         cache_key=cache_key,
@@ -33,7 +35,7 @@ def audio_output_path(
         branch_type=branch_type,
         voice_id=voice_id,
     )
-    return root / "audio" / "kokoro" / filename
+    return root / "audio" / _safe_slug(provider or "kokoro") / filename
 
 
 def build_audio_filename(
@@ -56,7 +58,7 @@ def build_audio_filename(
 
 
 def _safe_slug(value: str) -> str:
-    # 파일명에는 영문/숫자/밑줄만 남겨 Windows와 URL에서 모두 안전하게 쓴다.
+    # Windows 파일명과 URL 경로에서 모두 안전하도록 영문, 숫자, 밑줄만 남긴다.
     normalized = re.sub(r"[^A-Za-z0-9_]+", "_", value.strip())
     normalized = re.sub(r"_+", "_", normalized).strip("_")
     return normalized or "unknown"

@@ -15,6 +15,158 @@ is local-first with API fallback. Automated tests keep deterministic STT through
 deterministic `rule` mode and optional OpenAI-assisted `llm` mode with rule
 fallback.
 
+## Developer A ElevenLabs TTS Provider Update - 2026-06-09
+
+Developer A integrated ElevenLabs as an official selectable TTS provider. The
+runtime can now switch providers with:
+
+```text
+MURPHY_TTS_PROVIDER=elevenlabs
+MURPHY_TTS_PROVIDER=edge
+MURPHY_TTS_PROVIDER=kokoro
+MURPHY_TTS_PROVIDER=chatterbox
+```
+
+Generated ElevenLabs WAV files are stored under:
+
+```text
+backend/runtime/generated/audio/elevenlabs/
+```
+
+Runtime settings:
+
+```text
+MURPHY_ELEVENLABS_API_KEY=
+ELEVENLABS_API_KEY=
+MURPHY_ELEVENLABS_BASE_URL=https://api.elevenlabs.io/v1
+MURPHY_ELEVENLABS_VOICE_ID=CwhRBWXzGAHq8TQ4Fs17
+MURPHY_ELEVENLABS_MODEL_ID=eleven_flash_v2_5
+MURPHY_ELEVENLABS_API_OUTPUT_FORMAT=mp3_44100_128
+MURPHY_ELEVENLABS_OUTPUT_FORMAT=wav
+MURPHY_ELEVENLABS_STABILITY=0.52
+MURPHY_ELEVENLABS_SIMILARITY_BOOST=0.82
+MURPHY_ELEVENLABS_STYLE=0.42
+MURPHY_ELEVENLABS_SPEED=0.80
+MURPHY_ELEVENLABS_USE_SPEAKER_BOOST=true
+MURPHY_ELEVENLABS_TIMEOUT_SECONDS=60
+```
+
+Implementation notes:
+
+- The provider uses the existing `httpx` dependency.
+- ElevenLabs MP3 responses are converted to 24kHz mono PCM WAV with `ffmpeg`.
+- API keys are read from `.env` or process environment but are not returned in
+  provider metadata or AgentRun logs.
+- AgentRun tool name: `tts_provider_service.elevenlabs.synthesize`.
+- Rollback is immediate by setting `MURPHY_TTS_PROVIDER=edge` or
+  `MURPHY_TTS_PROVIDER=kokoro`.
+
+Verification:
+
+- Added tests for provider switching, output path, AgentRun logging, and secret
+  redaction.
+- ElevenLabs provider can be benchmarked through the integrated
+  `/api/game/ai/respond` path with `MURPHY_TTS_PROVIDER=elevenlabs`.
+
+## Developer A Chatterbox TTS Provider Update - 2026-06-09
+
+Developer A added a reversible Chatterbox TTS provider path for stronger
+emotion and reference-audio voice conditioning experiments. The runtime can now
+switch providers with:
+
+```text
+MURPHY_TTS_PROVIDER=kokoro
+MURPHY_TTS_PROVIDER=edge
+MURPHY_TTS_PROVIDER=chatterbox
+```
+
+Generated Chatterbox files are stored under:
+
+```text
+backend/runtime/generated/audio/chatterbox/
+```
+
+Chatterbox runtime parameters are read from `.env`:
+
+```text
+MURPHY_CHATTERBOX_VOICE_ID=officer_miller_ref
+MURPHY_CHATTERBOX_REFERENCE_AUDIO=backend/app/assets/voices/officer_miller_ref.wav
+MURPHY_CHATTERBOX_EXAGGERATION=0.75
+MURPHY_CHATTERBOX_CFG_WEIGHT=0.35
+MURPHY_CHATTERBOX_TEMPERATURE=0.60
+MURPHY_CHATTERBOX_DEVICE=auto
+MURPHY_CHATTERBOX_LANGUAGE_ID=en
+MURPHY_CHATTERBOX_OUTPUT_FORMAT=wav
+```
+
+Dependency note:
+
+- `chatterbox-tts==0.1.7` requires `torch==2.6.0`, so `pyproject.toml` now
+  limits Python to `>=3.12,<3.13` and pins torch to `2.6.0`.
+- `pyproject.toml` routes `torch` and `torchaudio` to the PyTorch CUDA 12.4
+  wheel index on Windows/Linux.
+- Local verification currently imports `torch==2.6.0+cu124`,
+  `torch.version.cuda==12.4`, and `chatterbox.tts.ChatterboxTTS`.
+- `torch.cuda.is_available()` is `True` on the local RTX 4070 Laptop GPU.
+- With `MURPHY_CHATTERBOX_DEVICE=auto`, Developer A uses CUDA when available
+  and CPU otherwise.
+- If `MURPHY_CHATTERBOX_REFERENCE_AUDIO` is missing, Developer A omits
+  `audio_prompt_path` and uses the model default voice rather than failing at
+  request construction.
+
+Verification:
+
+- `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`
+  passed: 14 tests, 1 `audioop` deprecation warning.
+- Actual Chatterbox model-weight smoke generation completed on CPU without
+  reference audio:
+  - Output:
+    `backend/runtime/generated/audio/chatterbox/chatterbox_smoke_warning_cpu.wav`
+  - Text: `Sir. Answer the question directly.`
+  - Audio duration: about 1.76 seconds.
+  - Generation time: about 29.04 seconds on CPU.
+  - Real-time factor: about 16.50.
+  - `reference_audio_exists=false`; Officer Miller voice cloning still needs a
+    reference wav under `backend/app/assets/voices/`.
+- Actual Chatterbox model-weight smoke generation also completed on CUDA
+  without reference audio:
+  - Output:
+    `backend/runtime/generated/audio/chatterbox/chatterbox_smoke_warning_cuda.wav`
+  - Text: `Sir. Answer the question directly.`
+  - Audio duration: about 2.04 seconds.
+  - Generation time: about 18.06 seconds on RTX 4070 Laptop GPU.
+  - Real-time factor: about 8.85.
+  - `provider_options.device=cuda`.
+
+Rollback is immediate by setting `MURPHY_TTS_PROVIDER=kokoro` or
+`MURPHY_TTS_PROVIDER=edge`.
+
+## Developer A Edge TTS Provider Update - 2026-06-09
+
+Developer A added a reversible Edge TTS provider path without removing Kokoro.
+The runtime can switch providers with:
+
+```text
+MURPHY_TTS_PROVIDER=kokoro
+MURPHY_TTS_PROVIDER=edge
+```
+
+Edge TTS currently uses the Python `edge-tts` package to generate MP3 and
+converts it to PCM WAV with `ffmpeg` when
+`MURPHY_EDGE_TTS_OUTPUT_FORMAT=wav`. Generated Edge files are stored under:
+
+```text
+backend/runtime/generated/audio/edge/
+```
+
+Smoke result on 2026-06-09:
+
+- Audio duration: about 4.656 seconds.
+- Total Edge generation plus WAV conversion: about 0.69 seconds.
+- WAV conversion time: about 0.04 seconds.
+
+Rollback is immediate by setting `MURPHY_TTS_PROVIDER=kokoro`.
+
 ## Last Completed Task
 
 2026-06-05 Developer C updated the `/respond-dialog` tester usage and audio

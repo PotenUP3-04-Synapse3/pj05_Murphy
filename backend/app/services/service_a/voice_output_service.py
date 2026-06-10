@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import os
 
 from backend.app.agents.agent_a.npc_dialogue_agent import (
     NPCDialogueResult,
@@ -23,11 +24,17 @@ from backend.app.services.service_a.developer_a_input_service import (
 )
 from backend.app.services.service_a.npc_dialogue_agent_run_store import NPCDialogueAgentRunStore
 from backend.app.services.service_a.npc_roster_service import resolve_npc_profile
+from backend.app.services.service_a.tts_provider_service import ChatterboxTTSProvider
+from backend.app.services.service_a.tts_provider_service import EdgeTTSProvider
+from backend.app.services.service_a.tts_provider_service import ElevenLabsTTSProvider
 from backend.app.services.service_a.tts_provider_service import FakeKokoroProvider
 from backend.app.services.service_a.tts_provider_service import RealKokoroProvider
 from backend.app.services.service_a.tts_service import (
     TTSAudio,
     TTSRequest,
+    build_chatterbox_provider_request,
+    build_edge_provider_request,
+    build_elevenlabs_provider_request,
     build_kokoro_provider_request,
     synthesize_speech,
 )
@@ -138,33 +145,40 @@ def build_voice_output_from_level_design(
                 "voice_id": voice_profile.voice_id,
             },
         )
-        tts_request = build_kokoro_provider_request(
+        tts_provider_name = _selected_tts_provider(use_real_tts=use_real_tts)
+        tts_request = _build_provider_request(
+            provider_name=tts_provider_name,
             text=str(dialogue.get("tts_text") or dialogue["npc_text"]),
             speaker_id=npc_profile.npc_id,
             voice_profile_id=voice_profile.voice_profile_id,
             kokoro_voice=voice_profile.voice_id,
             tone=str(dialogue["tone"]),
             english_level=str(normalized["english_level"]),
-            emotion=str(
-                dialogue.get("generation_profile", {})
-                .get("npc_emotion", {})
-                .get("emotion", "calm_official")
-            ),
-            emotion_intensity=float(
-                dialogue.get("generation_profile", {})
-                .get("npc_emotion", {})
-                .get("intensity", 0.35)
-            ),
+            dialogue=dialogue,
         )
         agent_run_middleware.record_event(
             evidence_metadata,
             event="tool_call",
             status="completed",
-            tool_name="tts_service.build_kokoro_provider_request",
+            tool_name=f"tts_service.build_{tts_provider_name}_provider_request",
             output_summary={
                 "provider": tts_request.provider,
                 "voice": tts_request.provider_options.get("voice"),
                 "lang_code": tts_request.provider_options.get("lang_code"),
+                "rate": tts_request.provider_options.get("rate"),
+                "volume": tts_request.provider_options.get("volume"),
+                "pitch": tts_request.provider_options.get("pitch"),
+                "audio_prompt_path": tts_request.provider_options.get("audio_prompt_path"),
+                "exaggeration": tts_request.provider_options.get("exaggeration"),
+                "cfg_weight": tts_request.provider_options.get("cfg_weight"),
+                "temperature": tts_request.provider_options.get("temperature"),
+                "device": tts_request.provider_options.get("device"),
+                "model_id": tts_request.provider_options.get("model_id"),
+                "api_output_format": tts_request.provider_options.get("api_output_format"),
+                "stability": tts_request.provider_options.get("stability"),
+                "similarity_boost": tts_request.provider_options.get("similarity_boost"),
+                "style": tts_request.provider_options.get("style"),
+                "speed": tts_request.provider_options.get("speed"),
                 "speaking_rate": tts_request.speaking_rate,
                 "sample_rate": tts_request.sample_rate,
                 "text_length": len(tts_request.text),
@@ -178,12 +192,13 @@ def build_voice_output_from_level_design(
             node_id=str(normalized.get("node_id", "")),
             target_slot=str(normalized.get("target_slot", "")),
             branch_type=str(normalized.get("branch_type", "")),
+            provider_name=tts_provider_name,
         )
         agent_run_middleware.record_event(
             evidence_metadata,
             event="tool_call",
             status="completed",
-            tool_name="tts_provider_service.KokoroProvider.synthesize",
+            tool_name=_tts_provider_tool_name(tts_provider_name),
             output_summary={
                 "provider": tts.get("provider"),
                 "voice_id": tts.get("voice_id"),
@@ -191,6 +206,7 @@ def build_voice_output_from_level_design(
                 "audio_path": tts.get("audio_path"),
                 "status": tts.get("status"),
                 "generation_speed": _tts_generation_speed(tts),
+                "conversion_seconds": tts.get("conversion_seconds"),
             },
         )
         agent_run_middleware.record_event(
@@ -276,9 +292,14 @@ def _build_kokoro_audio(
     node_id: str | None = None,
     target_slot: str | None = None,
     branch_type: str | None = None,
+    provider_name: str = "kokoro",
 ) -> dict[str, Any]:
     voice = str(tts_request.provider_options["voice"])
-    model_version = "kokoro-0.9.4" if use_real_tts else "fake-kokoro-v1"
+    model_version = _provider_cache_model_version(
+        provider_name=provider_name,
+        use_real_tts=use_real_tts,
+        tts_request=tts_request,
+    )
     cache_key = build_audio_cache_key(
         text=tts_request.text,
         voice=voice,
@@ -286,6 +307,7 @@ def _build_kokoro_audio(
         sample_rate=tts_request.sample_rate,
         output_format=tts_request.output_format,
         model_version=model_version,
+        provider=provider_name,
     )
     output_path = audio_output_path(
         root=runtime_root,
@@ -295,8 +317,9 @@ def _build_kokoro_audio(
         target_slot=target_slot,
         branch_type=branch_type,
         voice_id=voice,
+        provider=provider_name,
     )
-    provider = RealKokoroProvider() if use_real_tts else FakeKokoroProvider()
+    provider = _resolve_tts_provider(provider_name=provider_name, use_real_tts=use_real_tts)
     metadata = provider.synthesize(tts_request, output_path)
     quality_metadata = analyze_wav_quality(output_path)
     audio_url = _build_audio_url(audio_url_base, output_path, runtime_root)
@@ -316,6 +339,243 @@ def _build_audio_url(audio_url_base: str | None, output_path: Path, runtime_root
         return None
     relative_path = output_path.relative_to(runtime_root / "audio").as_posix()
     return f"{audio_url_base.rstrip('/')}/{relative_path}"
+
+
+def _build_provider_request(
+    *,
+    provider_name: str,
+    text: str,
+    speaker_id: str,
+    voice_profile_id: str,
+    kokoro_voice: str,
+    tone: str,
+    english_level: str,
+    dialogue: dict[str, Any],
+) -> Any:
+    if provider_name == "elevenlabs":
+        return build_elevenlabs_provider_request(
+            text=text,
+            speaker_id=speaker_id,
+            voice_profile_id=voice_profile_id,
+            voice_id=_env_value("MURPHY_ELEVENLABS_VOICE_ID", "CwhRBWXzGAHq8TQ4Fs17"),
+            tone=tone,
+            english_level=english_level,
+            api_key=_env_value("MURPHY_ELEVENLABS_API_KEY", _env_value("ELEVENLABS_API_KEY", "")),
+            model_id=_env_value("MURPHY_ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
+            stability=_env_float("MURPHY_ELEVENLABS_STABILITY", _elevenlabs_stability_for_tone(tone)),
+            similarity_boost=_env_float("MURPHY_ELEVENLABS_SIMILARITY_BOOST", 0.82),
+            style=_env_float("MURPHY_ELEVENLABS_STYLE", _elevenlabs_style_for_tone(tone)),
+            speed=_env_float("MURPHY_ELEVENLABS_SPEED", _elevenlabs_speed_for_tone(tone)),
+            api_output_format=_env_value("MURPHY_ELEVENLABS_API_OUTPUT_FORMAT", "mp3_44100_128"),
+            output_format=_env_value("MURPHY_ELEVENLABS_OUTPUT_FORMAT", "wav"),
+            base_url=_env_value("MURPHY_ELEVENLABS_BASE_URL", "https://api.elevenlabs.io/v1"),
+            timeout_seconds=_env_float("MURPHY_ELEVENLABS_TIMEOUT_SECONDS", 60.0),
+            use_speaker_boost=_env_bool("MURPHY_ELEVENLABS_USE_SPEAKER_BOOST", True),
+        )
+
+    if provider_name == "chatterbox":
+        return build_chatterbox_provider_request(
+            text=text,
+            speaker_id=speaker_id,
+            voice_profile_id=voice_profile_id,
+            voice_id=_env_value("MURPHY_CHATTERBOX_VOICE_ID", "officer_miller_ref"),
+            tone=tone,
+            english_level=english_level,
+            audio_prompt_path=_env_value(
+                "MURPHY_CHATTERBOX_REFERENCE_AUDIO",
+                "backend/app/assets/voices/officer_miller_ref.wav",
+            ),
+            exaggeration=_env_float(
+                "MURPHY_CHATTERBOX_EXAGGERATION",
+                _chatterbox_exaggeration_for_tone(tone),
+            ),
+            cfg_weight=_env_float("MURPHY_CHATTERBOX_CFG_WEIGHT", _chatterbox_cfg_weight_for_tone(tone)),
+            temperature=_env_float("MURPHY_CHATTERBOX_TEMPERATURE", 0.6),
+            device=_env_value("MURPHY_CHATTERBOX_DEVICE", "auto"),
+            language_id=_env_value("MURPHY_CHATTERBOX_LANGUAGE_ID", "en"),
+            output_format=_env_value("MURPHY_CHATTERBOX_OUTPUT_FORMAT", "wav"),
+        )
+
+    if provider_name == "edge":
+        return build_edge_provider_request(
+            text=text,
+            speaker_id=speaker_id,
+            voice_profile_id=voice_profile_id,
+            edge_voice=_env_value("MURPHY_EDGE_TTS_VOICE", "en-US-GuyNeural"),
+            tone=tone,
+            english_level=english_level,
+            rate=_env_value("MURPHY_EDGE_TTS_RATE", "-5%"),
+            volume=_env_value("MURPHY_EDGE_TTS_VOLUME", "+0%"),
+            pitch=_env_value("MURPHY_EDGE_TTS_PITCH", "-2Hz"),
+            output_format=_env_value("MURPHY_EDGE_TTS_OUTPUT_FORMAT", "wav"),
+        )
+
+    return build_kokoro_provider_request(
+        text=text,
+        speaker_id=speaker_id,
+        voice_profile_id=voice_profile_id,
+        kokoro_voice=kokoro_voice,
+        tone=tone,
+        english_level=english_level,
+        emotion=str(
+            dialogue.get("generation_profile", {})
+            .get("npc_emotion", {})
+            .get("emotion", "calm_official")
+        ),
+        emotion_intensity=float(
+            dialogue.get("generation_profile", {})
+            .get("npc_emotion", {})
+            .get("intensity", 0.35)
+        ),
+    )
+
+
+def _resolve_tts_provider(provider_name: str, use_real_tts: bool) -> Any:
+    if not use_real_tts:
+        return FakeKokoroProvider()
+    if provider_name == "elevenlabs":
+        return ElevenLabsTTSProvider()
+    if provider_name == "chatterbox":
+        return ChatterboxTTSProvider()
+    if provider_name == "edge":
+        return EdgeTTSProvider()
+    return RealKokoroProvider()
+
+
+def _selected_tts_provider(*, use_real_tts: bool) -> str:
+    if not use_real_tts:
+        return "kokoro"
+    provider = _env_value("MURPHY_TTS_PROVIDER", "kokoro").lower()
+    return provider if provider in {"kokoro", "edge", "chatterbox", "elevenlabs"} else "kokoro"
+
+
+def _model_version(*, provider_name: str, use_real_tts: bool) -> str:
+    if not use_real_tts:
+        return "fake-kokoro-v1"
+    if provider_name == "elevenlabs":
+        return f"elevenlabs-{_env_value('MURPHY_ELEVENLABS_MODEL_ID', 'eleven_flash_v2_5')}"
+    if provider_name == "chatterbox":
+        return "chatterbox-tts"
+    if provider_name == "edge":
+        return "edge-tts-7.2.8"
+    return "kokoro-0.9.4"
+
+
+def _provider_cache_model_version(*, provider_name: str, use_real_tts: bool, tts_request: Any) -> str:
+    model_version = _model_version(provider_name=provider_name, use_real_tts=use_real_tts)
+    if provider_name != "elevenlabs":
+        return model_version
+    options = tts_request.provider_options
+    return "|".join(
+        [
+            model_version,
+            f"stability={options.get('stability')}",
+            f"similarity={options.get('similarity_boost')}",
+            f"style={options.get('style')}",
+            f"speed={options.get('speed')}",
+            f"format={options.get('api_output_format')}",
+        ]
+    )
+
+
+def _tts_provider_tool_name(provider_name: str) -> str:
+    if provider_name == "elevenlabs":
+        return "tts_provider_service.elevenlabs.synthesize"
+    if provider_name == "chatterbox":
+        return "tts_provider_service.chatterbox.synthesize"
+    if provider_name == "edge":
+        return "tts_provider_service.edge.synthesize"
+    return "tts_provider_service.KokoroProvider.synthesize"
+
+
+def _env_value(key: str, default: str) -> str:
+    return os.getenv(key) or _read_env_file(Path(".env")).get(key, default)
+
+
+def _env_float(key: str, default: float) -> float:
+    raw_value = _env_value(key, str(default))
+    try:
+        return float(raw_value)
+    except ValueError:
+        return default
+
+
+def _env_bool(key: str, default: bool) -> bool:
+    raw_value = _env_value(key, str(default)).lower()
+    if raw_value in {"1", "true", "yes", "on"}:
+        return True
+    if raw_value in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def _elevenlabs_stability_for_tone(tone: str) -> float:
+    if tone == "formal_warning":
+        return 0.38
+    if tone == "formal_stern":
+        return 0.52
+    if tone == "formal_firm":
+        return 0.62
+    if tone == "formal_supportive":
+        return 0.68
+    return 0.72
+
+
+def _elevenlabs_style_for_tone(tone: str) -> float:
+    if tone == "formal_warning":
+        return 0.78
+    if tone == "formal_stern":
+        return 0.42
+    if tone == "formal_firm":
+        return 0.28
+    if tone == "formal_supportive":
+        return 0.18
+    return 0.1
+
+
+def _elevenlabs_speed_for_tone(tone: str) -> float:
+    if tone == "formal_warning":
+        return 0.76
+    if tone == "formal_stern":
+        return 0.8
+    if tone == "formal_firm":
+        return 0.84
+    return 0.86
+
+
+def _chatterbox_exaggeration_for_tone(tone: str) -> float:
+    if tone == "formal_warning":
+        return 0.9
+    if tone == "formal_stern":
+        return 0.8
+    if tone == "formal_firm":
+        return 0.7
+    if tone == "formal_supportive":
+        return 0.5
+    return 0.45
+
+
+def _chatterbox_cfg_weight_for_tone(tone: str) -> float:
+    if tone == "formal_warning":
+        return 0.25
+    if tone == "formal_stern":
+        return 0.3
+    if tone == "formal_firm":
+        return 0.35
+    return 0.45
+
+
+def _read_env_file(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
 
 
 def _record_agent_run(

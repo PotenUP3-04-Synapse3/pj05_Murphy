@@ -437,6 +437,29 @@
 - 검증:
   - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 9 passed, 1 warning
 
+## 2026-06-09 00:00:00 +09:00
+
+- Edge TTS를 Kokoro와 교체 가능한 provider 방식으로 추가했다.
+- 추가 dependency:
+  - `edge-tts==7.2.8`
+- 롤백 방식:
+  - `.env`에서 `MURPHY_TTS_PROVIDER=kokoro`로 두면 기존 Kokoro 경로를 사용한다.
+  - `MURPHY_TTS_PROVIDER=edge`로 두면 Edge TTS 경로를 사용한다.
+- Edge TTS 설정값:
+  - `MURPHY_EDGE_TTS_VOICE`
+  - `MURPHY_EDGE_TTS_RATE`
+  - `MURPHY_EDGE_TTS_VOLUME`
+  - `MURPHY_EDGE_TTS_PITCH`
+  - `MURPHY_EDGE_TTS_OUTPUT_FORMAT`
+- Python `edge-tts`는 MP3를 생성하므로, `MURPHY_EDGE_TTS_OUTPUT_FORMAT=wav`일 때 ffmpeg로 PCM WAV 변환을 수행하도록 구현했다.
+- 실제 smoke 결과:
+  - 대사 길이: 약 4.656초
+  - Edge MP3 생성 + WAV 변환 전체: 약 0.69초
+  - WAV 변환 시간: 약 0.04초
+  - 생성 파일: `backend/runtime/generated/audio/edge/IMM_002_PURPOSE_unknown_slot_success_en_US_GuyNeural_7cfeeedc.wav`
+- 검증:
+  - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 13 passed, 1 warning
+
 ## 2026-06-05 00:00:00 +09:00
 
 - NPC Dialogue AgentRun 로그 저장 정책을 공통 `unified_agent_run.v1` 로그로 단일화했다.
@@ -611,3 +634,84 @@
   - `uv run pytest backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 23 passed, 1 warning
   - `uv run ruff check backend/app/services/service_a/tts_provider_service.py`: PASS
   - `uv run mypy backend/app/services/service_a/tts_provider_service.py`: PASS
+
+## 2026-06-09 00:00:00 +09:00
+
+- Chatterbox TTS를 Developer A 전용 provider로 추가하기 위해 먼저 실패 테스트를 작성했다.
+- 실패 테스트는 `MURPHY_TTS_PROVIDER=chatterbox`일 때 `/runtime/audio/chatterbox/` 경로로 wav가 생성되고, AgentRun 이벤트에 `exaggeration`, `cfg_weight`, `temperature`가 남는지 검증한다.
+- 첫 테스트 실행은 sandbox가 uv 관리 Python 경로를 막아서 실패했다. 승인 권한으로 재실행해 `ChatterboxTTSProvider`가 없어서 실패하는 RED 상태를 확인했다.
+- `ChatterboxTTSProvider`를 추가했고, 실제 모델 호출은 `chatterbox.tts.ChatterboxTTS.from_pretrained()`와 `model.generate()`를 사용하도록 구현했다.
+- Chatterbox 모델은 요청마다 다시 로드하지 않도록 device별 메모리 캐시를 사용한다.
+- `MURPHY_CHATTERBOX_REFERENCE_AUDIO`가 존재하지 않으면 `audio_prompt_path`를 생략해 기본 voice generation으로 진행하도록 했다.
+- `build_chatterbox_provider_request()`를 추가해 `voice_id`, `audio_prompt_path`, `exaggeration`, `cfg_weight`, `temperature`, `device`, `language_id`를 provider request로 전달한다.
+- `MURPHY_TTS_PROVIDER` 선택지에 `chatterbox`를 추가했고, tool log 이름은 `tts_provider_service.chatterbox.synthesize`로 남긴다.
+- `uv add chatterbox-tts`는 `torch>=2.12.0`과 `chatterbox-tts==0.1.7`의 `torch==2.6.0` pin 충돌로 실패했다.
+- Chatterbox 호환을 위해 `pyproject.toml`의 Python 범위를 `>=3.12,<3.13`으로 제한하고 `torch==2.6.0`, `chatterbox-tts==0.1.7`을 반영했다.
+- `uv lock` 성공 후 Developer A AgentRun 테스트가 통과했다.
+- 실제 import 확인 결과 `torch==2.6.0+cpu`, `chatterbox.tts.ChatterboxTTS` import가 가능했다.
+- 실제 Chatterbox CPU smoke generation을 시도했으나 `ChatterboxTTS.generate()`가 `language_id` 인자를 받지 않아 실패했다.
+- 해당 실패를 회귀 테스트로 추가했고, base Chatterbox provider에서는 `language_id`를 metadata에는 남기되 `generate()` 호출에는 넘기지 않도록 수정했다.
+- 현재 설치된 torch가 `2.6.0+cpu`라 기본 device를 `cuda`에서 `auto`로 바꿨다. `auto`는 `torch.cuda.is_available()`이 true일 때만 CUDA를 쓰고 아니면 CPU를 쓴다.
+- 실제 Chatterbox CPU smoke generation이 성공했다.
+  - 출력: `backend/runtime/generated/audio/chatterbox/chatterbox_smoke_warning_cpu.wav`
+  - 텍스트: `Sir. Answer the question directly.`
+  - 길이: 약 1.76초
+  - 생성 시간: 약 29.04초
+  - real-time factor: 약 16.50
+  - reference audio 없음: `reference_audio_exists=false`
+- 아직 Officer Miller reference audio가 `backend/app/assets/voices/`에 없어서 실제 Officer Miller voice cloning smoke generation은 완료하지 않았다.
+- 검증:
+  - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`: PASS, 15 passed, 1 warning
+
+## 2026-06-09 14:23:55 +09:00
+
+- 사용자 요청에 따라 RTX 4070 Laptop GPU에서 CUDA PyTorch를 사용할 수 있도록 재설치 작업을 진행했다.
+- `nvidia-smi` 확인 결과:
+  - NVIDIA driver: `591.74`
+  - CUDA Version 표시: `13.1`
+  - GPU: `NVIDIA GeForce RTX 4070 Laptop GPU`
+  - VRAM: `8188 MiB`
+- 기존 가상환경 PyTorch 상태:
+  - `torch==2.6.0+cpu`
+  - `torch.cuda.is_available()==False`
+  - `torch.version.cuda==None`
+- Chatterbox가 `torch==2.6.0`을 강제하므로 PyTorch 공식 previous versions 기준 CUDA 12.4 wheel 조합을 사용했다.
+- `pyproject.toml`에 `tool.uv.index` / `tool.uv.sources`를 추가해 Windows/Linux에서 `torch`, `torchaudio`만 PyTorch CUDA 12.4 index에서 받도록 했다.
+- 실행:
+  - `uv lock`: PASS
+  - `uv sync`: PASS, `torch==2.6.0` 제거 후 `torch==2.6.0+cu124` 설치
+- CUDA 설치 검증:
+  - `torch==2.6.0+cu124`
+  - `torch.version.cuda==12.4`
+  - `torch.cuda.is_available()==True`
+  - `torch.cuda.device_count()==1`
+  - device name: `NVIDIA GeForce RTX 4070 Laptop GPU`
+- Chatterbox CUDA smoke generation 성공:
+  - 출력: `backend/runtime/generated/audio/chatterbox/chatterbox_smoke_warning_cuda.wav`
+  - 텍스트: `Sir. Answer the question directly.`
+  - 길이: 약 2.04초
+  - 생성 시간: 약 18.06초
+  - real-time factor: 약 8.85
+  - `provider_options.device=cuda`
+
+## 2026-06-09 17:55:00 +09:00
+
+- ElevenLabs를 Developer A 정식 TTS provider로 통합하기 위해 먼저 실패 테스트를 작성했다.
+- 추가한 테스트:
+  - `MURPHY_TTS_PROVIDER=elevenlabs`일 때 `/runtime/audio/elevenlabs/` 경로로 wav가 반환되는지 확인
+  - AgentRun에 `tts_service.build_elevenlabs_provider_request`와 `tts_provider_service.elevenlabs.synthesize` 이벤트가 남는지 확인
+  - ElevenLabs API key가 provider metadata와 AgentRun 로그에 반환되지 않는지 확인
+- RED 확인:
+  - `ElevenLabsTTSProvider`가 없어 import 실패가 발생했다.
+- 구현:
+  - `ElevenLabsTTSProvider` 추가
+  - `build_elevenlabs_provider_request()` 추가
+  - `MURPHY_TTS_PROVIDER=elevenlabs` provider switch 추가
+  - ElevenLabs MP3 응답을 `ffmpeg`로 24kHz mono PCM WAV로 변환
+  - `MURPHY_ELEVENLABS_API_KEY`와 `ELEVENLABS_API_KEY`를 모두 지원
+  - cache key 충돌을 막기 위해 ElevenLabs model/version cache variant에 `stability`, `similarity_boost`, `style`, `speed`, `api_output_format`을 포함
+- 보안:
+  - API key는 provider request 내부에서만 사용하고 metadata에는 남기지 않는다.
+  - 문서와 로그에도 실제 key 값을 기록하지 않는다.
+- 검증:
+  - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py::test_voice_output_can_switch_to_elevenlabs_tts_provider_with_voice_settings backend/tests/test_developer_a_agent_run_logging.py::test_elevenlabs_provider_uses_api_key_without_returning_secret -q`: PASS, 2 passed, 1 warning

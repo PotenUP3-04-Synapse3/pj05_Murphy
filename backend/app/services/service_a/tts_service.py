@@ -86,6 +86,136 @@ def build_kokoro_provider_request(
     )
 
 
+def build_edge_provider_request(
+    text: str,
+    speaker_id: str,
+    voice_profile_id: str,
+    edge_voice: str,
+    tone: str,
+    english_level: str,
+    rate: str = "+0%",
+    volume: str = "+0%",
+    pitch: str = "+0Hz",
+    output_format: str = "wav",
+) -> TTSProviderRequest:
+    """Edge TTS provider interface에 맞는 요청을 만든다."""
+    speed = _kokoro_speed(tone=tone, english_level=english_level)
+    return TTSProviderRequest(
+        provider="edge",
+        text=text,
+        speaker_id=speaker_id,
+        voice_profile_id=voice_profile_id,
+        language="en",
+        emotion=_emotion_for_tone(tone),
+        tone=tone,
+        intensity=_intensity_for_emotion(_emotion_for_tone(tone)),
+        speaking_rate=speed,
+        pitch=0.0,
+        sample_rate=24000,
+        output_format=output_format,
+        provider_options={
+            "voice": edge_voice,
+            "rate": rate,
+            "volume": volume,
+            "pitch": pitch,
+            "edge_output_format": "audio-24khz-48kbitrate-mono-mp3",
+        },
+    )
+
+
+def build_chatterbox_provider_request(
+    text: str,
+    speaker_id: str,
+    voice_profile_id: str,
+    voice_id: str,
+    tone: str,
+    english_level: str,
+    audio_prompt_path: str,
+    exaggeration: float,
+    cfg_weight: float,
+    temperature: float,
+    device: str,
+    language_id: str = "en",
+    output_format: str = "wav",
+) -> TTSProviderRequest:
+    """Chatterbox TTS provider가 쓰는 감정/참조 음성 파라미터를 포함한 요청을 만든다."""
+    tts_emotion = _emotion_for_tone(tone)
+    return TTSProviderRequest(
+        provider="chatterbox",
+        text=text,
+        speaker_id=speaker_id,
+        voice_profile_id=voice_profile_id,
+        language=language_id,
+        emotion=tts_emotion,
+        tone=tone,
+        intensity=exaggeration,
+        speaking_rate=_kokoro_speed(tone=tone, english_level=english_level),
+        pitch=0.0,
+        sample_rate=24000,
+        output_format=output_format,
+        provider_options={
+            "voice": voice_id,
+            "audio_prompt_path": audio_prompt_path,
+            "exaggeration": exaggeration,
+            "cfg_weight": cfg_weight,
+            "temperature": temperature,
+            "device": device,
+            "language_id": language_id,
+        },
+    )
+
+
+def build_elevenlabs_provider_request(
+    text: str,
+    speaker_id: str,
+    voice_profile_id: str,
+    voice_id: str,
+    tone: str,
+    english_level: str,
+    api_key: str,
+    model_id: str,
+    stability: float,
+    similarity_boost: float,
+    style: float,
+    speed: float,
+    api_output_format: str = "mp3_44100_128",
+    output_format: str = "wav",
+    base_url: str = "https://api.elevenlabs.io/v1",
+    timeout_seconds: float = 60.0,
+    use_speaker_boost: bool = True,
+) -> TTSProviderRequest:
+    """ElevenLabs API provider가 쓰는 voice setting과 인증 정보를 포함한 요청을 만든다."""
+    tts_emotion = _emotion_for_tone(tone)
+    return TTSProviderRequest(
+        provider="elevenlabs",
+        text=text,
+        speaker_id=speaker_id,
+        voice_profile_id=voice_profile_id,
+        language="en",
+        emotion=tts_emotion,
+        tone=tone,
+        intensity=style,
+        speaking_rate=speed,
+        pitch=0.0,
+        sample_rate=24000,
+        output_format=output_format,
+        provider_options={
+            "api_key": api_key,
+            "base_url": base_url,
+            "voice": voice_id,
+            "model_id": model_id,
+            "api_output_format": api_output_format,
+            "stability": stability,
+            "similarity_boost": similarity_boost,
+            "style": style,
+            "speed": speed,
+            "timeout_seconds": timeout_seconds,
+            "use_speaker_boost": use_speaker_boost,
+            "english_level": english_level,
+        },
+    )
+
+
 def _kokoro_speed(tone: str, english_level: str) -> float:
     if tone == "formal_warning":
         return 0.84
