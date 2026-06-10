@@ -13,6 +13,11 @@ from backend.app.schemas.game_turn import (
 )
 
 FINAL_DECISION_NODE_ID = "IMM_007_FINAL_DECISION"
+SCENE_SCORE_WEIGHTS = {
+    "flight": 20,
+    "immigration": 50,
+    "baggage": 30,
+}
 RUBRIC_FIELDS = [
     "comprehension",
     "fluency",
@@ -74,9 +79,9 @@ class FinalResultScorePolicy:
         if not included_records:
             return self._unranked_result()
 
+        quantitative_scores = self._quantitative_scores(included_records)
+        final_score = quantitative_scores.overall
         per_turn_scores = [self._rubric_total_to_100(record["rubric_scores"]["total"]) for record in included_records]
-        final_score = _round_half_up(sum(per_turn_scores) / len(per_turn_scores))
-        quantitative_scores = self._quantitative_scores(included_records, final_score)
         recommendation, reason_tags = self._recommendation(included_records, final_score, state)
         focus_targets = self._focus_targets(records)
         if focus_targets:
@@ -118,22 +123,31 @@ class FinalResultScorePolicy:
         ]
         return non_final_records or scored_records
 
-    def _quantitative_scores(
-        self,
-        included_records: list[dict[str, Any]],
-        final_score: int,
-    ) -> QuantitativeScores:
-        averages = {
-            field: _average_int(
-                [
-                    self._rubric_dimension_to_100(record["rubric_scores"][field])
-                    for record in included_records
-                ]
-            )
-            for field in RUBRIC_FIELDS
-        }
+    def _quantitative_scores(self, included_records: list[dict[str, Any]]) -> QuantitativeScores:
+        scene_records: dict[str, list[dict[str, Any]]] = {}
+        for record in included_records:
+            scene_key = self._scene_key(record)
+            if scene_key not in SCENE_SCORE_WEIGHTS:
+                continue
+            scene_records.setdefault(scene_key, []).append(record)
+
+        if not scene_records:
+            scene_records = {"immigration": included_records}
+
+        weight_total = sum(SCENE_SCORE_WEIGHTS[scene_key] for scene_key in scene_records)
+        averages: dict[str, int] = {}
+        for field in RUBRIC_FIELDS:
+            weighted_sum = 0
+            for scene_key, records in scene_records.items():
+                scene_average = _average_int(
+                    [self._rubric_dimension_to_100(record["rubric_scores"][field]) for record in records]
+                )
+                weighted_sum += scene_average * SCENE_SCORE_WEIGHTS[scene_key]
+            averages[field] = _round_half_up(weighted_sum / weight_total)
+
+        overall = _average_int([averages[field] for field in RUBRIC_FIELDS])
         return QuantitativeScores(
-            overall=final_score,
+            overall=overall,
             comprehension=averages["comprehension"],
             fluency=averages["fluency"],
             grammar_accuracy=averages["grammar_accuracy"],
@@ -143,13 +157,23 @@ class FinalResultScorePolicy:
             scoring_policy="simple_average",
         )
 
+    def _scene_key(self, record: dict[str, Any]) -> str:
+        node_id = str(record.get("node_id", ""))
+        if node_id.startswith("FLIGHT_"):
+            return "flight"
+        if node_id.startswith("IMM_"):
+            return "immigration"
+        if node_id.startswith("BAG_"):
+            return "baggage"
+        return "optional"
+
     def _recommendation(
         self,
         included_records: list[dict[str, Any]],
         final_score: int,
         final_state: FinalScoreState,
     ) -> tuple[FinalRecommendation, list[str]]:
-        reason_tags: list[str] = ["simple_average_policy"]
+        reason_tags: list[str] = ["scene_normalized_dimension_average_policy"]
         verdicts = [self._verdict(record) for record in included_records]
         has_critical_fail = any(verdict == "CRITICAL_FAIL" for verdict in verdicts)
         has_non_success = any(verdict in {"FAIL", "PARTIAL", "UNCLEAR"} for verdict in verdicts)
@@ -263,6 +287,8 @@ class FinalResultScorePolicy:
         for record in records:
             seed = record.get("out_game_feedback_seed")
             if isinstance(seed, dict):
+                if seed.get("include_in_final_report") is False:
+                    continue
                 values = seed.get("focus_on_form_targets")
                 if isinstance(values, list):
                     targets.extend(str(value) for value in values if str(value).strip())

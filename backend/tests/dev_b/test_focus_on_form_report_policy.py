@@ -1,7 +1,26 @@
+import json
 from pathlib import Path
 from typing import Any
 
 from backend.app.services.service_b.focus_on_form_report_policy import FocusOnFormReportPolicy
+
+
+CARD_PATH = Path("backend/app/kb/dev_b/focus_on_form_cards.json")
+CURRENT_DEV_B_FOCUS_TARGETS = {
+    "purpose_statement",
+    "duration_statement",
+    "stay_location_statement",
+    "return_ticket_statement",
+    "declaration_explanation",
+    "bag_content_explanation",
+    "problem_statement",
+    "bag_description",
+    "flight_or_tag_statement",
+    "delivery_request",
+    "follow_up_question",
+    "sentence_completion",
+    "smalltalk_response_clarity",
+}
 
 
 def _record(
@@ -72,6 +91,13 @@ def test_focus_on_form_report_groups_repeated_targets_and_preserves_examples() -
     assert report["personalized_next_step"]["target"] == "sentence_completion"
 
 
+def test_static_cards_cover_current_dev_b_focus_targets() -> None:
+    payload = json.loads(CARD_PATH.read_text(encoding="utf-8"))
+    cards = payload["cards"]
+
+    assert set(cards) >= CURRENT_DEV_B_FOCUS_TARGETS
+
+
 def test_focus_on_form_report_handles_empty_records() -> None:
     report = FocusOnFormReportPolicy().build_report([])
 
@@ -85,6 +111,16 @@ def test_focus_on_form_report_handles_empty_records() -> None:
             "answer_example": "I'm here for tourism.",
         },
     }
+
+
+def test_focus_on_form_report_ignores_records_excluded_from_final_report() -> None:
+    record = _record(focus_targets=["sentence_completion"])
+    record["out_game_feedback_seed"]["include_in_final_report"] = False
+
+    report = FocusOnFormReportPolicy().build_report([record])
+
+    assert report["focus_on_form_items"] == []
+    assert report["personalized_next_step"]["target"] is None
 
 
 def test_focus_on_form_report_uses_fallback_card_for_unknown_target(tmp_path: Path) -> None:
@@ -126,6 +162,45 @@ def test_focus_on_form_report_uses_static_cards_for_baggage_targets() -> None:
     assert item["title_kr"] == "문제 상황을 직접 말하기"
     assert item["answer_example"] == "My suitcase didn't arrive."
     assert item["priority"] == "high"
+
+
+def test_focus_on_form_report_can_be_built_from_full_scenario_session_jsonl(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "openkb" / "dev_b"
+    runtime_root.mkdir(parents=True)
+    session_path = runtime_root / "session_alpha.jsonl"
+    session_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    _record(
+                        node_id="FLIGHT_001_SEATMATE_SMALLTALK",
+                        focus_targets=["smalltalk_response_clarity"],
+                        original="I go New York. First time.",
+                        suggested="Yes, I'm going to New York for a short trip.",
+                        priority="low",
+                    ),
+                    ensure_ascii=False,
+                ),
+                json.dumps(_record(node_id="IMM_002_PURPOSE", focus_targets=["purpose_statement"]), ensure_ascii=False),
+                json.dumps(
+                    _record(node_id="BAG_003_REPORT_MISSING_BAG", focus_targets=["problem_statement"]),
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = FocusOnFormReportPolicy(runtime_root=runtime_root).build_session_report("session_alpha")
+
+    assert report["report_mode"] == "focus_on_form"
+    assert [item["focus_on_form_target"] for item in report["focus_on_form_items"]] == [
+        "purpose_statement",
+        "problem_statement",
+        "smalltalk_response_clarity",
+    ]
+    assert report["personalized_next_step"]["target"] == "purpose_statement"
 
 
 def test_focus_on_form_report_does_not_return_branch_verdict_or_score_authority() -> None:

@@ -45,7 +45,7 @@ Dev B's highest-priority Alpha work is `IMMIGRATION_ALPHA` because it extends th
 - Documentation cleanup should include Alpha scenario ownership and cross-owner change requests.
 - Chapter 0 full-node test expansion should cover the current immigration route before adding new Alpha nodes.
 - Dev B output self-check guard should protect tier difficulty, report seeds, and branch authority before OpenKB writes.
-- Out-game Focus-on-Form report v1 should consume immigration and baggage learning records; flight small talk must not show immediate out-game feedback.
+- Out-game Focus-on-Form report v1 should consume flight, immigration, and baggage learning records; flight small talk must create a deferred seed but must not show immediate out-game feedback.
 - LLM feedback/logging improvements should support hint/report wording only and must not affect branch, verdict, next node, state delta, NPC final dialogue, TTS, or Unreal commands.
 
 Priority for Alpha execution:

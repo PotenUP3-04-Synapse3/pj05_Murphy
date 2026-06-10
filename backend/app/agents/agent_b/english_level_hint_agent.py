@@ -416,6 +416,18 @@ class EnglishLevelHintAgent:
         decision: ScenarioDecision,
         has_form_issue: bool,
     ) -> OutGameFeedbackSeed:
+        if payload.current_node_id.startswith("FLIGHT_"):
+            return OutGameFeedbackSeed(
+                include_in_final_report=True,
+                openkb_query_tags=[
+                    "smalltalk_response_clarity",
+                    "diagnostic_level_sample",
+                    "deferred_out_game_feedback",
+                ],
+                focus_on_form_targets=["smalltalk_response_clarity"],
+                report_priority="low",
+            )
+
         should_include = has_form_issue or decision.verdict in {"FAIL", "UNCLEAR", "CRITICAL_FAIL"}
         if not should_include:
             return OutGameFeedbackSeed(
@@ -551,6 +563,8 @@ class EnglishLevelHintAgent:
         return "clarity"
 
     def _focus_on_form_target(self, payload: DevBPolicyInput, error_type: str) -> str:
+        if payload.current_node_id.startswith("FLIGHT_"):
+            return "smalltalk_response_clarity"
         if error_type == "risk_expression":
             return f"{payload.current_node_id.lower()}_risk_expression"
         if payload.current_node_id.startswith("BAG_"):

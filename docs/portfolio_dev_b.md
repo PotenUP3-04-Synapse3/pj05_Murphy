@@ -87,6 +87,8 @@ services:
 - `backend/app/services/service_b/final_result_score_policy.py` owns final
   result scoring from B OpenKB records, including pass rank, quantitative
   score averages, final recommendation, and report summary generation.
+- `backend/app/services/service_b/focus_on_form_report_policy.py` owns the
+  B-side Focus-on-Form practice-card report builder.
 - `backend/app/services/service_b/developer_b_agent_run_logger.py` owns B
   execution logging into the shared unified AgentRun JSONL/markdown files.
 - `backend/app/data/scenario_nodes.json` defines Chapter 0 immigration node
@@ -95,10 +97,11 @@ services:
   seeds. Generated runtime records are written under
   `backend/runtime/openkb/dev_b/`.
 
-The C-owned adapter is intentionally left untouched. A change request documents
-that Developer C should replace the current mock body of
-`DevBPolicyClient.evaluate_turn()` with a delegation to
-`EnglishLevelHintAgent.evaluate_turn()`.
+The C-owned adapter now delegates to Developer B's
+`EnglishLevelHintAgent.evaluate_turn()`, so the integrated pre-prototype uses
+the real deterministic `dev_b_policy.v1` engine. Developer B still treats the C
+adapter, response envelope, validator, STT, TTS, and Unreal transport as outside
+B ownership.
 
 ## Main Modules
 
@@ -183,6 +186,12 @@ The Chapter 0 immigration flow now covers:
 - `IMM_006B_PACKED_BAG_CHECK`
 - `IMM_007_FINAL_DECISION`
 
+Alpha-oriented B-owned extensions also include the Gold-only
+`IMM_ALPHA_GOLD_BAG_CONTENT_CHECK` challenge and the first
+`BAGGAGE_MISSING` node set from `BAG_002_FIND_STAFF` through
+`BAG_007_RESOLUTION`. These remain B policy/scenario assets until Developer C
+adds the broader Alpha scene orchestration.
+
 Each node defines required intents, required slots, optional slots, critical
 slots, allowed slot values, risk keywords, a recommended expression, Korean hint
 base text, hint policy candidates, branch candidates, and allowed next nodes.
@@ -224,14 +233,13 @@ not hidden numeric penalties.
 Developer B coordination requests are recorded in
 `docs/contracts/change_requests.md`:
 
-- C should wire `dev_b_level_hint_client.py` to the B engine.
-- C should sync or consume `backend/app/data/scenario_nodes.json` in the
-  C-owned OpenKB runtime.
-- C should avoid duplicate logging when B `openkb_write.succeeded == true`,
-  validate B write references, and use B record ids for final report retrieval.
-- C should treat `rubric_scores`, `difficulty_profile`, and
-  `feedback_generation` as optional metadata and keep branch/state validation
-  rule-based.
+- The B policy engine wiring is resolved in the integrated pre-prototype.
+- C still needs to validate successful B `openkb_write` namespace/path
+  references.
+- C should expose the B-owned Focus-on-Form report as optional
+  `out_game_feedback` when the final result surface is ready.
+- A/C still need Alpha scene support for flight small talk, cutscene/skip,
+  baggage, and tier-aware NPC dialogue/TTS consumption.
 
 ## Testing
 
@@ -332,5 +340,5 @@ Latest verification:
 - Added focused pytest coverage for broken English, branch safety, risk
   handling, node spec completeness, feedback/report payload generation, and
   OpenKB write behavior.
-- Documented cross-owner integration requirements so Developer C can replace
-  the mock adapter with the real B policy engine without changing schemas.
+- Documented cross-owner integration requirements for the remaining Alpha scene
+  runtime, final out-game report exposure, and tier-aware A/C consumption.

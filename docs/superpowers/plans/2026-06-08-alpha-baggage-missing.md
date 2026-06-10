@@ -24,13 +24,13 @@ Optional events after this scene may include:
 - stolen passport
 - meeting the airplane seatmate again
 
-Those optional events are future work and should not block the base baggage-missing scene.
+Those optional events are future work and should not block the base baggage-missing scene. For the first Alpha pass, enable at most one optional event behind a feature flag. The recommended first optional event is meeting the airplane seatmate again because it has the lowest orchestration risk and connects naturally back to the opening small-talk sample.
 
 ## Core Purpose
 
 Create a realistic travel problem after immigration: the player's checked luggage does not arrive at the baggage carousel. The player must find an airport/baggage service staff member and explain the situation clearly enough to start a missing baggage report.
 
-This scene shifts the English task from immigration interview answers to practical problem solving.
+This scene shifts the English task from immigration interview answers to practical problem solving. It should feel like a service-desk recovery problem, not a second interrogation after immigration.
 
 ## Player Situation
 
@@ -294,7 +294,7 @@ Gold challenge options:
 - staff asks for a local delivery address and backup contact
 - staff asks the player to clarify whether the bag was checked through to JFK or another destination
 
-Gold success should require a more complete report and clearer handling of follow-up questions.
+Gold success should require a more complete report and clearer handling of follow-up questions. Even at Gold, the staff should remain procedural and helpful rather than punitive.
 
 ## Final Report Inputs
 
@@ -391,6 +391,7 @@ Cross-team coordination needed:
 - The staff asks for a bag description, flight/tag information, and contact/delivery details.
 - Bronze can progress with broken but understandable English.
 - Gold receives more procedural, stricter follow-up questions.
+- The scene remains a practical problem-solving task and does not become another high-pressure interview.
 - The scene can resolve with a filed missing-baggage report or a partial/incomplete report state.
-- Optional events remain future hooks and do not block this base scenario.
+- Optional events remain future hooks and do not block this base scenario; the first Alpha pass enables at most one optional event.
 - Baggage turns can produce Focus-on-Form final-report seeds for the final Alpha report.

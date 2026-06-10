@@ -157,7 +157,8 @@ NPC behavior:
 - ask direct follow-up questions
 - introduce a moderately difficult situation when appropriate
 - react strictly to vague, inconsistent, or evasive answers
-- tolerate fewer mistakes, especially mistakes that affect facts or credibility
+- tolerate fewer mistakes when they affect facts, credibility, or task completion
+- avoid over-penalizing harmless article, preposition, or word-order mistakes when the facts remain clear
 
 Example NPC lines:
 
@@ -182,7 +183,8 @@ Evaluation style:
 - require clear factual answers
 - stricter handling of contradictions
 - stricter handling of vague purpose, unclear duration, unknown accommodation, or no return plan
-- small grammar mistakes are acceptable only when the facts remain clear
+- small grammar mistakes are acceptable when the facts remain clear and the answer is not evasive
+- strictness should prioritize factual clarity, consistency, relevance, and credibility over surface grammar perfection
 - repeated ambiguity should increase suspicion or trigger secondary inspection risk
 
 Gold may receive the sudden bag-content challenge or declaration follow-up. This should feel like a realistic hard situation, not random punishment.
@@ -302,7 +304,8 @@ Characteristics:
 - slightly fast speech
 - more complex sentence structures
 - sudden but plausible bag/declaration question
-- stricter response to unclear or inconsistent English
+- stricter response to unclear, inconsistent, incomplete, or credibility-risk answers
+- minor grammar mistakes should not trigger harsh outcomes unless they make the travel facts ambiguous
 - less hinting and more re-questioning
 
 Gold-only nodes can be implemented as tier-gated extensions rather than replacing the existing route.
@@ -334,6 +337,7 @@ Cross-team coordination needed:
 - Bronze players receive easy wording, slower delivery, high tolerance, and no hard surprise challenge by default.
 - Silver players receive the current baseline with moderate dynamic follow-ups.
 - Gold players receive faster, more complex, stricter, and more realistic questioning.
+- Gold strictness prioritizes missing facts, contradictions, evasive answers, and credibility risk over harmless grammar mistakes.
 - NPC replies are no longer only fixed static lines; they are conditioned by tier and player answer.
 - Rule-based branch validation remains intact.
 - Passing immigration leads to `BAGGAGE_MISSING`.
