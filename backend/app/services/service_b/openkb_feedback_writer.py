@@ -73,6 +73,8 @@ class OpenKBFeedbackWriter:
         record_id = self._record_id(payload, error_ids)
         return {
             "namespace": self.namespace,
+            "record_schema_version": "dev_b_openkb_record.v2",
+            "record_kind": "policy_turn_feedback",
             "record_id": record_id,
             "contract_version": output.contract_version,
             "request_id": payload.request_id,
@@ -133,6 +135,8 @@ class OpenKBFeedbackWriter:
         lines = [
             f"# Developer B OpenKB Record - {record['record_id']}",
             "",
+            f"- Record Schema: {record['record_schema_version']}",
+            f"- Record Kind: {record['record_kind']}",
             f"- Session: {record['session_id']}",
             f"- Request: {record['request_id']}",
             f"- Node: {record['node_id']}",

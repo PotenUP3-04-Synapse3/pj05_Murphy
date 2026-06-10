@@ -10,6 +10,8 @@ from backend.app.services.service_b.openkb_feedback_writer import OpenKBFeedback
 from backend.tests.dev_b.test_developer_b_policy_engine import (
     _FailingOpenKBWriter,
     _FakeFeedbackLLMClient,
+    _ForbiddenFeedbackLLMClient,
+    _UsageFeedbackLLMClient,
     _node_context,
     _policy_input,
 )
@@ -104,6 +106,70 @@ def test_developer_b_agent_run_records_llm_feedback_mode(tmp_path: Path) -> None
     assert feedback_event["output_summary"]["mode"] == "llm"
     assert feedback_event["output_summary"]["used_llm"] is True
     assert record["summary"]["output"]["feedback_generation_mode"] == "llm"
+
+
+def test_developer_b_agent_run_records_llm_usage_without_public_output_field(tmp_path: Path) -> None:
+    payload = _policy_input(
+        player_text="I don't know.",
+        intent_success=False,
+        confidence=0.6,
+        extracted_slots={},
+        missing_slots=["visit_purpose"],
+        retry_count=2,
+        previous_fail_count=2,
+    )
+
+    result = EnglishLevelHintAgent(
+        feedback_generator=FeedbackHintGenerator(mode="llm", llm_client=_UsageFeedbackLLMClient()),
+        openkb_writer=OpenKBFeedbackWriter(runtime_root=tmp_path / "openkb" / "dev_b"),
+        agent_run_root=tmp_path,
+    ).evaluate_turn(payload)
+
+    record = _agent_run_records(tmp_path)[0]
+    feedback_event = next(
+        event
+        for event in record["events"]
+        if event.get("tool_name") == "feedback_hint_generator.generate"
+    )
+
+    assert result.feedback_generation is not None
+    assert result.feedback_generation.mode == "llm"
+    assert "llm_usage" not in result.model_dump()
+    assert feedback_event["output_summary"]["llm_usage"] == {
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "total_tokens": 150,
+    }
+
+
+def test_developer_b_agent_run_records_forbidden_llm_fallback_reason(tmp_path: Path) -> None:
+    payload = _policy_input(
+        player_text="I don't know.",
+        intent_success=False,
+        confidence=0.6,
+        extracted_slots={},
+        missing_slots=["visit_purpose"],
+        retry_count=2,
+        previous_fail_count=2,
+    )
+
+    result = EnglishLevelHintAgent(
+        feedback_generator=FeedbackHintGenerator(mode="llm", llm_client=_ForbiddenFeedbackLLMClient()),
+        openkb_writer=OpenKBFeedbackWriter(runtime_root=tmp_path / "openkb" / "dev_b"),
+        agent_run_root=tmp_path,
+    ).evaluate_turn(payload)
+
+    record = _agent_run_records(tmp_path)[0]
+    feedback_event = next(
+        event
+        for event in record["events"]
+        if event.get("tool_name") == "feedback_hint_generator.generate"
+    )
+
+    assert result.feedback_generation is not None
+    assert result.feedback_generation.mode == "fallback"
+    assert feedback_event["output_summary"]["mode"] == "fallback"
+    assert "forbidden keys" in feedback_event["output_summary"]["fallback_reason"]
 
 
 def test_developer_b_agent_run_records_openkb_write_failure_without_changing_policy(

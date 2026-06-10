@@ -3,6 +3,43 @@
   "chapter_id": "CH0_IMMIGRATION",
   "scene_id": "JFK_IMMIGRATION_HALL",
   "nodes": {
+    "FLIGHT_001_SEATMATE_SMALLTALK": {
+      "node_id": "FLIGHT_001_SEATMATE_SMALLTALK",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Hi, I'm Emily. Are you heading to New York too?",
+      "npc_question_goal": "friendly_seatmate_smalltalk",
+      "objective_kr": "Talk with the passenger next to you.",
+      "required_intents": ["respond_to_smalltalk"],
+      "required_slots": ["smalltalk_response"],
+      "optional_slots": ["travel_reason", "first_time_visit", "interest", "duration"],
+      "critical_slots": [],
+      "allowed_slot_values": {
+        "smalltalk_response": ["answered", "short_answer", "asked_back", "shared_travel_detail"]
+      },
+      "risk_keywords": [],
+      "recommended_expression": "Yes, I'm going to New York for a short trip.",
+      "base_hint_kr": "Answer in a friendly short sentence, then add one travel detail if you can.",
+      "hint_policy": {
+        "keyword": ["yes", "New York", "trip"],
+        "sentence_pattern": "Yes, I'm going to New York for ___.",
+        "situation_hint": "The seatmate is making friendly small talk.",
+        "action_hint": "Answer briefly and ask a simple question back if you can."
+      },
+      "branch_candidates": {
+        "success": "FLIGHT_001_SEATMATE_SMALLTALK",
+        "retry": "FLIGHT_001_RETRY_SMALLTALK",
+        "clarify": "FLIGHT_001_CLARIFY_SMALLTALK",
+        "hint": "FLIGHT_001_RETRY_SMALLTALK",
+        "warning": "FLIGHT_001_SEATMATE_SMALLTALK",
+        "bad_end": "FLIGHT_001_SEATMATE_SMALLTALK"
+      },
+      "allowed_next_nodes": [
+        "FLIGHT_001_SEATMATE_SMALLTALK",
+        "FLIGHT_001_RETRY_SMALLTALK",
+        "FLIGHT_001_CLARIFY_SMALLTALK",
+        "IMM_001_PASSPORT"
+      ]
+    },
     "IMM_001_PASSPORT": {
       "node_id": "IMM_001_PASSPORT",
       "chapter_id": "CH0_IMMIGRATION",
@@ -183,8 +220,47 @@
       },
       "allowed_next_nodes": [
         "IMM_006_DECLARATION_CHECK",
+        "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK",
         "IMM_005_RETRY_RETURN_TICKET",
         "IMM_EXTRA_004_CLARIFY_RETURN_TICKET",
+        "END_SECONDARY_INSPECTION"
+      ]
+    },
+    "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK": {
+      "node_id": "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "I'm going to ask about your bags. What did you pack, and are you carrying anything you need to declare?",
+      "npc_question_goal": "ask_gold_bag_contents_and_declaration",
+      "objective_kr": "짐의 내용물과 신고 여부를 구체적으로 설명하기",
+      "required_intents": ["explain_bag_contents"],
+      "required_slots": ["bag_contents_summary"],
+      "optional_slots": ["declaration_status", "valuable_items", "medication", "electronics"],
+      "critical_slots": ["unknown_contents", "received_from_stranger", "undeclared_restricted_items", "inconsistent_explanation"],
+      "allowed_slot_values": {
+        "bag_contents_summary": ["clothes", "personal_items", "electronics", "toiletries", "mixed_personal_items"],
+        "declaration_status": ["nothing_to_declare", "declared_items", "personal_use_items"]
+      },
+      "risk_keywords": ["do not know inside", "someone gave", "stranger", "secret", "not declare"],
+      "recommended_expression": "I packed clothes, toiletries, and my laptop. I have nothing else to declare.",
+      "base_hint_kr": "짐 안에 무엇이 있는지와 신고할 물건이 있는지 구체적으로 말하세요.",
+      "hint_policy": {
+        "keyword": ["clothes", "toiletries", "laptop", "nothing to declare"],
+        "sentence_pattern": "I packed ___, and I have nothing else to declare.",
+        "situation_hint": "The officer is asking whether you know your bag contents and declaration status.",
+        "action_hint": "List the main bag contents first, then clearly say whether you have anything to declare."
+      },
+      "branch_candidates": {
+        "success": "IMM_006_DECLARATION_CHECK",
+        "retry": "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK",
+        "clarify": "IMM_ALPHA_GOLD_CLARIFY_BAG_CONTENT_CHECK",
+        "hint": "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_006_DECLARATION_CHECK",
+        "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK",
+        "IMM_ALPHA_GOLD_CLARIFY_BAG_CONTENT_CHECK",
         "END_SECONDARY_INSPECTION"
       ]
     },
@@ -298,6 +374,228 @@
         "IMM_007_RETRY_FINAL_DECISION",
         "IMM_EXTRA_007_CLARIFY_FINAL_DECISION",
         "END_SECONDARY_INSPECTION"
+      ]
+    },
+    "BAG_002_FIND_STAFF": {
+      "node_id": "BAG_002_FIND_STAFF",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Hi. Do you need help with your baggage?",
+      "npc_question_goal": "ask_missing_baggage_help_need",
+      "objective_kr": "수화물 문제를 도와줄 직원을 찾기",
+      "required_intents": ["ask_baggage_help"],
+      "required_slots": ["missing_bag_status"],
+      "optional_slots": ["carousel_status", "airline_name"],
+      "critical_slots": ["lost_passport", "panic_unable_to_report"],
+      "allowed_slot_values": {
+        "missing_bag_status": ["not_arrived", "missing_at_carousel", "carousel_stopped"]
+      },
+      "risk_keywords": ["passport stolen", "I give up", "no report"],
+      "recommended_expression": "My suitcase didn't arrive.",
+      "base_hint_kr": "수화물이 도착하지 않았다고 직원에게 말하세요.",
+      "hint_policy": {
+        "keyword": ["suitcase", "bag", "didn't arrive"],
+        "sentence_pattern": "My suitcase didn't arrive.",
+        "situation_hint": "The staff member is asking if you need help with baggage.",
+        "action_hint": "Say that your suitcase did not arrive."
+      },
+      "branch_candidates": {
+        "success": "BAG_003_REPORT_MISSING_BAG",
+        "retry": "BAG_002_RETRY_FIND_STAFF",
+        "clarify": "BAG_002_CLARIFY_FIND_STAFF",
+        "hint": "BAG_002_RETRY_FIND_STAFF",
+        "warning": "END_BAGGAGE_REPORT_INCOMPLETE",
+        "bad_end": "END_BAGGAGE_REPORT_INCOMPLETE"
+      },
+      "allowed_next_nodes": [
+        "BAG_003_REPORT_MISSING_BAG",
+        "BAG_002_RETRY_FIND_STAFF",
+        "BAG_002_CLARIFY_FIND_STAFF",
+        "END_BAGGAGE_REPORT_INCOMPLETE"
+      ]
+    },
+    "BAG_003_REPORT_MISSING_BAG": {
+      "node_id": "BAG_003_REPORT_MISSING_BAG",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Which flight were you on, and when did you last see your bag?",
+      "npc_question_goal": "ask_missing_bag_report_details",
+      "objective_kr": "수화물이 도착하지 않은 상황 설명하기",
+      "required_intents": ["report_missing_bag"],
+      "required_slots": ["missing_bag_report"],
+      "optional_slots": ["flight_number", "departure_airport", "last_seen_context"],
+      "critical_slots": ["unknown_airline", "no_checked_bag", "false_report"],
+      "allowed_slot_values": {
+        "missing_bag_report": ["checked_bag_missing", "bag_did_not_arrive", "not_on_carousel"]
+      },
+      "risk_keywords": ["not my bag", "fake report", "no flight"],
+      "recommended_expression": "I checked it in before my flight, but it didn't come out here.",
+      "base_hint_kr": "짐을 부쳤지만 수화물 찾는 곳에 나오지 않았다고 말하세요.",
+      "hint_policy": {
+        "keyword": ["checked it in", "didn't come out", "flight"],
+        "sentence_pattern": "I checked it in, but it didn't come out here.",
+        "situation_hint": "The staff needs to know that your checked bag did not arrive.",
+        "action_hint": "Explain that you checked the bag before the flight and it did not appear."
+      },
+      "branch_candidates": {
+        "success": "BAG_004_DESCRIBE_BAG",
+        "retry": "BAG_003_RETRY_REPORT_MISSING_BAG",
+        "clarify": "BAG_003_CLARIFY_REPORT_MISSING_BAG",
+        "hint": "BAG_003_RETRY_REPORT_MISSING_BAG",
+        "warning": "END_BAGGAGE_REPORT_INCOMPLETE",
+        "bad_end": "END_BAGGAGE_REPORT_INCOMPLETE"
+      },
+      "allowed_next_nodes": [
+        "BAG_004_DESCRIBE_BAG",
+        "BAG_003_RETRY_REPORT_MISSING_BAG",
+        "BAG_003_CLARIFY_REPORT_MISSING_BAG",
+        "END_BAGGAGE_REPORT_INCOMPLETE"
+      ]
+    },
+    "BAG_004_DESCRIBE_BAG": {
+      "node_id": "BAG_004_DESCRIBE_BAG",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Can you describe the bag for me?",
+      "npc_question_goal": "ask_bag_description",
+      "objective_kr": "수화물의 색, 크기, 특징 설명하기",
+      "required_intents": ["describe_missing_bag"],
+      "required_slots": ["bag_description"],
+      "optional_slots": ["bag_color", "bag_size", "bag_type", "identifying_mark"],
+      "critical_slots": ["cannot_identify_bag", "contradictory_description"],
+      "allowed_slot_values": {
+        "bag_description": ["black_medium_suitcase", "colored_suitcase", "bag_with_tag", "bag_with_mark"]
+      },
+      "risk_keywords": ["I do not know my bag", "any bag", "someone else's bag"],
+      "recommended_expression": "It's a black medium-sized suitcase with a red luggage tag.",
+      "base_hint_kr": "가방의 색, 크기, 특징을 말하세요.",
+      "hint_policy": {
+        "keyword": ["black", "medium", "red tag"],
+        "sentence_pattern": "It's a ___ suitcase with ___.",
+        "situation_hint": "The staff needs identifying details for the missing bag.",
+        "action_hint": "Say the color, size, and one special mark."
+      },
+      "branch_candidates": {
+        "success": "BAG_005_PROVIDE_FLIGHT_OR_TAG",
+        "retry": "BAG_004_RETRY_DESCRIBE_BAG",
+        "clarify": "BAG_004_CLARIFY_DESCRIBE_BAG",
+        "hint": "BAG_004_RETRY_DESCRIBE_BAG",
+        "warning": "END_BAGGAGE_REPORT_INCOMPLETE",
+        "bad_end": "END_BAGGAGE_REPORT_INCOMPLETE"
+      },
+      "allowed_next_nodes": [
+        "BAG_005_PROVIDE_FLIGHT_OR_TAG",
+        "BAG_004_RETRY_DESCRIBE_BAG",
+        "BAG_004_CLARIFY_DESCRIBE_BAG",
+        "END_BAGGAGE_REPORT_INCOMPLETE"
+      ]
+    },
+    "BAG_005_PROVIDE_FLIGHT_OR_TAG": {
+      "node_id": "BAG_005_PROVIDE_FLIGHT_OR_TAG",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Do you have your baggage claim tag or boarding pass?",
+      "npc_question_goal": "ask_baggage_tag_or_flight_info",
+      "objective_kr": "수화물 태그나 탑승권 정보 제공하기",
+      "required_intents": ["provide_baggage_tag_or_flight_info"],
+      "required_slots": ["baggage_tag_or_flight_info"],
+      "optional_slots": ["baggage_tag_number", "flight_number", "boarding_pass_status"],
+      "critical_slots": ["no_identifying_document", "wrong_flight_info"],
+      "allowed_slot_values": {
+        "baggage_tag_or_flight_info": ["has_baggage_tag", "has_boarding_pass", "knows_flight_number"]
+      },
+      "risk_keywords": ["no proof", "wrong flight", "not my tag"],
+      "recommended_expression": "Yes, here is my baggage claim tag.",
+      "base_hint_kr": "수화물 태그나 탑승권을 보여준다고 말하세요.",
+      "hint_policy": {
+        "keyword": ["claim tag", "boarding pass", "flight number"],
+        "sentence_pattern": "Yes, here is my baggage claim tag.",
+        "situation_hint": "The staff needs your baggage tag or flight information.",
+        "action_hint": "Say whether you have the tag, boarding pass, or flight number."
+      },
+      "branch_candidates": {
+        "success": "BAG_006_CONTACT_AND_DELIVERY",
+        "retry": "BAG_005_RETRY_PROVIDE_FLIGHT_OR_TAG",
+        "clarify": "BAG_005_CLARIFY_PROVIDE_FLIGHT_OR_TAG",
+        "hint": "BAG_005_RETRY_PROVIDE_FLIGHT_OR_TAG",
+        "warning": "END_BAGGAGE_REPORT_INCOMPLETE",
+        "bad_end": "END_BAGGAGE_REPORT_INCOMPLETE"
+      },
+      "allowed_next_nodes": [
+        "BAG_006_CONTACT_AND_DELIVERY",
+        "BAG_005_RETRY_PROVIDE_FLIGHT_OR_TAG",
+        "BAG_005_CLARIFY_PROVIDE_FLIGHT_OR_TAG",
+        "END_BAGGAGE_REPORT_INCOMPLETE"
+      ]
+    },
+    "BAG_006_CONTACT_AND_DELIVERY": {
+      "node_id": "BAG_006_CONTACT_AND_DELIVERY",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "If we find it, where should we send it?",
+      "npc_question_goal": "ask_bag_delivery_contact",
+      "objective_kr": "수화물 배송 주소와 연락처 말하기",
+      "required_intents": ["provide_delivery_contact"],
+      "required_slots": ["delivery_contact"],
+      "optional_slots": ["hotel_name", "address", "phone_number", "email", "stay_duration"],
+      "critical_slots": ["no_contact_available", "unknown_address"],
+      "allowed_slot_values": {
+        "delivery_contact": ["hotel_address", "local_address", "phone_or_email", "temporary_contact"]
+      },
+      "risk_keywords": ["no address", "no phone", "do not contact me"],
+      "recommended_expression": "Please send it to my hotel. I'm staying there for five days.",
+      "base_hint_kr": "가방을 보낼 호텔이나 연락처를 말하세요.",
+      "hint_policy": {
+        "keyword": ["hotel", "address", "phone"],
+        "sentence_pattern": "Please send it to ___.",
+        "situation_hint": "The staff needs a delivery location or contact information.",
+        "action_hint": "Give your hotel or address and one contact method."
+      },
+      "branch_candidates": {
+        "success": "BAG_007_RESOLUTION",
+        "retry": "BAG_006_RETRY_CONTACT_AND_DELIVERY",
+        "clarify": "BAG_006_CLARIFY_CONTACT_AND_DELIVERY",
+        "hint": "BAG_006_RETRY_CONTACT_AND_DELIVERY",
+        "warning": "END_BAGGAGE_REPORT_INCOMPLETE",
+        "bad_end": "END_BAGGAGE_REPORT_INCOMPLETE"
+      },
+      "allowed_next_nodes": [
+        "BAG_007_RESOLUTION",
+        "BAG_006_RETRY_CONTACT_AND_DELIVERY",
+        "BAG_006_CLARIFY_CONTACT_AND_DELIVERY",
+        "END_BAGGAGE_REPORT_INCOMPLETE"
+      ]
+    },
+    "BAG_007_RESOLUTION": {
+      "node_id": "BAG_007_RESOLUTION",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "We'll file a report and contact you when the bag arrives. Please keep this reference number.",
+      "npc_question_goal": "explain_missing_bag_resolution",
+      "objective_kr": "수화물 신고 접수 결과 이해하기",
+      "required_intents": ["acknowledge_baggage_resolution"],
+      "required_slots": ["resolution_acknowledgement"],
+      "optional_slots": ["update_question", "reference_number_acknowledgement"],
+      "critical_slots": ["refuse_reference_number", "cannot_receive_updates"],
+      "allowed_slot_values": {
+        "resolution_acknowledgement": ["acknowledged_reference_number", "asked_update_timing", "understands_next_step"]
+      },
+      "risk_keywords": ["no report", "throw away reference", "do not call"],
+      "recommended_expression": "Thank you. When should I expect an update?",
+      "base_hint_kr": "접수 번호를 보관하고 언제 연락을 받을 수 있는지 물어보세요.",
+      "hint_policy": {
+        "keyword": ["thank you", "update", "reference number"],
+        "sentence_pattern": "Thank you. When should I expect an update?",
+        "situation_hint": "The staff is giving you the next step for the missing bag report.",
+        "action_hint": "Acknowledge the report and ask when you will get an update."
+      },
+      "branch_candidates": {
+        "success": "END_BAGGAGE_REPORT_FILED",
+        "retry": "BAG_007_RETRY_RESOLUTION",
+        "clarify": "BAG_007_CLARIFY_RESOLUTION",
+        "hint": "BAG_007_RETRY_RESOLUTION",
+        "warning": "END_BAGGAGE_REPORT_INCOMPLETE",
+        "bad_end": "END_BAGGAGE_REPORT_INCOMPLETE"
+      },
+      "allowed_next_nodes": [
+        "END_BAGGAGE_REPORT_FILED",
+        "BAG_007_RETRY_RESOLUTION",
+        "BAG_007_CLARIFY_RESOLUTION",
+        "END_BAGGAGE_REPORT_INCOMPLETE"
       ]
     }
   }
