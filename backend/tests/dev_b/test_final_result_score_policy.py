@@ -112,6 +112,21 @@ def test_final_score_excludes_final_node_when_prior_scores_exist() -> None:
     assert result.report_summary.weakest_node == "IMM_002_PURPOSE"
 
 
+def test_final_score_excludes_alpha_scoreboard_node_when_prior_scores_exist() -> None:
+    result = FinalResultScorePolicy().build_result(
+        [
+            _record(node_id="BAG_007_RESOLUTION", total=9),
+            _record(node_id="ALPHA_999_FINAL_SCOREBOARD", total=12),
+        ],
+        final_state=FinalScoreState(patience=95, suspicion=0, retry_count=0, hint_count=0),
+    )
+
+    assert result.final_score_100 == 75
+    assert result.report_summary.included_node_count == 1
+    assert result.report_summary.best_node == "BAG_007_RESOLUTION"
+    assert result.report_summary.weakest_node == "BAG_007_RESOLUTION"
+
+
 def test_final_score_uses_scene_normalized_dimension_averages_not_turn_counts() -> None:
     result = FinalResultScorePolicy().build_result(
         [

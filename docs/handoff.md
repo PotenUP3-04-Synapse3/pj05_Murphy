@@ -1029,6 +1029,128 @@ Ownership split:
 - A-owned work: generate final NPC utterances and TTS wording from metadata
   rather than polishing B/C-provided dialogue text.
 
+## 2026-06-11 Developer B Report and Dialogue Seed Contract
+
+Developer B added additive seed metadata for report assembly and A-facing
+dialogue generation without expanding or reordering scenario nodes.
+
+Changed implementation:
+
+- Added optional `report_seed_summary` and `dialogue_seed` models to
+  `backend/app/schemas/game_turn.py`.
+- Updated `EnglishLevelHintAgent` to derive deterministic report seed metadata
+  from existing evaluation, report item, error capture, Focus-on-Form targets,
+  and level/tier data.
+- Updated `EnglishLevelHintAgent` to emit `dialogue_seed` metadata containing
+  scene, NPC role cue, goals, assessment targets, slots, difficulty cue,
+  feedback focus, tone guidance, follow-up intents, and stop condition.
+- Kept existing `dialogue_directive` for backward compatibility.
+- Updated the Dev B OpenKB writer to store `report_seed_summary` and
+  `dialogue_seed` in B-owned runtime records.
+- Tightened LLM feedback guardrails so `npc_utterance`,
+  `final_dialogue_line`, `npc_text`, `tts_text`, animation, and authority keys
+  force fallback rather than changing policy output.
+
+Contract/docs updated:
+
+- Added `docs/contracts/developer_b_report_and_dialogue_seed_contract.md`.
+- Updated `docs/contracts/developer_b_json_key_value_contract_v1.md`.
+- Updated `docs/contracts/developer_b_json_final_v1.md`.
+- Updated `docs/contracts/developer_c_adapter_contracts.md`.
+- Updated `docs/contracts/developer_c_schema_contract.md`.
+
+Tests added:
+
+- Dev B output contains `report_seed_summary` fields for UI/report assembly.
+- Dev B output contains `dialogue_seed` fields for Developer A generation.
+- Dev B output does not contain final NPC utterance keys.
+- OpenKB Dev B records include the new seeds.
+- LLM-assisted feedback cannot return dialogue/final NPC text keys without
+  falling back to rule output.
+
+Verification:
+
+- `uv sync` completed. It removed undeclared local package
+  `en-core-web-sm==3.8.0` from the virtualenv because it is not part of the
+  locked project dependency set.
+- `uv run pytest` passed: 173 tests, 2 existing warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 91 source files.
+
+Known issues / coordination:
+
+- This work does not expose `report_seed_summary` or `dialogue_seed` in the
+  Unreal response envelope. Dev C or a future final report assembler should
+  decide how to aggregate and present these seeds.
+- This work does not remove existing legacy feedback candidate fields such as
+  `npc_recast_line_candidate`, because doing so would be a breaking contract
+  change. The new `dialogue_seed` is the preferred forward path for NPC
+  generation metadata.
+- Scenario node expansion, Chapter renaming, IMM node-id changes, and Alpha
+  node reordering were intentionally not changed.
+
+## 2026-06-11 Alpha Dev B Scenario Node Expansion
+
+Developer B expanded B-owned Alpha scenario policy and node data. Developer A,
+Developer C, and Unreal runtime code were not edited.
+
+Changed implementation:
+
+- Replaced the single flight diagnostic node with a five-turn Dev B node route:
+  `FLIGHT_001_SEATMATE_SMALLTALK -> FLIGHT_002_TRAVEL_PURPOSE ->
+  FLIGHT_003_STAY_PLAN -> FLIGHT_004_CLARIFY_OR_ASK_BACK ->
+  FLIGHT_005_WRAP_UP`.
+- Updated `FlightSmallTalkDiagnosticPolicy` to require 5 player turns and make
+  skip eligibility available at 5 turns.
+- Flight nodes now advance to the next evidence node even for retry, clarify,
+  hint, warning, or bad-end branch candidates so small talk collects diagnostic
+  samples instead of blocking progression.
+- Added `BAG_001_NOTICE_BAG_MISSING` before the existing missing-bag service
+  route.
+- Routed `BAG_007_RESOLUTION` to `ALPHA_999_FINAL_SCOREBOARD`.
+- Updated `ScenarioStateMachine` so `ALPHA_999_FINAL_SCOREBOARD` is the Dev B
+  final-branch node. `IMM_007_FINAL_DECISION` now behaves as an
+  immigration-clearance transition in B policy.
+- Updated `FinalResultScorePolicy` to exclude both
+  `IMM_007_FINAL_DECISION` and `ALPHA_999_FINAL_SCOREBOARD` when prior scored
+  records exist.
+- Flight `dialogue_seed.max_turns` now uses 5 turns.
+
+Docs updated:
+
+- `docs/contracts/developer_b_json_key_value_contract_v1.md`
+- `docs/contracts/developer_b_report_and_dialogue_seed_contract.md`
+- `docs/contracts/change_requests.md`
+
+Tests added or updated:
+
+- 5-turn flight diagnostic minimum and skip eligibility.
+- Five-node flight route coverage.
+- Baggage notice node and Alpha final scoreboard route coverage.
+- Flight retry still advances to the next evidence node.
+- `ALPHA_999_FINAL_SCOREBOARD` is the only Dev B final branch node.
+- Alpha final-scoreboard records are excluded from scored averages when prior
+  scored records exist.
+
+Verification:
+
+- `uv sync` completed.
+- `uv run pytest` passed: 187 tests, 2 existing warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 91 source files.
+
+Known issues / coordination:
+
+- Developer C-owned `DevBPolicyClient` still contains legacy final-result
+  compatibility for `IMM_007_FINAL_DECISION`. A change request now asks C to
+  adopt `ALPHA_999_FINAL_SCOREBOARD` as the Alpha final-result trigger.
+- Developer A must generate actual NPC dialogue/TTS for the new `FLIGHT_*` and
+  `BAG_001` metadata. Dev B still does not author final NPC utterances.
+- Unreal must connect flight exit, airport arrival, baggage claim, final
+  scoreboard, and ending cinematic flow states.
+- The storyboard's baggage-open/random-item "억까" concept is left as future
+  optional-event work; Alpha base route keeps the existing missing-bag flow.
+
 ## Resume Instructions
 
 Run `uv sync` from the repository root, then run `uv run pytest`,

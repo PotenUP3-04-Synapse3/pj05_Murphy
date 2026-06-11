@@ -91,6 +91,8 @@ class OpenKBFeedbackWriter:
             "level_hint": output.level_hint.model_dump(),
             "error_capture": output.error_capture.model_dump(),
             "out_game_feedback_seed": output.out_game_feedback_seed.model_dump(),
+            "report_seed_summary": output.report_seed_summary.model_dump() if output.report_seed_summary else None,
+            "dialogue_seed": output.dialogue_seed.model_dump() if output.dialogue_seed else None,
             "focus_on_form_targets": output.out_game_feedback_seed.focus_on_form_targets,
             "report_item": output.report_item.model_dump(),
             "rubric_scores": output.rubric_scores.model_dump() if output.rubric_scores else None,
