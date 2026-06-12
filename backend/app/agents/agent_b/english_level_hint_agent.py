@@ -48,7 +48,7 @@ class OpenKBPolicyWriter(Protocol):
     def failure_result(self, error: Exception) -> OpenKBWriteResult: ...
 
 
-class EnglishLevelHintAgent:
+class _EnglishLevelHintPolicyCore:
     def __init__(
         self,
         *,
@@ -826,6 +826,55 @@ class EnglishLevelHintAgent:
         if targets:
             return f"Focus on {', '.join(targets)} using: {payload.node_context.recommended_expression}"
         return f"Use a concise immigration answer such as: {payload.node_context.recommended_expression}"
+
+
+class EnglishLevelHintAgent:
+    def __init__(
+        self,
+        *,
+        state_machine: ScenarioStateMachine | None = None,
+        level_controller: LevelAdaptationController | None = None,
+        tier_controller: TierDifficultyController | None = None,
+        feedback_generator: FeedbackHintGenerator | None = None,
+        openkb_writer: OpenKBPolicyWriter | None = None,
+        agent_run_root: Path | None = None,
+        agent_run_logger: DeveloperBAgentRunLogger | None = None,
+    ) -> None:
+        from backend.app.agents.agent_b.policy_graph import build_developer_b_policy_graph
+        from backend.app.tools.tool_b.developer_b_policy_graph_tools import DeveloperBPolicyGraphTools
+
+        self.graph_tools = DeveloperBPolicyGraphTools(
+            state_machine=state_machine,
+            level_controller=level_controller,
+            tier_controller=tier_controller,
+            feedback_generator=feedback_generator,
+            openkb_writer=openkb_writer,
+            agent_run_root=agent_run_root,
+            agent_run_logger=agent_run_logger,
+        )
+        self.graph = build_developer_b_policy_graph()
+
+        self.state_machine = self.graph_tools.state_machine
+        self.level_controller = self.graph_tools.level_controller
+        self.tier_controller = self.graph_tools.tier_controller
+        self.feedback_generator = self.graph_tools.feedback_generator
+        self.openkb_writer = self.graph_tools.openkb_writer
+        self.agent_run_logger = self.graph_tools.agent_run_logger
+
+    def evaluate_turn(self, payload: DevBPolicyInput) -> DevBPolicyOutput:
+        from backend.app.agents.agent_b.policy_graph import build_initial_developer_b_policy_state
+
+        state = build_initial_developer_b_policy_state(payload=payload, tools=self.graph_tools)
+        try:
+            final_state = self.graph.invoke(state)
+        except Exception as exc:
+            self.graph_tools.complete_failed_run(payload, exc)
+            raise
+
+        output = final_state.get("output")
+        if not isinstance(output, DevBPolicyOutput):
+            raise RuntimeError("Developer B graph did not produce DevBPolicyOutput")
+        return output
 
 
 def _policy_input_summary(payload: DevBPolicyInput) -> dict[str, Any]:

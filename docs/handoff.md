@@ -2142,6 +2142,52 @@ Verification:
 - `uv run ruff check .` passed.
 - `uv run mypy .` passed with no issues in 91 source files.
 
+## 2026-06-12 Developer B LangGraph Policy Wrapper
+
+Developer B refactored the internal `EnglishLevelHintAgent.evaluate_turn()`
+flow into a B-owned LangGraph policy graph while preserving the public
+`DevBPolicyClient.evaluate_turn(payload) -> DevBPolicyOutput` adapter contract.
+
+Changed implementation:
+
+- Added `backend/app/agents/agent_b/policy_graph.py`.
+- Added B-owned graph tool wrappers under `backend/app/tools/tool_b/`.
+- Kept `ScenarioStateMachine` as the rule-based branch authority.
+- Kept LLM-assisted feedback limited to hint, report, feedback, and rubric
+  candidate enrichment.
+- Added Developer B AgentRun runtime metadata showing
+  `policy_engine = langgraph`, graph name, tool style, and graph node order.
+- Updated B `dialogue_seed.npc_role` so BAG service-desk nodes
+  `BAG_001` through `BAG_004` use `baggage_service_agent`, while customs-hold
+  nodes `BAG_005` through `BAG_007` use `customs_officer`.
+- Kept legacy `dialogue_directive.do_not_generate_npc_text` for C adapter
+  compatibility. New integration should prefer `dialogue_seed`.
+
+Docs updated:
+
+- `docs/contracts/developer_b_report_and_dialogue_seed_contract.md`
+
+Verification:
+
+- `uv run pytest backend/tests/dev_b -q`: PASS, 109 passed.
+- `uv run pytest backend/tests/dev_b/test_developer_b_agent_run_log.py backend/tests/dev_b/test_developer_b_policy_engine.py -q`:
+  PASS, 98 passed.
+- `uv run pytest backend/tests/test_developer_c_langgraph_orchestrator.py backend/tests/test_preprototype_flow.py backend/tests/dev_b -q`:
+  PASS, 144 passed, 2 existing warnings.
+- `uv sync`: PASS.
+- `uv run pytest`: PASS, 226 passed, 2 existing warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 104 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
+- `rg -n "^<<<<<<<|^=======|^>>>>>>>" .`: PASS, no conflict markers.
+
+Known coordination:
+
+- Developer A/C still own final NPC text, TTS, A-facing adapter payload cleanup,
+  and non-immigration NPC roster/voice handling.
+- Developer B has not removed the legacy `dialogue_directive` field; retiring
+  that field should wait for explicit C adapter confirmation.
+
 ## Resume Instructions
 
 Run `uv sync` from the repository root, then run `uv run pytest`,
