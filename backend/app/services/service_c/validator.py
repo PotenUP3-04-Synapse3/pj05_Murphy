@@ -81,6 +81,18 @@ class Validator:
         if not response.npc.audio_url.startswith("/runtime/audio/"):
             raise ValidationError("Unreal response npc.audio_url must point to /runtime/audio/")
 
+        if response.next_action == "COMPLETE_CHAPTER":
+            if response.transition is None:
+                raise ValidationError("COMPLETE_CHAPTER response requires transition metadata")
+            if response.transition.requires_player_input:
+                raise ValidationError("COMPLETE_CHAPTER transition must not require player input")
+            if not response.transition.next_chapter_id:
+                raise ValidationError("COMPLETE_CHAPTER transition requires next_chapter_id")
+            if not response.transition.unreal_event:
+                raise ValidationError("COMPLETE_CHAPTER transition requires unreal_event")
+        elif response.transition is not None:
+            raise ValidationError("transition metadata is only allowed for COMPLETE_CHAPTER responses")
+
         if response.report.final_result is not None:
             self.validate_final_result(response.report.final_result)
 

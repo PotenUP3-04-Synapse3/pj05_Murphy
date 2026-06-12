@@ -115,7 +115,7 @@ def test_final_score_excludes_final_node_when_prior_scores_exist() -> None:
 def test_final_score_excludes_alpha_scoreboard_node_when_prior_scores_exist() -> None:
     result = FinalResultScorePolicy().build_result(
         [
-            _record(node_id="BAG_007_RESOLUTION", total=9),
+            _record(node_id="BAG_007_CUSTOMS_CLEARANCE", total=9),
             _record(node_id="ALPHA_999_FINAL_SCOREBOARD", total=12),
         ],
         final_state=FinalScoreState(patience=95, suspicion=0, retry_count=0, hint_count=0),
@@ -123,8 +123,8 @@ def test_final_score_excludes_alpha_scoreboard_node_when_prior_scores_exist() ->
 
     assert result.final_score_100 == 75
     assert result.report_summary.included_node_count == 1
-    assert result.report_summary.best_node == "BAG_007_RESOLUTION"
-    assert result.report_summary.weakest_node == "BAG_007_RESOLUTION"
+    assert result.report_summary.best_node == "BAG_007_CUSTOMS_CLEARANCE"
+    assert result.report_summary.weakest_node == "BAG_007_CUSTOMS_CLEARANCE"
 
 
 def test_final_score_uses_scene_normalized_dimension_averages_not_turn_counts() -> None:
@@ -132,7 +132,7 @@ def test_final_score_uses_scene_normalized_dimension_averages_not_turn_counts() 
         [
             *[
                 _record_with_rubric(
-                    node_id="FLIGHT_001_SEATMATE_SMALLTALK",
+                    node_id="FLIGHT_A_001_SEATMATE_SMALLTALK",
                     rubric={
                         "comprehension": 0,
                         "fluency": 0,
@@ -156,7 +156,7 @@ def test_final_score_uses_scene_normalized_dimension_averages_not_turn_counts() 
                 },
             ),
             _record_with_rubric(
-                node_id="BAG_003_REPORT_MISSING_BAG",
+                node_id="BAG_001_REPORT_MISSING_AT_DESK",
                 rubric={
                     "comprehension": 2,
                     "fluency": 2,

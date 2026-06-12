@@ -55,7 +55,7 @@ def session_agent_run_usage(
 @router.get("/demo/node/{node_id}")
 def demo_node_context(node_id: str) -> dict[str, Any]:
     try:
-        node_context = OpenKBService().get_node_context("CH0_IMMIGRATION", node_id)
+        node_context = OpenKBService().get_node_context(_chapter_id_for_demo_node(node_id), node_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -67,6 +67,16 @@ def demo_node_context(node_id: str) -> dict[str, Any]:
         "recommended_expression": node_context.recommended_expression,
         "allowed_next_nodes": node_context.allowed_next_nodes,
     }
+
+
+def _chapter_id_for_demo_node(node_id: str) -> str:
+    if node_id.startswith("FLIGHT_"):
+        return "CH0_01_FLIGHT_SMALLTALK"
+    if node_id.startswith("BAG_"):
+        return "CH0_04_BAGGAGE_CLAIM"
+    if node_id.startswith("ALPHA_"):
+        return "CH0_05_RESULT"
+    return "CH0_03_IMMIGRATION_CHECK"
 
 
 @router.get("/result/{session_id}", response_model=UnrealResultResponse)

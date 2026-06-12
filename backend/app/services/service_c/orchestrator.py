@@ -17,6 +17,7 @@ from backend.app.schemas.game_turn import (
     NormalizedInput,
     PrePrototypeRequest,
     ScenarioState,
+    TransitionContext,
     TurnTimingMs,
     UnderstandingOutput,
     UnrealResponse,
@@ -177,6 +178,8 @@ class Orchestrator:
                 output_summary={"validated": True},
             )
 
+            transition = self._transition_for_branch(node_context, dev_b_output)
+
             stage_started = perf_counter()
             logging_summary = self.logging_service.record_error_capture(
                 request.turn.session.session_id,
@@ -207,6 +210,7 @@ class Orchestrator:
                     node_context=node_context,
                     understanding=understanding,
                     developer_b_policy=dev_b_output,
+                    transition=transition,
                 )
             )
             timing_ms["developer_a_ms"] = _elapsed_ms(stage_started)
@@ -237,6 +241,7 @@ class Orchestrator:
                 dev_b_output=dev_b_output,
                 dev_a_output=dev_a_output,
                 logging_summary=logging_summary,
+                transition=transition,
                 timing_ms=_turn_timing_ms(timing_ms, turn_started),
             )
             timing_ms["response_build_ms"] = _elapsed_ms(stage_started)
@@ -250,6 +255,7 @@ class Orchestrator:
                     "request_id": request.turn.request_id,
                     "branch_next_node_id": dev_b_output.branch.next_node_id,
                     "npc_audio_url": dev_a_output.audio_url,
+                    "transition": _transition_summary(transition),
                 },
                 output_summary=_response_summary(response),
             )
@@ -315,6 +321,20 @@ class Orchestrator:
                 model_usage=_agent_run_model_usage(self.understanding_agent.last_trace),
             )
             raise
+
+    def _transition_for_branch(
+        self,
+        node_context: NodeContext,
+        dev_b_output: DevBPolicyOutput,
+    ) -> TransitionContext | None:
+        if dev_b_output.branch.next_action != "COMPLETE_CHAPTER":
+            return None
+
+        transition_node = self.openkb_service.get_node_context(
+            node_context.chapter_id,
+            dev_b_output.branch.next_node_id,
+        )
+        return transition_node.transition
 
     def build_dev_b_policy_input(
         self,
@@ -398,7 +418,9 @@ def _normalized_input_summary(normalized_input: NormalizedInput) -> dict[str, An
 def _node_context_summary(node_context: NodeContext) -> dict[str, Any]:
     return {
         "node_id": node_context.node_id,
+        "scenario_id": node_context.scenario_id,
         "chapter_id": node_context.chapter_id,
+        "node_type": node_context.node_type,
         "required_intents": node_context.required_intents,
         "required_slots": node_context.required_slots,
         "allowed_next_nodes": node_context.allowed_next_nodes,
@@ -481,6 +503,10 @@ def _dev_a_output_summary(dev_a_output: DevADialogueOutput) -> dict[str, Any]:
     }
 
 
+def _transition_summary(transition: TransitionContext | None) -> dict[str, Any] | None:
+    return transition.model_dump() if transition is not None else None
+
+
 def _response_summary(response: UnrealResponse) -> dict[str, Any]:
     return {
         "contract_version": response.contract_version,
@@ -488,6 +514,7 @@ def _response_summary(response: UnrealResponse) -> dict[str, Any]:
         "current_node_id": response.current_node_id,
         "next_node_id": response.next_node_id,
         "next_action": response.next_action,
+        "transition": _transition_summary(response.transition),
         "interaction": _interaction_summary(response.interaction),
         "npc_audio_url": response.npc.audio_url,
         "evaluation_verdict": response.evaluation.verdict,

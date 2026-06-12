@@ -6,7 +6,7 @@ from backend.app.services.service_b.flight_smalltalk_diagnostic_policy import (
 def test_smalltalk_requires_five_player_turns_before_normal_exit() -> None:
     decision = FlightSmallTalkDiagnosticPolicy().evaluate(player_turn_count=4)
 
-    assert decision.scene_id == "FLIGHT_001_SEATMATE_SMALLTALK"
+    assert decision.scene_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
     assert decision.diagnostic_only is True
     assert decision.minimum_turns_met is False
     assert decision.required_more_turns == 1

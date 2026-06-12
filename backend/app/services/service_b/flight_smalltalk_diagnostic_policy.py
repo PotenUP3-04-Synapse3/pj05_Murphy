@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-SCENE_ID = "FLIGHT_001_SEATMATE_SMALLTALK"
+SCENE_ID = "FLIGHT_A_001_SEATMATE_SMALLTALK"
 MINIMUM_PLAYER_TURNS = 5
 SKIP_ELIGIBLE_PLAYER_TURNS = 5
 FALLBACK_QUESTIONS = [

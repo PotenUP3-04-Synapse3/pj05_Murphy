@@ -145,7 +145,7 @@ def _preprototype_request(transcript: str = "I'm here for tourism.") -> PreProto
                 "session": {
                     "session_id": "session_001",
                     "player_id": "player_001",
-                    "chapter_id": "CH0_IMMIGRATION",
+                    "chapter_id": "CH0_03_IMMIGRATION_CHECK",
                     "scene_id": "JFK_IMMIGRATION_HALL",
                     "current_node_id": "IMM_002_PURPOSE",
                     "turn_index": 2,

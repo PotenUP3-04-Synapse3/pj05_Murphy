@@ -23,7 +23,7 @@ class DevBPolicyClient:
 
     def evaluate_turn(self, payload: DevBPolicyInput) -> DevBPolicyOutput:
         output = self.agent.evaluate_turn(payload)
-        if output.branch.branch_type != "final" and payload.current_node_id != "IMM_007_FINAL_DECISION":
+        if output.branch.branch_type != "final":
             return output
 
         final_result = self.final_result_policy.build_result(

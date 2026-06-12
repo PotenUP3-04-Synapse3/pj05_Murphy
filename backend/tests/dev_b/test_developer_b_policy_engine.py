@@ -48,7 +48,10 @@ def _node_context(node_id: str = "IMM_002_PURPOSE") -> NodeContext:
     node = node_data["nodes"][node_id]
     return NodeContext(
         node_id=node["node_id"],
+        scenario_id=node_data["scenario_id"],
         chapter_id=node["chapter_id"],
+        node_type=node["node_type"],
+        transition=node.get("transition"),
         npc_question=node["npc_question"],
         npc_question_goal=node["npc_question_goal"],
         objective_kr=node["objective_kr"],
@@ -100,7 +103,7 @@ def _policy_input(
         request_id="req_dev_b_test",
         session_id="session_dev_b_test",
         player_id="player_dev_b_test",
-        chapter_id="CH0_IMMIGRATION",
+        chapter_id=context.chapter_id,
         scene_id="JFK_IMMIGRATION_HALL",
         current_node_id=context.node_id,
         turn_index=2,
@@ -168,6 +171,27 @@ def test_clear_purpose_answer_advances_to_duration(tmp_path: Path) -> None:
     assert result.dialogue_directive.do_not_generate_npc_text is True
     assert result.openkb_write is not None
     assert result.openkb_write.attempted is True
+    assert result.npc_emotion == "Nomal"
+
+
+def test_npc_emotion_uses_shared_external_enum(tmp_path: Path) -> None:
+    result = _agent(tmp_path).evaluate_turn(_policy_input())
+
+    assert result.npc_emotion in {
+        "Nomal",
+        "Joy",
+        "Anger",
+        "Sadness",
+        "Panic",
+        "Suspicion",
+        "Disgust",
+        "Fear",
+        "Smirk",
+        "Surprise",
+        "Pain",
+        "Confusion",
+        "Boredom",
+    }
 
 
 @pytest.mark.parametrize("player_text", ["Travel. New York.", "I go travel five days"])
@@ -208,6 +232,7 @@ def test_first_unclear_answer_clarifies_or_retries(tmp_path: Path) -> None:
     assert result.branch.branch_type == "clarify"
     assert result.branch.next_action == "REASK"
     assert result.in_game_feedback.feedback_strategy == "clarification_request"
+    assert result.npc_emotion == "Confusion"
 
 
 def test_repeated_failure_uses_hint_branch(tmp_path: Path) -> None:
@@ -248,6 +273,7 @@ def test_risky_answer_warns_or_goes_to_bad_end(tmp_path: Path) -> None:
     assert result.branch.branch_type in {"warning", "bad_end"}
     assert result.branch.next_action in {"WARNING", "FAIL_END"}
     assert result.state_delta.suspicion_delta > 0
+    assert result.npc_emotion == "Suspicion"
 
 
 def test_branch_next_node_stays_within_allowed_next_nodes(tmp_path: Path) -> None:
@@ -271,12 +297,38 @@ def test_empty_allowed_next_nodes_raises_value_error() -> None:
 def test_all_chapter_zero_nodes_define_branch_candidates_and_allowed_next_nodes() -> None:
     node_data = json.loads(SCENARIO_NODE_PATH.read_text(encoding="utf-8"))
 
+    assert node_data["contract_version"] == "dev_b_scenario_nodes.v2"
+    assert node_data["scenario_id"] == "ALPHA_AIRPORT_ARRIVAL"
+    assert [chapter["chapter_id"] for chapter in node_data["chapters"]] == [
+        "CH0_01_FLIGHT_SMALLTALK",
+        "CH0_02_ARRIVAL_TUTORIAL",
+        "CH0_03_IMMIGRATION_CHECK",
+        "CH0_04_BAGGAGE_CLAIM",
+        "CH0_05_RESULT",
+    ]
+    assert node_data["chapters"][0]["entry_node_id"] == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+    assert node_data["chapters"][0]["entry_node_ids"] == [
+        "FLIGHT_A_001_SEATMATE_SMALLTALK",
+        "FLIGHT_B_001_DESTINATION_CHAT",
+        "FLIGHT_C_001_FORM_HELP_REQUEST",
+    ]
     assert set(node_data["nodes"]) == {
-        "FLIGHT_001_SEATMATE_SMALLTALK",
-        "FLIGHT_002_TRAVEL_PURPOSE",
-        "FLIGHT_003_STAY_PLAN",
-        "FLIGHT_004_CLARIFY_OR_ASK_BACK",
-        "FLIGHT_005_WRAP_UP",
+        "FLIGHT_A_001_SEATMATE_SMALLTALK",
+        "FLIGHT_A_002_TRAVEL_PURPOSE",
+        "FLIGHT_A_003_STAY_PLAN",
+        "FLIGHT_A_004_CLARIFY_OR_ASK_BACK",
+        "FLIGHT_A_005_WRAP_UP",
+        "FLIGHT_B_001_DESTINATION_CHAT",
+        "FLIGHT_B_002_COMPANION_OR_VISIT",
+        "FLIGHT_B_003_STAY_PLACE",
+        "FLIGHT_B_004_TRIP_PLANS",
+        "FLIGHT_B_005_LANDING_CLOSE",
+        "FLIGHT_C_001_FORM_HELP_REQUEST",
+        "FLIGHT_C_002_FIRST_TIME_ENTRY",
+        "FLIGHT_C_003_ADDRESS_HELP",
+        "FLIGHT_C_004_HOTEL_HOSTEL_REPAIR",
+        "FLIGHT_C_005_FORM_CLOSE",
+        "FLIGHT_999_COMPLETE",
         "IMM_001_PASSPORT",
         "IMM_002_PURPOSE",
         "IMM_003_DURATION",
@@ -286,18 +338,22 @@ def test_all_chapter_zero_nodes_define_branch_candidates_and_allowed_next_nodes(
         "IMM_006_DECLARATION_CHECK",
         "IMM_006B_PACKED_BAG_CHECK",
         "IMM_007_FINAL_DECISION",
-        "BAG_001_NOTICE_BAG_MISSING",
-        "BAG_002_FIND_STAFF",
-        "BAG_003_REPORT_MISSING_BAG",
-        "BAG_004_DESCRIBE_BAG",
-        "BAG_005_PROVIDE_FLIGHT_OR_TAG",
-        "BAG_006_CONTACT_AND_DELIVERY",
-        "BAG_007_RESOLUTION",
+        "IMM_999_CLEARED",
+        "BAG_001_REPORT_MISSING_AT_DESK",
+        "BAG_002_PROVIDE_CLAIM_TAG",
+        "BAG_003_CONFIRM_SEARCHED_CAROUSEL",
+        "BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD",
+        "BAG_005_CUSTOMS_HOLD_EXPLANATION",
+        "BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM",
+        "BAG_007_CUSTOMS_CLEARANCE",
+        "BAG_999_COMPLETE",
         "ALPHA_999_FINAL_SCOREBOARD",
     }
     for node in node_data["nodes"].values():
         allowed_next_nodes = set(node["allowed_next_nodes"])
         assert allowed_next_nodes
+        assert node["chapter_id"].startswith("CH0_")
+        assert node["node_type"] in {"dialogue", "transition", "result", "ending"}
         assert node["objective_kr"]
         for branch_name in ["retry", "clarify", "warning", "bad_end"]:
             assert branch_name in node["branch_candidates"]
@@ -305,49 +361,120 @@ def test_all_chapter_zero_nodes_define_branch_candidates_and_allowed_next_nodes(
 
 
 def test_flight_smalltalk_node_exists_as_alpha_diagnostic_node() -> None:
-    context = _node_context("FLIGHT_001_SEATMATE_SMALLTALK")
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
 
-    assert context.node_id == "FLIGHT_001_SEATMATE_SMALLTALK"
+    assert context.node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
     assert context.npc_question_goal == "respond_to_polite_request"
     assert context.required_intents == ["respond_to_seatmate_request"]
     assert context.required_slots == ["polite_response"]
-    assert "FLIGHT_002_TRAVEL_PURPOSE" in context.allowed_next_nodes
+    assert "FLIGHT_A_002_TRAVEL_PURPOSE" in context.allowed_next_nodes
 
 
-def test_alpha_flight_nodes_form_five_turn_diagnostic_route() -> None:
-    expected_route = [
-        ("FLIGHT_001_SEATMATE_SMALLTALK", "FLIGHT_002_TRAVEL_PURPOSE"),
-        ("FLIGHT_002_TRAVEL_PURPOSE", "FLIGHT_003_STAY_PLAN"),
-        ("FLIGHT_003_STAY_PLAN", "FLIGHT_004_CLARIFY_OR_ASK_BACK"),
-        ("FLIGHT_004_CLARIFY_OR_ASK_BACK", "FLIGHT_005_WRAP_UP"),
-        ("FLIGHT_005_WRAP_UP", "IMM_001_PASSPORT"),
+def test_alpha_flight_nodes_form_three_five_turn_diagnostic_routes() -> None:
+    expected_routes = [
+        [
+            ("FLIGHT_A_001_SEATMATE_SMALLTALK", "FLIGHT_A_002_TRAVEL_PURPOSE"),
+            ("FLIGHT_A_002_TRAVEL_PURPOSE", "FLIGHT_A_003_STAY_PLAN"),
+            ("FLIGHT_A_003_STAY_PLAN", "FLIGHT_A_004_CLARIFY_OR_ASK_BACK"),
+            ("FLIGHT_A_004_CLARIFY_OR_ASK_BACK", "FLIGHT_A_005_WRAP_UP"),
+            ("FLIGHT_A_005_WRAP_UP", "FLIGHT_999_COMPLETE"),
+        ],
+        [
+            ("FLIGHT_B_001_DESTINATION_CHAT", "FLIGHT_B_002_COMPANION_OR_VISIT"),
+            ("FLIGHT_B_002_COMPANION_OR_VISIT", "FLIGHT_B_003_STAY_PLACE"),
+            ("FLIGHT_B_003_STAY_PLACE", "FLIGHT_B_004_TRIP_PLANS"),
+            ("FLIGHT_B_004_TRIP_PLANS", "FLIGHT_B_005_LANDING_CLOSE"),
+            ("FLIGHT_B_005_LANDING_CLOSE", "FLIGHT_999_COMPLETE"),
+        ],
+        [
+            ("FLIGHT_C_001_FORM_HELP_REQUEST", "FLIGHT_C_002_FIRST_TIME_ENTRY"),
+            ("FLIGHT_C_002_FIRST_TIME_ENTRY", "FLIGHT_C_003_ADDRESS_HELP"),
+            ("FLIGHT_C_003_ADDRESS_HELP", "FLIGHT_C_004_HOTEL_HOSTEL_REPAIR"),
+            ("FLIGHT_C_004_HOTEL_HOSTEL_REPAIR", "FLIGHT_C_005_FORM_CLOSE"),
+            ("FLIGHT_C_005_FORM_CLOSE", "FLIGHT_999_COMPLETE"),
+        ],
     ]
 
-    for node_id, next_node_id in expected_route:
-        context = _node_context(node_id)
-        assert context.success_next_node == next_node_id
-        assert context.retry_next_node == next_node_id
-        assert context.clarify_next_node == next_node_id
-        assert context.hint_next_node == next_node_id
-        assert context.warning_next_node == next_node_id
-        assert set(context.allowed_next_nodes) == {next_node_id}
+    for route in expected_routes:
+        assert len(route) == 5
+        for node_id, next_node_id in route:
+            context = _node_context(node_id)
+            assert context.chapter_id == "CH0_01_FLIGHT_SMALLTALK"
+            assert context.node_type == "dialogue"
+            assert context.success_next_node == next_node_id
+            assert context.retry_next_node == next_node_id
+            assert context.clarify_next_node == next_node_id
+            assert context.hint_next_node == next_node_id
+            assert context.warning_next_node == next_node_id
+            assert set(context.allowed_next_nodes) == {next_node_id}
 
 
-def test_baggage_missing_route_adds_notice_node_and_alpha_scoreboard() -> None:
-    bag_notice = _node_context("BAG_001_NOTICE_BAG_MISSING")
-    bag_resolution = _node_context("BAG_007_RESOLUTION")
+def test_alpha_flight_route_a_uses_labeled_node_ids() -> None:
+    node_data = json.loads(SCENARIO_NODE_PATH.read_text(encoding="utf-8"))
+    legacy_route_a_node_ids = {
+        "FLIGHT_001_SEATMATE_SMALLTALK",
+        "FLIGHT_002_TRAVEL_PURPOSE",
+        "FLIGHT_003_STAY_PLAN",
+        "FLIGHT_004_CLARIFY_OR_ASK_BACK",
+        "FLIGHT_005_WRAP_UP",
+    }
+
+    assert not legacy_route_a_node_ids & set(node_data["nodes"])
+    assert node_data["chapters"][0]["entry_node_id"] == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+
+
+def test_baggage_route_requires_customs_hold_item_explanation_and_alpha_scoreboard() -> None:
+    bag_notice = _node_context("BAG_001_REPORT_MISSING_AT_DESK")
+    customs_item = _node_context("BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM")
+    customs_clearance = _node_context("BAG_007_CUSTOMS_CLEARANCE")
+    baggage_complete = _node_context("BAG_999_COMPLETE")
     final_scoreboard = _node_context("ALPHA_999_FINAL_SCOREBOARD")
 
-    assert bag_notice.success_next_node == "BAG_002_FIND_STAFF"
-    assert bag_notice.required_intents == ["notice_missing_bag"]
-    assert bag_notice.required_slots == ["missing_bag_observation"]
-    assert bag_resolution.success_next_node == "ALPHA_999_FINAL_SCOREBOARD"
+    assert bag_notice.success_next_node == "BAG_002_PROVIDE_CLAIM_TAG"
+    assert bag_notice.required_intents == ["report_missing_bag_at_service_desk"]
+    assert bag_notice.required_slots == ["missing_bag_statement"]
+    assert customs_item.required_intents == ["explain_random_customs_item"]
+    assert customs_item.required_slots == ["customs_item_explanation"]
+    assert customs_clearance.success_next_node == "BAG_999_COMPLETE"
+    assert baggage_complete.node_type == "transition"
+    assert baggage_complete.transition is not None
+    assert baggage_complete.transition.unreal_event == "SHOW_ALPHA_SCOREBOARD"
+    assert baggage_complete.transition.entry_node_id == "ALPHA_999_FINAL_SCOREBOARD"
     assert final_scoreboard.success_next_node == "END_ALPHA_SCENARIO"
     assert "END_ALPHA_SCENARIO" in final_scoreboard.allowed_next_nodes
 
 
+def test_alpha_boundary_transition_nodes_define_unreal_events() -> None:
+    flight_complete = _node_context("FLIGHT_999_COMPLETE")
+    immigration_cleared = _node_context("IMM_999_CLEARED")
+    baggage_complete = _node_context("BAG_999_COMPLETE")
+
+    assert flight_complete.node_type == "transition"
+    assert flight_complete.chapter_id == "CH0_01_FLIGHT_SMALLTALK"
+    assert flight_complete.transition is not None
+    assert flight_complete.transition.completed_chapter_id == "CH0_01_FLIGHT_SMALLTALK"
+    assert flight_complete.transition.next_chapter_id == "CH0_02_ARRIVAL_TUTORIAL"
+    assert flight_complete.transition.entry_node_id is None
+    assert flight_complete.transition.unreal_event == "START_AIRPORT_ARRIVAL_TUTORIAL"
+    assert flight_complete.transition.requires_player_input is False
+
+    assert immigration_cleared.node_type == "transition"
+    assert immigration_cleared.transition is not None
+    assert immigration_cleared.transition.completed_chapter_id == "CH0_03_IMMIGRATION_CHECK"
+    assert immigration_cleared.transition.next_chapter_id == "CH0_04_BAGGAGE_CLAIM"
+    assert immigration_cleared.transition.entry_node_id == "BAG_001_REPORT_MISSING_AT_DESK"
+    assert immigration_cleared.transition.unreal_event == "ENTER_BAGGAGE_CLAIM"
+
+    assert baggage_complete.node_type == "transition"
+    assert baggage_complete.transition is not None
+    assert baggage_complete.transition.completed_chapter_id == "CH0_04_BAGGAGE_CLAIM"
+    assert baggage_complete.transition.next_chapter_id == "CH0_05_RESULT"
+    assert baggage_complete.transition.entry_node_id == "ALPHA_999_FINAL_SCOREBOARD"
+    assert baggage_complete.transition.unreal_event == "SHOW_ALPHA_SCOREBOARD"
+
+
 def test_flight_smalltalk_creates_deferred_out_game_feedback_seed(tmp_path: Path) -> None:
-    context = _node_context("FLIGHT_001_SEATMATE_SMALLTALK")
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
     result = _agent(tmp_path).evaluate_turn(
         _policy_input(
             node_context=context,
@@ -364,13 +491,13 @@ def test_flight_smalltalk_creates_deferred_out_game_feedback_seed(tmp_path: Path
     assert result.out_game_feedback_seed.focus_on_form_targets == ["smalltalk_response_clarity"]
     assert "deferred_out_game_feedback" in result.out_game_feedback_seed.openkb_query_tags
     assert result.branch.next_node_id in context.allowed_next_nodes
-    assert result.branch.next_node_id == "FLIGHT_002_TRAVEL_PURPOSE"
+    assert result.branch.next_node_id == "FLIGHT_A_002_TRAVEL_PURPOSE"
     assert result.dialogue_seed is not None
     assert result.dialogue_seed.max_turns == 5
 
 
 def test_flight_diagnostic_retry_still_moves_to_next_evidence_node(tmp_path: Path) -> None:
-    context = _node_context("FLIGHT_003_STAY_PLAN")
+    context = _node_context("FLIGHT_A_003_STAY_PLAN")
 
     result = _agent(tmp_path).evaluate_turn(
         _policy_input(
@@ -387,7 +514,7 @@ def test_flight_diagnostic_retry_still_moves_to_next_evidence_node(tmp_path: Pat
 
     assert result.evaluation.verdict == "FAIL"
     assert result.branch.branch_type == "retry"
-    assert result.branch.next_node_id == "FLIGHT_004_CLARIFY_OR_ASK_BACK"
+    assert result.branch.next_node_id == "FLIGHT_A_004_CLARIFY_OR_ASK_BACK"
 
 
 def test_alpha_final_scoreboard_is_only_dev_b_final_branch(tmp_path: Path) -> None:
@@ -418,8 +545,8 @@ def test_alpha_final_scoreboard_is_only_dev_b_final_branch(tmp_path: Path) -> No
     )
 
     assert imm_result.branch.branch_type == "success"
-    assert imm_result.branch.next_action == "ADVANCE"
-    assert imm_result.branch.next_node_id == "BAG_001_NOTICE_BAG_MISSING"
+    assert imm_result.branch.next_action == "COMPLETE_CHAPTER"
+    assert imm_result.branch.next_node_id == "IMM_999_CLEARED"
     assert alpha_result.branch.branch_type == "final"
     assert alpha_result.branch.next_action == "FINAL_DECISION"
     assert alpha_result.branch.next_node_id == "END_ALPHA_SCENARIO"
@@ -488,11 +615,11 @@ def test_dialogue_seed_contains_generation_metadata_without_final_npc_text(tmp_p
 @pytest.mark.parametrize(
     ("node_id", "slot_name", "slot_value", "success_next_node"),
     [
-        ("FLIGHT_001_SEATMATE_SMALLTALK", "polite_response", "offered_help", "FLIGHT_002_TRAVEL_PURPOSE"),
-        ("FLIGHT_002_TRAVEL_PURPOSE", "travel_purpose", "tourism", "FLIGHT_003_STAY_PLAN"),
-        ("FLIGHT_003_STAY_PLAN", "stay_plan", "five_days", "FLIGHT_004_CLARIFY_OR_ASK_BACK"),
-        ("FLIGHT_004_CLARIFY_OR_ASK_BACK", "interaction_repair", "asked_clarification", "FLIGHT_005_WRAP_UP"),
-        ("FLIGHT_005_WRAP_UP", "smalltalk_closing", "polite_closing", "IMM_001_PASSPORT"),
+        ("FLIGHT_A_001_SEATMATE_SMALLTALK", "polite_response", "offered_help", "FLIGHT_A_002_TRAVEL_PURPOSE"),
+        ("FLIGHT_A_002_TRAVEL_PURPOSE", "travel_purpose", "tourism", "FLIGHT_A_003_STAY_PLAN"),
+        ("FLIGHT_A_003_STAY_PLAN", "stay_plan", "five_days", "FLIGHT_A_004_CLARIFY_OR_ASK_BACK"),
+        ("FLIGHT_A_004_CLARIFY_OR_ASK_BACK", "interaction_repair", "asked_clarification", "FLIGHT_A_005_WRAP_UP"),
+        ("FLIGHT_A_005_WRAP_UP", "smalltalk_closing", "polite_closing", "FLIGHT_999_COMPLETE"),
         ("IMM_001_PASSPORT", "passport_submission_status", "submitted", "IMM_002_PURPOSE"),
         ("IMM_002_PURPOSE", "visit_purpose", "tourism", "IMM_003_DURATION"),
         ("IMM_003_DURATION", "stay_duration", "days", "IMM_004_STAY_LOCATION"),
@@ -500,14 +627,14 @@ def test_dialogue_seed_contains_generation_metadata_without_final_npc_text(tmp_p
         ("IMM_006_DECLARATION_CHECK", "item_purpose", "personal_recreation", "IMM_006B_PACKED_BAG_CHECK"),
         ("IMM_006B_PACKED_BAG_CHECK", "packed_by_self", "yes_self_packed", "IMM_007_FINAL_DECISION"),
         ("IMM_ALPHA_GOLD_BAG_CONTENT_CHECK", "bag_contents_summary", "mixed_personal_items", "IMM_006_DECLARATION_CHECK"),
-        ("IMM_007_FINAL_DECISION", "immigration_transition_acknowledgement", "acknowledged", "BAG_001_NOTICE_BAG_MISSING"),
-        ("BAG_001_NOTICE_BAG_MISSING", "missing_bag_observation", "bag_not_arrived", "BAG_002_FIND_STAFF"),
-        ("BAG_002_FIND_STAFF", "missing_bag_status", "not_arrived", "BAG_003_REPORT_MISSING_BAG"),
-        ("BAG_003_REPORT_MISSING_BAG", "missing_bag_report", "checked_bag_missing", "BAG_004_DESCRIBE_BAG"),
-        ("BAG_004_DESCRIBE_BAG", "bag_description", "black_medium_suitcase", "BAG_005_PROVIDE_FLIGHT_OR_TAG"),
-        ("BAG_005_PROVIDE_FLIGHT_OR_TAG", "baggage_tag_or_flight_info", "has_baggage_tag", "BAG_006_CONTACT_AND_DELIVERY"),
-        ("BAG_006_CONTACT_AND_DELIVERY", "delivery_contact", "hotel_address", "BAG_007_RESOLUTION"),
-        ("BAG_007_RESOLUTION", "resolution_acknowledgement", "acknowledged_reference_number", "ALPHA_999_FINAL_SCOREBOARD"),
+        ("IMM_007_FINAL_DECISION", "immigration_transition_acknowledgement", "acknowledged", "IMM_999_CLEARED"),
+        ("BAG_001_REPORT_MISSING_AT_DESK", "missing_bag_statement", "bag_not_arrived", "BAG_002_PROVIDE_CLAIM_TAG"),
+        ("BAG_002_PROVIDE_CLAIM_TAG", "claim_tag_status", "has_claim_tag", "BAG_003_CONFIRM_SEARCHED_CAROUSEL"),
+        ("BAG_003_CONFIRM_SEARCHED_CAROUSEL", "carousel_search_confirmation", "searched_carefully", "BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD"),
+        ("BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD", "customs_hold_redirect_acknowledgement", "will_go_to_customs_hold", "BAG_005_CUSTOMS_HOLD_EXPLANATION"),
+        ("BAG_005_CUSTOMS_HOLD_EXPLANATION", "customs_hold_acknowledgement", "will_unlock_and_check", "BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM"),
+        ("BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM", "customs_item_explanation", "personal_item", "BAG_007_CUSTOMS_CLEARANCE"),
+        ("BAG_007_CUSTOMS_CLEARANCE", "customs_clearance_acknowledgement", "acknowledged_clearance", "BAG_999_COMPLETE"),
     ],
 )
 def test_chapter_zero_success_nodes_advance(
@@ -533,7 +660,8 @@ def test_chapter_zero_success_nodes_advance(
     )
 
     assert result.evaluation.verdict == "SUCCESS"
-    assert result.branch.next_action == "ADVANCE"
+    expected_action = "COMPLETE_CHAPTER" if success_next_node.endswith("_999_COMPLETE") or success_next_node == "IMM_999_CLEARED" else "ADVANCE"
+    assert result.branch.next_action == expected_action
     assert result.branch.next_node_id == success_next_node
     assert result.branch.next_node_id in context.allowed_next_nodes
 
@@ -550,13 +678,13 @@ def test_chapter_zero_success_nodes_advance(
         ("IMM_006B_PACKED_BAG_CHECK", "packed_by_self", "IMM_006B_RETRY_PACKED_BAG"),
         ("IMM_ALPHA_GOLD_BAG_CONTENT_CHECK", "bag_contents_summary", "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK"),
         ("IMM_007_FINAL_DECISION", "immigration_transition_acknowledgement", "IMM_007_RETRY_FINAL_DECISION"),
-        ("BAG_001_NOTICE_BAG_MISSING", "missing_bag_observation", "BAG_001_RETRY_NOTICE_BAG_MISSING"),
-        ("BAG_002_FIND_STAFF", "missing_bag_status", "BAG_002_RETRY_FIND_STAFF"),
-        ("BAG_003_REPORT_MISSING_BAG", "missing_bag_report", "BAG_003_RETRY_REPORT_MISSING_BAG"),
-        ("BAG_004_DESCRIBE_BAG", "bag_description", "BAG_004_RETRY_DESCRIBE_BAG"),
-        ("BAG_005_PROVIDE_FLIGHT_OR_TAG", "baggage_tag_or_flight_info", "BAG_005_RETRY_PROVIDE_FLIGHT_OR_TAG"),
-        ("BAG_006_CONTACT_AND_DELIVERY", "delivery_contact", "BAG_006_RETRY_CONTACT_AND_DELIVERY"),
-        ("BAG_007_RESOLUTION", "resolution_acknowledgement", "BAG_007_RETRY_RESOLUTION"),
+        ("BAG_001_REPORT_MISSING_AT_DESK", "missing_bag_statement", "BAG_001_RETRY_REPORT_MISSING_AT_DESK"),
+        ("BAG_002_PROVIDE_CLAIM_TAG", "claim_tag_status", "BAG_002_RETRY_PROVIDE_CLAIM_TAG"),
+        ("BAG_003_CONFIRM_SEARCHED_CAROUSEL", "carousel_search_confirmation", "BAG_003_RETRY_CONFIRM_SEARCHED_CAROUSEL"),
+        ("BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD", "customs_hold_redirect_acknowledgement", "BAG_004_RETRY_STAFF_REDIRECT_TO_CUSTOMS_HOLD"),
+        ("BAG_005_CUSTOMS_HOLD_EXPLANATION", "customs_hold_acknowledgement", "BAG_005_RETRY_CUSTOMS_HOLD_EXPLANATION"),
+        ("BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM", "customs_item_explanation", "BAG_006_RETRY_EXPLAIN_RANDOM_CUSTOMS_ITEM"),
+        ("BAG_007_CUSTOMS_CLEARANCE", "customs_clearance_acknowledgement", "BAG_007_RETRY_CUSTOMS_CLEARANCE"),
     ],
 )
 def test_chapter_zero_missing_slot_retries(
@@ -769,7 +897,7 @@ def test_dev_b_output_self_check_rejects_branch_outside_allowed_nodes() -> None:
 def test_dev_b_output_self_check_rejects_hint_payload_when_hint_not_needed(tmp_path: Path) -> None:
     payload = _policy_input()
     result = _agent(tmp_path).evaluate_turn(payload)
-    invalid = result.model_copy(update={"level_hint": result.level_hint.model_copy(update={"hint_kr": "불필요한 힌트"})})
+    invalid = result.model_copy(update={"level_hint": result.level_hint.model_copy(update={"hint_kr": "遺덊븘?뷀븳 ?뚰듃"})})
 
     with pytest.raises(ValueError, match="hint payload"):
         _validate_b_policy_output(payload, invalid)
@@ -874,12 +1002,12 @@ class _FakeFeedbackLLMClient:
 
     def generate(self, payload: dict[str, object]) -> dict[str, object]:
         return {
-            "hint_kr": "방문 목적을 짧게 말하면 됩니다. 예: tourism.",
-            "feedback_note": "뜻은 통했지만 완전한 문장으로 말하면 더 자연스럽습니다.",
-            "report_summary": "입국심사 목적 답변은 이해되었습니다.",
-            "report_improvement": "I am here for tourism처럼 주어와 동사를 넣어 말해보세요.",
+            "hint_kr": "諛⑸Ц 紐⑹쟻??吏㏐쾶 留먰븯硫??⑸땲?? ?? tourism.",
+            "feedback_note": "?살? ?듯뻽吏留??꾩쟾??臾몄옣?쇰줈 留먰븯硫????먯뿰?ㅻ읇?듬땲??",
+            "report_summary": "?낃뎅?ъ궗 紐⑹쟻 ?듬?? ?댄빐?섏뿀?듬땲??",
+            "report_improvement": "I am here for tourism泥섎읆 二쇱뼱? ?숈궗瑜??ｌ뼱 留먰빐蹂댁꽭??",
             "example_answer": "I'm here for tourism.",
-            "focus_on_form_explanation_kr": "짧은 단어 답변보다 I'm here for ... 패턴이 안전합니다.",
+            "focus_on_form_explanation_kr": "吏㏃? ?⑥뼱 ?듬?蹂대떎 I'm here for ... ?⑦꽩???덉쟾?⑸땲??",
             "rubric_scores": {
                 "comprehension": 2,
                 "fluency": 1,
@@ -903,12 +1031,12 @@ class _ForbiddenFeedbackLLMClient:
 
     def generate(self, payload: dict[str, object]) -> dict[str, object]:
         return {
-            "hint_kr": "방문 목적을 짧게 말하면 됩니다. 예: tourism.",
-            "feedback_note": "뜻은 통했지만 완전한 문장으로 말하면 더 자연스럽습니다.",
-            "report_summary": "입국심사 목적 답변은 이해되었습니다.",
-            "report_improvement": "I am here for tourism처럼 주어와 동사를 넣어 말해보세요.",
+            "hint_kr": "諛⑸Ц 紐⑹쟻??吏㏐쾶 留먰븯硫??⑸땲?? ?? tourism.",
+            "feedback_note": "?살? ?듯뻽吏留??꾩쟾??臾몄옣?쇰줈 留먰븯硫????먯뿰?ㅻ읇?듬땲??",
+            "report_summary": "?낃뎅?ъ궗 紐⑹쟻 ?듬?? ?댄빐?섏뿀?듬땲??",
+            "report_improvement": "I am here for tourism泥섎읆 二쇱뼱? ?숈궗瑜??ｌ뼱 留먰빐蹂댁꽭??",
             "example_answer": "I'm here for tourism.",
-            "focus_on_form_explanation_kr": "짧은 단어 답변보다 I'm here for ... 패턴이 안전합니다.",
+            "focus_on_form_explanation_kr": "吏㏃? ?⑥뼱 ?듬?蹂대떎 I'm here for ... ?⑦꽩???덉쟾?⑸땲??",
             "rubric_scores": {
                 "comprehension": 2,
                 "fluency": 1,
@@ -928,12 +1056,12 @@ class _ForbiddenDialogueFeedbackLLMClient:
 
     def generate(self, payload: dict[str, object]) -> dict[str, object]:
         return {
-            "hint_kr": "방문 목적을 짧게 말하면 됩니다. 예: tourism.",
-            "feedback_note": "뜻은 통했지만 완전한 문장으로 말하면 더 자연스럽습니다.",
-            "report_summary": "입국심사 목적 답변은 이해되었습니다.",
-            "report_improvement": "I am here for tourism처럼 주어와 동사를 넣어 말해보세요.",
+            "hint_kr": "諛⑸Ц 紐⑹쟻??吏㏐쾶 留먰븯硫??⑸땲?? ?? tourism.",
+            "feedback_note": "?살? ?듯뻽吏留??꾩쟾??臾몄옣?쇰줈 留먰븯硫????먯뿰?ㅻ읇?듬땲??",
+            "report_summary": "?낃뎅?ъ궗 紐⑹쟻 ?듬?? ?댄빐?섏뿀?듬땲??",
+            "report_improvement": "I am here for tourism泥섎읆 二쇱뼱? ?숈궗瑜??ｌ뼱 留먰빐蹂댁꽭??",
             "example_answer": "I'm here for tourism.",
-            "focus_on_form_explanation_kr": "짧은 단어 답변보다 I'm here for ... 패턴이 안전합니다.",
+            "focus_on_form_explanation_kr": "吏㏃? ?⑥뼱 ?듬?蹂대떎 I'm here for ... ?⑦꽩???덉쟾?⑸땲??",
             "rubric_scores": {
                 "comprehension": 2,
                 "fluency": 1,
@@ -952,12 +1080,12 @@ class _UsageFeedbackLLMClient:
 
     def generate(self, payload: dict[str, object]) -> dict[str, object]:
         return {
-            "hint_kr": "방문 목적을 짧게 말하면 됩니다. 예: tourism.",
-            "feedback_note": "뜻은 통했지만 완전한 문장으로 말하면 더 자연스럽습니다.",
-            "report_summary": "입국심사 목적 답변은 이해되었습니다.",
-            "report_improvement": "I am here for tourism처럼 주어와 동사를 넣어 말해보세요.",
+            "hint_kr": "諛⑸Ц 紐⑹쟻??吏㏐쾶 留먰븯硫??⑸땲?? ?? tourism.",
+            "feedback_note": "?살? ?듯뻽吏留??꾩쟾??臾몄옣?쇰줈 留먰븯硫????먯뿰?ㅻ읇?듬땲??",
+            "report_summary": "?낃뎅?ъ궗 紐⑹쟻 ?듬?? ?댄빐?섏뿀?듬땲??",
+            "report_improvement": "I am here for tourism泥섎읆 二쇱뼱? ?숈궗瑜??ｌ뼱 留먰빐蹂댁꽭??",
             "example_answer": "I'm here for tourism.",
-            "focus_on_form_explanation_kr": "짧은 단어 답변보다 I'm here for ... 패턴이 안전합니다.",
+            "focus_on_form_explanation_kr": "吏㏃? ?⑥뼱 ?듬?蹂대떎 I'm here for ... ?⑦꽩???덉쟾?⑸땲??",
             "__llm_usage": {
                 "input_tokens": 100,
                 "output_tokens": 50,
@@ -980,10 +1108,10 @@ def test_fake_llm_feedback_updates_hint_note_and_report_without_changing_branch(
 
     result = _llm_agent(tmp_path, _FakeFeedbackLLMClient()).evaluate_turn(payload)
 
-    assert result.level_hint.hint_kr == "방문 목적을 짧게 말하면 됩니다. 예: tourism."
-    assert result.evaluation.feedback_note == "뜻은 통했지만 완전한 문장으로 말하면 더 자연스럽습니다."
-    assert result.report_item.summary == "입국심사 목적 답변은 이해되었습니다."
-    assert result.report_item.improvement == "I am here for tourism처럼 주어와 동사를 넣어 말해보세요."
+    assert result.level_hint.hint_kr == "諛⑸Ц 紐⑹쟻??吏㏐쾶 留먰븯硫??⑸땲?? ?? tourism."
+    assert result.evaluation.feedback_note == "?살? ?듯뻽吏留??꾩쟾??臾몄옣?쇰줈 留먰븯硫????먯뿰?ㅻ읇?듬땲??"
+    assert result.report_item.summary == "?낃뎅?ъ궗 紐⑹쟻 ?듬?? ?댄빐?섏뿀?듬땲??"
+    assert result.report_item.improvement == "I am here for tourism泥섎읆 二쇱뼱? ?숈궗瑜??ｌ뼱 留먰빐蹂댁꽭??"
     assert result.report_item.example_answer == "I'm here for tourism."
     assert result.branch.next_node_id == "IMM_002_RETRY_PURPOSE"
     assert result.evaluation.verdict == "FAIL"
@@ -1056,7 +1184,7 @@ def test_llm_usage_is_not_exposed_on_public_dev_b_policy_output(tmp_path: Path) 
 
 
 def test_bronze_baggage_broken_english_creates_problem_statement_seed(tmp_path: Path) -> None:
-    context = _node_context("BAG_003_REPORT_MISSING_BAG")
+    context = _node_context("BAG_001_REPORT_MISSING_AT_DESK")
 
     result = _agent(tmp_path).evaluate_turn(
         _policy_input(
@@ -1064,7 +1192,7 @@ def test_bronze_baggage_broken_english_creates_problem_statement_seed(tmp_path: 
             player_text="My bag no come.",
             intent_success=True,
             confidence=0.72,
-            extracted_slots={"missing_bag_report": "checked_bag_missing"},
+            extracted_slots={"missing_bag_statement": "bag_not_arrived"},
             missing_slots=[],
             tier="Bronze",
             english_confidence="beginner",
@@ -1077,8 +1205,8 @@ def test_bronze_baggage_broken_english_creates_problem_statement_seed(tmp_path: 
     assert result.out_game_feedback_seed.focus_on_form_targets == ["problem_statement"]
 
 
-def test_gold_baggage_missing_detail_retries_and_records_seed(tmp_path: Path) -> None:
-    context = _node_context("BAG_004_DESCRIBE_BAG")
+def test_gold_baggage_customs_item_detail_retries_and_records_seed(tmp_path: Path) -> None:
+    context = _node_context("BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM")
 
     result = _agent(tmp_path).evaluate_turn(
         _policy_input(
@@ -1087,7 +1215,7 @@ def test_gold_baggage_missing_detail_retries_and_records_seed(tmp_path: Path) ->
             intent_success=False,
             confidence=0.7,
             extracted_slots={},
-            missing_slots=["bag_description"],
+            missing_slots=["customs_item_explanation"],
             tier="Gold",
             english_confidence="advanced",
         )
@@ -1097,7 +1225,7 @@ def test_gold_baggage_missing_detail_retries_and_records_seed(tmp_path: Path) ->
     assert result.branch.branch_type == "retry"
     assert result.level_hint.needs_hint is False
     assert result.out_game_feedback_seed.include_in_final_report is True
-    assert result.out_game_feedback_seed.focus_on_form_targets == ["bag_description"]
+    assert result.out_game_feedback_seed.focus_on_form_targets == ["customs_item_explanation"]
 
 
 def test_llm_failure_uses_fallback_generation_without_changing_policy(tmp_path: Path) -> None:
