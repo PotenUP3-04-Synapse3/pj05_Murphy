@@ -175,7 +175,6 @@ def test_elevenlabs_relay_sends_audio_chunk_and_maps_partial_and_committed_trans
             "audio_base_64": "UklGRiQAAABXQVZFZm10IBAAAAABAAEA",
             "commit": True,
             "sample_rate": 16000,
-            "previous_text": "",
         }
     ]
     assert events[0].event_type == "partial_transcript"
@@ -187,6 +186,53 @@ def test_elevenlabs_relay_sends_audio_chunk_and_maps_partial_and_committed_trans
     assert events[1].subtitle.text == "I will stay for five days."
     assert events[1].committed is True
     assert events[1].target_endpoint == "POST /api/game/ai/respond"
+
+
+def test_elevenlabs_relay_sends_previous_text_only_on_first_audio_chunk_when_present() -> None:
+    connection = FakeProviderConnection(
+        incoming=[
+            {"message_type": "session_started", "session_id": "provider_session_001"},
+            {"message_type": "partial_transcript", "text": "I will"},
+            {"message_type": "partial_transcript", "text": "I will stay"},
+        ]
+    )
+    relay = ElevenLabsRealtimeSttRelay(
+        settings=AppSettings(
+            elevenlabs_api_key="xi-secret-test",
+            elevenlabs_realtime_receive_timeout_s=0.01,
+        ),
+        websocket_connect=FakeProviderConnector(connection),
+    )
+    asyncio.run(relay.start(_session_start_event()))
+
+    first_chunk = _audio_chunk_event_from_pcm(pcm_bytes=b"\x01\x02" * 1600, sequence=1, commit=False)
+    first_chunk.previous_text = "Officer asked how long I will stay."
+    second_chunk = _audio_chunk_event_from_pcm(pcm_bytes=b"\x03\x04" * 1600, sequence=2, commit=False)
+    second_chunk.previous_text = "Officer asked how long I will stay."
+
+    asyncio.run(relay.send_audio_chunk(first_chunk))
+    asyncio.run(relay.send_audio_chunk(second_chunk))
+
+    assert connection.sent[0]["previous_text"] == "Officer asked how long I will stay."
+    assert "previous_text" not in connection.sent[1]
+
+
+def test_elevenlabs_relay_omits_blank_previous_text_from_audio_chunk_payload() -> None:
+    connection = FakeProviderConnection(
+        incoming=[
+            {"message_type": "session_started", "session_id": "provider_session_001"},
+            {"message_type": "committed_transcript", "text": "I will stay for five days."},
+        ]
+    )
+    relay = ElevenLabsRealtimeSttRelay(
+        settings=AppSettings(elevenlabs_api_key="xi-secret-test"),
+        websocket_connect=FakeProviderConnector(connection),
+    )
+    asyncio.run(relay.start(_session_start_event()))
+
+    asyncio.run(relay.send_audio_chunk(_audio_chunk_event()))
+
+    assert "previous_text" not in connection.sent[0]
 
 
 def test_elevenlabs_relay_uses_local_batch_fallback_on_committed_chunk_without_provider_final() -> None:
