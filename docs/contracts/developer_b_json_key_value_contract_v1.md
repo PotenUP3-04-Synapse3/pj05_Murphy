@@ -1,27 +1,22 @@
 # Developer B JSON Key-Value Contract v1
 
-> AGENTS.md 정합성 메모: 이 문서는 Developer B 소유의 JSON key-value 계약 문서이다. Developer B는 평가, 레벨/힌트, 인게임 피드백 전략, 오류 기록 후보, 아웃게임 Focus on Form 피드백 payload, rule-based branch recommendation을 정의한다. FastAPI endpoint, STT/TTS, NPC 최종 대사 생성, Validator, Unreal response assembly, markdown 파일 저장 실행, OpenKB retrieval 실행은 Developer C 또는 다른 담당 범위이다.
+> AGENTS.md ?뺥빀??硫붾え: ??臾몄꽌??Developer B ?뚯쑀??JSON key-value 怨꾩빟 臾몄꽌?대떎. Developer B???됯?, ?덈꺼/?뚰듃, ?멸쾶???쇰뱶諛??꾨왂, ?ㅻ쪟 湲곕줉 ?꾨낫, ?꾩썐寃뚯엫 Focus on Form ?쇰뱶諛?payload, rule-based branch recommendation???뺤쓽?쒕떎. FastAPI endpoint, STT/TTS, NPC 理쒖쥌 ????앹꽦, Validator, Unreal response assembly, markdown ?뚯씪 ????ㅽ뻾, OpenKB retrieval ?ㅽ뻾? Developer C ?먮뒗 ?ㅻⅨ ?대떦 踰붿쐞?대떎.
 
-## 1. 문서 목적
+## 1. 臾몄꽌 紐⑹쟻
 
-이 문서는 현업에서 API/adapter 계약을 맞출 때 사용하는 형식으로 Developer B policy의 JSON key-value 약속을 정의한다.
+??臾몄꽌???꾩뾽?먯꽌 API/adapter 怨꾩빟??留욎텧 ???ъ슜?섎뒗 ?뺤떇?쇰줈 Developer B policy??JSON key-value ?쎌냽???뺤쓽?쒕떎.
 
-이 문서는 다음 사용자를 대상으로 한다.
+??臾몄꽌???ㅼ쓬 ?ъ슜?먮? ??곸쑝濡??쒕떎.
 
-- Developer B 구현자
-- Developer C adapter 구현자
-- Developer A NPC dialogue 구현자
-- Unreal UI 연동 담당자
-- QA / test case 작성자
-- LLM agent가 계약을 참고해 payload를 생성하거나 검토하는 경우
+- Developer B 援ы쁽??- Developer C adapter 援ы쁽??- Developer A NPC dialogue 援ы쁽??- Unreal UI ?곕룞 ?대떦??- QA / test case ?묒꽦??- LLM agent媛 怨꾩빟??李멸퀬??payload瑜??앹꽦?섍굅??寃?좏븯??寃쎌슦
 
-이 문서는 설명형 기획서가 아니라 계약 문서이다. 따라서 각 key의 이름, 타입, 필수 여부, 허용 enum, 생성 주체, 소비 주체, 검증 규칙을 고정한다.
+??臾몄꽌???ㅻ챸??湲고쉷?쒓? ?꾨땲??怨꾩빟 臾몄꽌?대떎. ?곕씪??媛?key???대쫫, ??? ?꾩닔 ?щ?, ?덉슜 enum, ?앹꽦 二쇱껜, ?뚮퉬 二쇱껜, 寃利?洹쒖튃??怨좎젙?쒕떎.
 
 ## 2. Scope
 
 ### 2.1 In Scope
 
-Developer B가 정의하거나 반환하는 데이터:
+Developer B媛 ?뺤쓽?섍굅??諛섑솚?섎뒗 ?곗씠??
 
 - `evaluation`
 - `level_hint`
@@ -43,36 +38,35 @@ Developer B가 정의하거나 반환하는 데이터:
 
 ### 2.2 Out of Scope
 
-Developer B가 만들지 않는 데이터:
+Developer B媛 留뚮뱾吏 ?딅뒗 ?곗씠??
 
 - raw audio / wav binary
-- STT provider result 원본
-- NPC 최종 대사 본문
+- STT provider result ?먮낯
+- NPC 理쒖쥌 ???蹂몃Ц
 - TTS voice id
 - Unreal command
 - animation / camera event
 - final API response envelope
 - validator result
-- markdown 파일 실제 저장
-- OpenKB 검색 실행
+- markdown ?뚯씪 ?ㅼ젣 ???- OpenKB 寃???ㅽ뻾
 - DB write
 
 ## 3. Naming Convention
 
-| 항목 | 규칙 |
+| ??ぉ | 洹쒖튃 |
 | --- | --- |
 | JSON key | `snake_case` |
-| ID value | 대문자 prefix + underscore 권장. 예: `IMM_002_PURPOSE` |
-| enum value | 기존 게임 enum과 맞출 때는 `UPPER_SNAKE_CASE`, B 내부 branch type은 `lower_snake_case` |
-| boolean key | `is_`, `has_`, `needs_`, `should_`, `can_` 중 하나로 시작 |
-| timestamp | ISO-8601 string. 예: `2026-06-02T10:30:00+09:00` |
-| nullable | optional과 null을 구분한다. key가 의미상 필요하지만 값이 없으면 `null`, 의미가 없으면 key 생략 가능 |
-| score | 0-3 scale 또는 0-100 scale 중 필드별로 고정한다 |
-| text language suffix | 한국어 사용자 표시문은 `_kr`, 영어 예문은 `_en` suffix 사용 |
+| ID value | ?臾몄옄 prefix + underscore 沅뚯옣. ?? `IMM_002_PURPOSE` |
+| enum value | 湲곗〈 寃뚯엫 enum怨?留욎텧 ?뚮뒗 `UPPER_SNAKE_CASE`, B ?대? branch type? `lower_snake_case` |
+| boolean key | `is_`, `has_`, `needs_`, `should_`, `can_` 以??섎굹濡??쒖옉 |
+| timestamp | ISO-8601 string. ?? `2026-06-02T10:30:00+09:00` |
+| nullable | optional怨?null??援щ텇?쒕떎. key媛 ?섎????꾩슂?섏?留?媛믪씠 ?놁쑝硫?`null`, ?섎?媛 ?놁쑝硫?key ?앸왂 媛??|
+| score | 0-3 scale ?먮뒗 0-100 scale 以??꾨뱶蹂꾨줈 怨좎젙?쒕떎 |
+| text language suffix | ?쒓뎅???ъ슜???쒖떆臾몄? `_kr`, ?곸뼱 ?덈Ц? `_en` suffix ?ъ슜 |
 
 ## 4. Contract Versioning
 
-모든 Developer B policy input/output에는 가능하면 `contract_version`을 포함한다.
+紐⑤뱺 Developer B policy input/output?먮뒗 媛?ν븯硫?`contract_version`???ы븿?쒕떎.
 
 ```json
 {
@@ -82,15 +76,14 @@ Developer B가 만들지 않는 데이터:
 }
 ```
 
-Versioning 규칙:
+Versioning 洹쒖튃:
 
-- patch 변경: 필드 설명, 예시 추가, optional field 추가
-- minor 변경: enum 추가, optional object 추가
-- major 변경: required field 삭제/이름 변경/타입 변경
-
+- patch 蹂寃? ?꾨뱶 ?ㅻ챸, ?덉떆 異붽?, optional field 異붽?
+- minor 蹂寃? enum 異붽?, optional object 異붽?
+- major 蹂寃? required field ??젣/?대쫫 蹂寃????蹂寃?
 ## 5. Developer B Policy Input
 
-Developer C adapter가 Developer B policy에 전달하는 canonical input이다.
+Developer C adapter媛 Developer B policy???꾨떖?섎뒗 canonical input?대떎.
 
 ```json
 {
@@ -98,7 +91,7 @@ Developer C adapter가 Developer B policy에 전달하는 canonical input이다.
   "request_id": "req_imm_0001",
   "session_id": "session_001",
   "player_id": "player_001",
-  "chapter_id": "CH0_IMMIGRATION",
+  "chapter_id": "CH0_03_IMMIGRATION_CHECK",
   "scene_id": "JFK_IMMIGRATION_HALL",
   "current_node_id": "IMM_002_PURPOSE",
   "turn_index": 2,
@@ -145,7 +138,7 @@ Developer C adapter가 Developer B policy에 전달하는 canonical input이다.
       "suspicious_purpose"
     ],
     "recommended_expression": "I'm here for tourism.",
-    "base_hint_kr": "미국에 온 목적을 말해보세요.",
+    "base_hint_kr": "誘멸뎅????紐⑹쟻??留먰빐蹂댁꽭??",
     "hint_policy": {
       "keyword": [
         "tourism",
@@ -153,8 +146,8 @@ Developer C adapter가 Developer B policy에 전달하는 canonical input이다.
         "vacation"
       ],
       "sentence_pattern": "I'm here for ___.",
-      "situation_hint": "방문 목적을 말해야 합니다.",
-      "action_hint": "방문 목적을 먼저 말하고, 필요하면 이유를 짧게 덧붙입니다."
+      "situation_hint": "諛⑸Ц 紐⑹쟻??留먰빐???⑸땲??",
+      "action_hint": "諛⑸Ц 紐⑹쟻??癒쇱? 留먰븯怨? ?꾩슂?섎㈃ ?댁쑀瑜?吏㏐쾶 ?㏓텤?낅땲??"
     },
     "success_next_node": "IMM_003_DURATION",
     "retry_next_node": "IMM_002_RETRY_PURPOSE",
@@ -206,7 +199,7 @@ Developer C adapter가 Developer B policy에 전달하는 canonical input이다.
 | `request_id` | string | yes | Developer C | Single request trace id |
 | `session_id` | string | yes | Unreal/C | Player session id |
 | `player_id` | string | no | Unreal/C | Player id or nickname id |
-| `chapter_id` | string | yes | Unreal/C | Chapter id. MVP value: `CH0_IMMIGRATION` |
+| `chapter_id` | string | yes | Unreal/C | Scenario phase id. Alpha immigration value: `CH0_03_IMMIGRATION_CHECK` |
 | `scene_id` | string | yes | Unreal/C | Scene id |
 | `current_node_id` | string | yes | Unreal/C | Current scenario node id |
 | `turn_index` | integer | yes | Developer C | 0-based or 1-based is allowed if consistent per session; recommended 1-based |
@@ -315,7 +308,7 @@ Canonical output returned by Developer B policy.
       "required_slot_filled",
       "minor_grammar_issue"
     ],
-    "feedback_note": "방문 목적은 전달됐지만 완전한 문장으로 말하면 더 자연스럽습니다."
+    "feedback_note": "諛⑸Ц 紐⑹쟻? ?꾨떖?먯?留??꾩쟾??臾몄옣?쇰줈 留먰븯硫????먯뿰?ㅻ읇?듬땲??"
   },
   "level_hint": {
     "english_level": "beginner",
@@ -354,7 +347,7 @@ Canonical output returned by Developer B policy.
         "turn_index": 2,
         "npc_question": "What is the purpose of your visit?",
         "original_utterance": "I here tourism.",
-        "intended_meaning_kr": "관광 목적으로 왔다고 말하려고 했습니다.",
+        "intended_meaning_kr": "愿愿?紐⑹쟻?쇰줈 ?붾떎怨?留먰븯?ㅺ퀬 ?덉뒿?덈떎.",
         "error_type": "grammar",
         "error_scope": "local",
         "focus_on_form_target": "be_verb_in_self_introduction",
@@ -368,7 +361,7 @@ Canonical output returned by Developer B policy.
         "should_surface_out_game": true
       }
     ],
-    "markdown_entry": "### IMM_002_PURPOSE - err_imm_002_001\n- NPC Question: What is the purpose of your visit?\n- Original: I here tourism.\n- Intended Meaning: 관광 목적으로 왔다고 말하려고 했습니다.\n- Error Type: grammar\n- Focus on Form: be_verb_in_self_introduction\n- Suggested: I'm here for tourism.\n- Severity: minor"
+    "markdown_entry": "### IMM_002_PURPOSE - err_imm_002_001\n- NPC Question: What is the purpose of your visit?\n- Original: I here tourism.\n- Intended Meaning: 愿愿?紐⑹쟻?쇰줈 ?붾떎怨?留먰븯?ㅺ퀬 ?덉뒿?덈떎.\n- Error Type: grammar\n- Focus on Form: be_verb_in_self_introduction\n- Suggested: I'm here for tourism.\n- Severity: minor"
   },
   "out_game_feedback_seed": {
     "include_in_final_report": true,
@@ -402,8 +395,8 @@ Canonical output returned by Developer B policy.
     "do_not_generate_npc_text": true
   },
   "report_item": {
-    "summary": "방문 목적을 전달했습니다.",
-    "improvement": "단어 하나보다 완전한 문장으로 말하면 더 자연스럽습니다.",
+    "summary": "諛⑸Ц 紐⑹쟻???꾨떖?덉뒿?덈떎.",
+    "improvement": "?⑥뼱 ?섎굹蹂대떎 ?꾩쟾??臾몄옣?쇰줈 留먰븯硫????먯뿰?ㅻ읇?듬땲??",
     "example_answer": "I'm here for tourism.",
     "score_tags": [
       "task_success_good",
@@ -695,7 +688,7 @@ Final out-game feedback is generated after the episode using stored markdown err
 {
   "contract_version": "dev_b_policy.v1",
   "session_id": "session_001",
-  "chapter_id": "CH0_IMMIGRATION",
+  "chapter_id": "CH0_03_IMMIGRATION_CHECK",
   "error_log_markdown_path": "logs/session_001/error_log.md",
   "error_log_markdown": "### IMM_002_PURPOSE - err_imm_002_001\n- Original: I here tourism.\n- Focus on Form: be_verb_in_self_introduction\n- Suggested: I'm here for tourism.",
   "node_results": [
@@ -715,7 +708,7 @@ Final out-game feedback is generated after the episode using stored markdown err
   "openkb_focus_on_form_context": [
     {
       "focus_on_form_target": "be_verb_in_self_introduction",
-      "rule_summary_kr": "영어에서 자신의 목적이나 상태를 말할 때는 주어 뒤에 be 동사를 넣어 문장을 완성합니다.",
+      "rule_summary_kr": "?곸뼱?먯꽌 ?먯떊??紐⑹쟻?대굹 ?곹깭瑜?留먰븷 ?뚮뒗 二쇱뼱 ?ㅼ뿉 be ?숈궗瑜??ｌ뼱 臾몄옣???꾩꽦?⑸땲??",
       "good_examples": [
         "I'm here for tourism.",
         "I'm here for a business meeting."
@@ -733,7 +726,7 @@ Final out-game feedback is generated after the episode using stored markdown err
   "contract_version": "dev_b_policy.v1",
   "out_game_feedback": {
     "report_mode": "focus_on_form",
-    "overall_summary_kr": "입국심사 질문의 핵심 의미는 전달했지만, 짧은 답변에서 be 동사 누락이 반복되었습니다.",
+    "overall_summary_kr": "?낃뎅?ъ궗 吏덈Ц???듭떖 ?섎????꾨떖?덉?留? 吏㏃? ?듬??먯꽌 be ?숈궗 ?꾨씫??諛섎났?섏뿀?듬땲??",
     "quantitative_scores": {
       "task_success": 82,
       "clarity": 76,
@@ -745,23 +738,23 @@ Final out-game feedback is generated after the episode using stored markdown err
     "focus_on_form_items": [
       {
         "target": "be_verb_in_self_introduction",
-        "title_kr": "I'm here for ___ 패턴",
+        "title_kr": "I'm here for ___ ?⑦꽩",
         "original_utterance": "I here tourism.",
         "corrected_expression": "I'm here for tourism.",
-        "explanation_kr": "방문 목적을 말할 때는 `I'm here for + 목적` 패턴을 쓰면 자연스럽습니다.",
+        "explanation_kr": "諛⑸Ц 紐⑹쟻??留먰븷 ?뚮뒗 `I'm here for + 紐⑹쟻` ?⑦꽩???곕㈃ ?먯뿰?ㅻ읇?듬땲??",
         "openkb_source_tags": [
           "immigration_visit_purpose",
           "be_verb",
           "travel_purpose_expression"
         ],
         "micro_practice": {
-          "prompt_kr": "출장 목적으로 왔다고 말해보세요.",
+          "prompt_kr": "異쒖옣 紐⑹쟻?쇰줈 ?붾떎怨?留먰빐蹂댁꽭??",
           "answer_example": "I'm here for a business meeting."
         }
       }
     ],
     "personalized_next_step": {
-      "focus_kr": "짧은 단어 답변을 완전한 문장으로 확장하기",
+      "focus_kr": "吏㏃? ?⑥뼱 ?듬????꾩쟾??臾몄옣?쇰줈 ?뺤옣?섍린",
       "recommended_card_ids": [
         "FORM_BE_VERB_001",
         "IMM_PURPOSE_PATTERN_001"
@@ -928,8 +921,8 @@ This is the minimum shape Developer C can safely consume.
     "hint_count_delta": 0
   },
   "report_item": {
-    "summary": "방문 목적을 전달했습니다.",
-    "improvement": "현재 답변은 진행에 충분합니다.",
+    "summary": "諛⑸Ц 紐⑹쟻???꾨떖?덉뒿?덈떎.",
+    "improvement": "?꾩옱 ?듬?? 吏꾪뻾??異⑸텇?⑸땲??",
     "example_answer": "I'm here for tourism.",
     "score_tags": [
       "task_success_good"
@@ -944,20 +937,74 @@ Developer B owns the Alpha scenario node definitions for language assessment and
 branch recommendation only. Menu screens, cutscenes, movement, Unreal UI, final
 NPC utterances, and TTS remain outside this node contract.
 
-Current Alpha Dev B node order:
+Current Alpha Dev B scenario-node file contract is
+`dev_b_scenario_nodes.v2`. The top-level `scenario_id` is
+`ALPHA_AIRPORT_ARRIVAL`; `chapter_id` is now the ordered in-scenario phase
+boundary rather than a whole-scenario namespace.
+
+Chapter order:
 
 ```text
-FLIGHT_001_SEATMATE_SMALLTALK
--> FLIGHT_002_TRAVEL_PURPOSE
--> FLIGHT_003_STAY_PLAN
--> FLIGHT_004_CLARIFY_OR_ASK_BACK
--> FLIGHT_005_WRAP_UP
+CH0_01_FLIGHT_SMALLTALK
+-> CH0_02_ARRIVAL_TUTORIAL
+-> CH0_03_IMMIGRATION_CHECK
+-> CH0_04_BAGGAGE_CLAIM
+-> CH0_05_RESULT
+```
+
+`CH0_01_FLIGHT_SMALLTALK` has three 5-turn diagnostic route candidates. The
+current default `entry_node_id` remains `FLIGHT_A_001_SEATMATE_SMALLTALK` for
+backward compatibility, and `entry_node_ids` lists all supported route starts:
+
+```text
+FLIGHT_A_001_SEATMATE_SMALLTALK
+FLIGHT_B_001_DESTINATION_CHAT
+FLIGHT_C_001_FORM_HELP_REQUEST
+```
+
+Current Alpha Dev B node flow:
+
+```text
+Route A - Friendly Seatmate:
+FLIGHT_A_001_SEATMATE_SMALLTALK
+-> FLIGHT_A_002_TRAVEL_PURPOSE
+-> FLIGHT_A_003_STAY_PLAN
+-> FLIGHT_A_004_CLARIFY_OR_ASK_BACK
+-> FLIGHT_A_005_WRAP_UP
+-> FLIGHT_999_COMPLETE
+
+Route B - Curious Seatmate:
+FLIGHT_B_001_DESTINATION_CHAT
+-> FLIGHT_B_002_COMPANION_OR_VISIT
+-> FLIGHT_B_003_STAY_PLACE
+-> FLIGHT_B_004_TRIP_PLANS
+-> FLIGHT_B_005_LANDING_CLOSE
+-> FLIGHT_999_COMPLETE
+
+Route C - Travel Form Help:
+FLIGHT_C_001_FORM_HELP_REQUEST
+-> FLIGHT_C_002_FIRST_TIME_ENTRY
+-> FLIGHT_C_003_ADDRESS_HELP
+-> FLIGHT_C_004_HOTEL_HOSTEL_REPAIR
+-> FLIGHT_C_005_FORM_CLOSE
+-> FLIGHT_999_COMPLETE
+
+After flight completion:
+FLIGHT_999_COMPLETE
+-> Unreal airport-arrival tutorial/movement
 -> IMM_001_PASSPORT
 -> existing IMM_* route
 -> IMM_007_FINAL_DECISION
--> BAG_001_NOTICE_BAG_MISSING
--> BAG_002_FIND_STAFF
--> existing BAG_003..BAG_007 route
+-> IMM_999_CLEARED
+-> BAG_001_REPORT_MISSING_AT_DESK
+-> BAG_002_PROVIDE_CLAIM_TAG
+-> BAG_003_CONFIRM_SEARCHED_CAROUSEL
+-> BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD
+-> BAG_005_CUSTOMS_HOLD_EXPLANATION
+-> Unreal unlock/open suitcase + random customs item reveal
+-> BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM
+-> BAG_007_CUSTOMS_CLEARANCE
+-> BAG_999_COMPLETE
 -> ALPHA_999_FINAL_SCOREBOARD
 ```
 
@@ -966,9 +1013,14 @@ node even when the answer needs retry, clarification, or a hint. Immediate
 out-game feedback remains disallowed for the flight scene; records are deferred
 to the final Alpha report.
 
-`IMM_007_FINAL_DECISION` is an immigration-clearance transition node in the
-Alpha flow. `ALPHA_999_FINAL_SCOREBOARD` is the Dev B final-branch node for
-scenario-end scoring.
+`FLIGHT_999_COMPLETE`, `IMM_999_CLEARED`, and `BAG_999_COMPLETE` have
+`node_type = transition`. They are not speech-turn targets. When a dialogue
+node branches to one of them, Developer B returns `next_action =
+COMPLETE_CHAPTER`, and Developer C exposes the transition metadata to Unreal.
+
+`IMM_007_FINAL_DECISION` is an immigration-clearance dialogue node that now
+branches to `IMM_999_CLEARED` on success. `ALPHA_999_FINAL_SCOREBOARD` is the
+Dev B final-branch node for scenario-end scoring.
 
 ## 15. Change Control
 

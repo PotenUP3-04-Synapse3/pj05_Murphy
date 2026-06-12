@@ -4,91 +4,134 @@
     "smalltalk_response_clarity": {
       "title_kr": "Clear travel small talk",
       "rule_summary_kr": "For friendly small talk, answer the question clearly and add one simple travel detail.",
-      "good_examples": ["Yes, I'm going to New York for a short trip.", "It's my first time visiting the United States."],
+      "good_examples": [
+        "Yes, I'm going to New York for a short trip.",
+        "It's my first time visiting the United States."
+      ],
       "practice_prompt_kr": "Answer a friendly seatmate with one clear sentence about your trip.",
       "answer_example": "Yes, I'm going to New York for a short trip."
     },
     "sentence_completion": {
       "title_kr": "완전한 문장으로 답하기",
       "rule_summary_kr": "입국심사와 공항 문제 해결에서는 단어만 말하기보다 주어와 동사를 포함한 짧은 문장이 더 안전합니다.",
-      "good_examples": ["I'm here for tourism.", "My suitcase didn't arrive."],
+      "good_examples": [
+        "I'm here for tourism.",
+        "My suitcase didn't arrive."
+      ],
       "practice_prompt_kr": "상황을 완전한 영어 문장으로 말해보세요.",
       "answer_example": "I'm here for tourism."
     },
     "purpose_statement": {
       "title_kr": "방문 목적을 바로 말하기",
       "rule_summary_kr": "입국심사에서 방문 목적은 짧고 직접적인 문장으로 먼저 말하는 것이 안전합니다.",
-      "good_examples": ["I'm here for tourism.", "I'm visiting my family."],
+      "good_examples": [
+        "I'm here for tourism.",
+        "I'm visiting my family."
+      ],
       "practice_prompt_kr": "방문 목적을 한 문장으로 말해보세요.",
       "answer_example": "I'm here for tourism."
     },
     "duration_statement": {
       "title_kr": "체류 기간을 구체적으로 말하기",
       "rule_summary_kr": "체류 기간은 숫자와 기간 단위를 함께 말해야 심사관이 바로 이해할 수 있습니다.",
-      "good_examples": ["I'll stay for five days.", "I'll be here for two weeks."],
+      "good_examples": [
+        "I'll stay for five days.",
+        "I'll be here for two weeks."
+      ],
       "practice_prompt_kr": "체류 기간을 숫자와 함께 말해보세요.",
       "answer_example": "I'll stay for five days."
     },
     "stay_location_statement": {
       "title_kr": "숙소 위치를 명확히 말하기",
       "rule_summary_kr": "숙소 질문에는 호텔, 친구 집, 가족 집처럼 장소 유형과 도시를 함께 말하면 좋습니다.",
-      "good_examples": ["I'm staying at a hotel in New York."],
+      "good_examples": [
+        "I'm staying at a hotel in New York."
+      ],
       "practice_prompt_kr": "어디에 머무는지 장소 유형과 도시를 함께 말해보세요.",
       "answer_example": "I'm staying at a hotel in New York."
     },
     "return_ticket_statement": {
       "title_kr": "귀국 항공권을 명확히 말하기",
       "rule_summary_kr": "귀국 계획은 yes/no 뒤에 날짜나 항공편 정보를 짧게 붙이면 더 신뢰도가 높습니다.",
-      "good_examples": ["Yes, I do. My return flight is next Friday."],
+      "good_examples": [
+        "Yes, I do. My return flight is next Friday."
+      ],
       "practice_prompt_kr": "귀국 항공권이 있다는 것을 날짜와 함께 말해보세요.",
       "answer_example": "Yes, I do. My return flight is next Friday."
     },
     "declaration_explanation": {
       "title_kr": "신고 물품 용도 설명하기",
       "rule_summary_kr": "신고 물품 질문에는 물건의 용도와 개인 사용 여부를 분명히 말해야 합니다.",
-      "good_examples": ["It's for personal use.", "It's for my fishing boat."],
+      "good_examples": [
+        "It's for personal use.",
+        "It's for my fishing boat."
+      ],
       "practice_prompt_kr": "신고한 물건의 용도를 한 문장으로 설명해보세요.",
       "answer_example": "It's for my fishing boat. It's for personal use."
     },
     "bag_content_explanation": {
       "title_kr": "짐 내용물 설명하기",
       "rule_summary_kr": "짐 내용물 질문에는 주요 물건을 구체적으로 말하고 신고할 물건이 있는지 분명히 답해야 합니다.",
-      "good_examples": ["I packed clothes, toiletries, and my laptop. I have nothing else to declare."],
+      "good_examples": [
+        "I packed clothes, toiletries, and my laptop. I have nothing else to declare."
+      ],
       "practice_prompt_kr": "짐 안의 주요 물건과 신고 여부를 한 문장으로 말해보세요.",
       "answer_example": "I packed clothes, toiletries, and my laptop. I have nothing else to declare."
     },
     "problem_statement": {
       "title_kr": "문제 상황을 직접 말하기",
       "rule_summary_kr": "공항 직원에게는 문제가 무엇인지 짧고 직접적으로 말하는 것이 좋습니다.",
-      "good_examples": ["My suitcase didn't arrive."],
+      "good_examples": [
+        "My suitcase didn't arrive."
+      ],
       "practice_prompt_kr": "수화물이 도착하지 않았다는 문제를 말해보세요.",
       "answer_example": "My suitcase didn't arrive."
     },
     "bag_description": {
       "title_kr": "수화물 외형 설명하기",
       "rule_summary_kr": "색, 크기, 종류, 태그 같은 식별 정보를 함께 말하면 직원이 찾기 쉽습니다.",
-      "good_examples": ["It's a black medium-sized suitcase with a red luggage tag."],
+      "good_examples": [
+        "It's a black medium-sized suitcase with a red luggage tag."
+      ],
       "practice_prompt_kr": "가방의 색, 크기, 특징을 말해보세요.",
       "answer_example": "It's a black medium-sized suitcase with a red luggage tag."
     },
     "flight_or_tag_statement": {
       "title_kr": "수화물 태그나 항공편 정보 말하기",
       "rule_summary_kr": "수화물 신고에서는 태그, 탑승권, 항공편 번호 중 가진 정보를 바로 제시해야 합니다.",
-      "good_examples": ["Yes, here is my baggage claim tag.", "My flight number was KE081."],
+      "good_examples": [
+        "Yes, here is my baggage claim tag.",
+        "My flight number was KE081."
+      ],
       "practice_prompt_kr": "수화물 태그나 항공편 정보를 제시하는 문장을 말해보세요.",
       "answer_example": "Yes, here is my baggage claim tag."
+    },
+    "customs_item_explanation": {
+      "title_kr": "세관 물건 설명하기",
+      "rule_summary_kr": "세관에서 물건을 물어보면, 물건의 이름과 용도를 짧고 구체적으로 설명해야 합니다.",
+      "good_examples": [
+        "It's a personal item. I bought it as a souvenir.",
+        "It's a gift for my friend. It's not for sale."
+      ],
+      "practice_prompt_kr": "세관에서 보인 물건의 이름과 용도를 설명해보세요.",
+      "answer_example": "It's a personal item. I bought it as a souvenir."
     },
     "delivery_request": {
       "title_kr": "배송 주소와 연락처 말하기",
       "rule_summary_kr": "분실 수화물을 찾았을 때 받을 수 있는 장소와 연락 방법을 함께 말해야 합니다.",
-      "good_examples": ["Please send it to my hotel.", "You can call me at this number."],
+      "good_examples": [
+        "Please send it to my hotel.",
+        "You can call me at this number."
+      ],
       "practice_prompt_kr": "가방을 받을 장소와 연락처를 말해보세요.",
       "answer_example": "Please send it to my hotel. You can call me at this number."
     },
     "follow_up_question": {
       "title_kr": "후속 연락을 확인하기",
       "rule_summary_kr": "신고 접수 후에는 reference number를 확인하고 언제 업데이트를 받을 수 있는지 묻는 것이 좋습니다.",
-      "good_examples": ["Thank you. When should I expect an update?"],
+      "good_examples": [
+        "Thank you. When should I expect an update?"
+      ],
       "practice_prompt_kr": "신고 접수 후 업데이트 시점을 묻는 문장을 말해보세요.",
       "answer_example": "Thank you. When should I expect an update?"
     }

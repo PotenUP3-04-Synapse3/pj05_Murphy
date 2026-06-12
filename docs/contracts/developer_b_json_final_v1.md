@@ -58,7 +58,7 @@ Unreal은 게임 상태와 플레이어 입력을 보낸다. Developer B가 직�
   "session": {
     "session_id": "session_001",
     "player_id": "player_001",
-    "chapter_id": "CH0_IMMIGRATION",
+    "chapter_id": "CH0_03_IMMIGRATION_CHECK",
     "scene_id": "JFK_IMMIGRATION_HALL",
     "current_node_id": "IMM_002_PURPOSE"
   },
@@ -156,7 +156,7 @@ Developer C는 STT와 OpenKB 조회 후 아래 형태로 내부 데이터를 만
   },
   "node_context": {
     "node_id": "IMM_002_PURPOSE",
-    "chapter_id": "CH0_IMMIGRATION",
+    "chapter_id": "CH0_03_IMMIGRATION_CHECK",
     "npc_question": "What is the purpose of your visit?",
     "npc_question_goal": "ask_visit_purpose",
     "required_intents": [
@@ -269,7 +269,7 @@ Developer C adapter는 위 데이터를 모아 Developer B policy에 아래 구�
   "request_id": "req_imm_0001",
   "session_id": "session_001",
   "player_id": "player_001",
-  "chapter_id": "CH0_IMMIGRATION",
+  "chapter_id": "CH0_03_IMMIGRATION_CHECK",
   "scene_id": "JFK_IMMIGRATION_HALL",
   "current_node_id": "IMM_002_PURPOSE",
   "turn_index": 2,
@@ -381,6 +381,7 @@ Developer B는 최종 응답 JSON을 만들지 않는다. 대신 Developer C가 
 {
   "contract_version": "dev_b_policy.v1",
   "node_id": "IMM_002_PURPOSE",
+  "npc_emotion": "Nomal",
   "evaluation": {
     "verdict": "SUCCESS",
     "detected_intents": [
@@ -511,6 +512,7 @@ Developer B는 최종 응답 JSON을 만들지 않는다. 대신 Developer C가 
 | `evaluation.filled_slots` | Developer B | State Machine, Report | 채워진 정보 |
 | `evaluation.missing_slots` | Developer B | Hint, Retry | 부족한 정보 |
 | `evaluation.scores` | Developer B | Level, Report | 학습 점수 |
+| `npc_emotion` | Developer B | C adapter, Developer A, Unreal | NPC emotion enum for the current player utterance. Allowed values: `Nomal`, `Joy`, `Anger`, `Sadness`, `Panic`, `Suspicion`, `Disgust`, `Fear`, `Smirk`, `Surprise`, `Pain`, `Confusion`, `Boredom`. |
 | `level_hint` | Developer B | UI, A/C context | 레벨과 힌트 추천 |
 | `in_game_feedback` | Developer B | C adapter, Developer A, Unreal UI | 플레이 중 의사소통 유지를 위한 Recast/Clarification/Elicitation/Scaffolding 전략 |
 | `error_capture` | Developer B | C storage/logging, final report builder | 최종 피드백용 오류 markdown 저장 후보 |
@@ -628,7 +630,7 @@ Markdown 저장은 Developer C의 logging/storage 범위이다. Developer B는 �
   "contract_version": "dev_b_policy.v1",
   "out_game_feedback_input": {
     "session_id": "session_001",
-    "chapter_id": "CH0_IMMIGRATION",
+    "chapter_id": "CH0_03_IMMIGRATION_CHECK",
     "error_log_markdown_path": "logs/session_001/error_log.md",
     "error_log_markdown": "### IMM_002_PURPOSE - err_imm_002_001\n- Original: I here tourism.\n- Focus on Form: be_verb_in_self_introduction\n- Suggested: I'm here for tourism.",
     "node_results": [
@@ -728,6 +730,7 @@ Out-game feedback 규칙:
 | `CRITICAL_FAIL` | `WARNING` | `warning` | `warning_next_node` |
 | `CRITICAL_FAIL` | `FAIL_END` | `bad_end` | `END_SECONDARY_INSPECTION` 또는 실패 엔딩 |
 | final node | `FINAL_DECISION` | `final` | 최종 판정 노드 |
+| transition node | `COMPLETE_CHAPTER` | `transition` | transition metadata node |
 
 분기 안전 규칙:
 
@@ -806,7 +809,7 @@ Developer B는 CEFR를 그대로 쓰기보다 프로젝트용 Travel Speaking Le
 {
   "contract_version": "dev_b_policy.v1",
   "session_id": "session_001",
-  "chapter_id": "CH0_IMMIGRATION",
+  "chapter_id": "CH0_03_IMMIGRATION_CHECK",
   "tier": "Silver",
   "travel_speaking_level": "TSL_2_FUNCTIONAL",
   "node_results": [
@@ -920,8 +923,9 @@ V1 scoring rules:
 - Convert each per-turn `rubric_scores.total` from 0-12 to 0-100.
 - Average scored nodes with `simple_average`; no node weights are applied in
   v1.
-- Exclude `IMM_007_FINAL_DECISION` from the average when earlier scored records
-  exist, so the closing acknowledgement does not inflate the result.
+- Exclude `IMM_007_FINAL_DECISION` and `ALPHA_999_FINAL_SCOREBOARD` from the
+  average when earlier scored records exist, so closing/result nodes do not
+  inflate the result.
 - Use feedback/error/focus-on-form records for `reason_tags` and
   `report_summary`; do not apply an additional numeric penalty outside the
   rubric scores.
@@ -942,11 +946,22 @@ Recommendation thresholds:
 
 | Node ID | Required Intent | Required Slot | 기본 Success Next | 핵심 평가 |
 | --- | --- | --- | --- | --- |
-| `FLIGHT_001_SEATMATE_SMALLTALK` | `respond_to_seatmate_request` | `polite_response` | `FLIGHT_002_TRAVEL_PURPOSE` | 부탁에 대한 공손한 반응 |
-| `FLIGHT_002_TRAVEL_PURPOSE` | `state_travel_purpose` | `travel_purpose` | `FLIGHT_003_STAY_PLAN` | 여행 목적 설명 |
-| `FLIGHT_003_STAY_PLAN` | `state_stay_plan` | `stay_plan` | `FLIGHT_004_CLARIFY_OR_ASK_BACK` | 체류 계획 설명 |
-| `FLIGHT_004_CLARIFY_OR_ASK_BACK` | `handle_clarification_or_ask_back` | `interaction_repair` | `FLIGHT_005_WRAP_UP` | 되묻기/확인/상호작용 복구 |
-| `FLIGHT_005_WRAP_UP` | `close_smalltalk_politely` | `smalltalk_closing` | `IMM_001_PASSPORT` | 스몰토크 마무리 |
+| `FLIGHT_A_001_SEATMATE_SMALLTALK` | `respond_to_seatmate_request` | `polite_response` | `FLIGHT_A_002_TRAVEL_PURPOSE` | friendly seatmate route start |
+| `FLIGHT_A_002_TRAVEL_PURPOSE` | `state_travel_purpose` | `travel_purpose` | `FLIGHT_A_003_STAY_PLAN` | travel purpose small talk |
+| `FLIGHT_A_003_STAY_PLAN` | `state_stay_plan` | `stay_plan` | `FLIGHT_A_004_CLARIFY_OR_ASK_BACK` | stay plan small talk |
+| `FLIGHT_A_004_CLARIFY_OR_ASK_BACK` | `handle_clarification_or_ask_back` | `interaction_repair` | `FLIGHT_A_005_WRAP_UP` | clarification or ask-back repair |
+| `FLIGHT_A_005_WRAP_UP` | `close_smalltalk_politely` | `smalltalk_closing` | `FLIGHT_999_COMPLETE` | friendly route closing |
+| `FLIGHT_B_001_DESTINATION_CHAT` | `state_destination_after_arrival` | `destination` | `FLIGHT_B_002_COMPANION_OR_VISIT` | curious seatmate route start |
+| `FLIGHT_B_002_COMPANION_OR_VISIT` | `state_companion_or_visit_plan` | `travel_companion` | `FLIGHT_B_003_STAY_PLACE` | companion or meeting plan |
+| `FLIGHT_B_003_STAY_PLACE` | `state_accommodation_plan` | `accommodation` | `FLIGHT_B_004_TRIP_PLANS` | accommodation small talk |
+| `FLIGHT_B_004_TRIP_PLANS` | `state_trip_activity` | `planned_activity` | `FLIGHT_B_005_LANDING_CLOSE` | planned activity small talk |
+| `FLIGHT_B_005_LANDING_CLOSE` | `close_smalltalk_politely` | `smalltalk_closing` | `FLIGHT_999_COMPLETE` | curious route closing |
+| `FLIGHT_C_001_FORM_HELP_REQUEST` | `respond_to_form_help_request` | `help_response` | `FLIGHT_C_002_FIRST_TIME_ENTRY` | travel form help route start |
+| `FLIGHT_C_002_FIRST_TIME_ENTRY` | `state_first_time_entry_status` | `first_time_entry` | `FLIGHT_C_003_ADDRESS_HELP` | first U.S. entry small talk |
+| `FLIGHT_C_003_ADDRESS_HELP` | `explain_address_field` | `address_field_guidance` | `FLIGHT_C_004_HOTEL_HOSTEL_REPAIR` | arrival form address guidance |
+| `FLIGHT_C_004_HOTEL_HOSTEL_REPAIR` | `repair_hotel_hostel_confusion` | `repair_answer` | `FLIGHT_C_005_FORM_CLOSE` | hotel/hostel repair |
+| `FLIGHT_C_005_FORM_CLOSE` | `close_smalltalk_politely` | `smalltalk_closing` | `FLIGHT_999_COMPLETE` | travel form route closing |
+| `FLIGHT_999_COMPLETE` | transition node | transition metadata | `IMM_001_PASSPORT` | flight complete, start airport arrival tutorial |
 | `IMM_001_PASSPORT` | `submit_passport` | `passport_submission_status` | `IMM_002_PURPOSE` | 여권 제출 요청 이해 |
 | `IMM_002_PURPOSE` | `state_visit_purpose` | `visit_purpose` | `IMM_003_DURATION` | 방문 목적 명확성 |
 | `IMM_003_DURATION` | `state_stay_duration` | `stay_duration` | `IMM_004_STAY_LOCATION` | 체류 기간 구체성 |
@@ -954,14 +969,16 @@ Recommendation thresholds:
 | `IMM_005_RETURN_TICKET` | `confirm_return_ticket` | `return_ticket_status` | `IMM_006_DECLARATION_CHECK` | 귀국 항공권과 귀국 의사 |
 | `IMM_006_DECLARATION_CHECK` | `explain_declared_item` | `item_purpose` | `IMM_006B_PACKED_BAG_CHECK` | 신고 물품 용도와 문제 해결력 |
 | `IMM_006B_PACKED_BAG_CHECK` | `confirm_packed_by_self` | `packed_by_self` | `IMM_007_FINAL_DECISION` | 직접 포장과 내용물 인지 |
-| `IMM_007_FINAL_DECISION` | `acknowledge_immigration_clearance` | `immigration_transition_acknowledgement` | `BAG_001_NOTICE_BAG_MISSING` | 입국심사 통과 후 수화물 이동 |
-| `BAG_001_NOTICE_BAG_MISSING` | `notice_missing_bag` | `missing_bag_observation` | `BAG_002_FIND_STAFF` | 수화물 미도착 인지 |
-| `BAG_002_FIND_STAFF` | `ask_baggage_help` | `missing_bag_status` | `BAG_003_REPORT_MISSING_BAG` | 직원에게 도움 요청 |
-| `BAG_003_REPORT_MISSING_BAG` | `report_missing_bag` | `missing_bag_report` | `BAG_004_DESCRIBE_BAG` | 수화물 미도착 설명 |
-| `BAG_004_DESCRIBE_BAG` | `describe_missing_bag` | `bag_description` | `BAG_005_PROVIDE_FLIGHT_OR_TAG` | 가방 특징 설명 |
-| `BAG_005_PROVIDE_FLIGHT_OR_TAG` | `provide_baggage_tag_or_flight_info` | `baggage_tag_or_flight_info` | `BAG_006_CONTACT_AND_DELIVERY` | 수화물 태그/항공편 정보 제공 |
-| `BAG_006_CONTACT_AND_DELIVERY` | `provide_delivery_contact` | `delivery_contact` | `BAG_007_RESOLUTION` | 배송 주소/연락처 제공 |
-| `BAG_007_RESOLUTION` | `acknowledge_baggage_resolution` | `resolution_acknowledgement` | `ALPHA_999_FINAL_SCOREBOARD` | 신고 접수 결과 이해 |
+| `IMM_007_FINAL_DECISION` | `acknowledge_immigration_clearance` | `immigration_transition_acknowledgement` | `IMM_999_CLEARED` | immigration clearance acknowledgement |
+| `IMM_999_CLEARED` | transition node | transition metadata | `BAG_001_REPORT_MISSING_AT_DESK` | immigration cleared, enter baggage claim |
+| `BAG_001_REPORT_MISSING_AT_DESK` | `report_missing_bag_at_service_desk` | `missing_bag_statement` | `BAG_002_PROVIDE_CLAIM_TAG` | report at service desk that suitcase did not arrive |
+| `BAG_002_PROVIDE_CLAIM_TAG` | `provide_claim_tag` | `claim_tag_status` | `BAG_003_CONFIRM_SEARCHED_CAROUSEL` | provide baggage claim tag or ticket |
+| `BAG_003_CONFIRM_SEARCHED_CAROUSEL` | `confirm_carousel_search` | `carousel_search_confirmation` | `BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD` | confirm the carousel was checked carefully |
+| `BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD` | `acknowledge_customs_hold_redirect` | `customs_hold_redirect_acknowledgement` | `BAG_005_CUSTOMS_HOLD_EXPLANATION` | service desk redirects player to customs-held suitcase |
+| `BAG_005_CUSTOMS_HOLD_EXPLANATION` | `acknowledge_customs_hold_explanation` | `customs_hold_acknowledgement` | `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM` | customs officer explains locked suitcase and inspection hold |
+| `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM` | `explain_random_customs_item` | `customs_item_explanation` | `BAG_007_CUSTOMS_CLEARANCE` | explain the revealed random customs item |
+| `BAG_007_CUSTOMS_CLEARANCE` | `acknowledge_customs_clearance` | `customs_clearance_acknowledgement` | `BAG_999_COMPLETE` | acknowledge customs clearance |
+| `BAG_999_COMPLETE` | transition node | transition metadata | `ALPHA_999_FINAL_SCOREBOARD` | baggage claim complete, show Alpha scoreboard |
 | `ALPHA_999_FINAL_SCOREBOARD` | `summarize_alpha_result` | `final_recommendation` | ending node | 알파 전체 누적 결과 최종 판정 |
 
 ## 16. Developer B가 만들지 않는 것

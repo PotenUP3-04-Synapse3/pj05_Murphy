@@ -36,6 +36,12 @@ hint, warning, and bad-end branch candidates.
 Each node also includes `objective_kr` so the Korean UI objective can be managed
 with the scenario content.
 
+Developer B later expanded the Alpha policy route beyond the original
+immigration-only prototype. The current B-owned node data includes a five-turn
+flight small-talk diagnostic route, the immigration route, a missing-baggage
+problem-solving route starting at `BAG_001_NOTICE_BAG_MISSING`, and
+`ALPHA_999_FINAL_SCOREBOARD` as the dedicated Alpha final-branch node.
+
 Developer B then extended the policy engine to write learning feedback records
 directly into the B-owned OpenKB `dev_b` namespace. The write path records
 error capture, out-game feedback seeds, focus-on-form targets, report items,
@@ -47,6 +53,14 @@ policy remains the authority for verdict, branch, next node, and state delta;
 the LLM layer is limited to Korean hint text, feedback notes, report wording,
 Focus-on-Form explanations, and rubric score candidates with fallback behavior.
 
+Developer B also added additive report and dialogue seed metadata. The
+`report_seed_summary` payload gives a final report assembler candidate level,
+tier, score, strengths, critical breakdowns, corrected examples, reusable
+sentence patterns, and display-priority guidance. The `dialogue_seed` payload
+gives Developer A generation metadata such as NPC role, surface goal,
+assessment targets, required slots, follow-up intents, tone guidance, and stop
+condition without authoring final NPC text.
+
 Developer B now records policy-engine execution through the shared
 `unified_agent_run.v1` AgentRun log format. These records explain the internal
 state-machine, level/hint, feedback, rubric, LLM/fallback, and OpenKB write
@@ -54,10 +68,10 @@ steps without changing the public `dev_b_policy.v1` response contract.
 
 On 2026-06-05, Developer B completed the final result score policy path for
 the Chapter 0 pre-prototype. The new B-owned policy reads B OpenKB runtime
-records, converts per-turn 0-12 rubric totals into 0-100 scores, averages
-scored scenario turns, derives pass/secondary/comic-fail recommendations, and
-builds final report summaries with best node, weakest node, improvement target,
-and reason tags.
+records, converts per-turn 0-12 rubric dimensions into 0-100 scores, applies
+scene-normalized weighting for flight, immigration, and baggage evidence,
+derives pass/secondary/comic-fail recommendations, and builds final report
+summaries with best node, weakest node, improvement target, and reason tags.
 
 Developer B also improved the local integrated demo workflow around
 `/respond-dialog`. The browser tester now supports direct microphone recording
@@ -71,13 +85,14 @@ The Developer B implementation is split into a small public agent and focused
 services:
 
 - `backend/app/agents/agent_b/english_level_hint_agent.py` is the policy entry
-  point for C adapter integration.
+  point for C adapter integration and builds report/dialogue seed metadata.
 - `backend/app/services/service_b/scenario_state_machine.py` owns deterministic
   verdict, branch, next-action, next-node, and state-delta decisions.
 - `backend/app/services/service_b/level_adaptation_controller.py` owns English
   level, CEFR estimate, hint strength, hint type, and in-game feedback strategy.
 - `backend/app/services/service_b/openkb_feedback_writer.py` owns B namespace
-  runtime OpenKB writes for feedback/error/focus-on-form records.
+  runtime OpenKB writes for feedback/error/focus-on-form records, including
+  report seed and dialogue seed snapshots.
 - `backend/app/agents/agent_b/feedback_hint_llm_client.py` owns the optional
   OpenAI Responses API client for B feedback generation.
 - `backend/app/services/service_b/feedback_hint_generator.py` owns LLM/fallback
@@ -86,13 +101,18 @@ services:
   rubric scoring, TSL mapping, and difficulty profile generation.
 - `backend/app/services/service_b/final_result_score_policy.py` owns final
   result scoring from B OpenKB records, including pass rank, quantitative
-  score averages, final recommendation, and report summary generation.
+  scene-weighted score averages, final recommendation, and report summary
+  generation.
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py` owns
+  the five-turn flight diagnostic minimum, skip eligibility, and fallback
+  question sequence.
 - `backend/app/services/service_b/focus_on_form_report_policy.py` owns the
   B-side Focus-on-Form practice-card report builder.
 - `backend/app/services/service_b/developer_b_agent_run_logger.py` owns B
   execution logging into the shared unified AgentRun JSONL/markdown files.
-- `backend/app/data/scenario_nodes.json` defines Chapter 0 immigration node
-  content and branch candidates.
+- `backend/app/data/scenario_nodes.json` defines Chapter 0 flight,
+  immigration, baggage, and Alpha scoreboard node content and branch
+  candidates.
 - `backend/app/kb/dev_b/` is the tracked B namespace for static OpenKB content
   seeds. Generated runtime records are written under
   `backend/runtime/openkb/dev_b/`.
@@ -116,6 +136,9 @@ B ownership.
 - LLM-assisted Feedback/Hint Generator
 - Travel Speaking Level Rubric Controller
 - Final Result Score Policy
+- Flight Small Talk Diagnostic Policy
+- Report Seed Summary Builder
+- Dialogue Seed Metadata
 - Unified AgentRun Logger
 - Demo Usage and Recording Diagnostics
 - Dialogue Directive Metadata
@@ -152,6 +175,16 @@ The contract also includes optional learning-difficulty metadata:
 - `difficulty_profile`
 - `feedback_generation`
 
+The contract also includes additive report and dialogue seed metadata:
+
+- `report_seed_summary`
+- `dialogue_seed`
+
+These fields are documented in
+`docs/contracts/developer_b_report_and_dialogue_seed_contract.md`. They are
+candidate metadata for report assembly and A-facing dialogue generation, not a
+final screen UI payload and not final NPC dialogue text.
+
 The contract now also supports final result delivery on final-branch outputs:
 
 - `final_result.final_recommendation`
@@ -172,8 +205,36 @@ The branch policy is deterministic:
 - Warning and bad-end handle critical immigration risk expressions.
 - Every `branch.next_node_id` is checked against `node_context.allowed_next_nodes`
   and, when present, `client_allowed_next_nodes`.
+- Flight diagnostic nodes intentionally advance to the next evidence node even
+  for retry, clarify, hint, warning, or bad-end branch candidates so the scene
+  gathers a full five-turn language sample without blocking the Alpha route.
 
 ## Node Design
+
+The Alpha Dev B route now covers:
+
+- `FLIGHT_001_SEATMATE_SMALLTALK`
+- `FLIGHT_002_TRAVEL_PURPOSE`
+- `FLIGHT_003_STAY_PLAN`
+- `FLIGHT_004_CLARIFY_OR_ASK_BACK`
+- `FLIGHT_005_WRAP_UP`
+- `IMM_001_PASSPORT`
+- `IMM_002_PURPOSE`
+- `IMM_003_DURATION`
+- `IMM_004_STAY_LOCATION`
+- `IMM_005_RETURN_TICKET`
+- `IMM_ALPHA_GOLD_BAG_CONTENT_CHECK`
+- `IMM_006_DECLARATION_CHECK`
+- `IMM_006B_PACKED_BAG_CHECK`
+- `IMM_007_FINAL_DECISION`
+- `BAG_001_NOTICE_BAG_MISSING`
+- `BAG_002_FIND_STAFF`
+- `BAG_003_REPORT_MISSING_BAG`
+- `BAG_004_DESCRIBE_BAG`
+- `BAG_005_PROVIDE_FLIGHT_OR_TAG`
+- `BAG_006_CONTACT_AND_DELIVERY`
+- `BAG_007_RESOLUTION`
+- `ALPHA_999_FINAL_SCOREBOARD`
 
 The Chapter 0 immigration flow now covers:
 
@@ -186,11 +247,14 @@ The Chapter 0 immigration flow now covers:
 - `IMM_006B_PACKED_BAG_CHECK`
 - `IMM_007_FINAL_DECISION`
 
-Alpha-oriented B-owned extensions also include the Gold-only
-`IMM_ALPHA_GOLD_BAG_CONTENT_CHECK` challenge and the first
-`BAGGAGE_MISSING` node set from `BAG_002_FIND_STAFF` through
-`BAG_007_RESOLUTION`. These remain B policy/scenario assets until Developer C
-adds the broader Alpha scene orchestration.
+Alpha-oriented B-owned extensions include the five flight diagnostic nodes, the
+Gold-only `IMM_ALPHA_GOLD_BAG_CONTENT_CHECK` challenge, the
+`BAGGAGE_MISSING` node set from `BAG_001_NOTICE_BAG_MISSING` through
+`BAG_007_RESOLUTION`, and `ALPHA_999_FINAL_SCOREBOARD`. In B policy,
+`IMM_007_FINAL_DECISION` is now an immigration-clearance transition into
+baggage claim, while `ALPHA_999_FINAL_SCOREBOARD` is the Alpha scenario-end
+final branch node. These remain B policy/scenario assets until Developer C,
+Developer A, and Unreal adopt the broader Alpha scene orchestration.
 
 Each node defines required intents, required slots, optional slots, critical
 slots, allowed slot values, risk keywords, a recommended expression, Korean hint
@@ -212,6 +276,9 @@ LLM feedback is optional and disabled by default. `DEV_B_FEEDBACK_LLM_MODE=rule`
 uses deterministic fallback text. `DEV_B_FEEDBACK_LLM_MODE=llm` attempts the B
 LLM path, but API key absence, model errors, or invalid JSON fall back without
 changing branch, verdict, next node, or state delta.
+LLM-assisted output that attempts to provide authority keys, final NPC dialogue,
+TTS text, audio, animation, or final dialogue lines also falls back to rule
+output.
 
 Unified AgentRun logging is additive and best-effort. Runtime records append to
 `backend/runtime/generated/agent_runs/unified_agent_runs.jsonl` and
@@ -224,11 +291,14 @@ current browser run, and it normalizes common token/cost aliases such as
 model metadata.
 
 Final result scoring is deterministic and local. It uses the B-authored
-OpenKB records for a session, ignores unscored records, excludes the
-`IMM_007_FINAL_DECISION` node from the average when prior scored turns exist,
-and returns an unranked result when no valid scored records are available.
-Feedback and focus-on-form records affect reason tags and report summary text,
-not hidden numeric penalties.
+OpenKB records for a session, ignores unscored records, excludes
+`IMM_007_FINAL_DECISION` and `ALPHA_999_FINAL_SCOREBOARD` when prior scored
+turns exist, and returns an unranked result when no valid scored records are
+available. Current Alpha scoring converts each rubric dimension from 0-2 to
+0-100, then uses scene-normalized dimension averages with default scene weights:
+flight 20%, immigration 50%, and baggage 30%. Feedback and focus-on-form
+records affect reason tags and report summary text, not hidden numeric
+penalties.
 
 Developer B coordination requests are recorded in
 `docs/contracts/change_requests.md`:
@@ -238,8 +308,10 @@ Developer B coordination requests are recorded in
   references.
 - C should expose the B-owned Focus-on-Form report as optional
   `out_game_feedback` when the final result surface is ready.
+- C should adopt `ALPHA_999_FINAL_SCOREBOARD` as the Alpha final-result trigger
+  and treat `IMM_007_FINAL_DECISION` as an immigration-clearance transition.
 - A/C still need Alpha scene support for flight small talk, cutscene/skip,
-  baggage, and tier-aware NPC dialogue/TTS consumption.
+  baggage, final scoreboard, and tier-aware NPC dialogue/TTS consumption.
 
 ## Testing
 
@@ -258,12 +330,19 @@ Covered scenarios:
 - All Chapter 0 nodes define branch candidates and allowed next nodes.
 - Report items, feedback tags, error capture, and out-game feedback seeds are
   returned.
+- `report_seed_summary` contains report-assembly metadata such as candidate
+  score, strengths, critical breakdowns, corrected examples, reusable patterns,
+  and tier display guidance.
+- `dialogue_seed` contains A-facing generation metadata without final NPC text.
 - OpenKB write references are returned for every policy evaluation.
 - Error turns create JSONL and markdown records in the B namespace.
-- Successful turns can record low-priority summary seeds.
+- Successful turns can record low-priority summary seeds, report seeds, and
+  dialogue seeds.
 - Repeated evaluation of the same turn is idempotent.
 - Writer failure does not change branch, verdict, or state delta.
 - Fake LLM feedback can update hint, feedback note, and report wording.
+- Forbidden LLM dialogue or authority keys force fallback without changing
+  branch, verdict, or state delta.
 - LLM failure falls back without changing branch, verdict, or state delta.
 - Rubric totals map to TSL 1-4 and difficulty profiles.
 - OpenKB records include feedback generation and difficulty metadata.
@@ -273,7 +352,13 @@ Covered scenarios:
   to avoid mixing historical or other-developer costs into the visible total.
 - Browser-recorded wav input can be attached to the next `/respond-dialog` turn
   through the same multipart audio path as uploaded wav files.
+- Five flight small-talk nodes form a diagnostic route and retry/clarify/hint
+  branches still advance to the next evidence node.
+- `BAG_001_NOTICE_BAG_MISSING` starts the missing-bag route.
+- `ALPHA_999_FINAL_SCOREBOARD` is the only Dev B final branch node.
 - Final score policy converts 0-12 rubric totals to 0-100 quantitative scores.
+- Final score policy excludes both final/result nodes when prior scored records
+  exist and supports Alpha scene-normalized scoring.
 - Final recommendations distinguish pass, conditional pass, secondary room,
   comic fail, and unranked outcomes.
 - Final result summaries identify best node, weakest node, main improvement,
@@ -281,7 +366,7 @@ Covered scenarios:
 - Final branch responses can carry `report.final_result` through the C
   response envelope.
 
-Latest verification:
+Latest recorded verification:
 
 - `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/dev_b/test_developer_b_agent_run_log.py -q`:
   26 passed
@@ -289,10 +374,9 @@ Latest verification:
   9 passed, 2 warnings
 - `uv run pytest backend/tests/test_unified_agent_run_log.py -q`: 1 passed,
   1 warning
-- `uv run pytest -q`: 76 passed, 2 warnings
+- `uv run pytest -q`: 187 passed, 2 warnings
 - `uv run ruff check .`: passed
-- `uv run mypy .`: passed with no issues in 82 source files when run outside
-  the sandbox because the sandboxed run cannot access the user-level uv cache.
+- `uv run mypy .`: passed with no issues in 91 source files.
 
 ## Demo Scenarios
 
@@ -305,6 +389,9 @@ Latest verification:
 - Warning or bad-end path: illegal work, overstay, unknown item, or unsafe bag
   content expressions raise suspicion and branch to C-validated warning/fail
   outcomes.
+- Alpha route path: five-turn flight small talk leads into immigration,
+  immigration clearance leads into baggage claim, and baggage resolution leads
+  to the Alpha final scoreboard.
 - Multi-turn demo path: testers can upload a wav or record the next wav turn
   directly in the browser and inspect request-scoped token/cost totals.
 
@@ -315,14 +402,17 @@ Latest verification:
 - Designed Chapter 0 immigration scenario node specs covering passport,
   purpose, duration, stay location, return ticket, declaration, bag check, and
   final decision flows, including Korean UI objective text.
+- Expanded Alpha B-owned scenario policy to cover five flight small-talk nodes,
+  missing-bag entry at `BAG_001_NOTICE_BAG_MISSING`, and
+  `ALPHA_999_FINAL_SCOREBOARD` as the dedicated final branch node.
 - Built a rule-based scenario state machine for success, retry, clarify, hint,
   warning, bad-end, and final branch recommendations.
 - Added English level and hint adaptation logic for beginner/Bronze,
   intermediate/Silver, and advanced/Gold player profiles.
 - Generated structured `state_delta`, `error_capture`,
-  `out_game_feedback_seed`, `dialogue_directive`, and `report_item` payloads
-  without crossing into NPC dialogue, TTS, STT, validator, or Unreal response
-  ownership.
+  `out_game_feedback_seed`, `report_seed_summary`, `dialogue_seed`,
+  `dialogue_directive`, and `report_item` payloads without crossing into NPC
+  dialogue, TTS, STT, validator, or Unreal response ownership.
 - Implemented local OpenKB `dev_b` namespace writes for feedback/error records
   with deterministic ids, JSONL/markdown artifacts, idempotency, and write
   failure isolation.
@@ -330,15 +420,16 @@ Latest verification:
   rubric candidate generation with deterministic fallback.
 - Added 0-12 Travel Speaking Level rubric and difficulty profile policy.
 - Implemented final result score policy that converts B OpenKB rubric records
-  into 0-100 scores, pass ranks, recommendations, reason tags, and report
-  summaries.
+  into 0-100 scene-normalized scores, pass ranks, recommendations, reason tags,
+  and report summaries.
 - Added shared `unified_agent_run.v1` AgentRun logging for Developer B policy
   execution timelines.
 - Improved `/respond-dialog` demo diagnostics with browser-recorded wav input,
   a running-only stopwatch indicator, and request-scoped AgentRun token/cost
   totals.
 - Added focused pytest coverage for broken English, branch safety, risk
-  handling, node spec completeness, feedback/report payload generation, and
+  handling, node spec completeness, feedback/report payload generation,
+  report/dialogue seeds, Alpha route expansion, final scoreboard behavior, and
   OpenKB write behavior.
 - Documented cross-owner integration requirements for the remaining Alpha scene
   runtime, final out-game report exposure, and tier-aware A/C consumption.

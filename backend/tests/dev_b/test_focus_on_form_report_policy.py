@@ -14,9 +14,8 @@ CURRENT_DEV_B_FOCUS_TARGETS = {
     "declaration_explanation",
     "bag_content_explanation",
     "problem_statement",
-    "bag_description",
     "flight_or_tag_statement",
-    "delivery_request",
+    "customs_item_explanation",
     "follow_up_question",
     "sentence_completion",
     "smalltalk_response_clarity",
@@ -148,7 +147,7 @@ def test_focus_on_form_report_uses_static_cards_for_baggage_targets() -> None:
     report = FocusOnFormReportPolicy().build_report(
         [
             _record(
-                node_id="BAG_003_REPORT_MISSING_BAG",
+                node_id="BAG_001_REPORT_MISSING_AT_DESK",
                 focus_targets=["problem_statement"],
                 original="My bag no come.",
                 suggested="My suitcase didn't arrive.",
@@ -173,7 +172,7 @@ def test_focus_on_form_report_can_be_built_from_full_scenario_session_jsonl(tmp_
             [
                 json.dumps(
                     _record(
-                        node_id="FLIGHT_001_SEATMATE_SMALLTALK",
+                        node_id="FLIGHT_A_001_SEATMATE_SMALLTALK",
                         focus_targets=["smalltalk_response_clarity"],
                         original="I go New York. First time.",
                         suggested="Yes, I'm going to New York for a short trip.",
@@ -183,7 +182,7 @@ def test_focus_on_form_report_can_be_built_from_full_scenario_session_jsonl(tmp_
                 ),
                 json.dumps(_record(node_id="IMM_002_PURPOSE", focus_targets=["purpose_statement"]), ensure_ascii=False),
                 json.dumps(
-                    _record(node_id="BAG_003_REPORT_MISSING_BAG", focus_targets=["problem_statement"]),
+                    _record(node_id="BAG_001_REPORT_MISSING_AT_DESK", focus_targets=["problem_statement"]),
                     ensure_ascii=False,
                 ),
             ]

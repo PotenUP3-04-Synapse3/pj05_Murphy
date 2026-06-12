@@ -13,6 +13,7 @@ from backend.app.schemas.game_turn import (
     DevADialogueInput,
     MockAudioInput,
     PrePrototypeRequest,
+    UnderstandingOutput,
     UnrealTurnRequest,
 )
 from backend.app.services.service_c.openkb_service import OpenKBService
@@ -46,6 +47,33 @@ class MissingVisitPurposeLLMClient:
         }
 
 
+class StaticUnderstandingAgent(UnderstandingAgent):
+    def __init__(self, output: UnderstandingOutput) -> None:
+        self.output = output
+        self.last_trace = {"mode": "test_static"}
+
+    def analyze_player_text(self, player_text: str, node_context: object) -> UnderstandingOutput:
+        return self.output
+
+
+def _successful_understanding(intent: str, slot: str, value: str) -> UnderstandingOutput:
+    return UnderstandingOutput(
+        intent=intent,
+        intent_success=True,
+        confidence=0.94,
+        meaning_summary_kr="The player satisfied the chapter boundary node.",
+        emotion="calm",
+        answer_relevance="on_topic",
+        ambiguity_type="none",
+        risk_delta=0,
+        risk_reason="No risk expression was found.",
+        risk_tags=[],
+        extracted_slots={slot: value},
+        missing_slots=[],
+        needs_clarification=False,
+    )
+
+
 @pytest.fixture(autouse=True)
 def _use_deterministic_runtime_modes(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
     monkeypatch.setenv("MURPHY_STT_MODE", "mock")
@@ -66,7 +94,7 @@ def _turn_payload() -> dict:
         "session": {
             "session_id": "session_001",
             "player_id": "player_001",
-            "chapter_id": "CH0_IMMIGRATION",
+            "chapter_id": "CH0_03_IMMIGRATION_CHECK",
             "scene_id": "JFK_IMMIGRATION_HALL",
             "current_node_id": "IMM_002_PURPOSE",
             "turn_index": 2,
@@ -134,6 +162,36 @@ def _preprototype_request(transcript: str = "I'm here for tourism.") -> PreProto
     )
 
 
+def _chapter_boundary_request(
+    *,
+    request_id: str,
+    chapter_id: str,
+    current_node_id: str,
+    npc_id: str,
+    npc_role: str,
+    last_npc_message: str,
+    transcript: str,
+    allowed_next_nodes: list[str],
+) -> PrePrototypeRequest:
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = request_id
+    turn_payload["session"]["chapter_id"] = chapter_id
+    turn_payload["session"]["current_node_id"] = current_node_id
+    turn_payload["session"]["turn_index"] = 9
+    turn_payload["npc"]["npc_id"] = npc_id
+    turn_payload["npc"]["npc_role"] = npc_role
+    turn_payload["npc"]["last_npc_message"] = last_npc_message
+    turn_payload["game_state"]["current_objective"] = "Complete the current Alpha chapter"
+    turn_payload["client_allowed_next_nodes"] = allowed_next_nodes
+    return PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path=f"mock://alpha/{current_node_id.lower()}.wav",
+            transcript=transcript,
+        ),
+    )
+
+
 def test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response() -> None:
     response = Orchestrator().run_turn(_preprototype_request())
 
@@ -145,6 +203,7 @@ def test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response() -> N
     assert response.npc.speaker == "Officer Miller"
     assert "tourism" in response.npc.text.lower()
     assert response.npc.text.startswith("All right.")
+    assert response.npc.emotion == "Nomal"
     assert response.evaluation.verdict == "SUCCESS"
     assert response.ui.in_game_feedback.feedback_strategy == "recast"
     assert response.debug.stt_model == "whisper-large-v3-turbo"
@@ -193,14 +252,35 @@ def test_orchestrator_accepts_player_initiated_quest_interaction_context() -> No
     assert "dev_c_interaction_context.v1" in response.debug.contract_versions
 
 
-def test_openkb_loads_chapter_zero_duration_node_from_scenario_nodes() -> None:
-    node_context = OpenKBService().get_node_context("CH0_IMMIGRATION", "IMM_003_DURATION")
+def test_openkb_loads_immigration_chapter_duration_node_from_scenario_nodes() -> None:
+    node_context = OpenKBService().get_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_003_DURATION")
 
     assert node_context.node_id == "IMM_003_DURATION"
+    assert node_context.scenario_id == "ALPHA_AIRPORT_ARRIVAL"
+    assert node_context.chapter_id == "CH0_03_IMMIGRATION_CHECK"
+    assert node_context.node_type == "dialogue"
     assert node_context.npc_question == "How long will you be staying?"
     assert node_context.objective_kr == "체류 기간 말하기"
     assert node_context.success_next_node == "IMM_004_STAY_LOCATION"
     assert "IMM_003_RETRY_DURATION" in node_context.allowed_next_nodes
+
+
+def test_openkb_rejects_wrong_chapter_for_existing_node() -> None:
+    with pytest.raises(ValueError, match="Node chapter mismatch"):
+        OpenKBService().get_node_context("CH0_01_FLIGHT_SMALLTALK", "IMM_003_DURATION")
+
+
+def test_openkb_loads_transition_node_metadata() -> None:
+    node_context = OpenKBService().get_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_999_CLEARED")
+
+    assert node_context.node_type == "transition"
+    assert node_context.transition is not None
+    assert node_context.transition.status == "chapter_complete"
+    assert node_context.transition.completed_chapter_id == "CH0_03_IMMIGRATION_CHECK"
+    assert node_context.transition.next_chapter_id == "CH0_04_BAGGAGE_CLAIM"
+    assert node_context.transition.entry_node_id == "BAG_001_REPORT_MISSING_AT_DESK"
+    assert node_context.transition.unreal_event == "ENTER_BAGGAGE_CLAIM"
+    assert node_context.transition.requires_player_input is False
 
 
 def test_orchestrator_uses_real_developer_b_policy_for_form_issue_capture() -> None:
@@ -256,6 +336,125 @@ def test_orchestrator_advances_stay_duration_answer_to_location_node() -> None:
     assert response.next_node_id == "IMM_004_STAY_LOCATION"
     assert response.evaluation.verdict == "SUCCESS"
     assert response.evaluation.feedback_tags == ["intent_matched", "required_slot_filled"]
+
+
+@pytest.mark.parametrize(
+    (
+        "request_id",
+        "chapter_id",
+        "current_node_id",
+        "npc_id",
+        "npc_role",
+        "last_npc_message",
+        "transcript",
+        "allowed_next_nodes",
+        "understanding",
+        "expected_next_node_id",
+        "expected_completed_chapter_id",
+        "expected_next_chapter_id",
+        "expected_entry_node_id",
+        "expected_unreal_event",
+    ),
+    [
+        (
+            "req_flight_complete_0001",
+            "CH0_01_FLIGHT_SMALLTALK",
+            "FLIGHT_A_005_WRAP_UP",
+            "SEATMATE_01",
+            "seatmate",
+            "Looks like we're landing soon. Are you ready for immigration?",
+            "I think I'm ready. Thanks for talking with me.",
+            ["FLIGHT_999_COMPLETE"],
+            _successful_understanding("close_smalltalk_politely", "smalltalk_closing", "polite_closing"),
+            "FLIGHT_999_COMPLETE",
+            "CH0_01_FLIGHT_SMALLTALK",
+            "CH0_02_ARRIVAL_TUTORIAL",
+            None,
+            "START_AIRPORT_ARRIVAL_TUTORIAL",
+        ),
+        (
+            "req_imm_complete_0001",
+            "CH0_03_IMMIGRATION_CHECK",
+            "IMM_007_FINAL_DECISION",
+            "OFFICER_MILLER",
+            "immigration_officer",
+            "All right, you're cleared to enter. Enjoy your stay.",
+            "Thank you, officer.",
+            ["IMM_999_CLEARED"],
+            _successful_understanding(
+                "acknowledge_immigration_clearance",
+                "immigration_transition_acknowledgement",
+                "acknowledged",
+            ),
+            "IMM_999_CLEARED",
+            "CH0_03_IMMIGRATION_CHECK",
+            "CH0_04_BAGGAGE_CLAIM",
+            "BAG_001_REPORT_MISSING_AT_DESK",
+            "ENTER_BAGGAGE_CLAIM",
+        ),
+        (
+            "req_bag_complete_0001",
+            "CH0_04_BAGGAGE_CLAIM",
+            "BAG_007_CUSTOMS_CLEARANCE",
+            "BAGGAGE_STAFF_01",
+            "customs_officer",
+            "You're cleared now. You may take your suitcase and exit the airport.",
+            "Thank you, officer.",
+            ["BAG_999_COMPLETE"],
+            _successful_understanding(
+                "acknowledge_customs_clearance",
+                "customs_clearance_acknowledgement",
+                "acknowledged_clearance",
+            ),
+            "BAG_999_COMPLETE",
+            "CH0_04_BAGGAGE_CLAIM",
+            "CH0_05_RESULT",
+            "ALPHA_999_FINAL_SCOREBOARD",
+            "SHOW_ALPHA_SCOREBOARD",
+        ),
+    ],
+)
+def test_orchestrator_returns_chapter_complete_transition_payload(
+    request_id: str,
+    chapter_id: str,
+    current_node_id: str,
+    npc_id: str,
+    npc_role: str,
+    last_npc_message: str,
+    transcript: str,
+    allowed_next_nodes: list[str],
+    understanding: UnderstandingOutput,
+    expected_next_node_id: str,
+    expected_completed_chapter_id: str,
+    expected_next_chapter_id: str,
+    expected_entry_node_id: str | None,
+    expected_unreal_event: str,
+) -> None:
+    orchestrator = Orchestrator()
+    orchestrator.understanding_agent = StaticUnderstandingAgent(understanding)
+
+    response = orchestrator.run_turn(
+        _chapter_boundary_request(
+            request_id=request_id,
+            chapter_id=chapter_id,
+            current_node_id=current_node_id,
+            npc_id=npc_id,
+            npc_role=npc_role,
+            last_npc_message=last_npc_message,
+            transcript=transcript,
+            allowed_next_nodes=allowed_next_nodes,
+        )
+    )
+
+    assert response.next_action == "COMPLETE_CHAPTER"
+    assert response.next_node_id == expected_next_node_id
+    assert response.transition is not None
+    assert response.transition.status == "chapter_complete"
+    assert response.transition.completed_chapter_id == expected_completed_chapter_id
+    assert response.transition.next_chapter_id == expected_next_chapter_id
+    assert response.transition.entry_node_id == expected_entry_node_id
+    assert response.transition.unreal_event == expected_unreal_event
+    assert response.transition.requires_player_input is False
 
 
 def test_orchestrator_uses_repaired_llm_visit_purpose_before_developer_a_dialogue() -> None:
@@ -461,6 +660,7 @@ def test_dev_a_adapter_forwards_npc_context_to_voice_builder() -> None:
         "npc_id": "OFFICER_MILLER",
         "npc_role": "immigration_officer",
         "last_npc_message": "What is the purpose of your visit?",
+        "emotion": dev_b_output.npc_emotion,
     }
 
 

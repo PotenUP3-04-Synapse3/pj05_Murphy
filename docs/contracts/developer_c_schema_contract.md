@@ -132,7 +132,7 @@ Canonical `turn` payload:
   "session": {
     "session_id": "session_001",
     "player_id": "player_001",
-    "chapter_id": "CH0_IMMIGRATION",
+    "chapter_id": "CH0_03_IMMIGRATION_CHECK",
     "scene_id": "JFK_IMMIGRATION_HALL",
     "current_node_id": "IMM_002_PURPOSE",
     "turn_index": 2
@@ -309,7 +309,7 @@ C owns retrieval, validation, and final response assembly.
 ```json
 {
   "node_id": "IMM_002_PURPOSE",
-  "chapter_id": "CH0_IMMIGRATION",
+  "chapter_id": "CH0_03_IMMIGRATION_CHECK",
   "npc_question": "What is the purpose of your visit?",
   "npc_question_goal": "ask_visit_purpose",
   "objective_kr": "방문 목적 말하기",
@@ -458,7 +458,7 @@ Understanding output into `dev_b_policy.v1`.
   "request_id": "req_imm_0001",
   "session_id": "session_001",
   "player_id": "player_001",
-  "chapter_id": "CH0_IMMIGRATION",
+  "chapter_id": "CH0_03_IMMIGRATION_CHECK",
   "scene_id": "JFK_IMMIGRATION_HALL",
   "current_node_id": "IMM_002_PURPOSE",
   "turn_index": 2,
@@ -651,6 +651,7 @@ Developer C returns only validated, Unreal-safe data.
   "current_node_id": "IMM_002_PURPOSE",
   "next_node_id": "IMM_003_DURATION",
   "next_action": "ADVANCE",
+  "transition": null,
   "interaction": {
     "contract_version": "dev_c_interaction_context.v1",
     "initiator": "npc",
@@ -675,6 +676,7 @@ Developer C returns only validated, Unreal-safe data.
   "npc": {
     "speaker": "Officer Miller",
     "text": "You're here for tourism. How long will you stay?",
+    "emotion": "Nomal",
     "tone": "formal_neutral",
     "animation": "officer_check_passport",
     "audio_url": "/runtime/audio/kokoro/IMM_002_PURPOSE_stay_duration_success_am_michael_abcd1234.wav"
@@ -745,6 +747,12 @@ Developer C returns only validated, Unreal-safe data.
 Rules:
 
 - `next_node_id` must be validated against `node_context.allowed_next_nodes`.
+- `transition` is `null` for ordinary dialogue responses.
+- When `next_action` is `COMPLETE_CHAPTER`, `transition` is required and
+  contains `status`, `completed_chapter_id`, `next_chapter_id`,
+  `entry_node_id`, `unreal_event`, and `requires_player_input=false`.
+  Unreal uses this object to stop the current NPC dialogue and enter the next
+  gameplay phase.
 - `stt.player_text` is the normalized transcript passed into the Understanding
   Agent and Developer B policy adapter.
 - `stt.primary_runtime` and `stt.fallback_runtime` expose the local-first
@@ -836,3 +844,7 @@ Developer C validator must enforce at least these rules:
     be `simple_average` in v1.
 18. Developer C may expose `final_result` inside `/respond` on final branches
     and through `GET /api/game/ai/result/{session_id}`.
+19. `COMPLETE_CHAPTER` Unreal responses must include `transition` metadata with
+    `requires_player_input=false`, a non-empty `next_chapter_id`, and a
+    non-empty `unreal_event`. Non-`COMPLETE_CHAPTER` responses must not include
+    transition metadata.
