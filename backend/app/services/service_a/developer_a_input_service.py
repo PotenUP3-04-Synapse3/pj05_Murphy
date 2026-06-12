@@ -9,6 +9,12 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
     in_game_feedback = payload.get("in_game_feedback") or {}
     branch = payload.get("branch") or {}
     dialogue_directive = payload.get("dialogue_directive") or {}
+    
+    # NPC 정보 및 Level Design 감정 데이터 파싱
+    npc = payload.get("npc") or {}
+    npc_id = npc.get("npc_id") or npc.get("id") or ""
+    npc_role = npc.get("npc_role") or npc.get("role") or ""
+    ld_emotion = payload.get("npc_emotion") or npc.get("npc_emotion") or npc.get("emotion") or ""
 
     # 플레이어에게 제시할 추천 표현(Recommended Expression)은 피드백 페이로드, 레벨 힌트, 노드 컨텍스트 순으로 우선순위(Priority)를 부여해 파싱합니다.
     recommended_expression = (
@@ -21,9 +27,16 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "node_id": _optional_text(payload.get("node_id")),
         "player_text": _optional_text(payload.get("player_text")),
+        "npc_id": _optional_text(npc_id),
+        "npc_role": _optional_text(npc_role),
+        "npc_emotion": _optional_text(ld_emotion),
         "npc_question": _optional_text(node_context.get("npc_question")),
         "recommended_expression": _optional_text(recommended_expression),
-        "english_level": _optional_text(level_hint.get("english_level")) or "beginner",
+        "english_level": (
+            _optional_text(level_hint.get("english_level"))
+            or _optional_text(payload.get("player_profile", {}).get("tier"))
+            or "beginner"
+        ),
         "needs_hint": bool(level_hint.get("needs_hint", False)),
         "feedback_note": _optional_text(evaluation_summary.get("feedback_note")),
         "feedback_tag": _optional_text(evaluation_summary.get("main_feedback_tag")),
@@ -45,6 +58,7 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "dialogue_purpose": _optional_text(dialogue_directive.get("purpose")),
         "tone_hint": _optional_text(dialogue_directive.get("tone_hint")) or "neutral",
         "target_slot": _optional_text(dialogue_directive.get("target_slot")),
+        "player_emotion": _optional_text(payload.get("understanding", {}).get("emotion")),  # 플레이어 원본 감정 상태 연동
     }
 
 

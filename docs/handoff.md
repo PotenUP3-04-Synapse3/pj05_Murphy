@@ -1398,3 +1398,17 @@ Verification:
 - `uv run ruff check .`: PASS.
 - `uv run mypy .`: PASS, no issues found in 91 source files.
 
+## 2026-06-12 Developer A Plan & Contract Refinements for Dynamic Audio Parameters
+
+Developer A updated the implementation plan and submitted a new Change Request to introduce a unified, single agent design for dynamic emotion and TTS parameter tuning.
+
+Changed:
+
+- Updated `backend/app/agents/agent_a/npc_implementation_plan.md` to design a unified single agent flow where the LLM dynamically calculates ElevenLabs TTS parameters (stability, style, speed, similarity_boost) based on dialogue context and 13 official level design emotion inputs (`joy`, `panic`, `sad`, `suspicion`, `disgust`, `fear`, `smirk`, `normal`, `anger`, `surprise`, `pain`, `confusion`, `boredom`).
+- Added dynamic persona resolution to the plan, where Roster profile's `persona_instruction` is resolved by `npc_id` and injected into the LLM system prompt.
+- Added a detailed LangChain/LangGraph migration section to the plan under Pinned AI framework versions (`langchain==1.3.2`, `langgraph==1.2.2`). This includes mapping internal helpers/loggers to LangChain standard `BaseTool`/`BaseCallbackHandler` and wrapping `npc_dialogue_agent.py` as a Single Node / Subgraph to plug into Developer C's main orchestrator graph (`developer_c_graph.py`).
+- Added a new Change Request to `docs/contracts/change_requests.md` proposing schema and adapter extensions to accept the new audio parameters and 13-type input emotion strings from Level Design.
+
+Coordination:
+- Developer C is currently refactoring the backend orchestrator using LangChain/LangGraph. Developer A's updated plan ensures the Dialogue Agent will expose itself as a single node/subgraph rather than trying to own the overall orchestration, avoiding graph and term conflicts.
+

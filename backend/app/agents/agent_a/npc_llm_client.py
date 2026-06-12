@@ -64,6 +64,7 @@ class OpenAINPCDialogueLLMClient:
 
     def generate(self, payload: dict[str, Any]) -> dict[str, Any]:
         """OpenAI Responses API를 호출하여 NPC 대사 결과를 정규화된 스키마(Schema) 형태의 JSON으로 획득합니다."""
+        persona = str(payload.get("persona_instruction", "concise, official, calm, and dry immigration officer.")).strip()
         response = httpx.post(
             self.endpoint,
             headers={
@@ -72,7 +73,7 @@ class OpenAINPCDialogueLLMClient:
             },
             json={
                 "model": self.model,
-                "instructions": _developer_instructions(),
+                "instructions": _developer_instructions(persona),
                 "input": [
                     {
                         "role": "user",
@@ -116,6 +117,7 @@ class OpenAICompatibleNPCDialogueLLMClient:
 
     def generate(self, payload: dict[str, Any]) -> dict[str, Any]:
         """OpenAI 호환 Chat Completions API 엔드포인트를 호출하여 NPC 대사를 생성합니다."""
+        persona = str(payload.get("persona_instruction", "concise, official, calm, and dry immigration officer.")).strip()
         response = httpx.post(
             self.endpoint,
             headers={
@@ -125,7 +127,7 @@ class OpenAICompatibleNPCDialogueLLMClient:
             json={
                 "model": self.model,
                 "messages": [
-                    {"role": "system", "content": _developer_instructions()},
+                    {"role": "system", "content": _developer_instructions(persona)},
                     {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
                 ],
                 "temperature": 0.2,
@@ -221,7 +223,7 @@ def _build_gemma4_vllm_client(values: dict[str, str]) -> OpenAICompatibleNPCDial
     )
 
 
-def _developer_instructions() -> str:
+def _developer_instructions(persona_instruction: str) -> str:
     """LLM이 NPC의 성격, 제한조건, 입력 양식 및 언어 규칙(영어만 사용 등)을 철저히 따르도록 지시하는 시스템 프롬프트(System Prompt)입니다."""
     return (
         "You are Developer A's NPC Dialogue Agent for Murphy's Trippin. "
@@ -234,18 +236,20 @@ def _developer_instructions() -> str:
         "Do not copy node_context.npc_question, npc_recast_line_candidate, "
         "fallback_candidate.npc_text, or fallback_candidate.tts_text verbatim as final dialogue. "
         "Use fallback_candidate only as a safety seed when generation metadata is missing. "
-        "Use fallback_candidate.speaker as the NPC speaker and keep the NPC concise, "
-        "official, calm, not overly friendly, and suitable for a beginner Korean traveler. "
+        "Use fallback_candidate.speaker as the NPC speaker. "
+        f"Adopt the following persona style for the NPC dialogue generation: {persona_instruction} "
         "Always set animation to 'move'. "
+        "Evaluate and output the final 'npc_emotion' (selected from: joy, panic, sad, suspicion, disgust, fear, smirk, normal, anger, surprise, pain, confusion, boredom) and 'tone' matching the context. "
+        "Based on the resolved emotion, dynamically calculate and adjust ElevenLabs TTS parameters (stability, style, speed, and similarity_boost). "
+        "For intense emotions like anger, panic, or fear, lower the stability and increase style/speed. "
+        "For flat or low-intensity emotions like boredom or sad, adjust parameters for a slower delivery. "
+        "Output them as floating-point numbers in the specified schema ranges. "
         "npc_text and tts_text must be English-only ASCII NPC dialogue. Do not put Korean, "
         "mojibake, translation notes, or mixed-language text in npc_text or tts_text. "
         "npc_text is the line displayed to the player. tts_text is a slightly "
         "more speakable version for ElevenLabs TTS. Make tts_text natural for spoken audio: "
         "use short sentences, conversational rhythm, and brief pauses like '...' only where "
-        "they improve timing. For negative emotion_change, tts_text may use sharper pacing, "
-        "short interjections such as 'Hey,' 'Listen,' or 'No,' and firmer wording, but it must "
-        "not include slurs, hate, sexual content, or direct physical threats. "
-        "For positive emotion_change, keep the delivery warmer but still official. "
+        "they improve timing. "
         "feedback_kr is the only field that may contain Korean, "
         "and it must be short Korean feedback."
     )
@@ -263,6 +267,11 @@ def _dialogue_schema() -> dict[str, Any]:
             "feedback_kr",
             "tone",
             "animation",
+            "npc_emotion",
+            "stability",
+            "style",
+            "speed",
+            "similarity_boost",
             "llm_reason",
         ],
         "properties": {
@@ -281,6 +290,28 @@ def _dialogue_schema() -> dict[str, Any]:
                 ],
             },
             "animation": {"type": "string"},
+            "npc_emotion": {
+                "type": "string",
+                "enum": [
+                    "joy",
+                    "panic",
+                    "sad",
+                    "suspicion",
+                    "disgust",
+                    "fear",
+                    "smirk",
+                    "normal",
+                    "anger",
+                    "surprise",
+                    "pain",
+                    "confusion",
+                    "boredom",
+                ],
+            },
+            "stability": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+            "style": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+            "speed": {"type": "number", "minimum": 0.5, "maximum": 2.0},
+            "similarity_boost": {"type": "number", "minimum": 0.0, "maximum": 1.0},
             "llm_reason": {"type": "string", "maxLength": 240},
         },
     }

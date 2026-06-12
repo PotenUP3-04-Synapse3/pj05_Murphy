@@ -58,9 +58,10 @@ def build_player_language_profile(normalized: dict[str, Any]) -> PlayerLanguageP
 
 def _complexity_for_level(english_level: str, clarity: int) -> LanguageComplexity:
     """플레이어의 영어 레벨(English Level) 및 명확성(Clarity) 점수를 분석하여 적합한 답변 언어의 난이도를 연산합니다."""
-    if english_level == "beginner" or clarity <= 2:
+    level = english_level.lower().strip()
+    if level in {"beginner", "bronze"} or clarity <= 2:
         return "simple"
-    if english_level == "intermediate":
+    if level in {"intermediate", "silver"}:
         return "guided"
     return "natural"
 

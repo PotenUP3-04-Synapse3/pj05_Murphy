@@ -451,3 +451,51 @@ policy. Existing C-owned final-result adapter behavior may keep treating
 Developer B keeps `IMM_007_FINAL_DECISION` in the node set and documents the
 legacy C adapter mismatch. Integrated runtime can continue using the legacy
 result endpoint while A/C/Unreal migrate to `ALPHA_999_FINAL_SCOREBOARD`.
+
+## Change Request - 2026-06-12 - Expand NPC Dialogue Client Payload for Dynamic Emotion & Audio Parameters
+
+Status: Open.
+
+### Requested By
+Developer A
+
+### Affected Owner
+Developer C / Sean Han, and Developer B
+
+### Reason
+Developer A is refactoring the NPC Dialogue generation flow to use a dynamic, unified single agent design. Under this design:
+1. ElevenLabs TTS parameters (stability, style, speed, similarity_boost) will be dynamically calculated by the LLM based on emotion and context, rather than hardcoded in the service layer.
+2. The Level Design Agent will provide one of 13 official emotion types (`joy`, `panic`, `sad`, `suspicion`, `disgust`, `fear`, `smirk`, `normal`, `anger`, `surprise`, `pain`, `confusion`, `boredom`) in its payload to Developer A.
+3. Roster-defined personas (e.g. `persona_instruction`) will be resolved and injected dynamically into the system prompt.
+This requires Developer C adapters and schemas to support the expanded output fields.
+
+### Proposed Contract Change
+Developer C should update the `dev_a_npc_dialogue_client.py` adapter and the shared Pydantic response schemas to accept the following fields returned by the Developer A dialogue agent:
+
+```json
+{
+  "speaker": "Arabella",
+  "npc_text": "Hi there! Welcome to the flight.",
+  "tts_text": "Hi there! ... Welcome to the flight.",
+  "feedback_kr": "반갑습니다! 편안한 비행 되세요.",
+  "tone": "formal_neutral",
+  "animation": "move",
+  "npc_emotion": "joy",
+  "stability": 0.75,
+  "style": 0.45,
+  "speed": 1.0,
+  "similarity_boost": 0.85
+}
+```
+
+Developer C follow-up:
+- Update the Pydantic validator schemas in `backend/app/schemas/` to allow these new fields (or relax strict schema validation temporarily).
+- Forward these audio tuning parameters to the TTS service wrapper for ElevenLabs invocation.
+- Integrate the LangChain-based NPC Dialogue Agent as a **single node/subgraph** inside the main orchestrator graph (`developer_c_graph.py`).
+
+Developer B follow-up:
+- Update payloads to ensure the `npc_emotion` field from the Level Design Agent contains one of the 13 supported emotion strings.
+- Pass the correct `npc_id` and player `tier` inside the payload.
+
+### Compatibility Impact
+This change is additive for schema fields. The fallback and legacy adapters can safely default to standard parameters if the new fields are not populated.
