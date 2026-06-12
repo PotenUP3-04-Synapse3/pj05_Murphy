@@ -400,7 +400,7 @@ def test_voice_output_logs_llm_dialogue_as_output_source(tmp_path, monkeypatch) 
                 "tts_text": "Please answer the question directly.",
                 "feedback_kr": "방문 목적을 짧게 말하면 됩니다.",
                 "tone": "formal_firm",
-                "animation": "ignored_by_roster",
+                "animation": "move",
                 "llm_reason": "source trace test",
                 "__fallback_model": "google/gemma-4-26B-A4B-it",
                 "__llm_usage": {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30},

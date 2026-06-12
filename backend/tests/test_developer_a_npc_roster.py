@@ -13,7 +13,7 @@ def test_resolve_known_npc_profile_for_officer_miller() -> None:
         npc_id="officer_miller",
         display_name="Officer Miller",
         role="immigration_officer",
-        default_animation="officer_check_passport",
+        default_animation="move",
         fallback_text="Okay. Please continue.",
         mock_voice_id="officer_miller_mock_baritone",
         kokoro_voices=("am_michael",),

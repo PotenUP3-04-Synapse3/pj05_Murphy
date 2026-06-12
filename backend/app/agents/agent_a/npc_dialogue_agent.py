@@ -81,7 +81,7 @@ def generate_npc_dialogue(payload: NPCDialogueInput) -> NPCDialogueResult:
             speaker="Officer Miller",
             text=_success_text(payload),
             tone="formal_neutral",
-            animation="officer_check_passport",
+            animation="move",
             feedback_kr=_success_feedback(recommended_expression),
         )
 
@@ -91,7 +91,7 @@ def generate_npc_dialogue(payload: NPCDialogueInput) -> NPCDialogueResult:
             speaker="Officer Miller",
             text=_retry_text(payload),
             tone="formal_firm",
-            animation="officer_waiting",
+            animation="move",
             feedback_kr=_retry_feedback(recommended_expression),
         )
 
@@ -100,7 +100,7 @@ def generate_npc_dialogue(payload: NPCDialogueInput) -> NPCDialogueResult:
         speaker="Officer Miller",
         text="Please answer the question clearly.",
         tone="formal_supportive",
-        animation="officer_waiting",
+        animation="move",
         feedback_kr=_retry_feedback(recommended_expression),
     )
 

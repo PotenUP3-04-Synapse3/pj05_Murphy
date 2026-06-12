@@ -236,7 +236,7 @@ def _developer_instructions() -> str:
         "Use fallback_candidate only as a safety seed when generation metadata is missing. "
         "Use fallback_candidate.speaker as the NPC speaker and keep the NPC concise, "
         "official, calm, not overly friendly, and suitable for a beginner Korean traveler. "
-        "Use fallback_candidate.animation unless the caller later overrides it from the NPC roster. "
+        "Always set animation to 'move'. "
         "npc_text and tts_text must be English-only ASCII NPC dialogue. Do not put Korean, "
         "mojibake, translation notes, or mixed-language text in npc_text or tts_text. "
         "npc_text is the line displayed to the player. tts_text is a slightly "

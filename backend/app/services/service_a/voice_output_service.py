@@ -285,7 +285,7 @@ def build_voice_output_from_level_design(
             "text": "Okay. Please continue.",
             "feedback_kr": "의미는 전달됐습니다. 조금 더 자연스럽게 말해 봅시다.",
             "tone": "formal_neutral",
-            "animation": "officer_check_passport",
+            "animation": "move",
             "tts": fallback_tts,
             "fallback": {"used": True, "reason": "voice_output_error"},
             "agent_run_id": agent_run["agent_run_id"],

@@ -22,7 +22,7 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
         "text": text,
         "feedback_kr": feedback_kr,
         "tone": "formal_neutral",
-        "animation": "officer_check_passport",
+        "animation": "move",
         # 폴백이 사용되었음을 명시하고 디버깅용 추적 사유(Reason)를 첨부합니다.
         "fallback": {
             "used": True,

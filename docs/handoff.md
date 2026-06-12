@@ -1376,3 +1376,25 @@ Known issues / coordination:
 Run `uv sync` from the repository root, then run `uv run pytest`,
 `uv run ruff check .`, and `uv run mypy .`. Continue from the integrated
 pre-prototype flow unless a newer handoff entry supersedes this one.
+
+## 2026-06-12 Developer A Animation Data Update
+
+Developer A updated the NPC default animation and dialogue generation policy to use the temporary "move" data, keeping the `animation` field contract intact for Developer C's Unreal serialization.
+
+Changed:
+
+- Updated `default_animation` value for all roster profiles (including `officer_miller`) to `"move"` in `backend/app/services/service_a/npc_roster_service.py`.
+- Updated deterministic, retry, and fallback animation outputs to `"move"` in `backend/app/agents/agent_a/npc_dialogue_agent.py`.
+- Updated fallback services (`build_text_fallback` and `voice_output_service` fallbacks) to return `"move"` for `animation` in `backend/app/services/service_a/developer_a_fallback_service.py` and `backend/app/services/service_a/voice_output_service.py`.
+- Corrected the `_developer_instructions` prompt in `backend/app/agents/agent_a/npc_llm_client.py` to instruct the LLM to always generate `"move"` for the required `animation` schema field, fixing a prior inconsistency where it referred to a missing `fallback_candidate.animation` input.
+- Added a `[tool.ruff]` section in `pyproject.toml` to exclude the `.tmp` directory from global formatting checks, resolving linting issues for un-formatted scratch scripts.
+- Updated `docs/contracts/developer_a_agent_spec.md` contract documentation to reflect `"move"` as the example output value for `animation`.
+- Updated Developer A tests (`test_developer_a_npc_dialogue.py`, `test_developer_a_npc_roster.py`, `test_developer_a_agent_run_logging.py`, `test_developer_a_npc_llm_client.py`) to verify animation values evaluate to `"move"` instead of specific action codes.
+
+Verification:
+
+- `uv sync`: PASS.
+- `uv run pytest`: PASS, 198 passed, 1 warning (deprecation warning for `audioop`).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues found in 91 source files.
+
