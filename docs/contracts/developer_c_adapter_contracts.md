@@ -193,9 +193,9 @@ Implemented Alpha 3C structure:
 
 ```text
 Unreal microphone
-  -> STT provider WebSocket or Unreal STT bridge
   -> Developer C WebSocket /api/game/ai/stt/stream
-  -> Developer C subtitle event echo/ack
+  -> ElevenLabs WSS /v1/speech-to-text/realtime
+  -> Developer C subtitle event mapping
   -> Unreal subtitle UI
 
 Unreal final commit or stop speaking
@@ -211,15 +211,15 @@ Client event shape for the C-owned WebSocket stays small and provider-neutral:
 ```json
 {
   "contract_version": "dev_c_realtime_stt.v1",
-  "event_type": "partial_transcript",
+  "event_type": "audio_chunk",
   "request_id": "req_realtime_0001",
   "session_id": "session_realtime_001",
   "turn_index": 3,
   "sequence": 1,
-  "transcript": "I will stay",
-  "confidence": 0.72,
-  "language_detected": "en-US",
-  "provider": "stt_provider_websocket"
+  "provider": "elevenlabs_relay",
+  "audio_base64": "UklGRiQAAABXQVZFZm10IBAAAAABAAEA",
+  "commit": false,
+  "sample_rate_hz": 16000
 }
 ```
 
@@ -231,6 +231,7 @@ Client event shape for the C-owned WebSocket stays small and provider-neutral:
   "session_id": "session_realtime_001",
   "turn_index": 3,
   "sequence": 2,
+  "provider": "elevenlabs_relay",
   "subtitle": {
     "text": "I will stay for five days.",
     "is_final": true,
@@ -243,9 +244,14 @@ Client event shape for the C-owned WebSocket stays small and provider-neutral:
 
 Rules:
 
-- Unreal must not hold provider API keys. Developer C either relays audio to the
-  STT provider or issues short-lived provider tokens only when a provider
-  supports safe client-side auth.
+- Unreal must not hold provider API keys. Alpha now uses the Developer C relay
+  path with `ELEVENLABS_API_KEY` kept in the backend `.env`.
+- `session_start.provider = "elevenlabs_relay"` opens a backend outbound WSS
+  connection to ElevenLabs realtime STT with `xi-api-key` in the provider
+  header.
+- `audio_chunk` events are base64 PCM chunks. The current smoke-test path
+  expects 16 kHz mono 16-bit PCM wav chunks and sends
+  `audio_format=pcm_16000`.
 - Partial transcripts are UI-only subtitle previews and must not call Developer
   B or Developer A.
 - Only committed final transcripts may enter the normal C orchestrator path.
@@ -260,6 +266,15 @@ Rules:
   recovery, auth, and commit semantics would become C/Unreal-owned protocol
   work. WebSocket gives bidirectional ordered messages that match partial and
   committed transcript events.
+
+Manual solo smoke test:
+
+```powershell
+Copy-Item .env.example .env
+# Fill ELEVENLABS_API_KEY in .env
+uv run uvicorn backend.app.main:app --reload
+uv run python scripts/smoke_elevenlabs_realtime_stt_relay.py --wav path\to\mono_16k_pcm.wav
+```
 
 ## OpenKB Service Contract
 

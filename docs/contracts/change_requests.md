@@ -284,6 +284,16 @@ call Understanding, Developer B, Developer A, or TTS. Actual provider auth,
 short-lived token issuance, and direct streaming-to-orchestrator commit remain
 future integration work.
 
+Developer C Alpha 3D update, 2026-06-12: C added the backend relay path for
+ElevenLabs realtime STT. `session_start.provider = "elevenlabs_relay"` opens a
+server-side WSS connection to ElevenLabs `/v1/speech-to-text/realtime` using
+`ELEVENLABS_API_KEY` from the backend environment, `audio_chunk` events are
+forwarded as ElevenLabs `input_audio_chunk` messages, and ElevenLabs
+`partial_transcript` / `committed_transcript` messages are mapped back to
+`dev_c_realtime_stt.v1` subtitle events. Unreal still must capture and send
+base64 audio chunks, and direct final-transcript-to-orchestrator commit remains
+future work.
+
 ### Requested By
 Developer B
 
@@ -363,6 +373,11 @@ Developer C Alpha 3C update, 2026-06-12: C now exposes
 change the A-facing dialogue payload yet; it only gives Unreal a stable C-owned
 surface for partial and final transcript events while preserving the existing
 `/respond` orchestration path.
+
+Developer C Alpha 3D update, 2026-06-12: C now supports `elevenlabs_relay` as a
+server-side realtime STT provider mode. This still does not alter the A-facing
+dialogue payload; it only changes how subtitle transcripts can be produced
+before the committed `/respond` turn.
 
 ### Requested By
 Developer B

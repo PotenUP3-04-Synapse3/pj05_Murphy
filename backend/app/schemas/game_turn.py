@@ -561,6 +561,7 @@ class RealtimeTranscriptClientEvent(BaseModel):
     contract_version: Literal["dev_c_realtime_stt.v1"]
     event_type: Literal[
         "session_start",
+        "audio_chunk",
         "partial_transcript",
         "final_transcript",
         "cancel",
@@ -572,9 +573,13 @@ class RealtimeTranscriptClientEvent(BaseModel):
     chapter_id: str | None = None
     scene_id: str | None = None
     current_node_id: str | None = None
-    provider: Literal["unreal_bridge", "stt_provider_websocket", "mock"] = "unreal_bridge"
+    provider: Literal["unreal_bridge", "stt_provider_websocket", "elevenlabs_relay", "mock"] = "unreal_bridge"
     language_hint: str | None = None
     transcript: str | None = None
+    audio_base64: str | None = None
+    commit: bool = False
+    sample_rate_hz: int | None = Field(default=None, ge=8000)
+    previous_text: str | None = None
     confidence: float | None = Field(default=None, ge=0, le=1)
     language_detected: str | None = None
 
@@ -583,6 +588,10 @@ class RealtimeTranscriptClientEvent(BaseModel):
         if self.event_type in {"partial_transcript", "final_transcript"}:
             if self.transcript is None or not self.transcript.strip():
                 raise ValueError("transcript is required for transcript events")
+
+        if self.event_type == "audio_chunk":
+            if self.audio_base64 is None or not self.audio_base64.strip():
+                raise ValueError("audio_base64 is required for audio_chunk events")
 
         return self
 
@@ -601,12 +610,13 @@ class RealtimeTranscriptServerEvent(BaseModel):
         "final_transcript",
         "session_cancelled",
         "contract_error",
+        "provider_error",
     ]
     request_id: str | None = None
     session_id: str | None = None
     turn_index: int | None = None
     sequence: int | None = None
-    provider: Literal["unreal_bridge", "stt_provider_websocket", "mock"] | None = None
+    provider: Literal["unreal_bridge", "stt_provider_websocket", "elevenlabs_relay", "mock"] | None = None
     subtitle: RealtimeSubtitlePayload | None = None
     committed: bool = False
     target_endpoint: str | None = None

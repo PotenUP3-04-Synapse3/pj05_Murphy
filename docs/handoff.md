@@ -71,6 +71,70 @@ metadata, C-owned Understanding postprocessing, and C-owned runtime adapter
 alignment only; any future change requiring A/B logic changes must be filed as a
 change request first.
 
+## 2026-06-12 Developer C Alpha 3D Follow-up
+
+Developer C added a backend relay path for ElevenLabs realtime STT. Unreal can
+connect to the existing C-owned WebSocket and start a relay session with:
+
+```json
+{
+  "contract_version": "dev_c_realtime_stt.v1",
+  "event_type": "session_start",
+  "provider": "elevenlabs_relay"
+}
+```
+
+Developer C then opens a server-side WSS connection to:
+
+```text
+wss://api.elevenlabs.io/v1/speech-to-text/realtime
+```
+
+The ElevenLabs API key stays in backend `.env` as `ELEVENLABS_API_KEY` and is
+sent only as the provider `xi-api-key` header. Unreal sends `audio_chunk` events
+with base64 PCM audio; Developer C forwards those as ElevenLabs
+`input_audio_chunk` messages and maps ElevenLabs `partial_transcript` and
+`committed_transcript` messages back into `dev_c_realtime_stt.v1` subtitle
+events.
+
+Changed:
+
+- Added `websockets` as a direct runtime dependency.
+- Added ElevenLabs realtime settings to
+  `backend/app/services/service_c/settings_service.py` and `.env.example`.
+- Added `audio_chunk` and `elevenlabs_relay` to the realtime STT schema.
+- Added `backend/app/services/service_c/elevenlabs_realtime_stt_relay.py`.
+- Updated `/api/game/ai/stt/stream` to open and use the relay when requested.
+- Added fake-provider tests for settings, relay mapping, and WebSocket route
+  behavior.
+- Added `scripts/smoke_elevenlabs_realtime_stt_relay.py` for solo local smoke
+  testing with a 16 kHz mono 16-bit PCM wav file.
+
+Manual solo smoke test:
+
+```powershell
+Copy-Item .env.example .env
+# Fill ELEVENLABS_API_KEY in .env
+uv run uvicorn backend.app.main:app --reload
+uv run python scripts/smoke_elevenlabs_realtime_stt_relay.py --wav path\to\mono_16k_pcm.wav
+```
+
+Still open:
+
+- Unreal must capture microphone PCM chunks and send `audio_chunk` events.
+- Direct final WebSocket transcript commit into the C orchestrator is not
+  implemented yet; final events still point to `POST /api/game/ai/respond`.
+- Short-lived client token mode is intentionally not used because this phase
+  chose backend relay.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_settings_service.py backend/tests/test_elevenlabs_realtime_stt_relay.py backend/tests/test_realtime_stt_websocket.py -q`:
+  PASS, 8 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 206 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 95 source files.
+
 ## 2026-06-12 Developer C Alpha 3C Follow-up
 
 Developer C added a provider-neutral realtime STT transcript WebSocket for

@@ -130,6 +130,13 @@ class Validator:
             if event.transcript is None or not event.transcript.strip():
                 raise ValidationError("Realtime STT transcript must not be empty")
 
+        if event.event_type == "audio_chunk":
+            if event.provider != "elevenlabs_relay":
+                raise ValidationError("audio_chunk events require provider=elevenlabs_relay")
+
+            if event.audio_base64 is None or not event.audio_base64.strip():
+                raise ValidationError("Realtime STT audio_base64 must not be empty")
+
     def validate_final_result(self, final_result: FinalResult) -> None:
         if not 0 <= final_result.final_score_100 <= 100:
             raise ValidationError("final_result.final_score_100 is out of range")

@@ -51,6 +51,12 @@ through `backend/app/services/service_c/settings_service.py`:
 | `MURPHY_UNDERSTANDING_LLM_FALLBACK` | `none` | `none` or `gemma4_vllm` |
 | `MURPHY_UNDERSTANDING_LLM_MODEL` | `gpt-4o-mini` | Primary Understanding Agent LLM model |
 | `MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS` | `10` | Understanding Agent LLM timeout |
+| `ELEVENLABS_API_KEY` | unset | Server-side key for ElevenLabs realtime STT relay |
+| `ELEVENLABS_REALTIME_STT_ENDPOINT` | `wss://api.elevenlabs.io/v1/speech-to-text/realtime` | ElevenLabs realtime STT WSS endpoint |
+| `ELEVENLABS_REALTIME_STT_MODEL` | `scribe_v2_realtime` | ElevenLabs realtime STT model id |
+| `ELEVENLABS_REALTIME_AUDIO_FORMAT` | `pcm_16000` | Audio format sent to ElevenLabs |
+| `ELEVENLABS_REALTIME_COMMIT_STRATEGY` | `manual` | ElevenLabs commit strategy, `manual` or `vad` |
+| `ELEVENLABS_REALTIME_RECEIVE_TIMEOUT_S` | `0.2` | Short drain timeout for provider events after each audio chunk |
 
 This keeps the Unreal request simple while still satisfying the Developer B
 `dev_b_policy.v1` input contract.
@@ -131,14 +137,20 @@ WebSocket /api/game/ai/stt/stream
 ```
 
 The stream is additive and does not replace `POST /api/game/ai/respond`.
-It is designed for the path where Unreal or a safe STT bridge receives provider
-partial transcripts and forwards provider-neutral events to Developer C:
+It supports two Alpha paths:
+
+1. Provider-neutral transcript echo, where Unreal or a safe STT bridge sends
+   already-transcribed `partial_transcript` and `final_transcript` events.
+2. C backend relay mode, where Unreal sends `audio_chunk` events with
+   `provider = "elevenlabs_relay"` and Developer C relays audio to ElevenLabs
+   with the server-side `ELEVENLABS_API_KEY`.
 
 ```text
 Unreal microphone
-  -> STT provider WebSocket or Unreal STT bridge
   -> Developer C WebSocket /api/game/ai/stt/stream
-  -> Unreal subtitle UI event echo/ack
+  -> ElevenLabs WSS /v1/speech-to-text/realtime
+  -> Developer C subtitle event mapping
+  -> Unreal subtitle UI
 ```
 
 Partial transcripts are subtitle previews only. They must not call the
@@ -152,15 +164,15 @@ Client event:
 ```json
 {
   "contract_version": "dev_c_realtime_stt.v1",
-  "event_type": "partial_transcript",
+  "event_type": "audio_chunk",
   "request_id": "req_realtime_0001",
   "session_id": "session_realtime_001",
   "turn_index": 3,
   "sequence": 1,
-  "transcript": "I will stay",
-  "confidence": 0.72,
-  "language_detected": "en-US",
-  "provider": "stt_provider_websocket"
+  "provider": "elevenlabs_relay",
+  "audio_base64": "UklGRiQAAABXQVZFZm10IBAAAAABAAEA",
+  "commit": false,
+  "sample_rate_hz": 16000
 }
 ```
 
@@ -174,7 +186,7 @@ Server event:
   "session_id": "session_realtime_001",
   "turn_index": 3,
   "sequence": 1,
-  "provider": "stt_provider_websocket",
+  "provider": "elevenlabs_relay",
   "subtitle": {
     "text": "I will stay",
     "is_final": false,
@@ -194,10 +206,14 @@ Rules:
 - `sequence` must increase monotonically per WebSocket connection.
 - `partial_transcript` and `final_transcript` events must include non-empty
   `transcript`.
+- `audio_chunk` events must include non-empty `audio_base64` and use
+  `provider = "elevenlabs_relay"`.
+- ElevenLabs realtime relay uses `xi-api-key` only from the C backend
+  environment. Unreal must not receive or send the API key.
 - Invalid events return `event_type = "contract_error"` instead of entering the
   C orchestrator.
-- Provider values are currently `unreal_bridge`, `stt_provider_websocket`, or
-  `mock`.
+- Provider values are currently `unreal_bridge`, `stt_provider_websocket`,
+  `elevenlabs_relay`, or `mock`.
 
 ## Unreal Turn Request
 

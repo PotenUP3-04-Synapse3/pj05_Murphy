@@ -19,6 +19,10 @@ from backend.app.schemas.game_turn import (
     UnrealTurnRequest,
 )
 from backend.app.services.service_c.agent_run_summary_service import AgentRunSummaryService
+from backend.app.services.service_c.elevenlabs_realtime_stt_relay import (
+    ElevenLabsRealtimeRelayError,
+    ElevenLabsRealtimeSttRelay,
+)
 from backend.app.services.service_c.openkb_service import OpenKBService
 from backend.app.services.service_c.orchestrator import Orchestrator
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
@@ -48,77 +52,115 @@ async def realtime_stt_stream(websocket: WebSocket) -> None:
     validator = Validator()
     session_started = False
     last_sequence: int | None = None
+    relay: ElevenLabsRealtimeSttRelay | None = None
 
-    while True:
-        try:
-            payload = await websocket.receive_json()
-        except WebSocketDisconnect:
-            return
+    try:
+        while True:
+            try:
+                payload = await websocket.receive_json()
+            except WebSocketDisconnect:
+                return
 
-        try:
-            event = RealtimeTranscriptClientEvent.model_validate(payload)
-            validator.validate_realtime_transcript_event(
-                event,
-                session_started=session_started,
-                last_sequence=last_sequence,
+            try:
+                event = RealtimeTranscriptClientEvent.model_validate(payload)
+                validator.validate_realtime_transcript_event(
+                    event,
+                    session_started=session_started,
+                    last_sequence=last_sequence,
+                )
+            except (PydanticValidationError, ValueError) as exc:
+                await _send_realtime_event(websocket, _realtime_contract_error(payload, str(exc)))
+                continue
+
+            last_sequence = event.sequence
+
+            if event.event_type == "session_start":
+                session_started = True
+                if event.provider == "elevenlabs_relay":
+                    relay = _build_elevenlabs_realtime_relay()
+                    try:
+                        relay_events = await relay.start(event)
+                    except ElevenLabsRealtimeRelayError as exc:
+                        await _send_realtime_event(websocket, _realtime_provider_error(event, str(exc)))
+                        continue
+
+                    for relay_event in relay_events:
+                        await _send_realtime_event(websocket, relay_event)
+                    continue
+
+                await _send_realtime_event(
+                    websocket,
+                    RealtimeTranscriptServerEvent(
+                        event_type="session_started",
+                        request_id=event.request_id,
+                        session_id=event.session_id,
+                        turn_index=event.turn_index,
+                        sequence=event.sequence,
+                        provider=event.provider,
+                    ),
+                )
+                continue
+
+            if event.event_type == "audio_chunk":
+                if relay is None:
+                    await _send_realtime_event(
+                        websocket,
+                        _realtime_contract_error(payload, "audio_chunk requires an active ElevenLabs relay session"),
+                    )
+                    continue
+
+                try:
+                    relay_events = await relay.send_audio_chunk(event)
+                except ElevenLabsRealtimeRelayError as exc:
+                    await _send_realtime_event(websocket, _realtime_provider_error(event, str(exc)))
+                    continue
+
+                for relay_event in relay_events:
+                    await _send_realtime_event(websocket, relay_event)
+                continue
+
+            if event.event_type == "cancel":
+                if relay is not None:
+                    await relay.close()
+                    relay = None
+                await _send_realtime_event(
+                    websocket,
+                    RealtimeTranscriptServerEvent(
+                        event_type="session_cancelled",
+                        request_id=event.request_id,
+                        session_id=event.session_id,
+                        turn_index=event.turn_index,
+                        sequence=event.sequence,
+                        provider=event.provider,
+                    ),
+                )
+                await websocket.close()
+                return
+
+            is_final = event.event_type == "final_transcript"
+            server_event_type: Literal["partial_transcript", "final_transcript"] = (
+                "final_transcript" if is_final else "partial_transcript"
             )
-        except (PydanticValidationError, ValueError) as exc:
-            await _send_realtime_event(websocket, _realtime_contract_error(payload, str(exc)))
-            continue
-
-        last_sequence = event.sequence
-
-        if event.event_type == "session_start":
-            session_started = True
             await _send_realtime_event(
                 websocket,
                 RealtimeTranscriptServerEvent(
-                    event_type="session_started",
+                    event_type=server_event_type,
                     request_id=event.request_id,
                     session_id=event.session_id,
                     turn_index=event.turn_index,
                     sequence=event.sequence,
                     provider=event.provider,
+                    subtitle=RealtimeSubtitlePayload(
+                        text=(event.transcript or "").strip(),
+                        is_final=is_final,
+                    ),
+                    committed=is_final,
+                    target_endpoint="POST /api/game/ai/respond" if is_final else None,
                 ),
             )
-            continue
-
-        if event.event_type == "cancel":
-            await _send_realtime_event(
-                websocket,
-                RealtimeTranscriptServerEvent(
-                    event_type="session_cancelled",
-                    request_id=event.request_id,
-                    session_id=event.session_id,
-                    turn_index=event.turn_index,
-                    sequence=event.sequence,
-                    provider=event.provider,
-                ),
-            )
-            await websocket.close()
-            return
-
-        is_final = event.event_type == "final_transcript"
-        server_event_type: Literal["partial_transcript", "final_transcript"] = (
-            "final_transcript" if is_final else "partial_transcript"
-        )
-        await _send_realtime_event(
-            websocket,
-            RealtimeTranscriptServerEvent(
-                event_type=server_event_type,
-                request_id=event.request_id,
-                session_id=event.session_id,
-                turn_index=event.turn_index,
-                sequence=event.sequence,
-                provider=event.provider,
-                subtitle=RealtimeSubtitlePayload(
-                    text=(event.transcript or "").strip(),
-                    is_final=is_final,
-                ),
-                committed=is_final,
-                target_endpoint="POST /api/game/ai/respond" if is_final else None,
-            ),
-        )
+    finally:
+        if relay is not None:
+            await relay.close()
 
 
 @router.get("/agent-runs/latest")
@@ -217,8 +259,12 @@ async def _read_form_text(part: Any) -> str:
     raise HTTPException(status_code=422, detail="Multipart turn field must be JSON text")
 
 
-async def _send_realtime_event(websocket: WebSocket, event: RealtimeTranscriptServerEvent) -> None:
-    await websocket.send_json(event.model_dump(mode="json", exclude_none=True))
+async def _send_realtime_event(websocket: WebSocket, event: RealtimeTranscriptServerEvent | dict[str, Any]) -> None:
+    if isinstance(event, RealtimeTranscriptServerEvent):
+        await websocket.send_json(event.model_dump(mode="json", exclude_none=True))
+        return
+
+    await websocket.send_json(event)
 
 
 def _realtime_contract_error(payload: Any, error_message: str) -> RealtimeTranscriptServerEvent:
@@ -235,3 +281,19 @@ def _realtime_contract_error(payload: Any, error_message: str) -> RealtimeTransc
         sequence=sequence if isinstance(sequence, int) else None,
         error_message=error_message,
     )
+
+
+def _realtime_provider_error(event: RealtimeTranscriptClientEvent, error_message: str) -> RealtimeTranscriptServerEvent:
+    return RealtimeTranscriptServerEvent(
+        event_type="provider_error",
+        request_id=event.request_id,
+        session_id=event.session_id,
+        turn_index=event.turn_index,
+        sequence=event.sequence,
+        provider=event.provider,
+        error_message=error_message,
+    )
+
+
+def _build_elevenlabs_realtime_relay() -> ElevenLabsRealtimeSttRelay:
+    return ElevenLabsRealtimeSttRelay()

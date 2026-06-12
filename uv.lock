@@ -1660,6 +1660,7 @@ dependencies = [
     { name = "soundfile" },
     { name = "torch" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
@@ -1689,6 +1690,7 @@ requires-dist = [
     { name = "soundfile", specifier = ">=0.13.1" },
     { name = "torch", specifier = ">=2.12.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.48.0" },
+    { name = "websockets", specifier = ">=16.0" },
 ]
 provides-extras = ["local-stt"]
 

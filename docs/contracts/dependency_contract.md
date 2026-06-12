@@ -29,6 +29,7 @@ Current `.python-version`:
 - `pydantic-settings`
 - `python-multipart`
 - `httpx`
+- `websockets`
 - `langchain==1.3.2`
 - `langgraph==1.2.2`
 
@@ -69,7 +70,8 @@ Rules:
 
 - Commit `.env.example`.
 - Do not commit `.env` or `.env.*` secret files.
-- Store `OPENAI_API_KEY` only in local environment variables or `.env`.
+- Store `OPENAI_API_KEY` and `ELEVENLABS_API_KEY` only in local environment
+  variables or `.env`.
 - Keep test defaults deterministic and key-free.
 - `kokoro`
 - `soundfile`
@@ -100,6 +102,11 @@ Transcriptions API only when local STT fails and `OPENAI_API_KEY` is present.
 Developer C Understanding Agent LLM mode also uses `OPENAI_API_KEY` when
 `MURPHY_UNDERSTANDING_MODE=llm`; tests and deterministic demos keep
 `MURPHY_UNDERSTANDING_MODE=rule`.
+
+Developer C realtime caption relay may connect to ElevenLabs realtime STT over
+WSS with `ELEVENLABS_API_KEY` kept server-side. Unreal must not hold provider
+API keys. Tests use fake WebSocket connectors and must pass without ElevenLabs
+credentials or network access.
 
 Tests must pass without local model downloads, external API keys, real TTS
 providers, real LLM providers, Unreal Engine runtime, or remote OpenKB.
