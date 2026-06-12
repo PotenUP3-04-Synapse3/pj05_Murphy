@@ -15,6 +15,7 @@ from backend.app.schemas.game_turn import (
     Evaluation,
     InGameFeedback,
     LevelHint,
+    NpcEmotion,
     OpenKBWriteResult,
     OutGameFeedbackSeed,
     ReportSeedCategoryScores,
@@ -148,6 +149,7 @@ class EnglishLevelHintAgent:
             output = DevBPolicyOutput(
                 contract_version="dev_b_policy.v1",
                 node_id=payload.current_node_id,
+                npc_emotion=self._build_npc_emotion(payload, decision),
                 evaluation=self._build_evaluation(payload, decision, has_form_issue),
                 level_hint=LevelHint(
                     english_level=english_level,
@@ -693,6 +695,17 @@ class EnglishLevelHintAgent:
             do_not_generate_npc_text=True,
         )
 
+    def _build_npc_emotion(
+        self,
+        payload: DevBPolicyInput,
+        decision: ScenarioDecision,
+    ) -> NpcEmotion:
+        if decision.verdict == "CRITICAL_FAIL" or decision.branch_type in {"warning", "bad_end"}:
+            return "Suspicion"
+        if decision.branch_type in {"clarify", "retry", "hint"} or payload.understanding.needs_clarification:
+            return "Confusion"
+        return "Nomal"
+
     def _build_report_item(
         self,
         payload: DevBPolicyInput,
@@ -929,6 +942,7 @@ def _policy_output_summary(output: DevBPolicyOutput) -> dict[str, Any]:
         "branch_type": output.branch.branch_type,
         "next_action": output.branch.next_action,
         "next_node_id": output.branch.next_node_id,
+        "npc_emotion": output.npc_emotion,
         "needs_hint": output.level_hint.needs_hint,
         "hint_type": output.level_hint.hint_type,
         "feedback_strategy": output.in_game_feedback.feedback_strategy,
@@ -992,9 +1006,8 @@ def _immigration_focus_target(node_id: str) -> str | None:
         "IMM_006_DECLARATION_CHECK": "declaration_explanation",
         "IMM_006B_PACKED_BAG_CHECK": "bag_content_explanation",
         "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK": "bag_content_explanation",
-        "BAG_003_REPORT_MISSING_BAG": "problem_statement",
-        "BAG_004_DESCRIBE_BAG": "bag_description",
-        "BAG_005_PROVIDE_FLIGHT_OR_TAG": "flight_or_tag_statement",
-        "BAG_006_CONTACT_AND_DELIVERY": "delivery_request",
-        "BAG_007_RESOLUTION": "follow_up_question",
+        "BAG_001_REPORT_MISSING_AT_DESK": "problem_statement",
+        "BAG_002_PROVIDE_CLAIM_TAG": "flight_or_tag_statement",
+        "BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM": "customs_item_explanation",
+        "BAG_007_CUSTOMS_CLEARANCE": "follow_up_question",
     }.get(node_id)

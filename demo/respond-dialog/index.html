@@ -226,6 +226,7 @@
     }
 
     button.secondary,
+    button.chapter,
     button.play {
       background: #eef3eb;
       border-color: var(--line);
@@ -233,9 +234,16 @@
     }
 
     button.secondary:disabled,
+    button.chapter:disabled,
     button.play:disabled {
       background: #f2f4f0;
       color: #7a837b;
+    }
+
+    button.chapter.active {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: #fff;
     }
 
     button.play {
@@ -249,6 +257,23 @@
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
+    }
+
+    .chapter-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .payload-details {
+      margin-top: 12px;
+    }
+
+    .payload-details summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
     }
 
     .record-panel {
@@ -448,28 +473,37 @@
   <main>
     <div class="left-rail">
       <section>
+        <h2>Chapters</h2>
+        <div class="chapter-grid" id="chapterButtons">
+          <button class="chapter active" type="button" data-chapter-id="CH0_01_FLIGHT_SMALLTALK">Flight</button>
+          <button class="chapter" type="button" data-chapter-id="CH0_03_IMMIGRATION_CHECK">Immigration</button>
+          <button class="chapter" type="button" data-chapter-id="CH0_04_BAGGAGE_CLAIM">Baggage</button>
+          <button class="chapter" type="button" data-chapter-id="CH0_05_RESULT">Result</button>
+        </div>
+      </section>
+
+      <section>
         <h2>Input</h2>
-        <label for="audioFile">WAV</label>
+        <label for="audioFile">Upload WAV</label>
         <input id="audioFile" type="file" accept=".wav,audio/wav,audio/x-wav">
 
-        <label for="turnFile">Turn JSON</label>
-        <input id="turnFile" type="file" accept=".json,application/json">
-
-        <label for="turnJson">Turn Payload</label>
-        <textarea id="turnJson" spellcheck="false"></textarea>
+        <details class="payload-details">
+          <summary>Generated Payload</summary>
+          <textarea id="turnJson" spellcheck="false" readonly></textarea>
+        </details>
 
         <div class="button-row">
           <button class="secondary" id="resetTurn" type="button">Reset Dialog</button>
         </div>
-        <button class="primary" id="runButton" type="button">Run</button>
+        <button class="primary" id="runButton" type="button">Send WAV</button>
 
-        <label for="quickAudioFile">Next WAV</label>
+        <label for="quickAudioFile">Recorded or Next WAV</label>
         <input id="quickAudioFile" type="file" accept=".wav,audio/wav,audio/x-wav">
         <div class="record-panel">
           <div class="record-actions">
             <button class="secondary" id="quickRecordButton" type="button">Record</button>
             <button class="secondary" id="quickStopRecordButton" type="button" disabled>Stop</button>
-            <button class="secondary" id="quickUseRecordingButton" type="button" disabled>Upload Recording</button>
+            <button class="secondary" id="quickUseRecordingButton" type="button" disabled>Send Recording</button>
           </div>
           <div class="recording-meta" id="quickRecordingStatus">No recording</div>
         </div>
@@ -537,12 +571,59 @@
   </main>
 
   <script>
-    const firstNodeId = "IMM_002_PURPOSE";
+    const firstNodeId = "FLIGHT_A_001_SEATMATE_SMALLTALK";
+    const defaultChapterId = "CH0_01_FLIGHT_SMALLTALK";
+    const chapterStarts = {
+      CH0_01_FLIGHT_SMALLTALK: {
+        nodeId: "FLIGHT_A_001_SEATMATE_SMALLTALK",
+        sceneId: "AIRPLANE_CABIN",
+        npcId: "SEATMATE_A_01",
+        npcRole: "seatmate",
+        speaker: "Seatmate",
+        flags: ["in_flight", "arrival_form_started"],
+        inventory: ["passport", "boarding_pass", "return_ticket"],
+        completedIntents: [],
+        objective: "Respond politely to the seatmate's request"
+      },
+      CH0_03_IMMIGRATION_CHECK: {
+        nodeId: "IMM_001_PASSPORT",
+        sceneId: "JFK_IMMIGRATION_HALL",
+        npcId: "OFFICER_MILLER",
+        npcRole: "immigration_officer",
+        speaker: "Officer Miller",
+        flags: ["arrived_at_jfk"],
+        inventory: ["passport", "boarding_pass", "return_ticket"],
+        completedIntents: [],
+        objective: "Submit your passport"
+      },
+      CH0_04_BAGGAGE_CLAIM: {
+        nodeId: "BAG_001_REPORT_MISSING_AT_DESK",
+        sceneId: "JFK_BAGGAGE_CLAIM",
+        npcId: "BAGGAGE_STAFF_01",
+        npcRole: "baggage_service_staff",
+        speaker: "Baggage Staff",
+        flags: ["immigration_cleared", "at_baggage_claim"],
+        inventory: ["passport", "boarding_pass", "baggage_claim_tag"],
+        completedIntents: [],
+        objective: "Report that your suitcase did not arrive"
+      },
+      CH0_05_RESULT: {
+        nodeId: "ALPHA_999_FINAL_SCOREBOARD",
+        sceneId: "ALPHA_RESULT",
+        npcId: "RESULT_SCREEN",
+        npcRole: "result_screen",
+        speaker: "Result",
+        flags: ["alpha_complete"],
+        inventory: ["passport", "boarding_pass", "baggage_claim_tag"],
+        completedIntents: [],
+        objective: "Review the Alpha result"
+      }
+    };
 
     const refs = {
       audioFile: document.getElementById("audioFile"),
-      turnFile: document.getElementById("turnFile"),
       turnJson: document.getElementById("turnJson"),
+      chapterButtons: document.getElementById("chapterButtons"),
       resetTurn: document.getElementById("resetTurn"),
       runButton: document.getElementById("runButton"),
       quickAudioFile: document.getElementById("quickAudioFile"),
@@ -576,14 +657,15 @@
       quickRecordingFile: null,
       quickRecordingDurationMs: null,
       quickRecordingSampleRate: null,
-      quickRecordingTimer: null
+      quickRecordingTimer: null,
+      selectedChapterId: defaultChapterId
     };
 
     function makeRequestId(turn) {
       return "req_respond_dialog_" + Date.now() + "_" + turn.session.turn_index;
     }
 
-    function buildDefaultTurn() {
+    function buildDefaultTurn(chapter, node) {
       const sessionId = "session_respond_dialog_" + Date.now();
       return {
         contract_version: "dev_c_unreal_turn.v1",
@@ -591,15 +673,15 @@
         session: {
           session_id: sessionId,
           player_id: "player_001",
-          chapter_id: "CH0_IMMIGRATION",
-          scene_id: "JFK_IMMIGRATION_HALL",
-          current_node_id: firstNodeId,
+          chapter_id: node.chapter_id,
+          scene_id: chapter.sceneId,
+          current_node_id: node.node_id,
           turn_index: 1
         },
         npc: {
-          npc_id: "OFFICER_MILLER",
-          npc_role: "immigration_officer",
-          last_npc_message: "What is the purpose of your visit?"
+          npc_id: chapter.npcId,
+          npc_role: chapter.npcRole,
+          last_npc_message: node.npc_question
         },
         audio: {
           mime_type: "audio/wav",
@@ -623,24 +705,13 @@
           completed_intents: []
         },
         game_state: {
-          inventory: ["passport", "boarding_pass", "return_ticket"],
-          flags: ["arrived_at_jfk", "passport_submitted"],
-          completed_intents: ["submit_passport"],
-          current_objective: "State the visit purpose"
+          inventory: chapter.inventory,
+          flags: chapter.flags,
+          completed_intents: chapter.completedIntents,
+          current_objective: chapter.objective
         },
-        previous_node_results: [
-          {
-            node_id: "IMM_001_PASSPORT",
-            verdict: "SUCCESS",
-            next_action: "ADVANCE"
-          }
-        ],
-        client_allowed_next_nodes: [
-          "IMM_003_DURATION",
-          "IMM_002_RETRY_PURPOSE",
-          "IMM_EXTRA_001_CLARIFY_PURPOSE",
-          "END_SECONDARY_INSPECTION"
-        ],
+        previous_node_results: [],
+        client_allowed_next_nodes: node.allowed_next_nodes || [],
         client_context: {
           platform: "windows",
           input_device: "microphone",
@@ -648,6 +719,13 @@
           build_version: "respond-dialog"
         }
       };
+    }
+
+    function updateChapterButtons() {
+      refs.chapterButtons.querySelectorAll("[data-chapter-id]").forEach((button) => {
+        const isActive = button.dataset.chapterId === dialogState.selectedChapterId;
+        button.classList.toggle("active", isActive);
+      });
     }
 
     function setStatus(text, kind) {
@@ -926,6 +1004,7 @@
 
     function applyNodeToTurn(turn, node) {
       turn.session.current_node_id = node.node_id;
+      turn.session.chapter_id = node.chapter_id || turn.session.chapter_id;
       turn.client_allowed_next_nodes = node.allowed_next_nodes || [];
       turn.game_state.current_objective = node.npc_question;
       dialogState.currentNode = node;
@@ -985,9 +1064,9 @@
       refs.dialogShell.scrollTop = refs.dialogShell.scrollHeight;
     }
 
-    function resetTranscript(initialText) {
+    function resetTranscript(initialText, speaker) {
       refs.transcript.innerHTML = "";
-      appendMessage("npc", "Officer Miller", initialText, null);
+      appendMessage("npc", speaker || "NPC", initialText, null);
     }
 
     function applyStateDelta(turn, delta) {
@@ -1021,7 +1100,15 @@
 
       const action = responseBody.next_action;
       const nextNodeId = responseBody.next_node_id;
-      if (action === "ADVANCE" && nextNodeId && nextNodeId.startsWith("IMM_")) {
+      if (
+        action === "ADVANCE"
+        && nextNodeId
+        && (
+          nextNodeId.startsWith("FLIGHT_")
+          || nextNodeId.startsWith("IMM_")
+          || nextNodeId.startsWith("BAG_")
+        )
+      ) {
         const nextNode = await tryLoadNode(nextNodeId);
         if (nextNode) {
           applyNodeToTurn(turn, nextNode);
@@ -1065,41 +1152,28 @@
     }
 
     async function resetDialog() {
+      await startChapter(dialogState.selectedChapterId || defaultChapterId);
+    }
+
+    async function startChapter(chapterId) {
+      const chapter = chapterStarts[chapterId] || chapterStarts[defaultChapterId];
+      dialogState.selectedChapterId = Object.prototype.hasOwnProperty.call(chapterStarts, chapterId)
+        ? chapterId
+        : defaultChapterId;
       dialogState.terminal = false;
       dialogState.submittedRequestIds = [];
       refs.rawJson.textContent = "-";
       clearTiming();
       clearQuickRecordingFile();
-      const turn = buildDefaultTurn();
-      const node = await loadNode(firstNodeId);
+      const node = await loadNode(chapter.nodeId);
+      const turn = buildDefaultTurn(chapter, node);
       applyNodeToTurn(turn, node);
       turn.npc.last_npc_message = node.npc_question;
       writeTurn(turn);
-      resetTranscript(node.npc_question);
+      resetTranscript(node.npc_question, chapter.speaker);
+      updateChapterButtons();
       resetUsageDisplay();
       setStatus("Idle", "");
-    }
-
-    async function loadTurnFile() {
-      const file = refs.turnFile.files[0];
-      if (!file) {
-        return;
-      }
-      refs.turnJson.value = await file.text();
-      try {
-        const turn = parseTurn();
-        const node = await loadNode(turn.session.current_node_id);
-        applyNodeToTurn(turn, node);
-        writeTurn(turn);
-        resetTranscript(turn.npc?.last_npc_message || node.npc_question);
-        dialogState.terminal = false;
-        dialogState.submittedRequestIds = [];
-        resetUsageDisplay();
-        setStatus("Turn Loaded", "");
-      } catch (error) {
-        setStatus("Invalid Turn", "error");
-        refs.rawJson.textContent = String(error);
-      }
     }
 
     async function runRequest() {
@@ -1194,7 +1268,14 @@
       }
     }
 
-    refs.turnFile.addEventListener("change", loadTurnFile);
+    refs.chapterButtons.querySelectorAll("[data-chapter-id]").forEach((button) => {
+      button.addEventListener("click", () => {
+        startChapter(button.dataset.chapterId).catch((error) => {
+          setStatus("Chapter Failed", "error");
+          refs.rawJson.textContent = String(error);
+        });
+      });
+    });
     refs.resetTurn.addEventListener("click", resetDialog);
     refs.runButton.addEventListener("click", runRequest);
     refs.continueButton.addEventListener("click", continueWithAudio);

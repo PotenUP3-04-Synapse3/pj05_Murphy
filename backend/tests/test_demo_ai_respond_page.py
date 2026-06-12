@@ -27,8 +27,8 @@ def test_respond_dialog_page_is_served_without_changing_original_demo() -> None:
     assert response.status_code == 200
     assert "Murphy Respond Dialog" in response.text
     assert 'id="audioFile"' in response.text
-    assert 'id="turnFile"' in response.text
     assert 'id="turnJson"' in response.text
+    assert 'id="chapterButtons"' in response.text
     assert 'id="transcript"' in response.text
     assert 'id="elapsedTotal"' in response.text
     assert 'id="httpStatus"' in response.text
@@ -44,6 +44,21 @@ def test_respond_dialog_page_is_served_without_changing_original_demo() -> None:
     assert 'id="runningStopwatch"' in response.text
     assert "getUserMedia" in response.text
     assert "submitAudio(audio, refs.continueButton)" in response.text
+    assert 'const firstNodeId = "FLIGHT_A_001_SEATMATE_SMALLTALK";' in response.text
+    assert 'data-chapter-id="CH0_01_FLIGHT_SMALLTALK"' in response.text
+    assert 'data-chapter-id="CH0_03_IMMIGRATION_CHECK"' in response.text
+    assert 'data-chapter-id="CH0_04_BAGGAGE_CLAIM"' in response.text
+    assert 'data-chapter-id="CH0_05_RESULT"' in response.text
+    assert "chapter_id: node.chapter_id" in response.text
+    assert 'sceneId: "AIRPLANE_CABIN"' in response.text
+    assert 'npcId: "SEATMATE_A_01"' in response.text
+    assert 'nextNodeId.startsWith("FLIGHT_")' in response.text
+    assert "function startChapter" in response.text
+    assert "Upload WAV" in response.text
+    assert "Recorded or Next WAV" in response.text
+    assert "Send Recording" in response.text
+    assert "submitAudio(dialogState.quickRecordingFile, refs.quickUseRecordingButton)" in response.text
+    assert 'id="turnFile"' not in response.text
 
 
 def test_demo_node_endpoint_returns_safe_node_context() -> None:
@@ -56,7 +71,7 @@ def test_demo_node_endpoint_returns_safe_node_context() -> None:
     purpose_body = purpose.json()
     assert purpose_body == {
         "node_id": "IMM_002_PURPOSE",
-        "chapter_id": "CH0_IMMIGRATION",
+        "chapter_id": "CH0_03_IMMIGRATION_CHECK",
         "npc_question": "What is the purpose of your visit?",
         "objective_kr": purpose_body["objective_kr"],
         "recommended_expression": "I'm here for tourism.",

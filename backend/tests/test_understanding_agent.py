@@ -27,15 +27,15 @@ class UnavailableUnderstandingLLMClient:
 
 
 def _purpose_node_context():
-    return OpenKBService().get_node_context("CH0_IMMIGRATION", "IMM_002_PURPOSE")
+    return OpenKBService().get_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_002_PURPOSE")
 
 
 def _duration_node_context():
-    return OpenKBService().get_node_context("CH0_IMMIGRATION", "IMM_003_DURATION")
+    return OpenKBService().get_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_003_DURATION")
 
 
 def _location_node_context():
-    return OpenKBService().get_node_context("CH0_IMMIGRATION", "IMM_004_STAY_LOCATION")
+    return OpenKBService().get_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_004_STAY_LOCATION")
 
 
 def test_understanding_agent_uses_llm_client_in_llm_mode() -> None:

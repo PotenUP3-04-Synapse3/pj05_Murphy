@@ -88,12 +88,16 @@ class DevANpcDialogueClient:
         if policy.branch.branch_type in {"success", "final"}:
             dialogue_directive["do_not_generate_npc_text"] = False
 
+        npc = payload.npc.model_dump()
+        npc["emotion"] = policy.npc_emotion
+
         return {
             "node_id": payload.current_node_id,
             "player_text": payload.player_text,
-            "npc": payload.npc.model_dump(),
+            "npc": npc,
             "node_context": node_context,
             "understanding": payload.understanding.model_dump(),
+            "transition": payload.transition.model_dump() if payload.transition is not None else None,
             "evaluation_summary": {
                 "feedback_note": evaluation.feedback_note or "",
                 "main_feedback_tag": evaluation.feedback_tags[0] if evaluation.feedback_tags else "",

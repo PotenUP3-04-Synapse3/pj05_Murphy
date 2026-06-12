@@ -611,7 +611,9 @@ Input:
     "emotion": "nervous_humor",
     "answer_relevance": "on_topic"
   },
+  "transition": null,
   "developer_b_policy": {
+    "npc_emotion": "Nomal",
     "evaluation": {
       "verdict": "SUCCESS",
       "feedback_tags": [
@@ -661,6 +663,13 @@ Rules:
 
 - Developer A output is dialogue content, not branch authority.
 - Developer A must not change `next_node_id`, `next_action`, or `state_delta`.
+- Developer C passes Developer B `npc_emotion` to Developer A as
+  `npc.emotion` and returns the same value to Unreal as response
+  `npc.emotion`.
+- When `developer_b_policy.branch.next_action` is `COMPLETE_CHAPTER`,
+  Developer C passes additive `transition` metadata to the A-facing payload so
+  Developer A can choose closing dialogue tone. Developer A may ignore this
+  field, but must not treat it as branch authority.
 - Developer C calls Developer A's voice output service with fake Kokoro by
   default for deterministic tests.
 - `MURPHY_TTS_MODE=real` makes the C adapter pass `use_real_tts=True` to

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from backend.app.schemas.game_turn import HintPolicy, NodeContext
+
+NodeType = Literal["dialogue", "transition", "result", "ending"]
+_ALLOWED_NODE_TYPES = {"dialogue", "transition", "result", "ending"}
 
 
 class OpenKBService:
@@ -13,9 +16,6 @@ class OpenKBService:
 
     def get_node_context(self, chapter_id: str, current_node_id: str) -> NodeContext:
         payload = self._load_scenario_nodes()
-        if payload.get("chapter_id") != chapter_id:
-            raise ValueError(f"Unsupported chapter: {chapter_id}")
-
         nodes = payload.get("nodes")
         if not isinstance(nodes, dict):
             raise ValueError("Scenario node data must include a nodes object.")
@@ -33,7 +33,10 @@ class OpenKBService:
 
         return NodeContext(
             node_id=str(node["node_id"]),
+            scenario_id=str(payload.get("scenario_id", "ALPHA_AIRPORT_ARRIVAL")),
             chapter_id=str(node["chapter_id"]),
+            node_type=_parse_node_type(node.get("node_type", "dialogue"), current_node_id),
+            transition=node.get("transition"),
             npc_question=str(node["npc_question"]),
             npc_question_goal=str(node["npc_question_goal"]),
             objective_kr=node.get("objective_kr"),
@@ -56,3 +59,9 @@ class OpenKBService:
 
     def _load_scenario_nodes(self) -> dict[str, Any]:
         return json.loads(self.scenario_node_path.read_text(encoding="utf-8"))
+
+
+def _parse_node_type(value: Any, current_node_id: str) -> NodeType:
+    if not isinstance(value, str) or value not in _ALLOWED_NODE_TYPES:
+        raise ValueError(f"Unsupported node_type for {current_node_id}: {value!r}")
+    return cast(NodeType, value)

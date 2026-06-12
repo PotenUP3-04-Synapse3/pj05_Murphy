@@ -304,7 +304,7 @@ Developer A and Developer C / Sean Han
 Developer B now has Alpha scenario plan artifacts and B-owned baggage policy
 nodes, but the integrated runtime still primarily behaves like an immigration
 prototype. Alpha requires the scene order
-`FLIGHT_001_SEATMATE_SMALLTALK -> IMMIGRATION_ALPHA -> BAGGAGE_MISSING`, silent
+`FLIGHT_A_001_SEATMATE_SMALLTALK -> IMMIGRATION_ALPHA -> BAGGAGE_MISSING`, silent
 level carryover from flight small talk, no immediate out-game feedback after
 small talk, cutscene/skip signals, non-immigration NPC roles, and a final
 scenario-end result UI containing B-owned `evaluation` plus `out_game_feedback`.
@@ -461,16 +461,24 @@ ownership changes.
 Developer C should adopt the following runtime flow:
 
 ```text
-FLIGHT_001_SEATMATE_SMALLTALK
--> FLIGHT_002_TRAVEL_PURPOSE
--> FLIGHT_003_STAY_PLAN
--> FLIGHT_004_CLARIFY_OR_ASK_BACK
--> FLIGHT_005_WRAP_UP
+FLIGHT_A_001_SEATMATE_SMALLTALK
+-> FLIGHT_A_002_TRAVEL_PURPOSE
+-> FLIGHT_A_003_STAY_PLAN
+-> FLIGHT_A_004_CLARIFY_OR_ASK_BACK
+-> FLIGHT_A_005_WRAP_UP
 -> IMM_001_PASSPORT
 -> existing IMM_* route
 -> IMM_007_FINAL_DECISION
--> BAG_001_NOTICE_BAG_MISSING
--> existing BAG_* route
+-> IMM_999_CLEARED
+-> BAG_001_REPORT_MISSING_AT_DESK
+-> BAG_002_PROVIDE_CLAIM_TAG
+-> BAG_003_CONFIRM_SEARCHED_CAROUSEL
+-> BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD
+-> BAG_005_CUSTOMS_HOLD_EXPLANATION
+-> Unreal unlock/open suitcase + random customs item reveal
+-> BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM
+-> BAG_007_CUSTOMS_CLEARANCE
+-> BAG_999_COMPLETE
 -> ALPHA_999_FINAL_SCOREBOARD
 ```
 
@@ -484,14 +492,15 @@ Developer C follow-up:
   `travel_speaking_level`, `rubric_scores`, and `difficulty_profile`.
 - Orchestrate flight exit, arrival/cutscene transition, baggage claim entry,
   and final scoreboard/result retrieval.
-- Add Understanding coverage for the new flight and `BAG_001` slots.
+- Add Understanding coverage for the new flight and customs-hold baggage slots.
 
 Developer A follow-up:
 
 - Generate actual NPC dialogue/TTS for the five `FLIGHT_*` seatmate nodes from
   `dialogue_seed`, not from B-authored final lines.
-- Generate baggage service dialogue for `BAG_001_NOTICE_BAG_MISSING` and the
-  existing missing-bag route from role/goal/slot metadata.
+- Generate baggage service and customs-officer dialogue for the new
+  `BAG_001_REPORT_MISSING_AT_DESK` through `BAG_007_CUSTOMS_CLEARANCE` route
+  from role/goal/slot metadata.
 - Keep final NPC utterances, tone realization, voice, and animation A-owned.
 
 Unreal follow-up:
@@ -513,3 +522,435 @@ policy. Existing C-owned final-result adapter behavior may keep treating
 Developer B keeps `IMM_007_FINAL_DECISION` in the node set and documents the
 legacy C adapter mismatch. Integrated runtime can continue using the legacy
 result endpoint while A/C/Unreal migrate to `ALPHA_999_FINAL_SCOREBOARD`.
+
+## Change Request - 2026-06-12 - Adopt Alpha Chapter Boundary Transition Nodes
+
+Status: Implemented in B/C pre-prototype runtime; Developer A and Unreal should
+consume the additive metadata when their integration surfaces are ready.
+
+### Requested By
+Developer B
+
+### Affected Owner
+Developer A, Developer C / Sean Han, and Unreal
+
+### Reason
+`chapter_id` previously acted like a whole-scenario namespace and did not tell
+Unreal when a major NPC interaction was complete. Alpha needs explicit boundary
+signals so Unreal can stop the current NPC dialogue and enter the airport
+arrival tutorial, baggage claim, or result screen.
+
+### Proposed Contract Change
+Adopt `dev_b_scenario_nodes.v2`:
+
+- `scenario_id = ALPHA_AIRPORT_ARRIVAL`.
+- `chapter_id` is the ordered Alpha phase:
+  `CH0_01_FLIGHT_SMALLTALK`, `CH0_02_ARRIVAL_TUTORIAL`,
+  `CH0_03_IMMIGRATION_CHECK`, `CH0_04_BAGGAGE_CLAIM`, `CH0_05_RESULT`.
+- Add transition nodes:
+  `FLIGHT_999_COMPLETE`, `IMM_999_CLEARED`, and `BAG_999_COMPLETE`.
+- Add `next_action = COMPLETE_CHAPTER`.
+- Add optional Unreal response `transition` metadata containing
+  `status`, `completed_chapter_id`, `next_chapter_id`, `entry_node_id`,
+  `unreal_event`, and `requires_player_input=false`.
+- Developer C passes additive `transition` metadata to the A-facing dialogue
+  adapter payload on chapter-complete branches.
+
+Developer A follow-up:
+
+- Treat `COMPLETE_CHAPTER` as a closing-dialogue context.
+- Do not generate the next chapter's opening question from transition metadata.
+- Keep final NPC utterance, tone, TTS, and animation realization A-owned.
+
+Unreal follow-up:
+
+- Stop current NPC voice-turn capture when `next_action=COMPLETE_CHAPTER`.
+- Use `transition.unreal_event` and `transition.next_chapter_id` to drive the
+  next gameplay phase.
+- Use `transition.entry_node_id` when the next phase starts with an AI dialogue
+  node; allow `entry_node_id=null` for the airport-arrival tutorial phase.
+
+### Compatibility Impact
+This is a breaking semantic change for callers that still send
+`CH0_IMMIGRATION`. Current immigration dialogue requests must send
+`CH0_03_IMMIGRATION_CHECK`. The response `transition` field is additive and
+nullable for normal dialogue responses.
+
+### Temporary Workaround
+Unreal can continue ordinary dialogue turns by using the node's new chapter id.
+Until Unreal consumes the transition payload, chapter-complete responses can be
+handled by checking `next_action == COMPLETE_CHAPTER` and reading
+`transition.unreal_event`.
+
+## Change Request - 2026-06-12 - Add Alpha Flight Smalltalk Route Variants
+
+Status: Implemented in B-owned scenario node data; Developer A and Unreal should
+consume the additive route metadata when they select or render the flight
+small-talk opening.
+
+### Requested By
+Developer B
+
+### Affected Owner
+Developer A, Developer C / Sean Han, and Unreal
+
+### Reason
+The previous flight chapter was one fixed 5-turn stream. Alpha needs multiple
+natural small-talk variants so the flight scene can feel less scripted while
+still collecting a stable 5-turn level diagnostic sample.
+
+### Proposed Contract Change
+`CH0_01_FLIGHT_SMALLTALK` now has three route starts in chapter metadata:
+
+- `FLIGHT_A_001_SEATMATE_SMALLTALK` for Friendly Seatmate.
+- `FLIGHT_B_001_DESTINATION_CHAT` for Curious Seatmate.
+- `FLIGHT_C_001_FORM_HELP_REQUEST` for Travel Form Help.
+
+Each route has five dialogue nodes and then branches to the shared
+`FLIGHT_999_COMPLETE` transition node. The default `entry_node_id` remains
+`FLIGHT_A_001_SEATMATE_SMALLTALK`, and all flight dialogue route IDs now use
+the same `FLIGHT_A_*`, `FLIGHT_B_*`, or `FLIGHT_C_*` naming pattern.
+
+Developer A follow-up:
+
+- Generate natural seatmate dialogue for the new `FLIGHT_B_*` and `FLIGHT_C_*`
+  node metadata, and treat the former default route as `FLIGHT_A_*`.
+- Keep each route as a 5-turn diagnostic conversation and close before
+  `FLIGHT_999_COMPLETE`.
+
+Unreal follow-up:
+
+- Select one route start from `entry_node_ids` when beginning the flight
+  chapter, or keep using `entry_node_id` to preserve the default route.
+- Do not mix nodes across routes once a route is selected.
+
+## Change Request - 2026-06-12 - Align Developer A/C NPC Routing for Alpha Non-Immigration Nodes
+
+Status: Requested after integrated `/respond-dialog` testing. Developer B data
+is ready; Developer A and Developer C follow-up is required for natural Flight
+and Baggage testing.
+
+### Requested By
+Developer B
+
+### Affected Owner
+Developer A and Developer C / Sean Han
+
+### Reason
+`/respond-dialog` now correctly starts `CH0_01_FLIGHT_SMALLTALK` at
+`FLIGHT_A_001_SEATMATE_SMALLTALK`, but the first integrated test response still
+returned:
+
+- `Officer Miller`
+- `Okay. Please continue.`
+
+Runtime logs confirmed the scenario state was correct:
+
+- request chapter: `CH0_01_FLIGHT_SMALLTALK`
+- request node: `FLIGHT_A_001_SEATMATE_SMALLTALK`
+- B branch: `SUCCESS -> FLIGHT_A_002_TRAVEL_PURPOSE`
+
+The mismatch occurs after B:
+
+- Developer C's A adapter only loads next-question seeds for `IMM_` nodes, so
+  `FLIGHT_A_002_TRAVEL_PURPOSE` is not passed as an A candidate line.
+- Developer A's NPC roster currently falls unknown NPC ids back to
+  `officer_miller`, so `SEATMATE_A_01` resolves to `Officer Miller`.
+- Developer A's text fallback is Officer Miller-specific:
+  `Okay. Please continue.`
+
+### Requested Contract / Runtime Change
+Developer C follow-up:
+
+- Update `backend/app/integrations/dev_a_npc_dialogue_client.py` so
+  `_next_node_question()` can resolve supported Alpha dialogue nodes beyond
+  `IMM_`, including `FLIGHT_` and `BAG_`.
+- Preserve `payload.npc.npc_id`, `npc_role`, and `node_context.chapter_id` in
+  the A-facing payload for all Alpha chapters.
+- Add validation or diagnostic logging when the requested NPC id/role and
+  Developer A response speaker/animation clearly mismatch.
+- Add regression coverage for
+  `FLIGHT_A_001_SEATMATE_SMALLTALK -> FLIGHT_A_002_TRAVEL_PURPOSE` verifying
+  the A seed is the next seatmate line, not an Officer Miller fallback.
+
+Developer A follow-up:
+
+- Add roster profiles for the Alpha non-immigration NPCs used by B scenario
+  nodes:
+  `SEATMATE_A_01`, `SEATMATE_B_01`, `SEATMATE_C_01`, and
+  baggage service/customs officer roles.
+- Make text fallback, default animation, display name, and voice profile derive
+  from the resolved NPC profile instead of Officer Miller-only defaults.
+- Generate seatmate-style dialogue/TTS for `FLIGHT_A_*`, `FLIGHT_B_*`, and
+  `FLIGHT_C_*` nodes and baggage-service dialogue/TTS for `BAG_*` nodes.
+- Treat `COMPLETE_CHAPTER` as a closing line context, not as a prompt to ask
+  the next chapter's first question.
+
+### Compatibility Impact
+This change does not alter B scenario branching. It fixes A/C integration for
+non-immigration chapters so existing `chapter_id`, `node_id`, `npc_id`, and
+`next_node_id` values produce the correct speaker and dialogue style.
+
+### Temporary Workaround
+Until A/C complete this request, `/respond-dialog` can validate STT,
+Understanding, B branching, transition behavior, and payload generation, but
+NPC speaker/text quality for Flight and Baggage may still show Officer Miller
+fallback output.
+
+## Change Request - 2026-06-12 - Replace Baggage Missing-Bag Route with Customs Hold Required Flow
+
+Status: Implemented in B-owned scenario node data; Developer A, Developer C,
+and Unreal follow-up is required for natural integrated play.
+
+### Requested By
+Developer B
+
+### Affected Owner
+Developer A, Developer C / Sean Han, and Unreal
+
+### Reason
+The previous baggage route treated the missing suitcase as a service-desk report
+and delivery-resolution flow. Alpha now requires a more natural airport flow:
+the service desk confirms the bag is being held, the player returns to baggage
+claim, a customs officer unlocks the suitcase, Unreal reveals a random item,
+and the player explains that item before clearance.
+
+### Proposed Contract Change
+`CH0_04_BAGGAGE_CLAIM.entry_node_id` is now
+`BAG_001_REPORT_MISSING_AT_DESK`, and the required baggage route is:
+
+```text
+BAG_001_REPORT_MISSING_AT_DESK
+-> BAG_002_PROVIDE_CLAIM_TAG
+-> BAG_003_CONFIRM_SEARCHED_CAROUSEL
+-> BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD
+-> BAG_005_CUSTOMS_HOLD_EXPLANATION
+-> Unreal unlock/open suitcase + random customs item reveal
+-> BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM
+-> BAG_007_CUSTOMS_CLEARANCE
+-> BAG_999_COMPLETE
+-> ALPHA_999_FINAL_SCOREBOARD
+```
+
+New required slots:
+
+- `missing_bag_statement`
+- `claim_tag_status`
+- `carousel_search_confirmation`
+- `customs_hold_redirect_acknowledgement`
+- `customs_hold_acknowledgement`
+- `customs_item_explanation`
+- `customs_clearance_acknowledgement`
+
+Developer A follow-up:
+
+- Generate service-desk dialogue for `BAG_001` through `BAG_004`.
+- Generate customs-officer dialogue for `BAG_005` through `BAG_007`.
+- Add or map roster/voice profiles for baggage service staff and customs
+  officer roles so the route does not fall back to Officer Miller.
+- Keep final NPC wording, tone, animation, and TTS A-owned.
+
+Developer C follow-up:
+
+- Add Understanding coverage for all new baggage intents and slots.
+- Route the correct A-facing NPC role by BAG node phase: service staff for
+  `BAG_001` through `BAG_004`, customs officer for `BAG_005` through
+  `BAG_007`.
+- Ensure `BAG_999_COMPLETE` still returns `next_action=COMPLETE_CHAPTER` with
+  `transition.unreal_event = SHOW_ALPHA_SCOREBOARD`.
+- Accept or pass through Unreal-provided random item context for
+  `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM` if available.
+
+Unreal follow-up:
+
+- After `BAG_005_CUSTOMS_HOLD_EXPLANATION`, stop dialogue capture and run the
+  required interaction: show locked suitcase, unlock it, add suitcase to
+  inventory, open suitcase UI, and reveal the random customs item.
+- Start `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM` only after the item is visible to
+  the player.
+- Use `BAG_999_COMPLETE.transition.unreal_event = SHOW_ALPHA_SCOREBOARD` for
+  the final scoreboard transition.
+
+### Compatibility Impact
+This replaces the old `BAG_001_NOTICE_BAG_MISSING` through
+`BAG_007_RESOLUTION` route. Any caller or test fixture still using the old BAG
+IDs must migrate to the new route IDs above.
+
+### Temporary Workaround
+Until A/C/Unreal complete their follow-up, `/respond-dialog` can validate B
+branching and response structure, but custom service-desk/customs NPC voice and
+the suitcase unlock/random-item interaction remain integration work.
+
+## Change Request - 2026-06-12 - Consolidated Alpha Follow-up for Developer A, Developer C, and Unreal
+
+Status: Open. This consolidates the latest Alpha scenario-node changes after
+chapter transitions, flight route variants, `/respond-dialog` chapter starts,
+and the required baggage customs-hold route.
+
+### Requested By
+Developer B
+
+### Affected Owner
+Developer A, Developer C / Sean Han, and Unreal
+
+### Current Implemented State
+Developer B/C pre-prototype data now uses:
+
+- `scenario_id = ALPHA_AIRPORT_ARRIVAL`.
+- Ordered chapter IDs:
+  `CH0_01_FLIGHT_SMALLTALK`,
+  `CH0_02_ARRIVAL_TUTORIAL`,
+  `CH0_03_IMMIGRATION_CHECK`,
+  `CH0_04_BAGGAGE_CLAIM`,
+  `CH0_05_RESULT`.
+- Transition nodes:
+  `FLIGHT_999_COMPLETE`,
+  `IMM_999_CLEARED`,
+  `BAG_999_COMPLETE`.
+- `next_action = COMPLETE_CHAPTER` with optional `transition` metadata for
+  Unreal state changes.
+- Flight has three 5-turn route starts:
+  `FLIGHT_A_001_SEATMATE_SMALLTALK`,
+  `FLIGHT_B_001_DESTINATION_CHAT`,
+  `FLIGHT_C_001_FORM_HELP_REQUEST`.
+- Baggage claim now starts at `BAG_001_REPORT_MISSING_AT_DESK` and requires
+  the customs-hold/random-item explanation route:
+  `BAG_001_REPORT_MISSING_AT_DESK -> BAG_002_PROVIDE_CLAIM_TAG ->
+  BAG_003_CONFIRM_SEARCHED_CAROUSEL ->
+  BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD ->
+  BAG_005_CUSTOMS_HOLD_EXPLANATION ->
+  BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM -> BAG_007_CUSTOMS_CLEARANCE ->
+  BAG_999_COMPLETE`.
+- `/respond-dialog` can start Flight, Immigration, Baggage, and Result from
+  buttons without uploading a JSON turn file. The first turn can be submitted
+  with WAV upload or browser recording.
+
+### Developer A Required Follow-up
+
+- Add or map NPC roster/voice profiles for:
+  seatmate route A/B/C, baggage service staff, and customs officer.
+- Stop falling unknown non-immigration NPCs back to Officer Miller.
+- Generate natural seatmate dialogue/TTS for `FLIGHT_A_*`, `FLIGHT_B_*`, and
+  `FLIGHT_C_*`.
+- Generate service-desk dialogue/TTS for `BAG_001` through `BAG_004`.
+- Generate customs-officer dialogue/TTS for `BAG_005` through `BAG_007`.
+- Treat `next_action=COMPLETE_CHAPTER` as a closing-line context only; do not
+  ask the next chapter's first question from transition metadata.
+
+### Developer C Required Follow-up
+
+- Extend the Developer A adapter so next-question seeds work for `FLIGHT_` and
+  `BAG_` nodes, not only `IMM_` nodes.
+- Preserve and validate A-facing `npc_id`, `npc_role`, `chapter_id`, and
+  `node_id` for all Alpha chapters.
+- Add diagnostics or validation when requested NPC role and A returned speaker
+  clearly mismatch.
+- Add Understanding coverage for new Flight route slots and the new baggage
+  customs-hold slots, especially:
+  `missing_bag_statement`,
+  `claim_tag_status`,
+  `carousel_search_confirmation`,
+  `customs_hold_redirect_acknowledgement`,
+  `customs_hold_acknowledgement`,
+  `customs_item_explanation`,
+  `customs_clearance_acknowledgement`.
+- Route A-facing NPC context by BAG phase: service staff for `BAG_001` through
+  `BAG_004`, customs officer for `BAG_005` through `BAG_007`.
+- Keep `BAG_999_COMPLETE` returning `next_action=COMPLETE_CHAPTER` with
+  `transition.unreal_event = SHOW_ALPHA_SCOREBOARD`.
+- Pass through Unreal-provided random item context to
+  `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM` when available.
+
+### Unreal Required Follow-up
+
+- Start Alpha from chapter metadata:
+  default Flight start is `FLIGHT_A_001_SEATMATE_SMALLTALK`; optional route
+  starts are listed in `entry_node_ids`.
+- Do not send player speech turns for `node_type=transition`.
+- On `COMPLETE_CHAPTER`, stop current NPC voice capture and consume
+  `transition.unreal_event`, `transition.next_chapter_id`, and
+  `transition.entry_node_id`.
+- Handle transition events:
+  `START_AIRPORT_ARRIVAL_TUTORIAL`,
+  `ENTER_BAGGAGE_CLAIM`,
+  `SHOW_ALPHA_SCOREBOARD`.
+- After `BAG_005_CUSTOMS_HOLD_EXPLANATION`, run the required non-dialogue
+  interaction: show locked suitcase, unlock it, add suitcase to inventory, open
+  suitcase UI, reveal random customs item, then start
+  `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM`.
+
+### Compatibility Impact
+Old callers using `CH0_IMMIGRATION`, `FLIGHT_001_*`, or the previous baggage
+route `BAG_001_NOTICE_BAG_MISSING` through `BAG_007_RESOLUTION` must migrate
+to the current chapter IDs and node IDs.
+
+### Current Verification
+
+- `uv sync` completed.
+- `uv run pytest` passed with 201 tests and 2 existing warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 91 source files.
+
+## Change Request - 2026-06-12 - Propagate Developer B NPC Emotion Enum
+
+Status: Implemented in B/C pre-prototype runtime; Developer A and Unreal should
+consume the additive field when ready.
+
+### Requested By
+Developer B
+
+### Affected Owner
+Developer A, Developer C / Sean Han, and Unreal
+
+### Proposed Contract Change
+Developer B now returns `npc_emotion` on `DevBPolicyOutput`. Allowed values are:
+
+```text
+Nomal
+Joy
+Anger
+Sadness
+Panic
+Suspicion
+Disgust
+Fear
+Smirk
+Surprise
+Pain
+Confusion
+Boredom
+```
+
+Current rule mapping:
+
+- Normal successful progress: `Nomal`.
+- Clarify, retry, or hint branches: `Confusion`.
+- Warning, bad-end, or critical-risk branches: `Suspicion`.
+
+Developer C follow-up already implemented in the pre-prototype:
+
+- Pass `DevBPolicyOutput.npc_emotion` to Developer A as A-facing
+  `npc.emotion`.
+- Return the same value in the Unreal response as `npc.emotion`.
+
+Developer A follow-up:
+
+- Use A-facing `npc.emotion` as the preferred emotion cue when selecting NPC
+  facial expression, TTS style, animation tone, or fallback behavior.
+- Keep dialogue text generation A-owned; B only supplies the enum cue.
+
+Unreal follow-up:
+
+- Treat response `npc.emotion` as the current NPC emotion state for the turn.
+- Map the enum values above to available facial expression/animation states.
+
+### Compatibility Impact
+This is an additive field. Existing clients that ignore `npc_emotion` or
+response `npc.emotion` can continue using `npc.tone` and `npc.animation`.
+
+### Current Verification
+
+- `uv sync` completed.
+- `uv run pytest` passed with 201 tests and 2 existing warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 91 source files.

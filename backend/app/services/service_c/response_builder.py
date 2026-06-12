@@ -10,6 +10,7 @@ from backend.app.schemas.game_turn import (
     RecordedErrorSummary,
     ReportResponse,
     SttResponse,
+    TransitionContext,
     TurnTimingMs,
     UiFeedback,
     UiResponse,
@@ -27,6 +28,7 @@ class ResponseBuilder:
         dev_b_output: DevBPolicyOutput,
         dev_a_output: DevADialogueOutput,
         logging_summary: RecordedErrorSummary,
+        transition: TransitionContext | None = None,
         timing_ms: TurnTimingMs | None = None,
     ) -> UnrealResponse:
         return UnrealResponse(
@@ -37,6 +39,7 @@ class ResponseBuilder:
             current_node_id=request.turn.session.current_node_id,
             next_node_id=dev_b_output.branch.next_node_id,
             next_action=dev_b_output.branch.next_action,
+            transition=transition,
             interaction=request.turn.interaction,
             stt=SttResponse(
                 model=normalized_input.stt_model,
@@ -51,6 +54,7 @@ class ResponseBuilder:
             npc=NpcResponse(
                 speaker=dev_a_output.speaker,
                 text=dev_a_output.text,
+                emotion=dev_b_output.npc_emotion,
                 tone=dev_a_output.tone,
                 animation=dev_a_output.animation,
                 audio_url=dev_a_output.audio_url,

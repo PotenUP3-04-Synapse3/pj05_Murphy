@@ -133,9 +133,21 @@ class HintPolicy(BaseModel):
     action_hint: str
 
 
+class TransitionContext(BaseModel):
+    status: Literal["chapter_complete"]
+    completed_chapter_id: str
+    next_chapter_id: str
+    entry_node_id: str | None = None
+    unreal_event: str
+    requires_player_input: bool = False
+
+
 class NodeContext(BaseModel):
     node_id: str
+    scenario_id: str = "ALPHA_AIRPORT_ARRIVAL"
     chapter_id: str
+    node_type: Literal["dialogue", "transition", "result", "ending"] = "dialogue"
+    transition: TransitionContext | None = None
     npc_question: str
     npc_question_goal: str
     objective_kr: str | None = None
@@ -178,6 +190,24 @@ class UnderstandingOutput(BaseModel):
     extracted_slots: dict[str, str]
     missing_slots: list[str]
     needs_clarification: bool
+
+
+# `Nomal` spelling follows the current external emotion enum contract.
+NpcEmotion = Literal[
+    "Nomal",
+    "Joy",
+    "Anger",
+    "Sadness",
+    "Panic",
+    "Suspicion",
+    "Disgust",
+    "Fear",
+    "Smirk",
+    "Surprise",
+    "Pain",
+    "Confusion",
+    "Boredom",
+]
 
 
 class DevBPolicyInput(BaseModel):
@@ -436,7 +466,7 @@ class OpenKBWriteResult(BaseModel):
 
 class Branch(BaseModel):
     branch_type: Literal["success", "retry", "clarify", "hint", "warning", "bad_end", "final"]
-    next_action: Literal["ADVANCE", "REASK", "GIVE_HINT", "WARNING", "FAIL_END", "FINAL_DECISION"]
+    next_action: Literal["ADVANCE", "REASK", "GIVE_HINT", "WARNING", "FAIL_END", "FINAL_DECISION", "COMPLETE_CHAPTER"]
     next_node_id: str
     branch_reason: str
     allowed_next_node_checked: bool
@@ -466,6 +496,7 @@ class ReportItem(BaseModel):
 class DevBPolicyOutput(BaseModel):
     contract_version: Literal["dev_b_policy.v1"]
     node_id: str
+    npc_emotion: NpcEmotion = "Nomal"
     evaluation: Evaluation
     level_hint: LevelHint
     in_game_feedback: InGameFeedback
@@ -494,6 +525,7 @@ class DevADialogueInput(BaseModel):
     node_context: NodeContext
     understanding: UnderstandingOutput
     developer_b_policy: DevBPolicyOutput
+    transition: TransitionContext | None = None
 
 
 class DevADialogueOutput(BaseModel):
@@ -516,6 +548,7 @@ class RecordedErrorSummary(BaseModel):
 class NpcResponse(BaseModel):
     speaker: str
     text: str
+    emotion: NpcEmotion
     tone: str
     animation: str
     audio_url: str | None = None
@@ -668,6 +701,7 @@ class UnrealResponse(BaseModel):
     current_node_id: str
     next_node_id: str
     next_action: str
+    transition: TransitionContext | None = None
     interaction: InteractionContext
     stt: SttResponse
     npc: NpcResponse

@@ -82,17 +82,33 @@ final NPC wording.
 Developer B controls assessment targets and slots. Developer A controls actual
 NPC text, tone realization, TTS text, audio, and animation.
 
-For Alpha flight small talk, Developer B now emits five diagnostic nodes:
+For Alpha flight small talk, Developer B now provides three 5-turn diagnostic
+route candidates:
 
 ```text
-FLIGHT_001_SEATMATE_SMALLTALK
--> FLIGHT_002_TRAVEL_PURPOSE
--> FLIGHT_003_STAY_PLAN
--> FLIGHT_004_CLARIFY_OR_ASK_BACK
--> FLIGHT_005_WRAP_UP
+Route A:
+FLIGHT_A_001_SEATMATE_SMALLTALK
+-> FLIGHT_A_002_TRAVEL_PURPOSE
+-> FLIGHT_A_003_STAY_PLAN
+-> FLIGHT_A_004_CLARIFY_OR_ASK_BACK
+-> FLIGHT_A_005_WRAP_UP
+
+Route B:
+FLIGHT_B_001_DESTINATION_CHAT
+-> FLIGHT_B_002_COMPANION_OR_VISIT
+-> FLIGHT_B_003_STAY_PLACE
+-> FLIGHT_B_004_TRIP_PLANS
+-> FLIGHT_B_005_LANDING_CLOSE
+
+Route C:
+FLIGHT_C_001_FORM_HELP_REQUEST
+-> FLIGHT_C_002_FIRST_TIME_ENTRY
+-> FLIGHT_C_003_ADDRESS_HELP
+-> FLIGHT_C_004_HOTEL_HOSTEL_REPAIR
+-> FLIGHT_C_005_FORM_CLOSE
 ```
 
-These nodes use `dialogue_seed.max_turns = 5` and should be realized by
+Each route uses `dialogue_seed.max_turns = 5` and should be realized by
 Developer A as natural seatmate small talk. Developer B still provides only
 goals, slots, assessment targets, and follow-up intents.
 

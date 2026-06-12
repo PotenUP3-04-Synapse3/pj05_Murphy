@@ -28,7 +28,7 @@ def _turn_payload() -> dict[str, Any]:
         "session": {
             "session_id": "session_final_result",
             "player_id": "player_final_result",
-            "chapter_id": "CH0_IMMIGRATION",
+            "chapter_id": "CH0_03_IMMIGRATION_CHECK",
             "scene_id": "JFK_IMMIGRATION_HALL",
             "current_node_id": "IMM_007_FINAL_DECISION",
             "turn_index": 8,
