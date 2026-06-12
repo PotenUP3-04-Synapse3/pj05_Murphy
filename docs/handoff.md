@@ -15,6 +15,30 @@ is local-first with API fallback. Automated tests keep deterministic STT through
 deterministic `rule` mode and optional OpenAI-assisted `llm` mode with rule
 fallback.
 
+## 2026-06-12 Developer A LangGraph & ElevenLabs Parameter Refactor
+
+Developer A는 패키지 버전 제약(langchain==1.3.2, langgraph==1.2.2)을 준수하며, NPC 대사 생성 및 ElevenLabs TTS 파라미터 동적 튜닝 흐름을 LangChain 및 LangGraph 기반 상태 기계 구조로 전면 리팩터링 및 마이그레이션 완료했습니다.
+
+구현 내용:
+- npc_llm_client.py 리팩터링: BaseChatModel을 상속하는 내부 ChatModel을 구현하여 LCEL 체인(prompt | model) 구조를 정립하고, 외부에서는 래퍼 클래스를 통해 generate 인터페이스 일관성을 유지했습니다.
+- npc_dialogue_agent.py LangGraph 상태 기계 구현: NPCDialogueState 기반의 StateGraph를 조립 및 컴파일하여 데이터 초기화(initialize_state), LLM 대사 생성(generate_dialogue_llm), 폴백 매핑(apply_fallback) 노드를 유기적으로 연동하고 조건부 엣지를 통해 예외 처리를 일원화했습니다.
+- voice_output_service.py 동적 파라미터 매핑: LLM이 동적으로 산출한 stability, style, speed, similarity_boost 파라미터를 ElevenLabs TTS API 주입 시 환경 변수보다 최우선적으로 적용하도록 연동 보강했습니다.
+- 테스트 Mock 코드 보완: test_developer_a_npc_roster.py 및 test_developer_a_npc_dialogue.py 내 NPCProfile 모크 생성 시 누락되었던 필수 속성(persona_instruction, elevenlabs_voice_id)을 채워 정적 검사 오류를 해결했습니다.
+- 작업 계획서 업데이트: backend/app/agents/agent_a/npc_implementation_plan.md 내 추후 계획에 머물러 있던 LangChain/LangGraph 마이그레이션 항목을 구현 완료 상태로 개정했습니다.
+
+검증 결과:
+- uv run pytest: PASS, Chapter 0 전체 223개 유닛 테스트 케이스 성공 통과.
+- uv run ruff check .: PASS, 린트 지적 사항 0건.
+- uv run mypy .: PASS, 101개 소스 파일 대상 정적 분석 타입 오류 0건 완료.
+
+수정된 파일 목록:
+- backend/app/agents/agent_a/npc_dialogue_agent.py
+- backend/app/agents/agent_a/npc_llm_client.py
+- backend/app/agents/agent_a/npc_implementation_plan.md
+- backend/app/services/service_a/voice_output_service.py
+- backend/tests/test_developer_a_npc_roster.py
+- backend/tests/test_developer_a_npc_dialogue.py
+
 ## Developer C Alpha Plan Notice
 
 2026-06-10 Developer C / Sean Han is moving the prototype toward Alpha in

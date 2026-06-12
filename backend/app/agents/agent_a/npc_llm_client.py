@@ -9,6 +9,12 @@ import os
 import httpx
 
 
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import BaseMessage, AIMessage
+from langchain_core.outputs import ChatResult, ChatGeneration
+from langchain_core.prompts import ChatPromptTemplate
+
+
 # NPC 대사 생성을 위한 LLM 클라이언트(LLM Client)의 규격을 정의하는 프로토콜(Protocol) 클래스(Class)입니다.
 class NPCDialogueLLMClient(Protocol):
     @property
@@ -37,34 +43,35 @@ class _UnavailableNPCDialogueLLMClient:
         raise NPCDialogueLLMUnavailable(self.reason)
 
 
-# OpenAI Responses API를 사용하여 NPC 대사를 생성하는 공식 클라이언트 클래스(Class)입니다.
-@dataclass(frozen=True)
-class OpenAINPCDialogueLLMClient:
+# OpenAI Responses API를 사용하여 NPC 대사를 생성하는 공식 Chat Model 클래스(Class)입니다.
+class _OpenAINPCDialogueChatModel(BaseChatModel):
     api_key: str
     model: str = "gpt-4o-mini"
     timeout_seconds: float = 10.0
     endpoint: str = "https://api.openai.com/v1/responses"
 
-    @classmethod
-    def from_environment(cls, env_path: Path | None = None) -> "OpenAINPCDialogueLLMClient":
-        """환경 변수(Environment Variable) 또는 .env 파일에서 OpenAI 설정을 읽어 클라이언트 인스턴스(Instance)를 생성합니다."""
-        values = _read_env_file(env_path or Path(".env"))
-        api_key = os.getenv("OPENAI_API_KEY") or values.get("OPENAI_API_KEY")
-        if not api_key:
-            raise NPCDialogueLLMUnavailable("OPENAI_API_KEY is not configured.")
-        model = os.getenv("NPC_DIALOGUE_LLM_MODEL") or values.get(
-            "NPC_DIALOGUE_LLM_MODEL",
-            "gpt-4o-mini",
-        )
-        timeout = float(
-            os.getenv("NPC_DIALOGUE_LLM_TIMEOUT_SECONDS")
-            or values.get("NPC_DIALOGUE_LLM_TIMEOUT_SECONDS", "10")
-        )
-        return cls(api_key=api_key, model=model, timeout_seconds=timeout)
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
 
-    def generate(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """OpenAI Responses API를 호출하여 NPC 대사 결과를 정규화된 스키마(Schema) 형태의 JSON으로 획득합니다."""
-        persona = str(payload.get("persona_instruction", "concise, official, calm, and dry immigration officer.")).strip()
+    @property
+    def _llm_type(self) -> str:
+        return "openai_npc_dialogue"
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: Any = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        system_content = ""
+        user_content = ""
+        for msg in messages:
+            if msg.type == "system":
+                system_content = msg.content if isinstance(msg.content, str) else str(msg.content)
+            elif msg.type == "human":
+                user_content = msg.content if isinstance(msg.content, str) else str(msg.content)
+
         response = httpx.post(
             self.endpoint,
             headers={
@@ -73,14 +80,14 @@ class OpenAINPCDialogueLLMClient:
             },
             json={
                 "model": self.model,
-                "instructions": _developer_instructions(persona),
+                "instructions": system_content,
                 "input": [
                     {
                         "role": "user",
                         "content": [
                             {
                                 "type": "input_text",
-                                "text": json.dumps(payload, ensure_ascii=False),
+                                "text": user_content,
                             }
                         ],
                     }
@@ -98,26 +105,97 @@ class OpenAINPCDialogueLLMClient:
         )
         response.raise_for_status()
         data = response.json()
-        # API 응답 결과에서 구조화된 대사 데이터를 추출하여 반환합니다.
-        return _extract_structured_json(data)
+        result_dict = _extract_structured_json(data)
+        
+        ai_message = AIMessage(
+            content=json.dumps(result_dict, ensure_ascii=False),
+            response_metadata={"__llm_usage": result_dict.get("__llm_usage", {})}
+        )
+        return ChatResult(generations=[ChatGeneration(message=ai_message)])
 
 
-# vLLM 또는 Ollama처럼 OpenAI의 Chat Completions API와 호환되는 로컬 서버(Local Server) 연동을 위한 클라이언트 클래스(Class)입니다.
-@dataclass(frozen=True)
-class OpenAICompatibleNPCDialogueLLMClient:
+# OpenAI Responses API를 사용하여 NPC 대사를 생성하는 공식 Chat Model 클래스(Class)입니다.
+class OpenAINPCDialogueChatModel:
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini", timeout_seconds: float = 10.0) -> None:
+        self.api_key = api_key
+        self._model = model
+        self.timeout_seconds = timeout_seconds
+        self._chat_model = _OpenAINPCDialogueChatModel(
+            api_key=api_key,
+            model=model,
+            timeout_seconds=timeout_seconds,
+        )
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    @classmethod
+    def from_environment(cls, env_path: Path | None = None) -> "OpenAINPCDialogueChatModel":
+        """환경 변수(Environment Variable) 또는 .env 파일에서 OpenAI 설정을 읽어 클라이언트 인스턴스(Instance)를 생성합니다."""
+        values = _read_env_file(env_path or Path(".env"))
+        api_key = os.getenv("OPENAI_API_KEY") or values.get("OPENAI_API_KEY")
+        if not api_key:
+            raise NPCDialogueLLMUnavailable("OPENAI_API_KEY is not configured.")
+        model = os.getenv("NPC_DIALOGUE_LLM_MODEL") or values.get(
+            "NPC_DIALOGUE_LLM_MODEL",
+            "gpt-4o-mini",
+        )
+        timeout = float(
+            os.getenv("NPC_DIALOGUE_LLM_TIMEOUT_SECONDS")
+            or values.get("NPC_DIALOGUE_LLM_TIMEOUT_SECONDS", "10")
+        )
+        return cls(api_key=api_key, model=model, timeout_seconds=timeout)
+
+    def generate(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """LangChain의 ChatPromptTemplate과 LCEL 체인을 결합하여 NPC 대사를 생성합니다."""
+        persona = str(payload.get("persona_instruction", "concise, official, calm, and dry immigration officer.")).strip()
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", _developer_instructions(persona)),
+            ("user", "{input_payload}")
+        ])
+        chain = prompt | self._chat_model
+        result_message = chain.invoke({
+            "input_payload": json.dumps(payload, ensure_ascii=False)
+        })
+        parsed = json.loads(result_message.content if isinstance(result_message.content, str) else str(result_message.content))
+        parsed["__llm_usage"] = result_message.response_metadata.get("__llm_usage", {})
+        return parsed
+
+
+class _OpenAICompatibleNPCDialogueChatModel(BaseChatModel):
     api_key: str
     model: str
     base_url: str
     timeout_seconds: float = 10.0
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+
+    @property
+    def _llm_type(self) -> str:
+        return "openai_compatible_npc_dialogue"
 
     @property
     def endpoint(self) -> str:
         # Chat Completions 호환 규격에 맞춰 엔드포인트(Endpoint) URL을 조립합니다.
         return f"{self.base_url.rstrip('/')}/chat/completions"
 
-    def generate(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """OpenAI 호환 Chat Completions API 엔드포인트를 호출하여 NPC 대사를 생성합니다."""
-        persona = str(payload.get("persona_instruction", "concise, official, calm, and dry immigration officer.")).strip()
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: Any = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        system_content = ""
+        user_content = ""
+        for msg in messages:
+            if msg.type == "system":
+                system_content = msg.content if isinstance(msg.content, str) else str(msg.content)
+            elif msg.type == "human":
+                user_content = msg.content if isinstance(msg.content, str) else str(msg.content)
+
         response = httpx.post(
             self.endpoint,
             headers={
@@ -127,8 +205,8 @@ class OpenAICompatibleNPCDialogueLLMClient:
             json={
                 "model": self.model,
                 "messages": [
-                    {"role": "system", "content": _developer_instructions(persona)},
-                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": user_content},
                 ],
                 "temperature": 0.2,
                 "max_tokens": 500,
@@ -137,8 +215,43 @@ class OpenAICompatibleNPCDialogueLLMClient:
         )
         response.raise_for_status()
         data = response.json()
-        # Chat Completion 응답 형식에 맞춰 구조화된 결과를 추출합니다.
-        return _extract_chat_completion_structured_json(data)
+        result_dict = _extract_chat_completion_structured_json(data)
+        
+        ai_message = AIMessage(
+            content=json.dumps(result_dict, ensure_ascii=False),
+            response_metadata={"__llm_usage": result_dict.get("__llm_usage", {})}
+        )
+        return ChatResult(generations=[ChatGeneration(message=ai_message)])
+
+
+# vLLM 또는 Ollama처럼 OpenAI의 Chat Completions API와 호환되는 로컬 서버(Local Server) 연동을 위한 Chat Model 클래스(Class)입니다.
+class OpenAICompatibleNPCDialogueChatModel:
+    def __init__(self, api_key: str, model: str, base_url: str, timeout_seconds: float = 10.0) -> None:
+        self.api_key = api_key
+        self.model = model
+        self.base_url = base_url
+        self.timeout_seconds = timeout_seconds
+        self._chat_model = _OpenAICompatibleNPCDialogueChatModel(
+            api_key=api_key,
+            model=model,
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+        )
+
+    def generate(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """LangChain의 ChatPromptTemplate과 LCEL 체인을 결합하여 NPC 대사를 생성합니다."""
+        persona = str(payload.get("persona_instruction", "concise, official, calm, and dry immigration officer.")).strip()
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", _developer_instructions(persona)),
+            ("user", "{input_payload}")
+        ])
+        chain = prompt | self._chat_model
+        result_message = chain.invoke({
+            "input_payload": json.dumps(payload, ensure_ascii=False)
+        })
+        parsed = json.loads(result_message.content if isinstance(result_message.content, str) else str(result_message.content))
+        parsed["__llm_usage"] = result_message.response_metadata.get("__llm_usage", {})
+        return parsed
 
 
 # 메인(Primary) LLM 클라이언트가 실패하거나 예외가 발생하면 대체(Fallback) LLM 클라이언트를 실행하는 데코레이터(Decorator) 형태의 클라이언트 클래스(Class)입니다.
@@ -188,7 +301,7 @@ def build_npc_dialogue_llm_client_from_environment(
     fallback = _build_gemma4_vllm_client(values) if fallback_name == "gemma4_vllm" else None
 
     try:
-        primary = OpenAINPCDialogueLLMClient.from_environment(env_path)
+        primary = OpenAINPCDialogueChatModel.from_environment(env_path)
     except NPCDialogueLLMUnavailable as exc:
         # 만약 메인 OpenAI 클라이언트 빌드가 실패했더라도 대체 클라이언트가 정의되어 있다면 안전하게 연동해 줍니다.
         if fallback is not None:
@@ -203,13 +316,13 @@ def build_npc_dialogue_llm_client_from_environment(
     return primary
 
 
-def _build_gemma4_vllm_client(values: dict[str, str]) -> OpenAICompatibleNPCDialogueLLMClient:
+def _build_gemma4_vllm_client(values: dict[str, str]) -> OpenAICompatibleNPCDialogueChatModel:
     """vLLM 기반으로 실행 중인 로컬 Gemma 모델용 클라이언트를 빌드합니다."""
     timeout = float(
         os.getenv("NPC_DIALOGUE_LLM_TIMEOUT_SECONDS")
         or values.get("NPC_DIALOGUE_LLM_TIMEOUT_SECONDS", "10")
     )
-    return OpenAICompatibleNPCDialogueLLMClient(
+    return OpenAICompatibleNPCDialogueChatModel(
         api_key=os.getenv("GEMMA4_VLLM_API_KEY") or values.get("GEMMA4_VLLM_API_KEY", "dummy"),
         model=(
             os.getenv("GEMMA4_VLLM_MODEL")
@@ -409,3 +522,9 @@ def _read_env_file(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip().strip('"').strip("'")
     return values
+
+
+# 하위 호환성을 위한 별칭(Alias) 정의입니다.
+OpenAICompatibleNPCDialogueLLMClient = OpenAICompatibleNPCDialogueChatModel
+OpenAINPCDialogueLLMClient = OpenAINPCDialogueChatModel
+

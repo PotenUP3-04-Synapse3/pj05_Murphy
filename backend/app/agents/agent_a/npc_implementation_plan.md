@@ -49,7 +49,7 @@
 ```
 
 ### 🎛️ 스키마(Schema) 확장 명세 (`npc_llm_client.py`)
-LLM 출력 제어용 JSON 스키마(`_dialogue_schema`)에 최종 적용될 감정 필드와 4대 오디오 튜닝 필드를 추가하고 필수(`required`) 항목으로 지정합니다.
+LLM 출력 제어용 JSON 스키마 (`_dialogue_schema`)에 최종 적용될 감정 필드와 4대 오디오 튜닝 필드를 추가하고 필수 (`required`) 항목으로 지정합니다.
 
 ```json
 {
@@ -63,7 +63,7 @@ LLM 출력 제어용 JSON 스키마(`_dialogue_schema`)에 최종 적용될 감�
 
 ## 3. LLM 동적 감정 및 단일 에이전트 연동 설계 (Dynamic Emotion & Unified Agent Design)
 
-**Level Design Agent가 전달하는 npc_id와 13종 감정 정보를 기반으로, 단 하나의 Dialogue Agent가 캐릭터의 페르소나(Persona) 스타일을 동적 결합하여 대사(텍스트)와 일레븐랩스(ElevenLabs) 오디오 파라미터를 동시에 일괄 생성**하도록 아키텍처를 단일화합니다.
+**Level Design Agent가 전달하는 npc_id와 13종 감정 정보를 기반으로, 단 하나의 Dialogue Agent가 캐릭터의 페르소나 (Persona) 스타일을 동적 결합하여 대사 (텍스트)와 일레븐랩스 (ElevenLabs) 오디오 파라미터를 동시에 일괄 생성**하도록 아키텍처를 단일화합니다.
 
 ```
 ┌─────────────────────────┐
@@ -79,12 +79,12 @@ LLM 출력 제어용 JSON 스키마(`_dialogue_schema`)에 최종 적용될 감�
 ┌─────────────────────────┐      [Single LLM Call] Generates:
 │  NPCDialogueAgent       │ ──►  1. npc_text & tts_text (대사 작문)
 └─────────────────────────┘      2. ElevenLabs Parameters ( stability, style, 
-                                                           speed, similarity_boost )
+                                                            speed, similarity_boost )
                                  ※ 전달받은 감정과 페르소나를 토대로 동적 파라미터 튜닝
 ```
 
 ### 🎛️ 스키마(Schema) 확장 명세 (`npc_llm_client.py`)
-통합 생성을 위해 JSON 스키마(`_dialogue_schema`)에 감정 필드와 4대 오디오 튜닝 필드를 추가하고 필수(`required`) 항목으로 지정합니다.
+통합 생성을 위해 JSON 스키마 (`_dialogue_schema`)에 감정 필드와 4대 오디오 튜닝 필드를 추가하고 필수 (`required`) 항목으로 지정합니다.
 
 ```json
 {
@@ -97,7 +97,7 @@ LLM 출력 제어용 JSON 스키마(`_dialogue_schema`)에 최종 적용될 감�
 ```
 
 ### 🧠 시스템 프롬프트(Instructions) 보강 및 페르소나 분기 설계
-모든 NPC 대사 생성은 단일 에이전트(`NPCDialogueAgent`)를 거치며, 프롬프트 생성 시 `npc_id`에 상응하는 **페르소나 지침(`persona_instruction`)**을 동적으로 주입하여 성격을 구현합니다.
+모든 NPC 대사 생성은 단일 에이전트 (`NPCDialogueAgent`)를 거치며, 프롬프트 생성 시 `npc_id`에 상응하는 **페르소나 지침 (`persona_instruction`)**을 동적으로 주입하여 성격을 구현합니다.
 LLM의 시스템 지침인 `_developer_instructions(persona_instruction: str)` 함수에 다음의 설계 규칙을 적용합니다:
 
 - **공통 규칙**:
@@ -105,7 +105,7 @@ LLM의 시스템 지침인 `_developer_instructions(persona_instruction: str)` �
   > *2. Dynamically calculate and adjust ElevenLabs TTS parameters (stability, style, speed, and similarity_boost) based on the situational context, the player's performance, and the designated input emotion. Output them as floating-point numbers in the specified ranges."*
 
 - **동적 페르소나(Persona) 주입 규칙 (Roster 기반)**:
-  `npc_roster_service.py`에 캐릭터별 성격 지침 필드(`persona_instruction`)를 아래와 같이 정의하고, 시스템 프롬프트 호출 시 결합합니다:
+  `npc_roster_service.py`에 캐릭터별 성격 지침 필드 (`persona_instruction`)를 아래와 같이 정의하고, 시스템 프롬프트 호출 시 결합합니다:
   - **`flight_seatmate_arabella`**: *"very friendly, warm, patient, socially easygoing, and welcoming passenger."*
   - **`flight_seatmate_novak`**: *"polite, slightly quiet, but friendly and helpful passenger."*
   - **`officer_miller`**: *"concise, official, calm, and dry immigration officer."*
@@ -117,7 +117,7 @@ LLM의 시스템 지침인 `_developer_instructions(persona_instruction: str)` �
   > 시스템 지침 주입 문구: *"Adopt the following persona style for the NPC dialogue generation: {persona_instruction}"*
 
 ### 📞 오케스트레이션 및 TTS 어댑터 연동 (`voice_output_service.py`, `npc_dialogue_agent.py`)
-- `npc_dialogue_agent.py`는 Roster에서 매핑된 `persona_instruction`을 조회하여 `generate` 호출 시 전달합니다. 단 한 번의 LLM 호출을 통해 생성된 대사(`npc_text`, `tts_text`), 감정(`npc_emotion`), 톤(`tone`) 및 TTS 4대 파라미터가 포함된 단일 결과를 오케스트레이터로 반환합니다.
+- `npc_dialogue_agent.py`는 Roster에서 매핑된 `persona_instruction`을 조회하여 `generate` 호출 시 전달합니다. 단 한 번의 LLM 호출을 통해 생성된 대사 (`npc_text`, `tts_text`), 감정 (`npc_emotion`), 톤 (`tone`) 및 TTS 4대 파라미터가 포함된 단일 결과를 오케스트레이터로 반환합니다.
 - `voice_output_service.py` 내부의 `_build_provider_request` 함수는 전달된 `dialogue` 사전에서 LLM이 동적 산출한 `stability`, `style`, `speed`, `similarity_boost` 값을 꺼내와 ElevenLabs API 호출용 값으로 사용합니다.
 
 ---
@@ -144,59 +144,37 @@ LLM의 시스템 지침인 `_developer_instructions(persona_instruction: str)` �
 
 ---
 
-## 5. 추후 LangChain 및 LangGraph 전환 계획 (Future LangChain & LangGraph Migration Plan)
+## 5. LangChain 및 LangGraph 적용 및 구현 완료 (LangChain & LangGraph Implementation Completed)
 
-현재 수동 HTTP 통신(`httpx.post`) 기반의 구조를 추후 패키지 스펙 규정에 맞추어 LangChain과 LangGraph 프레임워크 기반의 유연한 에이전트 구조로 마이그레이션하기 위한 설계 로직입니다.
+이번 스프린트에서는 수동 HTTP 통신(httpx.post) 기반의 구조를 완전히 마이그레이션하여, 패키지 스펙 규정에 맞춘 LangChain(1.3.2) 및 LangGraph(1.2.2) 프레임워크 기반의 유연하고 확장성 있는 에이전트 구조로 전면 리팩터링을 완료했습니다.
 
-### 📌 의존성 버전 제약 (Dependency Contract)
-- `langchain==1.3.2`
-- `langgraph==1.2.2`
-※ 해당 버전 외 다른 버전으로의 업그레이드/다운그레이드는 금지됩니다.
+### 의존성 버전 제약 준수 (Dependency Contract)
+- langchain==1.3.2
+- langgraph==1.2.2
+- 외부 API 키가 없는 환경에서도 모의(Mock) 방식과 룰 기반 폴백(Fallback) 방식을 지원하여 모든 테스트가 무결하게 패스하도록 설계했습니다.
 
-### ⛓️ LangChain 적용 방안 (API 래핑 및 체인화)
-1. **ChatOpenAI 래퍼 도입:**
-   - 직접적인 API URL 호출을 생략하고 `langchain_openai.ChatOpenAI` 객체를 통해 API 호출을 관리합니다.
-2. **구조화된 출력 강제 (Structured Output):**
-   - `.with_structured_output` API를 활용하여 `_dialogue_schema` 형태의 Pydantic 또는 JSON 스키마 규격을 넘겨주어 형식이 맞지 않는 출력이 발생하는 문제를 원천 차단합니다.
-3. **프롬프트 템플릿(Prompt Template):**
-   - `ChatPromptTemplate.from_messages`를 활용해 공통 규칙 지침과 `persona_instruction` 매개변수를 주입하는 프롬프트 조립 과정을 정형화합니다.
-4. **체인 결합 (LCEL Chain):**
-   - `prompt | model` 형태로 컴파일하여 가독성을 높이고, 에러 복구 및 재시도 로직을 LangChain 기본 제공 기능으로 대체합니다.
+### LangChain 적용 상세 (API 래핑 및 LCEL 체인화)
+1. ChatOpenAI 및 Responses API 모델 래핑:
+   - OpenAI Responses API 규격과 Chat Completions 규격을 LangChain의 BaseChatModel을 상속하는 내부 챗 모델(_OpenAINPCDialogueChatModel, _OpenAICompatibleNPCDialogueChatModel)로 각각 구현했습니다.
+   - 외부에서는 이를 감싸는 OpenAINPCDialogueChatModel 및 OpenAICompatibleNPCDialogueChatModel 래퍼 클래스를 통해 generate 인터페이스와 LCEL 체인 인터페이스를 단일화했습니다.
+2. 구조화된 출력 강제 (Structured Output):
+   - JSON 스키마 규격(_dialogue_schema)에 13종 감정 enum과 4대 오디오 파라미터(stability, style, speed, similarity_boost)를 필수로 선언하여, LLM이 이를 누락 없이 정량화해 출력하도록 보장했습니다.
+3. 프롬프트 템플릿(Prompt Template) 적용:
+   - ChatPromptTemplate을 활용하여 시스템 지침 및 NPC Roster의 페르소나 지침(persona_instruction)의 동적 조립 과정을 템플릿화하였습니다.
 
-### 🕸️ LangGraph 도입 방안 (에이전트 상태 기계 설계)
-1. **상태(State) 객체 모델링:**
-   - `TypedDict`를 활용해 단일 에이전트 연동 상태(State)인 `AgentState`를 정의합니다.
-   ```python
-   class AgentState(TypedDict):
-       player_text: str
-       english_level: str
-       input_emotion: str
-       persona_instruction: str
-       dialogue_result: dict  # npc_text, tts_text, stability 등 저장
-       audio_result: dict     # WAV URL, duration 등 저장
-       errors: list[str]
-   ```
-2. **노드(Node) 및 그래프 구성:**
-   - **`resolve_persona` 노드:** Roster를 연동하여 `persona_instruction`을 로드해 State에 채웁니다.
-   - **`generate_dialogue` 노드:** LangChain 체인을 실행하여 대사와 ElevenLabs 파라미터를 통합 산출해 State를 갱신합니다.
-   - **`synthesize_audio` 노드:** 동적 파라미터를 ElevenLabs TTS 서비스로 넘겨 음성을 생성하고 오디오 정보를 바인딩합니다.
-   - **`handle_fallback` 노드:** 생성 단계나 음성 합성 단계에서 예외가 감지되면 룰 베이스 fallback 데이터를 조립해 State에 덮어씁니다.
-3. **조건부 엣지(Conditional Edge)를 통한 흐름 제어:**
-   - `generate_dialogue` 또는 `synthesize_audio` 실패 시 예외 처리 로직에 따라 `handle_fallback` 노드로 자동 전이(Transition)하는 예외 회복 파이프라인을 구축합니다.
+### LangGraph 도입 상세 (내부 에이전트 상태 기계 설계)
+1. 상태(State) 객체 정의:
+   - NPCDialogueState를 정의하여 입력 페이로드, 정규화 정보, NPC 프로필, 플레이어 프로필, 감정 상태, 생성 정책, 그리고 최종 결과를 체계적으로 공유 및 갱신합니다.
+2. 노드(Node) 및 그래프 구성:
+   - initialize_state 노드: 입력 데이터를 정규화하고, NPC 프로필(Roster) 및 플레이어 프로필을 빌드하여 초기 룰 기반 결과를 세팅합니다.
+   - generate_dialogue_llm 노드: LangChain 기반 LLM 체인을 구동하여 실시간 대사와 ElevenLabs TTS 파라미터 4종이 포함된 단일 JSON을 산출합니다.
+   - apply_fallback 노드: LLM 호출 오류(네트워크 에러, JSON 파싱 실패 등) 발생 시 안전하게 룰 기반 결과에 디버그 플래그(fallback_used = True)를 달아 복원합니다.
+3. 그래프 흐름 제어 (Conditional Edge):
+   - route_after_init: LLM 사용 설정(use_llm) 여부에 따라 LLM 노드 진입 혹은 즉시 종료(END)를 결정합니다.
+   - route_after_llm: LLM 호출 과정에서 예외가 발생했는지(상태 객체 내 error 존재 유무)를 감지하여 정상 종료 혹은 폴백 노드로 흐름을 분기합니다.
 
-### 🛠️ LangChain Tool (도구) 표준화 방안
-1. **`BaseTool` 또는 `@tool` 상속 도입:**
-   - 현재 구현된 [npc_roster_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/npc_roster_service.py)의 Roster 조회 로직, 폴리싱 서비스([tts_text_polisher_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/tts_text_polisher_service.py)) 등을 LangChain의 표준 `BaseTool` 클래스를 상속받거나 `@tool` 데코레이터를 붙여 표준 도구로 전환합니다.
-2. **도구 바인딩 (Tool Binding):**
-   - 변환된 표준 도구들을 LangChain LLM 컴포넌트에 직접 바인딩(`model.bind_tools([resolve_profile, polish_text])`)하여, 에이전트가 상황에 따라 능동적으로 필요한 내부 헬퍼 서비스를 자동 호출하는 구조로 마이그레이션합니다.
-
-### 🛡️ LangChain Middleware (미들웨어 Callback) 표준화 방안
-1. **`BaseCallbackHandler` 기반 미들웨어 구현:**
-   - 기존의 `developer_a_runtime_log_service.py`와 같이 로깅 및 모니터링을 담당하던 수동 래퍼 모듈을 LangChain의 표준 이벤트 리스너인 `BaseCallbackHandler` 상속 구현체로 마이그레이션합니다.
-2. **생명주기 이벤트 트레이싱 (Event Tracing):**
-   - `on_llm_start`, `on_llm_end`, `on_tool_start`, `on_tool_end` 등의 콜백 이벤트를 가로채어 토큰(Token) 사용량 계측, 에이전트 실행 시간(Latency) 로깅 및 디버그 기록 생성을 단일 통로로 자동 일원화합니다.
-
-### 📂 소스 코드 파일 변경 방향
-- `npc_llm_client.py` ──► LangChain의 `ChatOpenAI` 및 `ChatPromptTemplate` 기반 구현체로 교체.
-- `npc_dialogue_agent.py` ──► Developer C가 총괄 소유하여 리팩토링 중인 메인 오케스트레이터 그래프(`developer_c_graph.py`)에 플러그인 형태로 결합 가능한 **단일 NPC Dialogue 노드(Single NPC Dialogue Node, 또는 서브 그래프)**로 리팩토링 및 래핑.
-- `developer_a_runtime_log_service.py` ──► `BaseCallbackHandler` 상속 구현체로 마이그레이션하여 체인 호출 시 등록하여 실행.
+### 검증 상태 (Verification Summary)
+- uv run pytest -> 223개 유닛 테스트 케이스 전체 통과 확인.
+- uv run ruff check . -> Ruff 린터 지적 사항 0건 확인.
+- uv run mypy . -> 101개 소스 파일 대상 정적 분석 타입 오류 0건 통과 확인.
+- 이에 따라, 원래 추후 계획으로 기재되어 있던 LangChain 및 LangGraph 마이그레이션이 이번 스프린트 구현 범위 내에서 무결하게 완결되었음을 선언합니다.

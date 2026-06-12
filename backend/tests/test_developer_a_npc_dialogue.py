@@ -117,6 +117,8 @@ def test_level_design_dialogue_uses_npc_roster_profile(monkeypatch) -> None:
             fallback_text="Please wait here.",
             mock_voice_id="supervisor_lee_mock",
             kokoro_voices=("af_heart",),
+            persona_instruction="friendly, warm passenger.",
+            elevenlabs_voice_id=None,
         )
 
     monkeypatch.setattr(
@@ -197,6 +199,8 @@ def test_level_design_llm_dialogue_keeps_roster_speaker_and_animation(monkeypatc
             fallback_text="Please wait here.",
             mock_voice_id="supervisor_lee_mock",
             kokoro_voices=("af_heart",),
+            persona_instruction="friendly, warm passenger.",
+            elevenlabs_voice_id=None,
         )
 
     monkeypatch.setattr(

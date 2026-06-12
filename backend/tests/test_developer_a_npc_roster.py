@@ -17,6 +17,8 @@ def test_resolve_known_npc_profile_for_officer_miller() -> None:
         fallback_text="Okay. Please continue.",
         mock_voice_id="officer_miller_mock_baritone",
         kokoro_voices=("am_michael",),
+        persona_instruction="concise, official, calm, and dry immigration officer.",
+        elevenlabs_voice_id=None,
     )
     assert profile.kokoro_voices == ("am_michael",)
 

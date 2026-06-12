@@ -1,8 +1,10 @@
 from dataclasses import dataclass
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, TypedDict, NotRequired
 import json
 
 import httpx
+
+from langgraph.graph import StateGraph, START, END
 
 from backend.app.agents.agent_a.npc_llm_client import (
     NPCDialogueLLMClient,
@@ -146,19 +148,24 @@ def _retry_feedback(recommended_expression: str) -> str:
     return "괜찮아요. 짧고 분명한 문장으로 다시 말해보세요."
 
 
-def generate_npc_dialogue_from_level_design(
-    payload: dict[str, Any],
-    use_llm: bool = False,
-    llm_client: NPCDialogueLLMClient | None = None,
-) -> dict[str, Any]:
-    """레벨 디자인 에이전트(Level Design Agent) JSON 데이터를 기반으로 개발자 A의 대사 생성 결과를 도출하는 함수(Function)입니다.
-    
-    인자(Arguments):
-        payload: 레벨 디자인 에이전트가 제공하는 원본 입력 사전(Dictionary) 객체입니다.
-        use_llm: LLM을 사용하여 대사를 생성할지 여부를 결정하는 부울(Boolean) 값입니다.
-        llm_client: 커스텀(Custom) LLM 클라이언트 인스턴스(Instance)입니다. 없으면 환경 변수에서 빌드합니다.
-    """
-    # 1. 원본 페이로드(Payload)를 개발자 A 내부 처리에 적합하게 정규화(Normalize)합니다.
+# LangGraph 에이전트의 내부 공유 상태(Shared State) 명세를 정의하는 TypedDict 클래스입니다.
+class NPCDialogueState(TypedDict):
+    payload: dict[str, Any]
+    normalized: dict[str, Any]
+    npc_profile: NPCProfile
+    profile: Any
+    emotion_state: Any
+    policy: Any
+    result: NotRequired[dict[str, Any]]
+    use_llm: bool
+    llm_client: Any
+    error: NotRequired[str]
+
+
+def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
+    """입력 데이터 파싱, 프로필 로드, 감정 추론 및 기본 룰 기반 결과를 빌드하여 상태를 초기화하는 노드입니다."""
+    payload = state["payload"]
+    # 1. 원본 페이로드(Payload)를 정규화(Normalize)합니다.
     normalized = normalize_level_design_payload(payload)
     # 2. 페이로드 정보에 매칭되는 NPC의 프로필(Profile)을 조회합니다.
     npc_profile = resolve_npc_profile(_npc_id_from_payload(payload))
@@ -203,12 +210,162 @@ def generate_npc_dialogue_from_level_design(
     # 생성 이력 추적용 메타데이터(Metadata)를 결과 사전(Dictionary)에 병합합니다.
     result = _with_generation_metadata(result, profile, emotion_state, policy)
     
-    # LLM을 사용하지 않는 경우, 룰 기반(Rule-based)의 템플릿(Template) 결과를 그대로 반환합니다.
-    if not use_llm:
-        return result
-        
-    # LLM을 사용하는 경우, 생성된 룰 기반 텍스트를 기초로 LLM에 상세 튜닝을 요청합니다. 실패 시 폴백을 반환합니다.
-    return _generate_with_llm_or_fallback(payload, normalized, result, llm_client, npc_profile)
+    return {
+        "normalized": normalized,
+        "npc_profile": npc_profile,
+        "profile": profile,
+        "emotion_state": emotion_state,
+        "policy": policy,
+        "result": result
+    }
+
+
+def route_after_init(state: NPCDialogueState) -> str:
+    """초기화 노드 완료 후 LLM 대사 생성 흐름으로 분기할지 판단하는 라우팅 함수입니다."""
+    use_llm = state.get("use_llm", False)
+    if use_llm:
+        return "generate_dialogue_llm"
+    return END
+
+
+def node_generate_dialogue_llm(state: NPCDialogueState) -> dict[str, Any]:
+    """LangChain 및 LLM 클라이언트를 사용하여 감정 톤과 일레븐랩스 파라미터를 실시간으로 동적 튜닝하여 대사를 생성하는 노드입니다."""
+    payload = state["payload"]
+    normalized = state["normalized"]
+    fallback_result = state["result"]
+    llm_client = state.get("llm_client")
+    npc_profile = state["npc_profile"]
+
+    try:
+        client = llm_client or build_npc_dialogue_llm_client_from_environment()
+        llm_result = client.generate(
+            {
+                "level_design_payload": payload,
+                "normalized": normalized,
+                "persona_instruction": npc_profile.persona_instruction, # Roster에서 매핑된 페르소나 탑재
+                "fallback_candidate": {
+                    "speaker": fallback_result["speaker"],
+                    "npc_text": fallback_result["npc_text"],
+                    "tts_text": fallback_result["tts_text"],
+                    "tone": fallback_result["tone"],
+                    "feedback_kr": fallback_result["feedback_kr"],
+                    "fallback": fallback_result.get("fallback"),
+                },
+                "generation_profile": fallback_result["generation_profile"],
+            }
+        )
+    except (NPCDialogueLLMUnavailable, httpx.HTTPError, json.JSONDecodeError, KeyError, ValueError) as exc:
+        return {"error": type(exc).__name__}
+
+    llm_usage = llm_result.get("__llm_usage", {})
+    npc_text = str(llm_result.get("npc_text") or "").strip()
+    tts_text = str(llm_result.get("tts_text") or "").strip()
+    
+    # 생성된 대사가 안전한 영문 아스키(ASCII) 텍스트인지 검사합니다.
+    if not _is_safe_english_dialogue_text(npc_text) or not _is_safe_english_dialogue_text(tts_text):
+        return {"error": "invalid_llm_dialogue_language"}
+
+    seed_fallback = _dict_value(fallback_result.get("fallback"))
+    
+    # LLM이 직접 생성한 4대 파라미터와 최종 npc_emotion을 결과 딕셔너리에 바인딩합니다.
+    merged = {
+        **fallback_result,
+        "speaker": npc_profile.display_name,
+        "npc_text": npc_text,
+        "text": npc_text,
+        "tts_text": tts_text,
+        "feedback_kr": str(llm_result.get("feedback_kr") or fallback_result["feedback_kr"]),
+        "tone": str(llm_result.get("tone") or fallback_result["tone"]),
+        "animation": npc_profile.default_animation,
+        "fallback": {"used": False, "reason": None},
+        "npc_emotion": str(llm_result.get("npc_emotion") or fallback_result["generation_profile"]["npc_emotion"]["emotion"]),
+        "stability": llm_result.get("stability"),
+        "style": llm_result.get("style"),
+        "speed": llm_result.get("speed"),
+        "similarity_boost": llm_result.get("similarity_boost"),
+        "llm": {
+            "used": True,
+            "fallback_used": bool(llm_result.get("__fallback_model")),
+            "seed_fallback_used": bool(seed_fallback.get("used")),
+            "model_name": str(llm_result.get("__fallback_model") or getattr(client, "model", "unknown")),
+            "input_tokens": int(llm_usage.get("input_tokens", 0)),
+            "output_tokens": int(llm_usage.get("output_tokens", 0)),
+            "total_tokens": int(llm_usage.get("total_tokens", 0)),
+            "model_reason": str(llm_result.get("llm_reason", "")),
+        },
+    }
+    
+    # generation_profile 정보도 LLM이 결정한 동적 감정으로 동기화합니다.
+    merged["generation_profile"]["npc_emotion"]["emotion"] = merged["npc_emotion"]
+    
+    return {"result": merged}
+
+
+def route_after_llm(state: NPCDialogueState) -> str:
+    """LLM 대사 생성 수행 후 에러 발생 시 fallback 노드로 흐름을 분기하기 위한 라우팅 함수입니다."""
+    if "error" in state:
+        return "apply_fallback"
+    return END
+
+
+def node_apply_fallback(state: NPCDialogueState) -> dict[str, Any]:
+    """LLM 호출 오류 시 안전한 룰 기반 결과를 fallback으로 매핑하여 반환하는 노드입니다."""
+    fallback_result = state["result"]
+    error_reason = state.get("error", "UnknownError")
+    
+    fallback_result["llm"] = {
+        "used": False,
+        "fallback_used": True,
+        "reason": error_reason,
+    }
+    return {"result": fallback_result}
+
+
+def build_npc_dialogue_graph() -> Any:
+    """NPCDialogue 에이전트의 내부 LangGraph 상태 기계를 조립하여 컴파일합니다."""
+    workflow = StateGraph(NPCDialogueState)
+    
+    workflow.add_node("initialize_state", node_initialize_state)
+    workflow.add_node("generate_dialogue_llm", node_generate_dialogue_llm)
+    workflow.add_node("apply_fallback", node_apply_fallback)
+    
+    workflow.add_edge(START, "initialize_state")
+    
+    workflow.add_conditional_edges(
+        "initialize_state",
+        route_after_init,
+        {
+            "generate_dialogue_llm": "generate_dialogue_llm",
+            END: END
+        }
+    )
+    workflow.add_conditional_edges(
+        "generate_dialogue_llm",
+        route_after_llm,
+        {
+            "apply_fallback": "apply_fallback",
+            END: END
+        }
+    )
+    workflow.add_edge("apply_fallback", END)
+    
+    return workflow.compile()
+
+
+def generate_npc_dialogue_from_level_design(
+    payload: dict[str, Any],
+    use_llm: bool = False,
+    llm_client: NPCDialogueLLMClient | None = None,
+) -> dict[str, Any]:
+    """레벨 디자인 에이전트(Level Design Agent) JSON 데이터를 기반으로 컴파일된 LangGraph를 동작시켜 최종 대사 및 오디오 설정 사전을 도출합니다."""
+    graph = build_npc_dialogue_graph()
+    initial_state = {
+        "payload": payload,
+        "use_llm": use_llm,
+        "llm_client": llm_client
+    }
+    final_state = graph.invoke(initial_state)
+    return final_state["result"]
 
 
 def _level_design_feedback(feedback_note: str, recommended_expression: str) -> str:
@@ -298,81 +455,6 @@ def _npc_id_from_payload(payload: dict[str, Any]) -> str | None:
         return None
     value = npc.get("npc_id") or npc.get("id")
     return str(value) if value is not None else None
-
-
-def _generate_with_llm_or_fallback(
-    source_payload: dict[str, Any],
-    normalized: dict[str, Any],
-    fallback_result: dict[str, Any],
-    llm_client: NPCDialogueLLMClient | None,
-    npc_profile: NPCProfile,
-) -> dict[str, Any]:
-    """LLM 클라이언트를 이용하여 NPC 대사를 정교하게 생성하며, 오류 발생 시 룰 기반 결과를 안전 장치(Fallback)로 활용합니다."""
-    try:
-        client = llm_client or build_npc_dialogue_llm_client_from_environment()
-        llm_result = client.generate(
-            {
-                "level_design_payload": source_payload,
-                "normalized": normalized,
-                "fallback_candidate": {
-                    "speaker": fallback_result["speaker"],
-                    "npc_text": fallback_result["npc_text"],
-                    "tts_text": fallback_result["tts_text"],
-                    "tone": fallback_result["tone"],
-                    "feedback_kr": fallback_result["feedback_kr"],
-                    "fallback": fallback_result.get("fallback"),
-                },
-                "generation_profile": fallback_result["generation_profile"],
-            }
-        )
-    except (NPCDialogueLLMUnavailable, httpx.HTTPError, json.JSONDecodeError, KeyError, ValueError) as exc:
-        fallback_result["llm"] = {
-            "used": False,
-            "fallback_used": True,
-            "reason": type(exc).__name__,
-        }
-        return fallback_result
-
-    llm_usage = llm_result.get("__llm_usage", {})
-    npc_text = str(llm_result.get("npc_text") or "").strip()
-    tts_text = str(llm_result.get("tts_text") or "").strip()
-    
-    # 생성된 대사가 안전한 영문 아스키(ASCII) 텍스트인지 검사합니다.
-    if not _is_safe_english_dialogue_text(npc_text) or not _is_safe_english_dialogue_text(tts_text):
-        fallback_result["llm"] = {
-            "used": False,
-            "fallback_used": True,
-            "reason": "invalid_llm_dialogue_language",
-            "model_name": str(llm_result.get("__fallback_model") or getattr(client, "model", "unknown")),
-            "input_tokens": int(llm_usage.get("input_tokens", 0)),
-            "output_tokens": int(llm_usage.get("output_tokens", 0)),
-            "total_tokens": int(llm_usage.get("total_tokens", 0)),
-        }
-        return fallback_result
-
-    seed_fallback = _dict_value(fallback_result.get("fallback"))
-    merged = {
-        **fallback_result,
-        "speaker": npc_profile.display_name,
-        "npc_text": npc_text,
-        "text": npc_text,
-        "tts_text": tts_text,
-        "feedback_kr": str(llm_result.get("feedback_kr") or fallback_result["feedback_kr"]),
-        "tone": str(llm_result.get("tone") or fallback_result["tone"]),
-        "animation": npc_profile.default_animation,
-        "fallback": {"used": False, "reason": None},
-        "llm": {
-            "used": True,
-            "fallback_used": bool(llm_result.get("__fallback_model")),
-            "seed_fallback_used": bool(seed_fallback.get("used")),
-            "model_name": str(llm_result.get("__fallback_model") or getattr(client, "model", "unknown")),
-            "input_tokens": int(llm_usage.get("input_tokens", 0)),
-            "output_tokens": int(llm_usage.get("output_tokens", 0)),
-            "total_tokens": int(llm_usage.get("total_tokens", 0)),
-            "model_reason": str(llm_result.get("llm_reason", "")),
-        },
-    }
-    return merged
 
 
 def _dict_value(value: Any) -> dict[str, Any]:

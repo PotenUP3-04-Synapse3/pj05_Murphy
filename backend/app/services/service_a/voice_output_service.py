@@ -372,6 +372,22 @@ def _build_provider_request(
 ) -> Any:
     """설정된 TTS 엔진 명세에 대응되는 개별 파라미터 구조체(Request Object)를 분기 빌드합니다."""
     if provider_name == "elevenlabs":
+        stability_val = dialogue.get("stability")
+        if stability_val is None:
+            stability_val = _env_float("MURPHY_ELEVENLABS_STABILITY", _elevenlabs_stability_for_tone(tone))
+
+        similarity_boost_val = dialogue.get("similarity_boost")
+        if similarity_boost_val is None:
+            similarity_boost_val = _env_float("MURPHY_ELEVENLABS_SIMILARITY_BOOST", 0.82)
+
+        style_val = dialogue.get("style")
+        if style_val is None:
+            style_val = _env_float("MURPHY_ELEVENLABS_STYLE", _elevenlabs_style_for_tone(tone))
+
+        speed_val = dialogue.get("speed")
+        if speed_val is None:
+            speed_val = _env_float("MURPHY_ELEVENLABS_SPEED", _elevenlabs_speed_for_tone(tone))
+
         return build_elevenlabs_provider_request(
             text=text,
             speaker_id=speaker_id,
@@ -381,10 +397,10 @@ def _build_provider_request(
             english_level=english_level,
             api_key=_env_value("MURPHY_ELEVENLABS_API_KEY", _env_value("ELEVENLABS_API_KEY", "")),
             model_id=_env_value("MURPHY_ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
-            stability=_env_float("MURPHY_ELEVENLABS_STABILITY", _elevenlabs_stability_for_tone(tone)),
-            similarity_boost=_env_float("MURPHY_ELEVENLABS_SIMILARITY_BOOST", 0.82),
-            style=_env_float("MURPHY_ELEVENLABS_STYLE", _elevenlabs_style_for_tone(tone)),
-            speed=_env_float("MURPHY_ELEVENLABS_SPEED", _elevenlabs_speed_for_tone(tone)),
+            stability=stability_val,
+            similarity_boost=similarity_boost_val,
+            style=style_val,
+            speed=speed_val,
             api_output_format=_env_value("MURPHY_ELEVENLABS_API_OUTPUT_FORMAT", "mp3_44100_128"),
             output_format=_env_value("MURPHY_ELEVENLABS_OUTPUT_FORMAT", "wav"),
             base_url=_env_value("MURPHY_ELEVENLABS_BASE_URL", "https://api.elevenlabs.io/v1"),
