@@ -15,6 +15,30 @@ is local-first with API fallback. Automated tests keep deterministic STT through
 deterministic `rule` mode and optional OpenAI-assisted `llm` mode with rule
 fallback.
 
+## 2026-06-12 Developer A LangGraph & ElevenLabs Parameter Refactor
+
+Developer A는 패키지 버전 제약(langchain==1.3.2, langgraph==1.2.2)을 준수하며, NPC 대사 생성 및 ElevenLabs TTS 파라미터 동적 튜닝 흐름을 LangChain 및 LangGraph 기반 상태 기계 구조로 전면 리팩터링 및 마이그레이션 완료했습니다.
+
+구현 내용:
+- npc_llm_client.py 리팩터링: BaseChatModel을 상속하는 내부 ChatModel을 구현하여 LCEL 체인(prompt | model) 구조를 정립하고, 외부에서는 래퍼 클래스를 통해 generate 인터페이스 일관성을 유지했습니다.
+- npc_dialogue_agent.py LangGraph 상태 기계 구현: NPCDialogueState 기반의 StateGraph를 조립 및 컴파일하여 데이터 초기화(initialize_state), LLM 대사 생성(generate_dialogue_llm), 폴백 매핑(apply_fallback) 노드를 유기적으로 연동하고 조건부 엣지를 통해 예외 처리를 일원화했습니다.
+- voice_output_service.py 동적 파라미터 매핑: LLM이 동적으로 산출한 stability, style, speed, similarity_boost 파라미터를 ElevenLabs TTS API 주입 시 환경 변수보다 최우선적으로 적용하도록 연동 보강했습니다.
+- 테스트 Mock 코드 보완: test_developer_a_npc_roster.py 및 test_developer_a_npc_dialogue.py 내 NPCProfile 모크 생성 시 누락되었던 필수 속성(persona_instruction, elevenlabs_voice_id)을 채워 정적 검사 오류를 해결했습니다.
+- 작업 계획서 업데이트: backend/app/agents/agent_a/npc_implementation_plan.md 내 추후 계획에 머물러 있던 LangChain/LangGraph 마이그레이션 항목을 구현 완료 상태로 개정했습니다.
+
+검증 결과:
+- uv run pytest: PASS, Chapter 0 전체 223개 유닛 테스트 케이스 성공 통과.
+- uv run ruff check .: PASS, 린트 지적 사항 0건.
+- uv run mypy .: PASS, 101개 소스 파일 대상 정적 분석 타입 오류 0건 완료.
+
+수정된 파일 목록:
+- backend/app/agents/agent_a/npc_dialogue_agent.py
+- backend/app/agents/agent_a/npc_llm_client.py
+- backend/app/agents/agent_a/npc_implementation_plan.md
+- backend/app/services/service_a/voice_output_service.py
+- backend/tests/test_developer_a_npc_roster.py
+- backend/tests/test_developer_a_npc_dialogue.py
+
 ## 2026-06-12 Developer C Realtime STT Smoke Fix
 
 Developer C investigated a solo ElevenLabs realtime STT smoke-test failure from
@@ -460,6 +484,158 @@ Next Alpha priority: refactor the C-owned Understanding Agent around generic
 slot evidence before expanding the full Alpha scenario flow. The current
 `visit_purpose` and `stay_duration` extractors are acceptable regression guards,
 but new scene slots should not require one hardcoded extractor per node.
+
+## Developer A ElevenLabs TTS Provider Update - 2026-06-09
+
+Developer A integrated ElevenLabs as an official selectable TTS provider. The
+runtime can now switch providers with:
+
+```text
+MURPHY_TTS_PROVIDER=elevenlabs
+MURPHY_TTS_PROVIDER=edge
+MURPHY_TTS_PROVIDER=kokoro
+MURPHY_TTS_PROVIDER=chatterbox
+```
+
+Generated ElevenLabs WAV files are stored under:
+
+```text
+backend/runtime/generated/audio/elevenlabs/
+```
+
+Runtime settings:
+
+```text
+MURPHY_ELEVENLABS_API_KEY=
+ELEVENLABS_API_KEY=
+MURPHY_ELEVENLABS_BASE_URL=https://api.elevenlabs.io/v1
+MURPHY_ELEVENLABS_VOICE_ID=CwhRBWXzGAHq8TQ4Fs17
+MURPHY_ELEVENLABS_MODEL_ID=eleven_flash_v2_5
+MURPHY_ELEVENLABS_API_OUTPUT_FORMAT=mp3_44100_128
+MURPHY_ELEVENLABS_OUTPUT_FORMAT=wav
+MURPHY_ELEVENLABS_STABILITY=0.52
+MURPHY_ELEVENLABS_SIMILARITY_BOOST=0.82
+MURPHY_ELEVENLABS_STYLE=0.42
+MURPHY_ELEVENLABS_SPEED=0.80
+MURPHY_ELEVENLABS_USE_SPEAKER_BOOST=true
+MURPHY_ELEVENLABS_TIMEOUT_SECONDS=60
+```
+
+Implementation notes:
+
+- The provider uses the existing `httpx` dependency.
+- ElevenLabs MP3 responses are converted to 24kHz mono PCM WAV with `ffmpeg`.
+- API keys are read from `.env` or process environment but are not returned in
+  provider metadata or AgentRun logs.
+- AgentRun tool name: `tts_provider_service.elevenlabs.synthesize`.
+- Rollback is immediate by setting `MURPHY_TTS_PROVIDER=edge` or
+  `MURPHY_TTS_PROVIDER=kokoro`.
+
+Verification:
+
+- Added tests for provider switching, output path, AgentRun logging, and secret
+  redaction.
+- ElevenLabs provider can be benchmarked through the integrated
+  `/api/game/ai/respond` path with `MURPHY_TTS_PROVIDER=elevenlabs`.
+
+## Developer A Chatterbox TTS Provider Update - 2026-06-09
+
+Developer A added a reversible Chatterbox TTS provider path for stronger
+emotion and reference-audio voice conditioning experiments. The runtime can now
+switch providers with:
+
+```text
+MURPHY_TTS_PROVIDER=kokoro
+MURPHY_TTS_PROVIDER=edge
+MURPHY_TTS_PROVIDER=chatterbox
+```
+
+Generated Chatterbox files are stored under:
+
+```text
+backend/runtime/generated/audio/chatterbox/
+```
+
+Chatterbox runtime parameters are read from `.env`:
+
+```text
+MURPHY_CHATTERBOX_VOICE_ID=officer_miller_ref
+MURPHY_CHATTERBOX_REFERENCE_AUDIO=backend/app/assets/voices/officer_miller_ref.wav
+MURPHY_CHATTERBOX_EXAGGERATION=0.75
+MURPHY_CHATTERBOX_CFG_WEIGHT=0.35
+MURPHY_CHATTERBOX_TEMPERATURE=0.60
+MURPHY_CHATTERBOX_DEVICE=auto
+MURPHY_CHATTERBOX_LANGUAGE_ID=en
+MURPHY_CHATTERBOX_OUTPUT_FORMAT=wav
+```
+
+Dependency note:
+
+- `chatterbox-tts==0.1.7` requires `torch==2.6.0`, so `pyproject.toml` now
+  limits Python to `>=3.12,<3.13` and pins torch to `2.6.0`.
+- `pyproject.toml` routes `torch` and `torchaudio` to the PyTorch CUDA 12.4
+  wheel index on Windows/Linux.
+- Local verification currently imports `torch==2.6.0+cu124`,
+  `torch.version.cuda==12.4`, and `chatterbox.tts.ChatterboxTTS`.
+- `torch.cuda.is_available()` is `True` on the local RTX 4070 Laptop GPU.
+- With `MURPHY_CHATTERBOX_DEVICE=auto`, Developer A uses CUDA when available
+  and CPU otherwise.
+- If `MURPHY_CHATTERBOX_REFERENCE_AUDIO` is missing, Developer A omits
+  `audio_prompt_path` and uses the model default voice rather than failing at
+  request construction.
+
+Verification:
+
+- `uv run pytest backend/tests/test_developer_a_agent_run_logging.py -q`
+  passed: 14 tests, 1 `audioop` deprecation warning.
+- Actual Chatterbox model-weight smoke generation completed on CPU without
+  reference audio:
+  - Output:
+    `backend/runtime/generated/audio/chatterbox/chatterbox_smoke_warning_cpu.wav`
+  - Text: `Sir. Answer the question directly.`
+  - Audio duration: about 1.76 seconds.
+  - Generation time: about 29.04 seconds on CPU.
+  - Real-time factor: about 16.50.
+  - `reference_audio_exists=false`; Officer Miller voice cloning still needs a
+    reference wav under `backend/app/assets/voices/`.
+- Actual Chatterbox model-weight smoke generation also completed on CUDA
+  without reference audio:
+  - Output:
+    `backend/runtime/generated/audio/chatterbox/chatterbox_smoke_warning_cuda.wav`
+  - Text: `Sir. Answer the question directly.`
+  - Audio duration: about 2.04 seconds.
+  - Generation time: about 18.06 seconds on RTX 4070 Laptop GPU.
+  - Real-time factor: about 8.85.
+  - `provider_options.device=cuda`.
+
+Rollback is immediate by setting `MURPHY_TTS_PROVIDER=kokoro` or
+`MURPHY_TTS_PROVIDER=edge`.
+
+## Developer A Edge TTS Provider Update - 2026-06-09
+
+Developer A added a reversible Edge TTS provider path without removing Kokoro.
+The runtime can switch providers with:
+
+```text
+MURPHY_TTS_PROVIDER=kokoro
+MURPHY_TTS_PROVIDER=edge
+```
+
+Edge TTS currently uses the Python `edge-tts` package to generate MP3 and
+converts it to PCM WAV with `ffmpeg` when
+`MURPHY_EDGE_TTS_OUTPUT_FORMAT=wav`. Generated Edge files are stored under:
+
+```text
+backend/runtime/generated/audio/edge/
+```
+
+Smoke result on 2026-06-09:
+
+- Audio duration: about 4.656 seconds.
+- Total Edge generation plus WAV conversion: about 0.69 seconds.
+- WAV conversion time: about 0.04 seconds.
+
+Rollback is immediate by setting `MURPHY_TTS_PROVIDER=kokoro`.
 
 ## Last Completed Task
 
@@ -1387,7 +1563,7 @@ Still C-owned:
   `final_result` payload.
 - C still needs Unreal-facing cutscene/skip state orchestration for
   `FLIGHT_A_001_SEATMATE_SMALLTALK -> IMMIGRATION_ALPHA -> BAGGAGE_MISSING ->
-  scenario_end`.
+scenario_end`.
 
 ## 2026-06-09 NPC Metadata Ownership Follow-Up
 
@@ -1495,8 +1671,8 @@ Changed implementation:
 
 - Replaced the single flight diagnostic node with a five-turn Dev B node route:
   `FLIGHT_A_001_SEATMATE_SMALLTALK -> FLIGHT_A_002_TRAVEL_PURPOSE ->
-  FLIGHT_A_003_STAY_PLAN -> FLIGHT_A_004_CLARIFY_OR_ASK_BACK ->
-  FLIGHT_A_005_WRAP_UP`.
+FLIGHT_A_003_STAY_PLAN -> FLIGHT_A_004_CLARIFY_OR_ASK_BACK ->
+FLIGHT_A_005_WRAP_UP`.
 - Updated `FlightSmallTalkDiagnosticPolicy` to require 5 player turns and make
   skip eligibility available at 5 turns.
 - Flight nodes now advance to the next evidence node even for retry, clarify,
@@ -1626,18 +1802,18 @@ Changed implementation:
 
 - Kept the existing Friendly Seatmate route as the default:
   `FLIGHT_A_001_SEATMATE_SMALLTALK -> FLIGHT_A_002_TRAVEL_PURPOSE ->
-  FLIGHT_A_003_STAY_PLAN -> FLIGHT_A_004_CLARIFY_OR_ASK_BACK ->
-  FLIGHT_A_005_WRAP_UP -> FLIGHT_999_COMPLETE`.
+FLIGHT_A_003_STAY_PLAN -> FLIGHT_A_004_CLARIFY_OR_ASK_BACK ->
+FLIGHT_A_005_WRAP_UP -> FLIGHT_999_COMPLETE`.
 - Renamed the previous unlabeled `FLIGHT_001..005` route to `FLIGHT_A_001..005`
   so all flight variants use the same A/B/C naming scheme.
 - Added Curious Seatmate route:
   `FLIGHT_B_001_DESTINATION_CHAT -> FLIGHT_B_002_COMPANION_OR_VISIT ->
-  FLIGHT_B_003_STAY_PLACE -> FLIGHT_B_004_TRIP_PLANS ->
-  FLIGHT_B_005_LANDING_CLOSE -> FLIGHT_999_COMPLETE`.
+FLIGHT_B_003_STAY_PLACE -> FLIGHT_B_004_TRIP_PLANS ->
+FLIGHT_B_005_LANDING_CLOSE -> FLIGHT_999_COMPLETE`.
 - Added Travel Form Help route:
   `FLIGHT_C_001_FORM_HELP_REQUEST -> FLIGHT_C_002_FIRST_TIME_ENTRY ->
-  FLIGHT_C_003_ADDRESS_HELP -> FLIGHT_C_004_HOTEL_HOSTEL_REPAIR ->
-  FLIGHT_C_005_FORM_CLOSE -> FLIGHT_999_COMPLETE`.
+FLIGHT_C_003_ADDRESS_HELP -> FLIGHT_C_004_HOTEL_HOSTEL_REPAIR ->
+FLIGHT_C_005_FORM_CLOSE -> FLIGHT_999_COMPLETE`.
 - Added `entry_node_ids` to the flight chapter metadata while preserving
   `entry_node_id = FLIGHT_A_001_SEATMATE_SMALLTALK` as the default.
 - Updated B contract docs and change requests for the additive route metadata.
@@ -1798,11 +1974,11 @@ Changed implementation:
   `BAG_001_REPORT_MISSING_AT_DESK`.
 - The baggage route is now:
   `BAG_001_REPORT_MISSING_AT_DESK -> BAG_002_PROVIDE_CLAIM_TAG ->
-  BAG_003_CONFIRM_SEARCHED_CAROUSEL ->
-  BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD ->
-  BAG_005_CUSTOMS_HOLD_EXPLANATION ->
-  BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM -> BAG_007_CUSTOMS_CLEARANCE ->
-  BAG_999_COMPLETE`.
+BAG_003_CONFIRM_SEARCHED_CAROUSEL ->
+BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD ->
+BAG_005_CUSTOMS_HOLD_EXPLANATION ->
+BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM -> BAG_007_CUSTOMS_CLEARANCE ->
+BAG_999_COMPLETE`.
 - The random customs item explanation is required. Unreal should run the
   unlock/open-suitcase interaction and reveal the random item between
   `BAG_005_CUSTOMS_HOLD_EXPLANATION` and
@@ -1875,11 +2051,11 @@ Current implemented state:
 - Baggage claim now starts at `BAG_001_REPORT_MISSING_AT_DESK` and follows the
   required customs-hold route:
   `BAG_001_REPORT_MISSING_AT_DESK -> BAG_002_PROVIDE_CLAIM_TAG ->
-  BAG_003_CONFIRM_SEARCHED_CAROUSEL ->
-  BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD ->
-  BAG_005_CUSTOMS_HOLD_EXPLANATION ->
-  BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM -> BAG_007_CUSTOMS_CLEARANCE ->
-  BAG_999_COMPLETE`.
+BAG_003_CONFIRM_SEARCHED_CAROUSEL ->
+BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD ->
+BAG_005_CUSTOMS_HOLD_EXPLANATION ->
+BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM -> BAG_007_CUSTOMS_CLEARANCE ->
+BAG_999_COMPLETE`.
 - `/respond-dialog` can start Flight, Immigration, Baggage, or Result from
   buttons, defaults to Flight, and supports first-turn WAV upload/browser
   recording without JSON upload.
@@ -1997,8 +2173,90 @@ Verification:
 - `uv run ruff check .` passed.
 - `uv run mypy .` passed with no issues in 91 source files.
 
+## 2026-06-12 Developer B LangGraph Policy Wrapper
+
+Developer B refactored the internal `EnglishLevelHintAgent.evaluate_turn()`
+flow into a B-owned LangGraph policy graph while preserving the public
+`DevBPolicyClient.evaluate_turn(payload) -> DevBPolicyOutput` adapter contract.
+
+Changed implementation:
+
+- Added `backend/app/agents/agent_b/policy_graph.py`.
+- Added B-owned graph tool wrappers under `backend/app/tools/tool_b/`.
+- Kept `ScenarioStateMachine` as the rule-based branch authority.
+- Kept LLM-assisted feedback limited to hint, report, feedback, and rubric
+  candidate enrichment.
+- Added Developer B AgentRun runtime metadata showing
+  `policy_engine = langgraph`, graph name, tool style, and graph node order.
+- Updated B `dialogue_seed.npc_role` so BAG service-desk nodes
+  `BAG_001` through `BAG_004` use `baggage_service_agent`, while customs-hold
+  nodes `BAG_005` through `BAG_007` use `customs_officer`.
+- Kept legacy `dialogue_directive.do_not_generate_npc_text` for C adapter
+  compatibility. New integration should prefer `dialogue_seed`.
+
+Docs updated:
+
+- `docs/contracts/developer_b_report_and_dialogue_seed_contract.md`
+
+Verification:
+
+- `uv run pytest backend/tests/dev_b -q`: PASS, 109 passed.
+- `uv run pytest backend/tests/dev_b/test_developer_b_agent_run_log.py backend/tests/dev_b/test_developer_b_policy_engine.py -q`:
+  PASS, 98 passed.
+- `uv run pytest backend/tests/test_developer_c_langgraph_orchestrator.py backend/tests/test_preprototype_flow.py backend/tests/dev_b -q`:
+  PASS, 144 passed, 2 existing warnings.
+- `uv sync`: PASS.
+- `uv run pytest`: PASS, 226 passed, 2 existing warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 104 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
+- `rg -n "^<<<<<<<|^=======|^>>>>>>>" .`: PASS, no conflict markers.
+
+Known coordination:
+
+- Developer A/C still own final NPC text, TTS, A-facing adapter payload cleanup,
+  and non-immigration NPC roster/voice handling.
+- Developer B has not removed the legacy `dialogue_directive` field; retiring
+  that field should wait for explicit C adapter confirmation.
+
 ## Resume Instructions
 
 Run `uv sync` from the repository root, then run `uv run pytest`,
 `uv run ruff check .`, and `uv run mypy .`. Continue from the integrated
 pre-prototype flow unless a newer handoff entry supersedes this one.
+
+## 2026-06-12 Developer A Animation Data Update
+
+Developer A updated the NPC default animation and dialogue generation policy to use the temporary "move" data, keeping the `animation` field contract intact for Developer C's Unreal serialization.
+
+Changed:
+
+- Updated `default_animation` value for all roster profiles (including `officer_miller`) to `"move"` in `backend/app/services/service_a/npc_roster_service.py`.
+- Updated deterministic, retry, and fallback animation outputs to `"move"` in `backend/app/agents/agent_a/npc_dialogue_agent.py`.
+- Updated fallback services (`build_text_fallback` and `voice_output_service` fallbacks) to return `"move"` for `animation` in `backend/app/services/service_a/developer_a_fallback_service.py` and `backend/app/services/service_a/voice_output_service.py`.
+- Corrected the `_developer_instructions` prompt in `backend/app/agents/agent_a/npc_llm_client.py` to instruct the LLM to always generate `"move"` for the required `animation` schema field, fixing a prior inconsistency where it referred to a missing `fallback_candidate.animation` input.
+- Added a `[tool.ruff]` section in `pyproject.toml` to exclude the `.tmp` directory from global formatting checks, resolving linting issues for un-formatted scratch scripts.
+- Updated `docs/contracts/developer_a_agent_spec.md` contract documentation to reflect `"move"` as the example output value for `animation`.
+- Updated Developer A tests (`test_developer_a_npc_dialogue.py`, `test_developer_a_npc_roster.py`, `test_developer_a_agent_run_logging.py`, `test_developer_a_npc_llm_client.py`) to verify animation values evaluate to `"move"` instead of specific action codes.
+
+Verification:
+
+- `uv sync`: PASS.
+- `uv run pytest`: PASS, 198 passed, 1 warning (deprecation warning for `audioop`).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues found in 91 source files.
+
+## 2026-06-12 Developer A Plan & Contract Refinements for Dynamic Audio Parameters
+
+Developer A updated the implementation plan and submitted a new Change Request to introduce a unified, single agent design for dynamic emotion and TTS parameter tuning.
+
+Changed:
+
+- Updated `backend/app/agents/agent_a/npc_implementation_plan.md` to design a unified single agent flow where the LLM dynamically calculates ElevenLabs TTS parameters (stability, style, speed, similarity_boost) based on dialogue context and 13 official level design emotion inputs (`joy`, `panic`, `sad`, `suspicion`, `disgust`, `fear`, `smirk`, `normal`, `anger`, `surprise`, `pain`, `confusion`, `boredom`).
+- Added dynamic persona resolution to the plan, where Roster profile's `persona_instruction` is resolved by `npc_id` and injected into the LLM system prompt.
+- Added a detailed LangChain/LangGraph migration section to the plan under Pinned AI framework versions (`langchain==1.3.2`, `langgraph==1.2.2`). This includes mapping internal helpers/loggers to LangChain standard `BaseTool`/`BaseCallbackHandler` and wrapping `npc_dialogue_agent.py` as a Single Node / Subgraph to plug into Developer C's main orchestrator graph (`developer_c_graph.py`).
+- Added a new Change Request to `docs/contracts/change_requests.md` proposing schema and adapter extensions to accept the new audio parameters and 13-type input emotion strings from Level Design.
+
+Coordination:
+
+- Developer C is currently refactoring the backend orchestrator using LangChain/LangGraph. Developer A's updated plan ensures the Dialogue Agent will expose itself as a single node/subgraph rather than trying to own the overall orchestration, avoiding graph and term conflicts.

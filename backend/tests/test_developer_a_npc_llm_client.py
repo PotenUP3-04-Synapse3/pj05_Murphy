@@ -31,7 +31,7 @@ def test_openai_compatible_npc_dialogue_client_calls_vllm_chat_completions(
                                     "tts_text": "Please answer clearly.",
                                     "feedback_kr": "짧고 분명하게 다시 말해보세요.",
                                     "tone": "formal_firm",
-                                    "animation": "officer_check_passport",
+                                    "animation": "move",
                                     "llm_reason": "retry branch needs clear answer",
                                 },
                                 ensure_ascii=False,
@@ -85,7 +85,7 @@ class _SuccessfulNPCDialogueClient:
             "tts_text": "Please answer clearly.",
             "feedback_kr": "짧고 분명하게 다시 말해보세요.",
             "tone": "formal_firm",
-            "animation": "officer_check_passport",
+            "animation": "move",
             "llm_reason": "retry branch needs clear answer",
             "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
         }

@@ -27,6 +27,47 @@ def _agent_run_records(root: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
+def test_developer_b_graph_exposes_readable_state_and_compiled_langgraph() -> None:
+    from backend.app.agents.agent_b.policy_graph import (
+        DEVELOPER_B_POLICY_GRAPH_NODE_NAMES,
+        DeveloperBPolicyState,
+        build_developer_b_policy_graph,
+    )
+
+    graph_app = build_developer_b_policy_graph()
+
+    assert callable(graph_app.invoke)
+    assert list(DEVELOPER_B_POLICY_GRAPH_NODE_NAMES) == [
+        "start_agent_run",
+        "decide_scenario_branch",
+        "derive_level_and_hint",
+        "derive_feedback_strategy",
+        "evaluate_tier_difficulty",
+        "build_base_policy_output",
+        "generate_feedback_hint",
+        "apply_feedback_generation",
+        "attach_report_and_dialogue_seeds",
+        "validate_policy_output",
+        "write_openkb_feedback",
+        "finish_agent_run",
+    ]
+    assert set(DeveloperBPolicyState.__annotations__) >= {
+        "payload",
+        "tools",
+        "agent_run",
+        "input_summary",
+        "decision",
+        "english_level",
+        "hint_policy",
+        "feedback_strategy",
+        "has_form_issue",
+        "tier_result",
+        "output",
+        "feedback_generation",
+        "openkb_write",
+    }
+
+
 def test_developer_b_appends_unified_agent_run_for_success_turn(tmp_path: Path) -> None:
     payload = _policy_input(player_text="I'm here for tourism.")
 
@@ -73,6 +114,25 @@ def test_developer_b_appends_unified_agent_run_for_success_turn(tmp_path: Path) 
     ]
     assert record["metadata"]["data_flow"][0]["from"] == "dev_b_policy_input"
     assert record["metadata"]["data_flow"][-1]["to"] == "dev_b_policy_output"
+    assert record["metadata"]["runtime"] == {
+        "policy_engine": "langgraph",
+        "graph_name": "developer_b_policy_graph",
+        "tool_style": "developer_b_policy_graph_tools",
+        "graph_nodes": [
+            "start_agent_run",
+            "decide_scenario_branch",
+            "derive_level_and_hint",
+            "derive_feedback_strategy",
+            "evaluate_tier_difficulty",
+            "build_base_policy_output",
+            "generate_feedback_hint",
+            "apply_feedback_generation",
+            "attach_report_and_dialogue_seeds",
+            "validate_policy_output",
+            "write_openkb_feedback",
+            "finish_agent_run",
+        ],
+    }
     assert "## Agent Run: english_level_hint_agent / developer_b" in readable_log
 
 

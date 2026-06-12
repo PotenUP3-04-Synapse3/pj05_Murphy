@@ -122,7 +122,7 @@ Developer A는 다음 형태의 NPC dialogue result를 반환한다.
   "speaker": "Officer Miller",
   "text": "Travel. Okay. How long will you stay?",
   "tone": "formal_neutral",
-  "animation": "officer_check_passport",
+  "animation": "move",
   "feedback_kr": "좋아요. 더 자연스럽게는: I'm here for travel."
 }
 ```
