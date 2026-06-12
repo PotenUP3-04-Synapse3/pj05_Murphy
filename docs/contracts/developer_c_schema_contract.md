@@ -55,6 +55,12 @@ through `backend/app/services/service_c/settings_service.py`:
 This keeps the Unreal request simple while still satisfying the Developer B
 `dev_b_policy.v1` input contract.
 
+Alpha adds an optional C-owned interaction context to the same turn envelope so
+Unreal can tell the backend whether the current speech turn started from an NPC
+prompt or from the player walking up and speaking first. The field is additive;
+when omitted, Developer C treats the turn as an NPC-initiated quest dialogue to
+preserve the current prototype behavior.
+
 ## Contract Versions
 
 | Contract | Version | Owner | Purpose |
@@ -143,6 +149,17 @@ Canonical `turn` payload:
     "duration_ms": 2800,
     "language_hint": "en-US"
   },
+  "interaction": {
+    "contract_version": "dev_c_interaction_context.v1",
+    "initiator": "npc",
+    "interaction_type": "quest",
+    "quest_id": null,
+    "interaction_id": null,
+    "time_limit_s": null,
+    "first_contact": false,
+    "npc_can_initiate": null,
+    "player_can_initiate": null
+  },
   "player_profile": {
     "nickname": "Sean",
     "english_confidence": "beginner",
@@ -202,12 +219,49 @@ Canonical `turn` payload:
 | `session` | yes | Session and current node identity |
 | `npc` | yes | Last NPC prompt context |
 | `audio` | yes | Audio metadata, separate from uploaded wav bytes |
+| `interaction` | no | Alpha metadata for NPC-first/player-first and quest/ambient turns |
 | `player_profile` | yes | Used by Developer B hint and strictness policy |
 | `scenario_state` | yes | Used by Developer B state delta policy |
 | `game_state` | yes | Used by Developer C and for B input enrichment |
 | `previous_node_results` | no | Used for final decision and reports |
 | `client_allowed_next_nodes` | no | Extra client-side branch guard |
 | `client_context` | no | Debug and compatibility metadata |
+
+### Alpha Interaction Context
+
+`interaction` uses `dev_c_interaction_context.v1` and is Developer C-owned.
+It does not grant branch authority to Unreal, Developer A, or an LLM. It is
+metadata used for routing, logs, timing analysis, and future A/B contract
+coordination.
+
+Allowed values:
+
+| Field | Values | Notes |
+| --- | --- | --- |
+| `initiator` | `npc`, `player` | Who started the speech turn |
+| `interaction_type` | `quest`, `ambient`, `tutorial`, `system` | Gameplay category |
+| `quest_id` | string or null | Stable quest id when the turn belongs to a quest |
+| `interaction_id` | string or null | Client trace id for the interactable or encounter |
+| `time_limit_s` | positive integer or null | Example: 30 for timed immigration answers |
+| `first_contact` | boolean | True when this is the first line of the encounter |
+| `npc_can_initiate` | boolean or null | Client-side capability metadata |
+| `player_can_initiate` | boolean or null | Client-side capability metadata |
+
+Default when omitted:
+
+```json
+{
+  "contract_version": "dev_c_interaction_context.v1",
+  "initiator": "npc",
+  "interaction_type": "quest",
+  "quest_id": null,
+  "interaction_id": null,
+  "time_limit_s": null,
+  "first_contact": false,
+  "npc_can_initiate": null,
+  "player_can_initiate": null
+}
+```
 
 ## STT Normalized Input
 
@@ -343,9 +397,9 @@ Runtime modes:
   TTS, or Unreal command fields.
 - OpenAI strict structured output requires every object to set
   `additionalProperties: false` and every property to be listed in `required`.
-  Developer C therefore asks the LLM for `extracted_slots.visit_purpose` as a
-  required nullable field and removes null slot values before validating the
-  final `UnderstandingOutput`.
+  Developer C keeps legacy nullable `extracted_slots.visit_purpose` and
+  `extracted_slots.stay_duration` fields for backwards compatibility, but new
+  Alpha slots should travel through generic `slot_evidence` items.
 - When OpenAI Responses API returns `usage`, Developer C stores those token
   counts in the Understanding trace and in the C unified AgentRun `model`
   object. `estimated_cost_usd` is a runtime estimate for C-owned LLM calls, not
@@ -355,6 +409,15 @@ Runtime modes:
   `friend_visit` for friend; `business` for business, meeting, conference;
   `study` for study, school; `transit` for transit, layover; and `tourism` for
   tourism, travel, vacation, sightseeing.
+- Rule fallback and LLM postprocessing fill `stay_duration` for duration
+  answers such as `5 days`, `five days`, `one week`, and `until Friday` when
+  the current node requires `stay_duration`.
+- Alpha 2 uses a generic slot evidence contract. The LLM may propose slot
+  evidence for `node_context.required_slots`, `node_context.optional_slots`, and
+  `node_context.critical_slots`. Developer C filters that evidence to allowed
+  node slots, drops forbidden or unrelated slot names, and then builds
+  `extracted_slots` for Developer B. Developer B remains the only branch and
+  progression authority.
 
 ```json
 {
@@ -368,6 +431,14 @@ Runtime modes:
   "risk_delta": 0,
   "risk_reason": "The purpose is clear and no risk expression was found.",
   "risk_tags": [],
+  "slot_evidence": [
+    {
+      "slot": "visit_purpose",
+      "value": "tourism",
+      "confidence": 0.94,
+      "evidence_text": "tourism"
+    }
+  ],
   "extracted_slots": {
     "visit_purpose": "tourism"
   },
@@ -533,6 +604,9 @@ Rules:
 - They are learning metadata only.
 - They must not override `evaluation.verdict`, `branch`, `next_node_id`, or
   `state_delta`.
+- `report_seed_summary` and `dialogue_seed` are optional Developer B seed
+  metadata. They may be validated or logged by Developer C, but they are not a
+  final result screen payload and they do not introduce NPC final text fields.
 - Tests and deterministic flows must pass with `feedback_generation.mode` set
   to `rule` or `fallback` and without real API keys.
 
@@ -577,6 +651,17 @@ Developer C returns only validated, Unreal-safe data.
   "current_node_id": "IMM_002_PURPOSE",
   "next_node_id": "IMM_003_DURATION",
   "next_action": "ADVANCE",
+  "interaction": {
+    "contract_version": "dev_c_interaction_context.v1",
+    "initiator": "npc",
+    "interaction_type": "quest",
+    "quest_id": null,
+    "interaction_id": null,
+    "time_limit_s": null,
+    "first_contact": false,
+    "npc_can_initiate": null,
+    "player_can_initiate": null
+  },
   "stt": {
     "model": "whisper-large-v3-turbo",
     "primary_runtime": "local",
@@ -637,10 +722,22 @@ Developer C returns only validated, Unreal-safe data.
     "understanding_confidence": 0.94,
     "contract_versions": [
       "dev_c_unreal_turn.v1",
+      "dev_c_interaction_context.v1",
       "dev_b_policy.v1",
       "dev_a_dialogue.v1",
       "dev_c_unreal_response.v1"
-    ]
+    ],
+    "timing_ms": {
+      "total_ms": 2150,
+      "stt_ms": 620,
+      "openkb_ms": 2,
+      "understanding_ms": 140,
+      "developer_b_ms": 20,
+      "logging_ms": 1,
+      "developer_a_ms": 1310,
+      "response_build_ms": 1,
+      "validation_ms": 1
+    }
   }
 }
 ```
@@ -655,11 +752,15 @@ Rules:
 - `stt.runtime_used` must be `local` unless the API fallback actually produced
   the transcript.
 - `state_delta` must come from Developer B output after validation.
+- `interaction` echoes the C-owned request interaction context so Unreal can
+  correlate NPC-first, player-first, quest, ambient, and timed turns.
 - NPC text and `npc.audio_url` must come from Developer A output through the
   Developer C adapter, not directly from Developer B.
 - `npc.audio_url` points to a Developer C-served runtime artifact under
   `/runtime/audio/...` in the pre-prototype.
 - `debug` may be omitted in production.
+- `debug.timing_ms` is diagnostic latency metadata and must not drive gameplay
+  branch decisions.
 - Developer C may redact, omit, or transform internal fields before returning
   to Unreal.
 - On final-branch responses, `report.final_result` may include Developer B's

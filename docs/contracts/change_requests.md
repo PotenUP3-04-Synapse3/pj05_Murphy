@@ -251,6 +251,12 @@ response surface is ready.
 
 Status: Open.
 
+Developer C Alpha 1 update, 2026-06-10: C added an additive
+`dev_c_interaction_context.v1` request/response context for NPC-first vs
+player-first and quest vs ambient turns, plus diagnostic response timing. This
+does not yet implement the full Alpha scene flow, but it gives Unreal and A/B/C
+logs a stable metadata surface for the next scenario-flow phase.
+
 ### Requested By
 Developer B
 
@@ -371,3 +377,77 @@ Until C updates the adapter and schema, Developer B may keep `npc_question` in
 `scenario_nodes.json` as legacy node context required by current schemas, but it
 must be treated as fallback/debug context rather than final NPC dialogue
 authority.
+
+## Change Request - 2026-06-11 - Adopt Alpha Scenario Node Expansion Across A/C/Unreal
+
+Status: Open.
+
+### Requested By
+Developer B
+
+### Affected Owner
+Developer A, Developer C / Sean Han, and Unreal
+
+### Reason
+Developer B expanded the Alpha scenario node sequence to support five-turn
+flight small-talk diagnostics, immigration-to-baggage transition, missing-bag
+problem solving, and a dedicated Alpha final-scoreboard node. Dev B can author
+and validate node policy, but integrated runtime behavior requires A/C/Unreal
+ownership changes.
+
+### Proposed Contract Change
+Developer C should adopt the following runtime flow:
+
+```text
+FLIGHT_001_SEATMATE_SMALLTALK
+-> FLIGHT_002_TRAVEL_PURPOSE
+-> FLIGHT_003_STAY_PLAN
+-> FLIGHT_004_CLARIFY_OR_ASK_BACK
+-> FLIGHT_005_WRAP_UP
+-> IMM_001_PASSPORT
+-> existing IMM_* route
+-> IMM_007_FINAL_DECISION
+-> BAG_001_NOTICE_BAG_MISSING
+-> existing BAG_* route
+-> ALPHA_999_FINAL_SCOREBOARD
+```
+
+Developer C follow-up:
+
+- Treat `ALPHA_999_FINAL_SCOREBOARD`, not `IMM_007_FINAL_DECISION`, as the
+  Alpha scenario-end final-result trigger.
+- Treat `IMM_007_FINAL_DECISION` as an immigration-clearance transition into
+  baggage claim.
+- Preserve silent flight-to-immigration carryover of B-measured `tier`,
+  `travel_speaking_level`, `rubric_scores`, and `difficulty_profile`.
+- Orchestrate flight exit, arrival/cutscene transition, baggage claim entry,
+  and final scoreboard/result retrieval.
+- Add Understanding coverage for the new flight and `BAG_001` slots.
+
+Developer A follow-up:
+
+- Generate actual NPC dialogue/TTS for the five `FLIGHT_*` seatmate nodes from
+  `dialogue_seed`, not from B-authored final lines.
+- Generate baggage service dialogue for `BAG_001_NOTICE_BAG_MISSING` and the
+  existing missing-bag route from role/goal/slot metadata.
+- Keep final NPC utterances, tone realization, voice, and animation A-owned.
+
+Unreal follow-up:
+
+- Connect the flight small-talk scene to the airport arrival/cutscene and then
+  to immigration.
+- Connect immigration clearance to baggage claim, then to the Alpha final
+  scoreboard and ending cinematic.
+- Do not show immediate out-game feedback after flight small talk; consume
+  deferred feedback only at the Alpha scenario end.
+
+### Compatibility Impact
+The Dev B node expansion is additive for node data but changes semantic routing:
+`IMM_007_FINAL_DECISION` is no longer the Alpha scenario-end terminal in B
+policy. Existing C-owned final-result adapter behavior may keep treating
+`IMM_007_FINAL_DECISION` as a legacy final trigger until C adopts this request.
+
+### Temporary Workaround
+Developer B keeps `IMM_007_FINAL_DECISION` in the node set and documents the
+legacy C adapter mismatch. Integrated runtime can continue using the legacy
+result endpoint while A/C/Unreal migrate to `ALPHA_999_FINAL_SCOREBOARD`.

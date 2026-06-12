@@ -28,6 +28,18 @@ class AudioMetadata(BaseModel):
     language_hint: str | None = None
 
 
+class InteractionContext(BaseModel):
+    contract_version: Literal["dev_c_interaction_context.v1"] = "dev_c_interaction_context.v1"
+    initiator: Literal["npc", "player"] = "npc"
+    interaction_type: Literal["quest", "ambient", "tutorial", "system"] = "quest"
+    quest_id: str | None = None
+    interaction_id: str | None = None
+    time_limit_s: int | None = Field(default=None, ge=1)
+    first_contact: bool = False
+    npc_can_initiate: bool | None = None
+    player_can_initiate: bool | None = None
+
+
 class PlayerProfile(BaseModel):
     nickname: str | None = None
     english_confidence: Literal["beginner", "intermediate", "advanced"] | None = None
@@ -76,6 +88,7 @@ class UnrealTurnRequest(BaseModel):
     session: SessionContext
     npc: NpcContext
     audio: AudioMetadata
+    interaction: InteractionContext = Field(default_factory=InteractionContext)
     player_profile: PlayerProfile
     scenario_state: ScenarioState
     game_state: GameState
@@ -143,6 +156,13 @@ class NodeContext(BaseModel):
     allowed_next_nodes: list[str]
 
 
+class SlotEvidence(BaseModel):
+    slot: str
+    value: str
+    confidence: float = Field(ge=0, le=1)
+    evidence_text: str
+
+
 class UnderstandingOutput(BaseModel):
     intent: str
     intent_success: bool
@@ -154,6 +174,7 @@ class UnderstandingOutput(BaseModel):
     risk_delta: int
     risk_reason: str
     risk_tags: list[str]
+    slot_evidence: list[SlotEvidence] = Field(default_factory=list)
     extracted_slots: dict[str, str]
     missing_slots: list[str]
     needs_clarification: bool
@@ -170,6 +191,7 @@ class DevBPolicyInput(BaseModel):
     turn_index: int
     player_text: str
     input_source: InputSource
+    interaction: InteractionContext = Field(default_factory=InteractionContext)
     player_profile: PlayerProfile
     scenario_state: ScenarioState
     node_context: NodeContext
@@ -185,6 +207,69 @@ class Scores(BaseModel):
     vocabulary: int
     problem_solving: int
     politeness: int
+
+
+class ReportSeedCategoryScores(BaseModel):
+    task_success: int = Field(ge=0, le=100)
+    clarity: int = Field(ge=0, le=100)
+    grammar: int = Field(ge=0, le=100)
+    vocabulary: int = Field(ge=0, le=100)
+    politeness: int = Field(ge=0, le=100)
+    problem_solving: int = Field(ge=0, le=100)
+
+
+class ReportSeedStrength(BaseModel):
+    title: str
+    evidence: str
+    ui_priority: int = Field(ge=1)
+
+
+class ReportSeedCriticalBreakdown(BaseModel):
+    user_utterance: str
+    issue_type: Literal["grammar", "clarity", "vocabulary", "task", "politeness", "problem_solving"]
+    why_it_matters: str
+    better_version: str
+    reusable_pattern: str
+    ui_priority: int = Field(ge=1)
+
+
+class ReportSeedCorrectedExample(BaseModel):
+    original: str
+    corrected: str
+    brief_explanation: str
+    pattern: str
+
+
+class ReportSeedSummary(BaseModel):
+    estimated_level: Literal["beginner", "intermediate", "advanced"]
+    tier: Literal["Bronze", "Silver", "Gold"]
+    scenario_result: Literal["passed", "conditional_pass", "failed"]
+    overall_score_candidate: int = Field(ge=0, le=100)
+    category_scores: ReportSeedCategoryScores
+    strengths: list[ReportSeedStrength] = Field(default_factory=list)
+    critical_breakdowns: list[ReportSeedCriticalBreakdown] = Field(default_factory=list)
+    corrected_examples: list[ReportSeedCorrectedExample] = Field(default_factory=list)
+    reusable_sentence_patterns: list[str] = Field(default_factory=list)
+    next_practice_goal: str
+    feedback_focus: list[str] = Field(default_factory=list)
+    ui_priority_order: list[str] = Field(default_factory=list)
+    display_policy_by_tier: dict[str, str] = Field(default_factory=dict)
+
+
+class DialogueSeed(BaseModel):
+    scene: str
+    npc_role: str
+    surface_goal: str
+    hidden_assessment_goal: str
+    opening_intent: str
+    assessment_targets: list[str] = Field(default_factory=list)
+    required_slots: list[str] = Field(default_factory=list)
+    max_turns: int = Field(ge=1, le=12)
+    difficulty_profile: str
+    feedback_focus: list[str] = Field(default_factory=list)
+    tone_guidance: str
+    allowed_followup_intents: list[str] = Field(default_factory=list)
+    stop_condition: str
 
 
 class RubricScores(BaseModel):
@@ -386,6 +471,8 @@ class DevBPolicyOutput(BaseModel):
     in_game_feedback: InGameFeedback
     error_capture: ErrorCapture
     out_game_feedback_seed: OutGameFeedbackSeed
+    report_seed_summary: ReportSeedSummary | None = None
+    dialogue_seed: DialogueSeed | None = None
     branch: Branch
     state_delta: StateDelta
     report_item: ReportItem
@@ -459,11 +546,24 @@ class ReportResponse(BaseModel):
     final_result: FinalResult | None = None
 
 
+class TurnTimingMs(BaseModel):
+    total_ms: int = Field(default=0, ge=0)
+    stt_ms: int = Field(default=0, ge=0)
+    openkb_ms: int = Field(default=0, ge=0)
+    understanding_ms: int = Field(default=0, ge=0)
+    developer_b_ms: int = Field(default=0, ge=0)
+    logging_ms: int = Field(default=0, ge=0)
+    developer_a_ms: int = Field(default=0, ge=0)
+    response_build_ms: int = Field(default=0, ge=0)
+    validation_ms: int = Field(default=0, ge=0)
+
+
 class DebugInfo(BaseModel):
     stt_model: str
     stt_confidence: float | None
     understanding_confidence: float
     contract_versions: list[str]
+    timing_ms: TurnTimingMs = Field(default_factory=TurnTimingMs)
 
 
 class SttResponse(BaseModel):
@@ -485,6 +585,7 @@ class UnrealResponse(BaseModel):
     current_node_id: str
     next_node_id: str
     next_action: str
+    interaction: InteractionContext
     stt: SttResponse
     npc: NpcResponse
     ui: UiResponse

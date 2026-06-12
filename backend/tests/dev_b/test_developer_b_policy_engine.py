@@ -273,6 +273,10 @@ def test_all_chapter_zero_nodes_define_branch_candidates_and_allowed_next_nodes(
 
     assert set(node_data["nodes"]) == {
         "FLIGHT_001_SEATMATE_SMALLTALK",
+        "FLIGHT_002_TRAVEL_PURPOSE",
+        "FLIGHT_003_STAY_PLAN",
+        "FLIGHT_004_CLARIFY_OR_ASK_BACK",
+        "FLIGHT_005_WRAP_UP",
         "IMM_001_PASSPORT",
         "IMM_002_PURPOSE",
         "IMM_003_DURATION",
@@ -282,12 +286,14 @@ def test_all_chapter_zero_nodes_define_branch_candidates_and_allowed_next_nodes(
         "IMM_006_DECLARATION_CHECK",
         "IMM_006B_PACKED_BAG_CHECK",
         "IMM_007_FINAL_DECISION",
+        "BAG_001_NOTICE_BAG_MISSING",
         "BAG_002_FIND_STAFF",
         "BAG_003_REPORT_MISSING_BAG",
         "BAG_004_DESCRIBE_BAG",
         "BAG_005_PROVIDE_FLIGHT_OR_TAG",
         "BAG_006_CONTACT_AND_DELIVERY",
         "BAG_007_RESOLUTION",
+        "ALPHA_999_FINAL_SCOREBOARD",
     }
     for node in node_data["nodes"].values():
         allowed_next_nodes = set(node["allowed_next_nodes"])
@@ -302,11 +308,42 @@ def test_flight_smalltalk_node_exists_as_alpha_diagnostic_node() -> None:
     context = _node_context("FLIGHT_001_SEATMATE_SMALLTALK")
 
     assert context.node_id == "FLIGHT_001_SEATMATE_SMALLTALK"
-    assert context.npc_question_goal == "friendly_seatmate_smalltalk"
-    assert context.required_intents == ["respond_to_smalltalk"]
-    assert context.required_slots == ["smalltalk_response"]
-    assert "FLIGHT_001_SEATMATE_SMALLTALK" in context.allowed_next_nodes
-    assert "IMM_001_PASSPORT" in context.allowed_next_nodes
+    assert context.npc_question_goal == "respond_to_polite_request"
+    assert context.required_intents == ["respond_to_seatmate_request"]
+    assert context.required_slots == ["polite_response"]
+    assert "FLIGHT_002_TRAVEL_PURPOSE" in context.allowed_next_nodes
+
+
+def test_alpha_flight_nodes_form_five_turn_diagnostic_route() -> None:
+    expected_route = [
+        ("FLIGHT_001_SEATMATE_SMALLTALK", "FLIGHT_002_TRAVEL_PURPOSE"),
+        ("FLIGHT_002_TRAVEL_PURPOSE", "FLIGHT_003_STAY_PLAN"),
+        ("FLIGHT_003_STAY_PLAN", "FLIGHT_004_CLARIFY_OR_ASK_BACK"),
+        ("FLIGHT_004_CLARIFY_OR_ASK_BACK", "FLIGHT_005_WRAP_UP"),
+        ("FLIGHT_005_WRAP_UP", "IMM_001_PASSPORT"),
+    ]
+
+    for node_id, next_node_id in expected_route:
+        context = _node_context(node_id)
+        assert context.success_next_node == next_node_id
+        assert context.retry_next_node == next_node_id
+        assert context.clarify_next_node == next_node_id
+        assert context.hint_next_node == next_node_id
+        assert context.warning_next_node == next_node_id
+        assert set(context.allowed_next_nodes) == {next_node_id}
+
+
+def test_baggage_missing_route_adds_notice_node_and_alpha_scoreboard() -> None:
+    bag_notice = _node_context("BAG_001_NOTICE_BAG_MISSING")
+    bag_resolution = _node_context("BAG_007_RESOLUTION")
+    final_scoreboard = _node_context("ALPHA_999_FINAL_SCOREBOARD")
+
+    assert bag_notice.success_next_node == "BAG_002_FIND_STAFF"
+    assert bag_notice.required_intents == ["notice_missing_bag"]
+    assert bag_notice.required_slots == ["missing_bag_observation"]
+    assert bag_resolution.success_next_node == "ALPHA_999_FINAL_SCOREBOARD"
+    assert final_scoreboard.success_next_node == "END_ALPHA_SCENARIO"
+    assert "END_ALPHA_SCENARIO" in final_scoreboard.allowed_next_nodes
 
 
 def test_flight_smalltalk_creates_deferred_out_game_feedback_seed(tmp_path: Path) -> None:
@@ -314,10 +351,10 @@ def test_flight_smalltalk_creates_deferred_out_game_feedback_seed(tmp_path: Path
     result = _agent(tmp_path).evaluate_turn(
         _policy_input(
             node_context=context,
-            player_text="I go New York. First time.",
+            player_text="Sure, here you are.",
             intent_success=True,
             confidence=0.88,
-            extracted_slots={"smalltalk_response": "answered"},
+            extracted_slots={"polite_response": "offered_help"},
             missing_slots=[],
             client_allowed_next_nodes=context.allowed_next_nodes,
         )
@@ -327,6 +364,65 @@ def test_flight_smalltalk_creates_deferred_out_game_feedback_seed(tmp_path: Path
     assert result.out_game_feedback_seed.focus_on_form_targets == ["smalltalk_response_clarity"]
     assert "deferred_out_game_feedback" in result.out_game_feedback_seed.openkb_query_tags
     assert result.branch.next_node_id in context.allowed_next_nodes
+    assert result.branch.next_node_id == "FLIGHT_002_TRAVEL_PURPOSE"
+    assert result.dialogue_seed is not None
+    assert result.dialogue_seed.max_turns == 5
+
+
+def test_flight_diagnostic_retry_still_moves_to_next_evidence_node(tmp_path: Path) -> None:
+    context = _node_context("FLIGHT_003_STAY_PLAN")
+
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="Maybe.",
+            intent_success=False,
+            confidence=0.66,
+            extracted_slots={},
+            missing_slots=["stay_plan"],
+            tier="Silver",
+            client_allowed_next_nodes=context.allowed_next_nodes,
+        )
+    )
+
+    assert result.evaluation.verdict == "FAIL"
+    assert result.branch.branch_type == "retry"
+    assert result.branch.next_node_id == "FLIGHT_004_CLARIFY_OR_ASK_BACK"
+
+
+def test_alpha_final_scoreboard_is_only_dev_b_final_branch(tmp_path: Path) -> None:
+    imm_final_context = _node_context("IMM_007_FINAL_DECISION")
+    alpha_final_context = _node_context("ALPHA_999_FINAL_SCOREBOARD")
+
+    imm_result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=imm_final_context,
+            player_text="Thank you, officer.",
+            intent_success=True,
+            confidence=0.92,
+            extracted_slots={"immigration_transition_acknowledgement": "acknowledged"},
+            missing_slots=[],
+            client_allowed_next_nodes=imm_final_context.allowed_next_nodes,
+        )
+    )
+    alpha_result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=alpha_final_context,
+            player_text="Thank you.",
+            intent_success=True,
+            confidence=0.92,
+            extracted_slots={"final_recommendation": "PASS"},
+            missing_slots=[],
+            client_allowed_next_nodes=alpha_final_context.allowed_next_nodes,
+        )
+    )
+
+    assert imm_result.branch.branch_type == "success"
+    assert imm_result.branch.next_action == "ADVANCE"
+    assert imm_result.branch.next_node_id == "BAG_001_NOTICE_BAG_MISSING"
+    assert alpha_result.branch.branch_type == "final"
+    assert alpha_result.branch.next_action == "FINAL_DECISION"
+    assert alpha_result.branch.next_node_id == "END_ALPHA_SCENARIO"
 
 
 def test_report_item_and_feedback_tags_are_returned(tmp_path: Path) -> None:
@@ -338,9 +434,65 @@ def test_report_item_and_feedback_tags_are_returned(tmp_path: Path) -> None:
     assert result.evaluation.feedback_tags
 
 
+def test_report_seed_summary_contains_ui_assembly_metadata(tmp_path: Path) -> None:
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            player_text="Travel. New York.",
+            intent_success=True,
+            confidence=0.72,
+            extracted_slots={"visit_purpose": "tourism"},
+            missing_slots=[],
+            english_confidence="beginner",
+        )
+    )
+
+    assert result.report_seed_summary is not None
+    assert result.report_seed_summary.estimated_level == "beginner"
+    assert result.report_seed_summary.tier == "Bronze"
+    assert result.report_seed_summary.scenario_result == "passed"
+    assert 0 <= result.report_seed_summary.overall_score_candidate <= 100
+    assert result.report_seed_summary.category_scores.task_success >= 0
+    assert result.report_seed_summary.strengths
+    assert result.report_seed_summary.critical_breakdowns
+    assert result.report_seed_summary.corrected_examples
+    assert result.report_seed_summary.reusable_sentence_patterns
+    assert result.report_seed_summary.next_practice_goal
+    assert result.report_seed_summary.feedback_focus
+    assert result.report_seed_summary.ui_priority_order[0] == "scenario_result"
+    assert "Bronze" in result.report_seed_summary.display_policy_by_tier
+
+
+def test_dialogue_seed_contains_generation_metadata_without_final_npc_text(tmp_path: Path) -> None:
+    payload = _policy_input()
+
+    result = _agent(tmp_path).evaluate_turn(payload)
+
+    assert result.dialogue_seed is not None
+    assert result.dialogue_seed.scene == payload.scene_id
+    assert result.dialogue_seed.npc_role == "immigration_officer"
+    assert result.dialogue_seed.surface_goal == payload.node_context.npc_question_goal
+    assert result.dialogue_seed.hidden_assessment_goal == "estimate_user_travel_speaking_level"
+    assert payload.node_context.required_slots[0] in result.dialogue_seed.required_slots
+    assert payload.node_context.required_slots[0] in result.dialogue_seed.assessment_targets
+    assert result.dialogue_seed.max_turns == 4
+    assert result.dialogue_seed.difficulty_profile == "auto"
+    assert result.dialogue_seed.feedback_focus
+    assert result.dialogue_seed.tone_guidance == "neutral_official"
+    assert result.dialogue_seed.allowed_followup_intents
+    assert result.dialogue_seed.stop_condition
+
+    forbidden_keys = {"npc_text", "npc_utterance", "final_dialogue_line"}
+    assert forbidden_keys.isdisjoint(_all_keys(result.model_dump()))
+
+
 @pytest.mark.parametrize(
     ("node_id", "slot_name", "slot_value", "success_next_node"),
     [
+        ("FLIGHT_001_SEATMATE_SMALLTALK", "polite_response", "offered_help", "FLIGHT_002_TRAVEL_PURPOSE"),
+        ("FLIGHT_002_TRAVEL_PURPOSE", "travel_purpose", "tourism", "FLIGHT_003_STAY_PLAN"),
+        ("FLIGHT_003_STAY_PLAN", "stay_plan", "five_days", "FLIGHT_004_CLARIFY_OR_ASK_BACK"),
+        ("FLIGHT_004_CLARIFY_OR_ASK_BACK", "interaction_repair", "asked_clarification", "FLIGHT_005_WRAP_UP"),
+        ("FLIGHT_005_WRAP_UP", "smalltalk_closing", "polite_closing", "IMM_001_PASSPORT"),
         ("IMM_001_PASSPORT", "passport_submission_status", "submitted", "IMM_002_PURPOSE"),
         ("IMM_002_PURPOSE", "visit_purpose", "tourism", "IMM_003_DURATION"),
         ("IMM_003_DURATION", "stay_duration", "days", "IMM_004_STAY_LOCATION"),
@@ -348,12 +500,14 @@ def test_report_item_and_feedback_tags_are_returned(tmp_path: Path) -> None:
         ("IMM_006_DECLARATION_CHECK", "item_purpose", "personal_recreation", "IMM_006B_PACKED_BAG_CHECK"),
         ("IMM_006B_PACKED_BAG_CHECK", "packed_by_self", "yes_self_packed", "IMM_007_FINAL_DECISION"),
         ("IMM_ALPHA_GOLD_BAG_CONTENT_CHECK", "bag_contents_summary", "mixed_personal_items", "IMM_006_DECLARATION_CHECK"),
+        ("IMM_007_FINAL_DECISION", "immigration_transition_acknowledgement", "acknowledged", "BAG_001_NOTICE_BAG_MISSING"),
+        ("BAG_001_NOTICE_BAG_MISSING", "missing_bag_observation", "bag_not_arrived", "BAG_002_FIND_STAFF"),
         ("BAG_002_FIND_STAFF", "missing_bag_status", "not_arrived", "BAG_003_REPORT_MISSING_BAG"),
         ("BAG_003_REPORT_MISSING_BAG", "missing_bag_report", "checked_bag_missing", "BAG_004_DESCRIBE_BAG"),
         ("BAG_004_DESCRIBE_BAG", "bag_description", "black_medium_suitcase", "BAG_005_PROVIDE_FLIGHT_OR_TAG"),
         ("BAG_005_PROVIDE_FLIGHT_OR_TAG", "baggage_tag_or_flight_info", "has_baggage_tag", "BAG_006_CONTACT_AND_DELIVERY"),
         ("BAG_006_CONTACT_AND_DELIVERY", "delivery_contact", "hotel_address", "BAG_007_RESOLUTION"),
-        ("BAG_007_RESOLUTION", "resolution_acknowledgement", "acknowledged_reference_number", "END_BAGGAGE_REPORT_FILED"),
+        ("BAG_007_RESOLUTION", "resolution_acknowledgement", "acknowledged_reference_number", "ALPHA_999_FINAL_SCOREBOARD"),
     ],
 )
 def test_chapter_zero_success_nodes_advance(
@@ -395,6 +549,8 @@ def test_chapter_zero_success_nodes_advance(
         ("IMM_006_DECLARATION_CHECK", "item_purpose", "IMM_006_RETRY_DECLARATION"),
         ("IMM_006B_PACKED_BAG_CHECK", "packed_by_self", "IMM_006B_RETRY_PACKED_BAG"),
         ("IMM_ALPHA_GOLD_BAG_CONTENT_CHECK", "bag_contents_summary", "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK"),
+        ("IMM_007_FINAL_DECISION", "immigration_transition_acknowledgement", "IMM_007_RETRY_FINAL_DECISION"),
+        ("BAG_001_NOTICE_BAG_MISSING", "missing_bag_observation", "BAG_001_RETRY_NOTICE_BAG_MISSING"),
         ("BAG_002_FIND_STAFF", "missing_bag_status", "BAG_002_RETRY_FIND_STAFF"),
         ("BAG_003_REPORT_MISSING_BAG", "missing_bag_report", "BAG_003_RETRY_REPORT_MISSING_BAG"),
         ("BAG_004_DESCRIBE_BAG", "bag_description", "BAG_004_RETRY_DESCRIBE_BAG"),
@@ -487,6 +643,10 @@ def test_openkb_write_records_success_turn_summary(tmp_path: Path) -> None:
     assert record["error_capture"]["should_record"] is False
     assert record["out_game_feedback_seed"]["report_priority"] == "low"
     assert record["report_item"]["summary"] == result.report_item.summary
+    assert result.report_seed_summary is not None
+    assert result.dialogue_seed is not None
+    assert record["report_seed_summary"]["estimated_level"] == result.report_seed_summary.estimated_level
+    assert record["dialogue_seed"]["scene"] == result.dialogue_seed.scene
 
 
 def test_bronze_return_ticket_success_uses_baseline_immigration_route(tmp_path: Path) -> None:
@@ -763,6 +923,30 @@ class _ForbiddenFeedbackLLMClient:
         }
 
 
+class _ForbiddenDialogueFeedbackLLMClient:
+    model = "fake-forbidden-dialogue-model"
+
+    def generate(self, payload: dict[str, object]) -> dict[str, object]:
+        return {
+            "hint_kr": "방문 목적을 짧게 말하면 됩니다. 예: tourism.",
+            "feedback_note": "뜻은 통했지만 완전한 문장으로 말하면 더 자연스럽습니다.",
+            "report_summary": "입국심사 목적 답변은 이해되었습니다.",
+            "report_improvement": "I am here for tourism처럼 주어와 동사를 넣어 말해보세요.",
+            "example_answer": "I'm here for tourism.",
+            "focus_on_form_explanation_kr": "짧은 단어 답변보다 I'm here for ... 패턴이 안전합니다.",
+            "rubric_scores": {
+                "comprehension": 2,
+                "fluency": 1,
+                "grammar_accuracy": 1,
+                "vocabulary_range": 1,
+                "clarity": 2,
+                "interaction_problem_solving": 2,
+            },
+            "npc_utterance": "Final NPC line must not come from Developer B.",
+            "final_dialogue_line": "This should force fallback.",
+        }
+
+
 class _UsageFeedbackLLMClient:
     model = "fake-usage-model"
 
@@ -825,6 +1009,28 @@ def test_forbidden_llm_authority_keys_force_fallback_without_changing_policy(tmp
     assert result.branch.next_node_id == "IMM_002_RETRY_PURPOSE"
     assert result.evaluation.verdict == "FAIL"
     assert result.state_delta.suspicion_delta == 0
+    assert result.feedback_generation is not None
+    assert result.feedback_generation.mode == "fallback"
+    assert result.feedback_generation.used_llm is False
+    assert "forbidden keys" in (result.feedback_generation.fallback_reason or "")
+
+
+def test_forbidden_llm_dialogue_keys_force_fallback_without_changing_policy(tmp_path: Path) -> None:
+    payload = _policy_input(
+        player_text="I don't know.",
+        intent_success=False,
+        confidence=0.6,
+        extracted_slots={},
+        missing_slots=["visit_purpose"],
+        retry_count=2,
+        previous_fail_count=2,
+    )
+
+    result = _llm_agent(tmp_path, _ForbiddenDialogueFeedbackLLMClient()).evaluate_turn(payload)
+
+    assert result.branch.next_node_id == "IMM_002_RETRY_PURPOSE"
+    assert result.evaluation.verdict == "FAIL"
+    assert result.state_delta.retry_count_delta == 1
     assert result.feedback_generation is not None
     assert result.feedback_generation.mode == "fallback"
     assert result.feedback_generation.used_llm is False
@@ -962,3 +1168,17 @@ def test_openkb_record_includes_feedback_generation_and_difficulty(tmp_path: Pat
     assert record["feedback_generation"]["mode"] == "llm"
     assert record["rubric_scores"]["total"] == result.rubric_scores.total
     assert record["difficulty_profile"]["travel_speaking_level"] == result.difficulty_profile.travel_speaking_level
+
+
+def _all_keys(value: object) -> set[str]:
+    if isinstance(value, dict):
+        keys = set(value)
+        for child in value.values():
+            keys.update(_all_keys(child))
+        return keys
+    if isinstance(value, list):
+        list_keys: set[str] = set()
+        for child in value:
+            list_keys.update(_all_keys(child))
+        return list_keys
+    return set()

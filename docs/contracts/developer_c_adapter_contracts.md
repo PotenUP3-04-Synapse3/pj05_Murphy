@@ -78,6 +78,28 @@ Unreal wav
   -> Unreal
 ```
 
+## Alpha Interaction Direction
+
+Alpha keeps the existing wav turn endpoint as the stable baseline, but the turn
+metadata now includes an additive C-owned `interaction` context:
+
+- `initiator`: `npc` for fixed-prompt NPC-first turns, `player` for the player
+  walking up and speaking first.
+- `interaction_type`: `quest`, `ambient`, `tutorial`, or `system`.
+- `quest_id` and `interaction_id`: optional client ids for quest and
+  interactable correlation.
+- `time_limit_s`: optional timer metadata such as the 30-second immigration
+  answer window.
+
+Developer C echoes this metadata in `dev_c_unreal_response.v1` and includes it
+in safe AgentRun summaries. The field does not change Developer B branch
+authority or Developer A dialogue/TTS ownership.
+
+Developer C also records diagnostic `debug.timing_ms` values for STT, OpenKB,
+Understanding, Developer B, C logging, Developer A/TTS, response building, and
+validation. Timing values are for Alpha latency analysis only and must not be
+used as gameplay branch decisions.
+
 ## File Ownership
 
 Developer C may implement these adapters under:
@@ -156,6 +178,66 @@ Rules:
 - Tests must not require local model downloads or real STT provider
   credentials.
 
+## Alpha Realtime Caption Transport Candidate
+
+For realtime STT captions in Unreal, Developer C should add a streaming STT
+session beside the existing batch `/respond` endpoint instead of replacing the
+stable wav request immediately.
+
+Recommended Alpha structure:
+
+```text
+Unreal microphone
+  -> Developer C WebSocket /api/game/ai/stt/realtime
+  -> STT provider WebSocket or local streaming runtime
+  -> Developer C caption events
+  -> Unreal subtitle UI
+
+Unreal final commit or stop speaking
+  -> Developer C committed transcript
+  -> existing /respond-style orchestrator path
+  -> Developer B policy
+  -> Developer A dialogue/TTS
+  -> Unreal response JSON
+```
+
+Event shape for the C-owned WebSocket should stay small and provider-neutral:
+
+```json
+{
+  "event": "partial_transcript",
+  "request_id": "req_imm_duration_0001",
+  "session_id": "session_001",
+  "text": "I will stay for",
+  "is_final": false
+}
+```
+
+```json
+{
+  "event": "committed_transcript",
+  "request_id": "req_imm_duration_0001",
+  "session_id": "session_001",
+  "text": "I will stay for 5 days.",
+  "is_final": true
+}
+```
+
+Rules:
+
+- Unreal must not hold provider API keys. Developer C either relays audio to the
+  STT provider or issues short-lived provider tokens only when a provider
+  supports safe client-side auth.
+- Partial transcripts are UI-only subtitle previews and must not call Developer
+  B or Developer A.
+- Only committed transcripts enter the normal C orchestrator path.
+- The existing multipart wav `/respond` path remains the fallback and contract
+  baseline until realtime STT is verified.
+- UDP is not the first Alpha choice for captions because ordering, loss
+  recovery, auth, and commit semantics would become C/Unreal-owned protocol
+  work. WebSocket gives bidirectional ordered messages that match partial and
+  committed transcript events.
+
 ## OpenKB Service Contract
 
 Developer C service:
@@ -218,6 +300,14 @@ Output:
   "risk_delta": 0,
   "risk_reason": "The purpose is clear and no risk expression was found.",
   "risk_tags": [],
+  "slot_evidence": [
+    {
+      "slot": "visit_purpose",
+      "value": "tourism",
+      "confidence": 0.94,
+      "evidence_text": "tourism"
+    }
+  ],
   "extracted_slots": {
     "visit_purpose": "tourism"
   },
@@ -240,16 +330,20 @@ Rules:
   the trace records fallback mode and the rule output summary.
 - LLM fallback failures are logged through the C runtime logger before rule
   fallback is used.
-- The OpenAI structured output schema uses strict-compatible objects. Optional
-  slot values are represented as required nullable schema fields, then
-  normalized back into `extracted_slots: dict[str, str]` before Pydantic
-  validation.
-- In LLM mode, Developer C applies a narrow semantic slot guard after a valid
-  LLM response. If the current node requires `visit_purpose`, the LLM leaves
-  that slot missing, no risk expression is present, and the deterministic
-  allowed-value classifier detects a clear purpose such as `uncle ->
-  family_visit`, C repairs the Understanding output before sending it to
-  Developer B. This is recorded in `last_trace.postprocessing` and is not
+- The OpenAI structured output schema uses strict-compatible objects. Legacy
+  `visit_purpose` and `stay_duration` slot values are still represented as
+  required nullable schema fields, then normalized back into
+  `extracted_slots: dict[str, str]` before Pydantic validation.
+- Alpha 2 generic slots are represented as `slot_evidence` items. Developer C
+  accepts only slot names present in the current `node_context.required_slots`,
+  `optional_slots`, or `critical_slots`, drops unrelated names, and converts the
+  accepted evidence into `extracted_slots` for Developer B.
+- In LLM mode, Developer C still applies narrow deterministic repairs for
+  current regression guards. If the current node requires `visit_purpose` or
+  `stay_duration`, the LLM leaves that slot missing, no risk expression is
+  present, and the deterministic guard detects a clear value such as `uncle ->
+  family_visit` or `5 days`, C repairs the Understanding output before sending
+  it to Developer B. This is recorded in `last_trace.postprocessing` and is not
   counted as LLM fallback.
 - Rule fallback recognizes the current `visit_purpose` allowed values:
   `family_visit`, `friend_visit`, `business`, `study`, `transit`, and
@@ -309,6 +403,8 @@ Required output fields:
 Optional output fields:
 
 - `dialogue_directive`
+- `report_seed_summary`
+- `dialogue_seed`
 - `openkb_write`
 - `rubric_scores`
 - `difficulty_profile`
@@ -342,6 +438,11 @@ Developer C must validate:
 - feedback strategy-specific candidate fields are present
 - `out_game_feedback_seed.focus_on_form_targets` is non-empty when final report
   inclusion is requested
+- `report_seed_summary` is optional seed metadata and is not treated as a final
+  result UI payload
+- `dialogue_seed` is optional A-facing generation metadata and must not contain
+  final NPC utterance fields such as `npc_text`, `npc_utterance`, or
+  `final_dialogue_line`
 - `openkb_write.namespace == "dev_b"` when a write reference is present
 - successful `openkb_write` references point to expected local OpenKB runtime
   paths and do not escape the B-owned namespace
@@ -583,6 +684,9 @@ Rules:
 - Events are recorded at the STT, OpenKB, Understanding, Developer B,
   validator, error-capture, Developer A, response-builder, and final validator
   boundaries.
+- Safe summaries include the Alpha `interaction` metadata and timing breakdown
+  so A/B/C can distinguish NPC-first quest turns from player-first quest or
+  ambient turns during review.
 - The log must not include wav bytes, API keys, or full provider prompts.
 - When Developer C directly calls the Understanding LLM and the provider
   returns token usage, the unified record's top-level `model` object stores
@@ -609,6 +713,8 @@ Inputs:
 - validated Developer A output
 - normalized input metadata
 - current session and node metadata
+- C-owned Alpha interaction metadata
+- C-owned diagnostic timing metadata
 - logging summary
 
 Output contract:

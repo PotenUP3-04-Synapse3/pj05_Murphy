@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from backend.app.agents.agent_c.understanding_agent import UnderstandingAgent
@@ -16,6 +17,7 @@ from backend.app.schemas.game_turn import (
     NormalizedInput,
     PrePrototypeRequest,
     ScenarioState,
+    TurnTimingMs,
     UnderstandingOutput,
     UnrealResponse,
 )
@@ -44,6 +46,8 @@ class Orchestrator:
         self.agent_run_middleware = agent_run_middleware or DeveloperCAgentRunMiddleware(agent_run_root)
 
     def run_turn(self, request: PrePrototypeRequest) -> UnrealResponse:
+        turn_started = perf_counter()
+        timing_ms = _empty_timing_ms()
         agent_run = self.agent_run_middleware.start_run(request)
         self.agent_run_middleware.record_event(
             agent_run,
@@ -59,7 +63,9 @@ class Orchestrator:
         )
 
         try:
+            stage_started = perf_counter()
             normalized_input = self.stt_service.transcribe_wav(request.audio, request.turn.audio)
+            timing_ms["stt_ms"] = _elapsed_ms(stage_started)
             self.agent_run_middleware.record_event(
                 agent_run,
                 event="tool_call",
@@ -75,10 +81,12 @@ class Orchestrator:
                 payload_summary=_normalized_input_summary(normalized_input),
             )
 
+            stage_started = perf_counter()
             node_context = self.openkb_service.get_node_context(
                 request.turn.session.chapter_id,
                 request.turn.session.current_node_id,
             )
+            timing_ms["openkb_ms"] = _elapsed_ms(stage_started)
             self.agent_run_middleware.record_event(
                 agent_run,
                 event="tool_call",
@@ -97,10 +105,12 @@ class Orchestrator:
                 payload_summary=_node_context_summary(node_context),
             )
 
+            stage_started = perf_counter()
             understanding = self.understanding_agent.analyze_player_text(
                 normalized_input.player_text,
                 node_context,
             )
+            timing_ms["understanding_ms"] = _elapsed_ms(stage_started)
             self.agent_run_middleware.record_event(
                 agent_run,
                 event="tool_call",
@@ -128,7 +138,9 @@ class Orchestrator:
                 node_context,
                 understanding,
             )
+            stage_started = perf_counter()
             dev_b_output = self.dev_b_client.evaluate_turn(dev_b_input)
+            timing_ms["developer_b_ms"] = _elapsed_ms(stage_started)
             self.agent_run_middleware.record_event(
                 agent_run,
                 event="tool_call",
@@ -144,12 +156,14 @@ class Orchestrator:
                 payload_summary=_dev_b_output_summary(dev_b_output),
             )
 
+            stage_started = perf_counter()
             self.validator.validate_dev_b_policy_output(
                 dev_b_output,
                 current_node_id=request.turn.session.current_node_id,
                 allowed_next_nodes=node_context.allowed_next_nodes,
                 client_allowed_next_nodes=request.turn.client_allowed_next_nodes,
             )
+            timing_ms["validation_ms"] += _elapsed_ms(stage_started)
             self.agent_run_middleware.record_event(
                 agent_run,
                 event="tool_call",
@@ -163,10 +177,12 @@ class Orchestrator:
                 output_summary={"validated": True},
             )
 
+            stage_started = perf_counter()
             logging_summary = self.logging_service.record_error_capture(
                 request.turn.session.session_id,
                 dev_b_output.error_capture,
             )
+            timing_ms["logging_ms"] = _elapsed_ms(stage_started)
             self.agent_run_middleware.record_event(
                 agent_run,
                 event="tool_call",
@@ -179,6 +195,7 @@ class Orchestrator:
                 output_summary=logging_summary.model_dump(),
             )
 
+            stage_started = perf_counter()
             dev_a_output = self.dev_a_client.generate_dialogue(
                 DevADialogueInput(
                     contract_version="dev_a_dialogue.v1",
@@ -192,6 +209,7 @@ class Orchestrator:
                     developer_b_policy=dev_b_output,
                 )
             )
+            timing_ms["developer_a_ms"] = _elapsed_ms(stage_started)
             self.agent_run_middleware.record_event(
                 agent_run,
                 event="tool_call",
@@ -211,6 +229,7 @@ class Orchestrator:
                 payload_summary=_dev_a_output_summary(dev_a_output),
             )
 
+            stage_started = perf_counter()
             response = self.response_builder.build_unreal_response(
                 request=request,
                 normalized_input=normalized_input,
@@ -218,7 +237,10 @@ class Orchestrator:
                 dev_b_output=dev_b_output,
                 dev_a_output=dev_a_output,
                 logging_summary=logging_summary,
+                timing_ms=_turn_timing_ms(timing_ms, turn_started),
             )
+            timing_ms["response_build_ms"] = _elapsed_ms(stage_started)
+            response.debug.timing_ms = _turn_timing_ms(timing_ms, turn_started)
             self.agent_run_middleware.record_event(
                 agent_run,
                 event="tool_call",
@@ -238,7 +260,10 @@ class Orchestrator:
                 payload_summary=_response_summary(response),
             )
 
+            stage_started = perf_counter()
             self.validator.validate_unreal_response(response)
+            timing_ms["validation_ms"] += _elapsed_ms(stage_started)
+            response.debug.timing_ms = _turn_timing_ms(timing_ms, turn_started)
             self.agent_run_middleware.record_event(
                 agent_run,
                 event="tool_call",
@@ -318,6 +343,7 @@ class Orchestrator:
             turn_index=request.turn.session.turn_index,
             player_text=normalized_input.player_text,
             input_source=normalized_input.input_source,
+            interaction=request.turn.interaction,
             player_profile=request.turn.player_profile,
             scenario_state=scenario_state,
             node_context=node_context,
@@ -340,6 +366,7 @@ def _request_input_summary(request: PrePrototypeRequest) -> dict[str, Any]:
         "has_audio_bytes": request.audio.audio_bytes is not None,
         "has_mock_transcript": request.audio.transcript is not None,
         "client_allowed_next_nodes": request.turn.client_allowed_next_nodes,
+        "interaction": _interaction_summary(request.turn.interaction),
     }
 
 
@@ -398,6 +425,7 @@ def _dev_b_input_summary(dev_b_input: DevBPolicyInput) -> dict[str, Any]:
         "node_id": dev_b_input.current_node_id,
         "player_text_preview": _preview(dev_b_input.player_text),
         "turn_index": dev_b_input.turn_index,
+        "interaction": _interaction_summary(dev_b_input.interaction),
         "patience": dev_b_input.scenario_state.patience,
         "suspicion": dev_b_input.scenario_state.suspicion,
         "retry_count": dev_b_input.scenario_state.retry_count,
@@ -460,9 +488,11 @@ def _response_summary(response: UnrealResponse) -> dict[str, Any]:
         "current_node_id": response.current_node_id,
         "next_node_id": response.next_node_id,
         "next_action": response.next_action,
+        "interaction": _interaction_summary(response.interaction),
         "npc_audio_url": response.npc.audio_url,
         "evaluation_verdict": response.evaluation.verdict,
         "recorded_error_count": response.report.recorded_error_count,
+        "timing_ms": response.debug.timing_ms.model_dump(),
     }
 
 
@@ -473,6 +503,48 @@ def _understanding_fallback_used(trace: dict[str, Any]) -> bool:
 def _agent_run_model_usage(trace: dict[str, Any]) -> dict[str, Any] | None:
     usage = trace.get("model_usage")
     return usage if isinstance(usage, dict) else None
+
+
+def _interaction_summary(interaction: Any) -> dict[str, Any]:
+    return {
+        "initiator": interaction.initiator,
+        "interaction_type": interaction.interaction_type,
+        "quest_id": interaction.quest_id,
+        "interaction_id": interaction.interaction_id,
+        "time_limit_s": interaction.time_limit_s,
+        "first_contact": interaction.first_contact,
+    }
+
+
+def _empty_timing_ms() -> dict[str, int]:
+    return {
+        "stt_ms": 0,
+        "openkb_ms": 0,
+        "understanding_ms": 0,
+        "developer_b_ms": 0,
+        "logging_ms": 0,
+        "developer_a_ms": 0,
+        "response_build_ms": 0,
+        "validation_ms": 0,
+    }
+
+
+def _turn_timing_ms(timing_ms: dict[str, int], turn_started: float) -> TurnTimingMs:
+    return TurnTimingMs(
+        total_ms=_elapsed_ms(turn_started),
+        stt_ms=timing_ms["stt_ms"],
+        openkb_ms=timing_ms["openkb_ms"],
+        understanding_ms=timing_ms["understanding_ms"],
+        developer_b_ms=timing_ms["developer_b_ms"],
+        logging_ms=timing_ms["logging_ms"],
+        developer_a_ms=timing_ms["developer_a_ms"],
+        response_build_ms=timing_ms["response_build_ms"],
+        validation_ms=timing_ms["validation_ms"],
+    )
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, int((perf_counter() - started) * 1000))
 
 
 def _preview(text: str, limit: int = 120) -> str:

@@ -15,6 +15,124 @@ is local-first with API fallback. Automated tests keep deterministic STT through
 deterministic `rule` mode and optional OpenAI-assisted `llm` mode with rule
 fallback.
 
+## Developer C Alpha Plan Notice
+
+2026-06-10 Developer C / Sean Han is moving the prototype toward Alpha in
+phases while preserving A/B/C ownership boundaries.
+
+Alpha gameplay direction captured from the latest planning discussion:
+
+- The current prototype is NPC-prompt-first: Unreal sends the fixed current
+  NPC question context and player wav, Developer C runs STT and Understanding,
+  Developer B evaluates the answer and branch, Developer A returns NPC
+  dialogue/TTS, then Developer C assembles AI-to-Unreal JSON.
+- Alpha must also support player-initiated interactions where the player walks
+  up to an NPC and speaks first.
+- NPC interactions must distinguish quest dialogue from ambient daily dialogue.
+  Both NPC-first and player-first starts are valid.
+- The rough Alpha flow is: start screen, single/multi select, takeoff
+  cinematic, name entry on a customs declaration UI, seatmate level-test
+  conversation on the plane, JFK arrival objective UI, immigration, baggage
+  claim, odd baggage-item explanation, airport exit cinematic, and scoreboard.
+- Immigration officer NPCs are fixed-question, NPC-first scenario agents. Desk
+  and roaming staff may remain interactable after their main scenario beats.
+- Time pressure and failure policy remain gameplay constraints: 30-second
+  answers, repeated timeouts or unsatisfactory answers can fail, and dangerous
+  words can trigger an immediate bad ending.
+- Random baggage item/location keywords should be authored by humans in table
+  data for Unreal to consume. AI may generate dialogue around those authored
+  keywords but must not invent branch authority.
+
+Developer C Alpha phases:
+
+1. Alpha 0 - Team notice and contract alignment. Document the C-owned plan for
+   A/B, keep A/B implementation files read-only, and use
+   `docs/contracts/change_requests.md` for any cross-owner behavior changes.
+2. Alpha 1 - Request context and timing baseline. Add a C-owned interaction
+   context so Unreal can mark NPC-first vs player-first, quest vs ambient, and
+   time-limit metadata. Add stage timing to responses/log summaries so STT,
+   Understanding, Developer B, Developer A/TTS, response build, and validation
+   latency can be measured.
+3. Alpha 2 - Understanding Agent generic slot extraction. Replace the current
+   per-slot strict schema/repair pattern with a generic slot evidence contract
+   that can read `node_context.required_slots`, return allowed slot evidence,
+   and keep Developer B as the only branch authority.
+4. Alpha 3 - Scenario flow contract. Map Alpha scene ids, quest ids, and
+   interactability rules without replacing Developer B's branch authority or
+   Developer A's NPC wording authority.
+5. Alpha 4 - STT provider benchmark. Compare the current local-first Whisper
+   path with an API provider path behind the C-owned STT adapter.
+6. Alpha 5 - Realtime voice path. Evaluate WebSocket streaming STT for player
+   speech turns if timing data shows batch wav STT is the main latency issue.
+
+No immediate Developer A or Developer B implementation change is required for
+Alpha 1 or Alpha 2. Developer C added additive request/response metadata and
+C-owned Understanding postprocessing only; any future change requiring A/B logic
+changes must be filed as a change request first.
+
+## 2026-06-12 Developer C Follow-up
+
+Developer C implemented Alpha 2 generic slot evidence in the C-owned
+Understanding layer. The LLM can now return `slot_evidence` entries for the
+current node's required, optional, or critical slots. Developer C filters those
+entries to the current node, drops unrelated or forbidden slot names such as
+`next_node_id` and `npc_text`, and converts accepted evidence into the existing
+`extracted_slots` dict before Developer B receives the policy input.
+
+Changed:
+
+- Added `SlotEvidence` and `UnderstandingOutput.slot_evidence` to the C schema.
+- Updated the Understanding LLM strict schema and normalization so generic slot
+  evidence can fill `extracted_slots` without adding one strict slot key per
+  scenario node.
+- Added C postprocessing that accepts only current-node slots and keeps
+  Developer B as the sole branch/progression authority.
+- Kept deterministic `visit_purpose` and `stay_duration` repairs as regression
+  guards for the existing prototype nodes.
+- Added tests for `stay_location` generic evidence, forbidden slot filtering,
+  and strict schema compatibility.
+
+Changed files for this update:
+
+- `backend/app/schemas/game_turn.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/test_understanding_llm_client.py`
+- `docs/contracts/developer_c_schema_contract.md`
+- `docs/contracts/developer_c_adapter_contracts.md`
+- `docs/handoff.md`
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_understanding_llm_client.py backend/tests/test_preprototype_flow.py -q`:
+  PASS, 34 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 193 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 91 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
+
+## 2026-06-11 Developer C Follow-up
+
+Developer C fixed the IMM_003_DURATION progression issue in the C-owned
+Understanding layer. The root cause was that rule mode, LLM structured output,
+and LLM postprocessing only knew how to fill `visit_purpose`, while the duration
+node requires `stay_duration`. C now recognizes duration answers such as
+`5 days`, `five days`, `one week`, and `until Friday`, and repairs missing
+LLM `stay_duration` slots before calling Developer B. Developer B's
+`intent_success and not missing_slots` success policy remains unchanged.
+
+Developer C also documented the Alpha realtime caption transport candidate:
+add a C-owned WebSocket STT session for partial and committed transcripts while
+keeping the existing multipart wav `/respond` path as the fallback baseline.
+Partial transcripts are for Unreal subtitle UI only; committed transcripts enter
+the normal C orchestrator path.
+
+Next Alpha priority: refactor the C-owned Understanding Agent around generic
+slot evidence before expanding the full Alpha scenario flow. The current
+`visit_purpose` and `stay_duration` extractors are acceptable regression guards,
+but new scene slots should not require one hardcoded extractor per node.
+
 ## Developer A ElevenLabs TTS Provider Update - 2026-06-09
 
 Developer A integrated ElevenLabs as an official selectable TTS provider. The
@@ -1092,7 +1210,7 @@ Still C-owned:
   `scene_normalized_dimension_average_policy` reason tags.
 - C still needs to orchestrate
   `FLIGHT_001_SEATMATE_SMALLTALK -> IMMIGRATION_ALPHA -> BAGGAGE_MISSING ->
-  scenario_end` and expose final UI `evaluation` plus `out_game_feedback`.
+scenario_end` and expose final UI `evaluation` plus `out_game_feedback`.
 
 ## 2026-06-09 NPC Metadata Ownership Follow-Up
 
@@ -1130,6 +1248,128 @@ Ownership split:
 - C-owned work: update schemas, validators, and the C-to-A adapter payload.
 - A-owned work: generate final NPC utterances and TTS wording from metadata
   rather than polishing B/C-provided dialogue text.
+
+## 2026-06-11 Developer B Report and Dialogue Seed Contract
+
+Developer B added additive seed metadata for report assembly and A-facing
+dialogue generation without expanding or reordering scenario nodes.
+
+Changed implementation:
+
+- Added optional `report_seed_summary` and `dialogue_seed` models to
+  `backend/app/schemas/game_turn.py`.
+- Updated `EnglishLevelHintAgent` to derive deterministic report seed metadata
+  from existing evaluation, report item, error capture, Focus-on-Form targets,
+  and level/tier data.
+- Updated `EnglishLevelHintAgent` to emit `dialogue_seed` metadata containing
+  scene, NPC role cue, goals, assessment targets, slots, difficulty cue,
+  feedback focus, tone guidance, follow-up intents, and stop condition.
+- Kept existing `dialogue_directive` for backward compatibility.
+- Updated the Dev B OpenKB writer to store `report_seed_summary` and
+  `dialogue_seed` in B-owned runtime records.
+- Tightened LLM feedback guardrails so `npc_utterance`,
+  `final_dialogue_line`, `npc_text`, `tts_text`, animation, and authority keys
+  force fallback rather than changing policy output.
+
+Contract/docs updated:
+
+- Added `docs/contracts/developer_b_report_and_dialogue_seed_contract.md`.
+- Updated `docs/contracts/developer_b_json_key_value_contract_v1.md`.
+- Updated `docs/contracts/developer_b_json_final_v1.md`.
+- Updated `docs/contracts/developer_c_adapter_contracts.md`.
+- Updated `docs/contracts/developer_c_schema_contract.md`.
+
+Tests added:
+
+- Dev B output contains `report_seed_summary` fields for UI/report assembly.
+- Dev B output contains `dialogue_seed` fields for Developer A generation.
+- Dev B output does not contain final NPC utterance keys.
+- OpenKB Dev B records include the new seeds.
+- LLM-assisted feedback cannot return dialogue/final NPC text keys without
+  falling back to rule output.
+
+Verification:
+
+- `uv sync` completed. It removed undeclared local package
+  `en-core-web-sm==3.8.0` from the virtualenv because it is not part of the
+  locked project dependency set.
+- `uv run pytest` passed: 173 tests, 2 existing warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 91 source files.
+
+Known issues / coordination:
+
+- This work does not expose `report_seed_summary` or `dialogue_seed` in the
+  Unreal response envelope. Dev C or a future final report assembler should
+  decide how to aggregate and present these seeds.
+- This work does not remove existing legacy feedback candidate fields such as
+  `npc_recast_line_candidate`, because doing so would be a breaking contract
+  change. The new `dialogue_seed` is the preferred forward path for NPC
+  generation metadata.
+- Scenario node expansion, Chapter renaming, IMM node-id changes, and Alpha
+  node reordering were intentionally not changed.
+
+## 2026-06-11 Alpha Dev B Scenario Node Expansion
+
+Developer B expanded B-owned Alpha scenario policy and node data. Developer A,
+Developer C, and Unreal runtime code were not edited.
+
+Changed implementation:
+
+- Replaced the single flight diagnostic node with a five-turn Dev B node route:
+  `FLIGHT_001_SEATMATE_SMALLTALK -> FLIGHT_002_TRAVEL_PURPOSE ->
+FLIGHT_003_STAY_PLAN -> FLIGHT_004_CLARIFY_OR_ASK_BACK ->
+FLIGHT_005_WRAP_UP`.
+- Updated `FlightSmallTalkDiagnosticPolicy` to require 5 player turns and make
+  skip eligibility available at 5 turns.
+- Flight nodes now advance to the next evidence node even for retry, clarify,
+  hint, warning, or bad-end branch candidates so small talk collects diagnostic
+  samples instead of blocking progression.
+- Added `BAG_001_NOTICE_BAG_MISSING` before the existing missing-bag service
+  route.
+- Routed `BAG_007_RESOLUTION` to `ALPHA_999_FINAL_SCOREBOARD`.
+- Updated `ScenarioStateMachine` so `ALPHA_999_FINAL_SCOREBOARD` is the Dev B
+  final-branch node. `IMM_007_FINAL_DECISION` now behaves as an
+  immigration-clearance transition in B policy.
+- Updated `FinalResultScorePolicy` to exclude both
+  `IMM_007_FINAL_DECISION` and `ALPHA_999_FINAL_SCOREBOARD` when prior scored
+  records exist.
+- Flight `dialogue_seed.max_turns` now uses 5 turns.
+
+Docs updated:
+
+- `docs/contracts/developer_b_json_key_value_contract_v1.md`
+- `docs/contracts/developer_b_report_and_dialogue_seed_contract.md`
+- `docs/contracts/change_requests.md`
+
+Tests added or updated:
+
+- 5-turn flight diagnostic minimum and skip eligibility.
+- Five-node flight route coverage.
+- Baggage notice node and Alpha final scoreboard route coverage.
+- Flight retry still advances to the next evidence node.
+- `ALPHA_999_FINAL_SCOREBOARD` is the only Dev B final branch node.
+- Alpha final-scoreboard records are excluded from scored averages when prior
+  scored records exist.
+
+Verification:
+
+- `uv sync` completed.
+- `uv run pytest` passed: 187 tests, 2 existing warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 91 source files.
+
+Known issues / coordination:
+
+- Developer C-owned `DevBPolicyClient` still contains legacy final-result
+  compatibility for `IMM_007_FINAL_DECISION`. A change request now asks C to
+  adopt `ALPHA_999_FINAL_SCOREBOARD` as the Alpha final-result trigger.
+- Developer A must generate actual NPC dialogue/TTS for the new `FLIGHT_*` and
+  `BAG_001` metadata. Dev B still does not author final NPC utterances.
+- Unreal must connect flight exit, airport arrival, baggage claim, final
+  scoreboard, and ending cinematic flow states.
+- The storyboard's baggage-open/random-item "억까" concept is left as future
+  optional-event work; Alpha base route keeps the existing missing-bag flow.
 
 ## Resume Instructions
 

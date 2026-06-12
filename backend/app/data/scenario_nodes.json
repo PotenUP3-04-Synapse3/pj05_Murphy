@@ -6,37 +6,170 @@
     "FLIGHT_001_SEATMATE_SMALLTALK": {
       "node_id": "FLIGHT_001_SEATMATE_SMALLTALK",
       "chapter_id": "CH0_IMMIGRATION",
-      "npc_question": "Hi, I'm Emily. Are you heading to New York too?",
-      "npc_question_goal": "friendly_seatmate_smalltalk",
-      "objective_kr": "Talk with the passenger next to you.",
-      "required_intents": ["respond_to_smalltalk"],
-      "required_slots": ["smalltalk_response"],
-      "optional_slots": ["travel_reason", "first_time_visit", "interest", "duration"],
+      "npc_question": "Could I borrow your pen for this arrival form?",
+      "npc_question_goal": "respond_to_polite_request",
+      "objective_kr": "옆자리 승객의 부탁에 공손하게 응답하기",
+      "required_intents": ["respond_to_seatmate_request"],
+      "required_slots": ["polite_response"],
+      "optional_slots": ["offer_help", "short_acknowledgement", "friendly_tone"],
       "critical_slots": [],
       "allowed_slot_values": {
-        "smalltalk_response": ["answered", "short_answer", "asked_back", "shared_travel_detail"]
+        "polite_response": ["offered_help", "declined_politely", "short_acknowledgement"]
       },
       "risk_keywords": [],
-      "recommended_expression": "Yes, I'm going to New York for a short trip.",
-      "base_hint_kr": "Answer in a friendly short sentence, then add one travel detail if you can.",
+      "recommended_expression": "Sure, here you are.",
+      "base_hint_kr": "부탁을 받으면 짧고 공손하게 응답하세요.",
       "hint_policy": {
-        "keyword": ["yes", "New York", "trip"],
-        "sentence_pattern": "Yes, I'm going to New York for ___.",
-        "situation_hint": "The seatmate is making friendly small talk.",
-        "action_hint": "Answer briefly and ask a simple question back if you can."
+        "keyword": ["sure", "here", "pen"],
+        "sentence_pattern": "Sure, here you are.",
+        "situation_hint": "The seatmate is asking for a small favor.",
+        "action_hint": "Answer politely and keep the exchange friendly."
       },
       "branch_candidates": {
-        "success": "FLIGHT_001_SEATMATE_SMALLTALK",
-        "retry": "FLIGHT_001_RETRY_SMALLTALK",
-        "clarify": "FLIGHT_001_CLARIFY_SMALLTALK",
-        "hint": "FLIGHT_001_RETRY_SMALLTALK",
-        "warning": "FLIGHT_001_SEATMATE_SMALLTALK",
-        "bad_end": "FLIGHT_001_SEATMATE_SMALLTALK"
+        "success": "FLIGHT_002_TRAVEL_PURPOSE",
+        "retry": "FLIGHT_002_TRAVEL_PURPOSE",
+        "clarify": "FLIGHT_002_TRAVEL_PURPOSE",
+        "hint": "FLIGHT_002_TRAVEL_PURPOSE",
+        "warning": "FLIGHT_002_TRAVEL_PURPOSE",
+        "bad_end": "FLIGHT_002_TRAVEL_PURPOSE"
       },
       "allowed_next_nodes": [
-        "FLIGHT_001_SEATMATE_SMALLTALK",
-        "FLIGHT_001_RETRY_SMALLTALK",
-        "FLIGHT_001_CLARIFY_SMALLTALK",
+        "FLIGHT_002_TRAVEL_PURPOSE"
+      ]
+    },
+    "FLIGHT_002_TRAVEL_PURPOSE": {
+      "node_id": "FLIGHT_002_TRAVEL_PURPOSE",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Are you visiting New York for a trip?",
+      "npc_question_goal": "ask_travel_purpose_smalltalk",
+      "objective_kr": "여행 목적을 자연스럽게 말하기",
+      "required_intents": ["state_travel_purpose"],
+      "required_slots": ["travel_purpose"],
+      "optional_slots": ["destination", "activity", "first_time_visit"],
+      "critical_slots": [],
+      "allowed_slot_values": {
+        "travel_purpose": ["tourism", "business", "family_visit", "friend_visit", "study", "transit"]
+      },
+      "risk_keywords": [],
+      "recommended_expression": "Yes, I'm visiting New York for vacation.",
+      "base_hint_kr": "뉴욕에 가는 목적을 짧게 말하세요.",
+      "hint_policy": {
+        "keyword": ["vacation", "tourism", "visit"],
+        "sentence_pattern": "I'm visiting New York for ___.",
+        "situation_hint": "The seatmate is making friendly travel small talk.",
+        "action_hint": "Say your travel purpose in one simple sentence."
+      },
+      "branch_candidates": {
+        "success": "FLIGHT_003_STAY_PLAN",
+        "retry": "FLIGHT_003_STAY_PLAN",
+        "clarify": "FLIGHT_003_STAY_PLAN",
+        "hint": "FLIGHT_003_STAY_PLAN",
+        "warning": "FLIGHT_003_STAY_PLAN",
+        "bad_end": "FLIGHT_003_STAY_PLAN"
+      },
+      "allowed_next_nodes": [
+        "FLIGHT_003_STAY_PLAN"
+      ]
+    },
+    "FLIGHT_003_STAY_PLAN": {
+      "node_id": "FLIGHT_003_STAY_PLAN",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "How long will you stay there?",
+      "npc_question_goal": "ask_stay_plan_smalltalk",
+      "objective_kr": "체류 기간이나 첫 방문 여부를 말하기",
+      "required_intents": ["state_stay_plan"],
+      "required_slots": ["stay_plan"],
+      "optional_slots": ["stay_duration", "first_time_visit", "accommodation_hint"],
+      "critical_slots": [],
+      "allowed_slot_values": {
+        "stay_plan": ["five_days", "one_week", "two_weeks", "short_trip", "until_date"]
+      },
+      "risk_keywords": [],
+      "recommended_expression": "I'll stay for five days. It's my first time there.",
+      "base_hint_kr": "얼마나 머무는지 또는 첫 방문인지 말하세요.",
+      "hint_policy": {
+        "keyword": ["five days", "one week", "first time"],
+        "sentence_pattern": "I'll stay for ___.",
+        "situation_hint": "The seatmate is asking about your travel plan.",
+        "action_hint": "Say a clear stay duration or one simple plan detail."
+      },
+      "branch_candidates": {
+        "success": "FLIGHT_004_CLARIFY_OR_ASK_BACK",
+        "retry": "FLIGHT_004_CLARIFY_OR_ASK_BACK",
+        "clarify": "FLIGHT_004_CLARIFY_OR_ASK_BACK",
+        "hint": "FLIGHT_004_CLARIFY_OR_ASK_BACK",
+        "warning": "FLIGHT_004_CLARIFY_OR_ASK_BACK",
+        "bad_end": "FLIGHT_004_CLARIFY_OR_ASK_BACK"
+      },
+      "allowed_next_nodes": [
+        "FLIGHT_004_CLARIFY_OR_ASK_BACK"
+      ]
+    },
+    "FLIGHT_004_CLARIFY_OR_ASK_BACK": {
+      "node_id": "FLIGHT_004_CLARIFY_OR_ASK_BACK",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Sorry, did you say this is your first time in America?",
+      "npc_question_goal": "check_clarification_or_ask_back",
+      "objective_kr": "못 들은 질문을 확인하거나 자연스럽게 되묻기",
+      "required_intents": ["handle_clarification_or_ask_back"],
+      "required_slots": ["interaction_repair"],
+      "optional_slots": ["clarification_request", "confirmation", "asked_back"],
+      "critical_slots": [],
+      "allowed_slot_values": {
+        "interaction_repair": ["confirmed", "asked_clarification", "asked_back", "rephrased_answer"]
+      },
+      "risk_keywords": [],
+      "recommended_expression": "Yes, it's my first time. How about you?",
+      "base_hint_kr": "들은 내용을 확인하거나 간단히 되물어보세요.",
+      "hint_policy": {
+        "keyword": ["yes", "first time", "how about you"],
+        "sentence_pattern": "Yes, ___. How about you?",
+        "situation_hint": "The seatmate is checking what they heard.",
+        "action_hint": "Confirm the answer or ask a short question back."
+      },
+      "branch_candidates": {
+        "success": "FLIGHT_005_WRAP_UP",
+        "retry": "FLIGHT_005_WRAP_UP",
+        "clarify": "FLIGHT_005_WRAP_UP",
+        "hint": "FLIGHT_005_WRAP_UP",
+        "warning": "FLIGHT_005_WRAP_UP",
+        "bad_end": "FLIGHT_005_WRAP_UP"
+      },
+      "allowed_next_nodes": [
+        "FLIGHT_005_WRAP_UP"
+      ]
+    },
+    "FLIGHT_005_WRAP_UP": {
+      "node_id": "FLIGHT_005_WRAP_UP",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Looks like we're landing soon. Are you ready for immigration?",
+      "npc_question_goal": "wrap_up_flight_smalltalk",
+      "objective_kr": "기내 스몰토크를 자연스럽게 마무리하기",
+      "required_intents": ["close_smalltalk_politely"],
+      "required_slots": ["smalltalk_closing"],
+      "optional_slots": ["feeling", "readiness", "thanks"],
+      "critical_slots": [],
+      "allowed_slot_values": {
+        "smalltalk_closing": ["polite_closing", "thanks", "ready", "nervous_but_ready"]
+      },
+      "risk_keywords": [],
+      "recommended_expression": "I think I'm ready. Thanks for talking with me.",
+      "base_hint_kr": "짧게 준비 상태를 말하고 대화를 마무리하세요.",
+      "hint_policy": {
+        "keyword": ["ready", "thanks", "immigration"],
+        "sentence_pattern": "I think I'm ready. Thank you.",
+        "situation_hint": "The plane is landing and the small talk is ending.",
+        "action_hint": "Close the conversation politely."
+      },
+      "branch_candidates": {
+        "success": "IMM_001_PASSPORT",
+        "retry": "IMM_001_PASSPORT",
+        "clarify": "IMM_001_PASSPORT",
+        "hint": "IMM_001_PASSPORT",
+        "warning": "IMM_001_PASSPORT",
+        "bad_end": "IMM_001_PASSPORT"
+      },
+      "allowed_next_nodes": [
         "IMM_001_PASSPORT"
       ]
     },
@@ -342,38 +475,74 @@
       "node_id": "IMM_007_FINAL_DECISION",
       "chapter_id": "CH0_IMMIGRATION",
       "npc_question": "All right, you're cleared to enter. Enjoy your stay.",
-      "npc_question_goal": "summarize_final_result",
-      "objective_kr": "입국심사 최종 결과 확인하기",
-      "required_intents": ["summarize_final_result"],
-      "required_slots": ["final_recommendation"],
-      "optional_slots": ["reason_tags", "report_summary"],
+      "npc_question_goal": "confirm_immigration_clearance_transition",
+      "objective_kr": "입국심사 통과 후 수화물 찾는 곳으로 이동하기",
+      "required_intents": ["acknowledge_immigration_clearance"],
+      "required_slots": ["immigration_transition_acknowledgement"],
+      "optional_slots": ["thanks", "next_destination"],
       "critical_slots": ["critical_fail_count", "high_suspicion"],
       "allowed_slot_values": {
-        "final_recommendation": ["PASS", "CONDITIONAL_PASS", "SECONDARY_ROOM", "COMIC_FAIL", "UNRANKED"]
+        "immigration_transition_acknowledgement": ["acknowledged", "thanked_officer", "ready_for_baggage_claim"]
       },
       "risk_keywords": ["critical_fail", "high_suspicion"],
       "recommended_expression": "Thank you, officer.",
-      "base_hint_kr": "Listen to the final immigration result.",
+      "base_hint_kr": "입국심사관에게 감사 인사를 하고 수화물 찾는 곳으로 이동하세요.",
       "hint_policy": {
         "keyword": ["thank you", "officer", "okay"],
         "sentence_pattern": "Thank you, officer.",
-        "situation_hint": "The officer is giving the final immigration result.",
-        "action_hint": "Listen to the result and respond politely."
+        "situation_hint": "The officer has cleared you to enter.",
+        "action_hint": "Respond politely and move to baggage claim."
       },
       "branch_candidates": {
-        "success": "END_PASS",
+        "success": "BAG_001_NOTICE_BAG_MISSING",
         "retry": "IMM_007_RETRY_FINAL_DECISION",
         "clarify": "IMM_EXTRA_007_CLARIFY_FINAL_DECISION",
         "hint": "IMM_007_RETRY_FINAL_DECISION",
         "warning": "END_SECONDARY_INSPECTION",
-        "bad_end": "END_SECONDARY_INSPECTION",
-        "final": "END_PASS"
+        "bad_end": "END_SECONDARY_INSPECTION"
       },
       "allowed_next_nodes": [
-        "END_PASS",
+        "BAG_001_NOTICE_BAG_MISSING",
         "IMM_007_RETRY_FINAL_DECISION",
         "IMM_EXTRA_007_CLARIFY_FINAL_DECISION",
         "END_SECONDARY_INSPECTION"
+      ]
+    },
+    "BAG_001_NOTICE_BAG_MISSING": {
+      "node_id": "BAG_001_NOTICE_BAG_MISSING",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "The carousel has stopped, and your suitcase still isn't here. What do you need to do?",
+      "npc_question_goal": "notice_missing_bag_and_seek_help",
+      "objective_kr": "수화물이 나오지 않았음을 인지하고 도움 요청 준비하기",
+      "required_intents": ["notice_missing_bag"],
+      "required_slots": ["missing_bag_observation"],
+      "optional_slots": ["carousel_status", "next_action", "staff_location"],
+      "critical_slots": ["panic_unable_to_report", "leave_without_reporting"],
+      "allowed_slot_values": {
+        "missing_bag_observation": ["bag_not_arrived", "carousel_stopped", "need_staff_help"]
+      },
+      "risk_keywords": ["give up", "leave airport", "no report"],
+      "recommended_expression": "My suitcase didn't arrive. I need to ask for help.",
+      "base_hint_kr": "수화물이 나오지 않았고 도움을 요청해야 한다고 말하세요.",
+      "hint_policy": {
+        "keyword": ["suitcase", "didn't arrive", "help"],
+        "sentence_pattern": "My suitcase didn't arrive.",
+        "situation_hint": "The baggage carousel stopped but your bag did not appear.",
+        "action_hint": "Say that your suitcase did not arrive and you need help."
+      },
+      "branch_candidates": {
+        "success": "BAG_002_FIND_STAFF",
+        "retry": "BAG_001_RETRY_NOTICE_BAG_MISSING",
+        "clarify": "BAG_001_CLARIFY_NOTICE_BAG_MISSING",
+        "hint": "BAG_001_RETRY_NOTICE_BAG_MISSING",
+        "warning": "END_BAGGAGE_REPORT_INCOMPLETE",
+        "bad_end": "END_BAGGAGE_REPORT_INCOMPLETE"
+      },
+      "allowed_next_nodes": [
+        "BAG_002_FIND_STAFF",
+        "BAG_001_RETRY_NOTICE_BAG_MISSING",
+        "BAG_001_CLARIFY_NOTICE_BAG_MISSING",
+        "END_BAGGAGE_REPORT_INCOMPLETE"
       ]
     },
     "BAG_002_FIND_STAFF": {
@@ -584,7 +753,7 @@
         "action_hint": "Acknowledge the report and ask when you will get an update."
       },
       "branch_candidates": {
-        "success": "END_BAGGAGE_REPORT_FILED",
+        "success": "ALPHA_999_FINAL_SCOREBOARD",
         "retry": "BAG_007_RETRY_RESOLUTION",
         "clarify": "BAG_007_CLARIFY_RESOLUTION",
         "hint": "BAG_007_RETRY_RESOLUTION",
@@ -592,10 +761,45 @@
         "bad_end": "END_BAGGAGE_REPORT_INCOMPLETE"
       },
       "allowed_next_nodes": [
-        "END_BAGGAGE_REPORT_FILED",
+        "ALPHA_999_FINAL_SCOREBOARD",
         "BAG_007_RETRY_RESOLUTION",
         "BAG_007_CLARIFY_RESOLUTION",
         "END_BAGGAGE_REPORT_INCOMPLETE"
+      ]
+    },
+    "ALPHA_999_FINAL_SCOREBOARD": {
+      "node_id": "ALPHA_999_FINAL_SCOREBOARD",
+      "chapter_id": "CH0_IMMIGRATION",
+      "npc_question": "Your airport arrival scenario is complete. Let's review your result.",
+      "npc_question_goal": "summarize_alpha_result",
+      "objective_kr": "알파 시나리오 최종 결과 확인하기",
+      "required_intents": ["summarize_alpha_result"],
+      "required_slots": ["final_recommendation"],
+      "optional_slots": ["reason_tags", "report_summary", "out_game_feedback"],
+      "critical_slots": ["critical_fail_count", "high_suspicion"],
+      "allowed_slot_values": {
+        "final_recommendation": ["PASS", "CONDITIONAL_PASS", "SECONDARY_ROOM", "COMIC_FAIL", "UNRANKED"]
+      },
+      "risk_keywords": ["critical_fail", "high_suspicion"],
+      "recommended_expression": "Thank you.",
+      "base_hint_kr": "알파 시나리오 결과를 확인하세요.",
+      "hint_policy": {
+        "keyword": ["thank you", "result", "review"],
+        "sentence_pattern": "Thank you.",
+        "situation_hint": "The full Alpha route is complete and the final result is ready.",
+        "action_hint": "Listen to the result and review the feedback."
+      },
+      "branch_candidates": {
+        "success": "END_ALPHA_SCENARIO",
+        "retry": "END_ALPHA_SCENARIO",
+        "clarify": "END_ALPHA_SCENARIO",
+        "hint": "END_ALPHA_SCENARIO",
+        "warning": "END_ALPHA_SCENARIO",
+        "bad_end": "END_ALPHA_SCENARIO",
+        "final": "END_ALPHA_SCENARIO"
+      },
+      "allowed_next_nodes": [
+        "END_ALPHA_SCENARIO"
       ]
     }
   }
