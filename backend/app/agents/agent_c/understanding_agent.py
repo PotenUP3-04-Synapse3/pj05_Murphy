@@ -225,19 +225,46 @@ class UnderstandingAgent:
                 needs_clarification=False,
             )
 
+        generic_slot = _extract_generic_required_slot(player_text, node_context)
+        if generic_slot is not None:
+            slot_name, slot_value = generic_slot
+            return UnderstandingOutput(
+                intent=_required_intent_for_slot(node_context, slot_name),
+                intent_success=True,
+                confidence=0.86,
+                meaning_summary_kr=f"The player clearly answered the required slot: {slot_name}.",
+                emotion="calm",
+                answer_relevance="on_topic",
+                ambiguity_type="none",
+                risk_delta=0,
+                risk_reason="The required slot is clear and no risk expression was found.",
+                risk_tags=[],
+                slot_evidence=[
+                    SlotEvidence(
+                        slot=slot_name,
+                        value=slot_value,
+                        confidence=0.86,
+                        evidence_text=_matched_generic_evidence_text(player_text, node_context) or slot_value,
+                    )
+                ],
+                extracted_slots={slot_name: slot_value},
+                missing_slots=[],
+                needs_clarification=False,
+            )
+
         return UnderstandingOutput(
-            intent="unknown",
+            intent=_required_intent_for_slot(node_context, primary_required_slot or "unknown"),
             intent_success=False,
             confidence=0.55,
-            meaning_summary_kr="The player answer did not clearly state a visit purpose.",
+            meaning_summary_kr="The player answer did not clearly fill the required slot.",
             emotion="nervous",
             answer_relevance="partially_related",
-            ambiguity_type="unclear_purpose",
+            ambiguity_type="unclear_required_slot",
             risk_delta=0,
             risk_reason="No risk expression was found.",
             risk_tags=[],
             extracted_slots={},
-            missing_slots=["visit_purpose"],
+            missing_slots=node_context.required_slots,
             needs_clarification=True,
         )
 
@@ -247,6 +274,51 @@ def _reject_forbidden_llm_keys(result: dict[str, object]) -> None:
     if forbidden_keys:
         joined_keys = ", ".join(sorted(forbidden_keys))
         raise UnderstandingLLMUnavailable(f"Understanding LLM returned forbidden keys: {joined_keys}")
+
+
+def _extract_generic_required_slot(
+    player_text: str,
+    node_context: NodeContext,
+) -> tuple[str, str] | None:
+    if not node_context.required_slots:
+        return None
+
+    slot_name = node_context.required_slots[0]
+    allowed_values = node_context.allowed_slot_values.get(slot_name, [])
+    if not allowed_values:
+        return None
+
+    matched_evidence = _matched_generic_evidence_text(player_text, node_context)
+    if matched_evidence is None:
+        return None
+
+    normalized_text = _normalize_for_keyword_match(player_text)
+    for allowed_value in allowed_values:
+        if _normalize_for_keyword_match(allowed_value).replace("_", " ") in normalized_text:
+            return slot_name, allowed_value
+
+    return slot_name, allowed_values[0]
+
+
+def _matched_generic_evidence_text(
+    player_text: str,
+    node_context: NodeContext,
+) -> str | None:
+    normalized_text = _normalize_for_keyword_match(player_text)
+    candidates = [
+        *node_context.hint_policy.keyword,
+        node_context.hint_policy.sentence_pattern,
+        node_context.recommended_expression,
+    ]
+    for candidate in candidates:
+        normalized_candidate = _normalize_for_keyword_match(candidate)
+        if normalized_candidate and normalized_candidate in normalized_text:
+            return candidate
+    return None
+
+
+def _normalize_for_keyword_match(value: str) -> str:
+    return " ".join(value.lower().replace("_", " ").replace("-", " ").split())
 
 
 def _visit_purpose_summary(visit_purpose: str) -> str:

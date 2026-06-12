@@ -66,9 +66,265 @@ Developer C Alpha phases:
    speech turns if timing data shows batch wav STT is the main latency issue.
 
 No immediate Developer A or Developer B implementation change is required for
-Alpha 1 or Alpha 2. Developer C added additive request/response metadata and
-C-owned Understanding postprocessing only; any future change requiring A/B logic
-changes must be filed as a change request first.
+Alpha 1, Alpha 2, or Alpha 3A. Developer C added additive request/response
+metadata, C-owned Understanding postprocessing, and C-owned runtime adapter
+alignment only; any future change requiring A/B logic changes must be filed as a
+change request first.
+
+## 2026-06-12 Developer C Alpha 3E Follow-up
+
+Developer C updated the realtime STT path to match the recommended Alpha
+runtime: ElevenLabs realtime relay remains the primary subtitle provider, while
+the existing local Whisper STT runtime is retained as a batch-on-commit
+fallback.
+
+Implemented behavior:
+
+- `/api/game/ai/stt/stream` still streams partial/final subtitle events through
+  the C-owned WebSocket.
+- When an `audio_chunk` is committed and ElevenLabs fails to send or returns no
+  final transcript, Developer C wraps the buffered PCM chunks into a wav file
+  and calls the existing local Whisper batch STT boundary.
+- Fallback final events use `provider = "local_batch_fallback"` and keep
+  `target_endpoint = "POST /api/game/ai/respond"` so Unreal can reuse the
+  committed transcript path.
+- The local fallback is not partial-streaming STT; it only recovers the final
+  transcript at commit time.
+- `MURPHY_STT_DEBUG_LOG_MODE=debug` appends standalone
+  `realtime_stt_relay` Developer C AgentRun records to the same unified
+  JSONL/Markdown files as the existing A/B/C logs.
+- Realtime STT debug records include chunk count, total audio bytes, estimated
+  duration, primary/fallback provider metadata, final transcript summary, token
+  counts fixed at zero, and estimated cost from
+  `ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD`.
+
+Changed:
+
+- Added `local_batch_fallback` to the realtime STT server event provider
+  contract.
+- Added local batch fallback buffering to
+  `backend/app/services/service_c/elevenlabs_realtime_stt_relay.py`.
+- Added `backend/app/services/service_c/realtime_stt_debug_log_service.py`.
+- Added realtime STT debug settings to
+  `backend/app/services/service_c/settings_service.py` and `.env.example`.
+- Updated Developer C schema, adapter, dependency, and handoff docs.
+- Added focused tests for fallback final recovery and debug AgentRun append.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_elevenlabs_realtime_stt_relay.py backend/tests/test_realtime_stt_websocket.py::test_realtime_stt_websocket_appends_debug_agent_run_log_for_stt_session backend/tests/test_settings_service.py::test_app_settings_reads_values_from_env_file -q`:
+  PASS, 8 passed, 2 warnings.
+- `uv sync`: PASS. It restored the locked environment and removed undeclared
+  local STT extra packages from the current virtualenv.
+- `uv run pytest -q`: PASS, 211 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 96 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
+
+## 2026-06-12 Developer C Alpha 3D Follow-up
+
+Developer C added a backend relay path for ElevenLabs realtime STT. Unreal can
+connect to the existing C-owned WebSocket and start a relay session with:
+
+```json
+{
+  "contract_version": "dev_c_realtime_stt.v1",
+  "event_type": "session_start",
+  "provider": "elevenlabs_relay"
+}
+```
+
+Developer C then opens a server-side WSS connection to:
+
+```text
+wss://api.elevenlabs.io/v1/speech-to-text/realtime
+```
+
+The ElevenLabs API key stays in backend `.env` as `ELEVENLABS_API_KEY` and is
+sent only as the provider `xi-api-key` header. Unreal sends `audio_chunk` events
+with base64 PCM audio; Developer C forwards those as ElevenLabs
+`input_audio_chunk` messages and maps ElevenLabs `partial_transcript` and
+`committed_transcript` messages back into `dev_c_realtime_stt.v1` subtitle
+events.
+
+Changed:
+
+- Added `websockets` as a direct runtime dependency.
+- Added ElevenLabs realtime settings to
+  `backend/app/services/service_c/settings_service.py` and `.env.example`.
+- Added `audio_chunk` and `elevenlabs_relay` to the realtime STT schema.
+- Added `backend/app/services/service_c/elevenlabs_realtime_stt_relay.py`.
+- Updated `/api/game/ai/stt/stream` to open and use the relay when requested.
+- Added fake-provider tests for settings, relay mapping, and WebSocket route
+  behavior.
+- Added `scripts/smoke_elevenlabs_realtime_stt_relay.py` for solo local smoke
+  testing with a 16 kHz mono 16-bit PCM wav file.
+
+Manual solo smoke test:
+
+```powershell
+Copy-Item .env.example .env
+# Fill ELEVENLABS_API_KEY in .env
+uv run uvicorn backend.app.main:app --reload
+uv run python scripts/smoke_elevenlabs_realtime_stt_relay.py --wav path\to\mono_16k_pcm.wav
+```
+
+Still open:
+
+- Unreal must capture microphone PCM chunks and send `audio_chunk` events.
+- Direct final WebSocket transcript commit into the C orchestrator is not
+  implemented yet; final events still point to `POST /api/game/ai/respond`.
+- Short-lived client token mode is intentionally not used because this phase
+  chose backend relay.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_settings_service.py backend/tests/test_elevenlabs_realtime_stt_relay.py backend/tests/test_realtime_stt_websocket.py -q`:
+  PASS, 8 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 206 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 95 source files.
+
+## 2026-06-12 Developer C Alpha 3C Follow-up
+
+Developer C added a provider-neutral realtime STT transcript WebSocket for
+Unreal subtitle previews:
+
+```text
+WebSocket /api/game/ai/stt/stream
+```
+
+The new event contract is `dev_c_realtime_stt.v1`. It accepts `session_start`,
+`partial_transcript`, `final_transcript`, and `cancel` events from Unreal or a
+safe STT bridge. The endpoint returns subtitle-ready server events that Unreal
+can render immediately while the player is speaking.
+
+Implemented behavior:
+
+- `session_start` returns `session_started`.
+- `partial_transcript` returns a non-committed `subtitle` payload with
+  `display_mode=replace`.
+- `final_transcript` returns `committed=true` and
+  `target_endpoint=POST /api/game/ai/respond`.
+- Invalid events return `contract_error` instead of entering orchestration.
+- Per-connection `sequence` must increase monotonically.
+
+Important boundary:
+
+- Partial transcripts are UI-only and do not call the Understanding Agent,
+  Developer B, Developer A, or TTS.
+- Alpha 3C does not yet connect a real provider SDK or short-lived provider
+  token flow.
+- Alpha 3C does not yet pipe final WebSocket events directly into the
+  orchestrator; it points Unreal back to the existing `/respond` committed
+  transcript path.
+
+Changed:
+
+- Added realtime STT client/server event schemas in
+  `backend/app/schemas/game_turn.py`.
+- Added WebSocket handling in `backend/app/api/ai_respond.py`.
+- Added realtime STT event validation in
+  `backend/app/services/service_c/validator.py`.
+- Added focused WebSocket contract tests in
+  `backend/tests/test_realtime_stt_websocket.py`.
+- Updated Developer C schema, adapter, change-request, and handoff docs.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_realtime_stt_websocket.py -q`: PASS, 3
+  passed, 2 warnings.
+- `uv run pytest backend/tests/test_realtime_stt_websocket.py backend/tests/test_preprototype_flow.py backend/tests/test_final_result_payload.py -q`:
+  PASS, 30 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 203 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 92 source files.
+
+## 2026-06-12 Developer C Alpha 3B Follow-up
+
+Developer C added additive Unreal flow metadata to `dev_c_unreal_response.v1`.
+The new `flow` object uses `dev_c_unreal_flow.v1` and tells Unreal which Alpha
+presentation transition should happen after a validated backend turn. It is
+presentation metadata only and does not override Developer B's `next_node_id` or
+`next_action`.
+
+Implemented flow cues:
+
+- `FLIGHT_005_WRAP_UP -> IMM_001_PASSPORT`: `cutscene` transition
+  `flight_to_immigration_arrival`, `to_scene_id=IMMIGRATION_ALPHA`,
+  `cinematic_id=CIN_FLIGHT_ARRIVAL_JFK`, `skip_allowed=true`.
+- `IMM_007_FINAL_DECISION -> BAG_001_NOTICE_BAG_MISSING`: `scene_transition`
+  `immigration_to_baggage_claim`, `to_scene_id=BAGGAGE_MISSING`.
+- `ALPHA_999_FINAL_SCOREBOARD -> END_ALPHA_SCENARIO`: `scoreboard` transition
+  `alpha_final_scoreboard`, `to_scene_id=ALPHA_SCOREBOARD`,
+  `show_scoreboard=true`.
+
+Changed:
+
+- Added `FlowResponse` and `UnrealResponse.flow` to the C schema.
+- Updated `ResponseBuilder` to emit flow metadata for the base Alpha route.
+- Updated `Validator` to check `dev_c_unreal_flow.v1` and scoreboard flag
+  consistency.
+- Added integration tests for flight arrival cutscene, baggage scene transition,
+  and final scoreboard flow.
+
+Still open:
+
+- Unreal must consume `flow` and actually play/skip cinematics, move scene
+  state, and render the scoreboard.
+- A-owned dialogue/TTS polish for seatmate and baggage staff voices.
+- Dedicated final `out_game_feedback` UI exposure beyond the existing
+  `final_result` payload.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_preprototype_flow.py backend/tests/test_final_result_payload.py -q`:
+  PASS, 27 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 200 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 91 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
+
+## 2026-06-12 Developer C Alpha 3A Follow-up
+
+Developer C adopted the base Alpha scenario node expansion at the C runtime
+boundary without editing B-owned `scenario_nodes.json`. The integrated flow now
+treats `IMM_007_FINAL_DECISION` as an immigration-clearance transition into
+`BAG_001_NOTICE_BAG_MISSING`, and treats `ALPHA_999_FINAL_SCOREBOARD` as the
+only Alpha final-result trigger for attached `report.final_result`.
+
+Changed:
+
+- Updated `DevBPolicyClient` so it attaches B `final_result` only when Developer
+  B returns a final branch from `ALPHA_999_FINAL_SCOREBOARD`.
+- Removed the `IMM_` prefix gate from the C-to-A adapter's next-node question
+  lookup so FLIGHT/BAG/ALPHA nodes can seed Developer A generation through
+  OpenKB metadata.
+- Added generic rule-mode Understanding fallback that consumes B-authored
+  `hint_policy` and allowed slot metadata for non-hardcoded slots such as
+  `missing_bag_observation` and `final_recommendation`.
+- Opened the C schema/validator to accept
+  `scene_normalized_dimension_average` in addition to `simple_average`.
+- Added C integration tests for `IMM_007 -> BAG_001`, `BAG_001 -> BAG_002`, and
+  `ALPHA_999_FINAL_SCOREBOARD -> END_ALPHA_SCENARIO`.
+
+Still open after Alpha 3A:
+
+- Unreal cutscene/skip state wiring for flight exit, arrival, baggage entry,
+  ending cinematic, and scoreboard display. Alpha 3B now exposes backend `flow`
+  metadata for the base route, but Unreal still owns execution.
+- A-owned dialogue/TTS polish for seatmate and baggage staff voices.
+- Dedicated final `out_game_feedback` UI exposure beyond the existing
+  `final_result` payload.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_preprototype_flow.py backend/tests/test_final_result_payload.py backend/tests/test_understanding_agent.py backend/tests/test_understanding_llm_client.py -q`:
+  PASS, 41 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 197 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 91 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
 
 ## 2026-06-12 Developer C Follow-up
 
@@ -1053,13 +1309,13 @@ Changed:
 
 Still C-owned:
 
-- C-owned `QuantitativeScores.scoring_policy` and validator currently allow only
-  `simple_average`. Developer B therefore keeps that field runtime-compatible
-  while exposing the new policy through numeric behavior and
-  `scene_normalized_dimension_average_policy` reason tags.
-- C still needs to orchestrate
+- C now accepts both `simple_average` and
+  `scene_normalized_dimension_average` score policy names, but final UI
+  `out_game_feedback` exposure is still separate from the existing
+  `final_result` payload.
+- C still needs Unreal-facing cutscene/skip state orchestration for
   `FLIGHT_A_001_SEATMATE_SMALLTALK -> IMMIGRATION_ALPHA -> BAGGAGE_MISSING ->
-  scenario_end` and expose final UI `evaluation` plus `out_game_feedback`.
+  scenario_end`.
 
 ## 2026-06-09 NPC Metadata Ownership Follow-Up
 
@@ -1211,9 +1467,9 @@ Verification:
 
 Known issues / coordination:
 
-- Developer C-owned `DevBPolicyClient` still contains legacy final-result
-  compatibility for `IMM_007_FINAL_DECISION`. A change request now asks C to
-  adopt `ALPHA_999_FINAL_SCOREBOARD` as the Alpha final-result trigger.
+- Developer C-owned `DevBPolicyClient` now uses `ALPHA_999_FINAL_SCOREBOARD` as
+  the Alpha final-result trigger. `IMM_007_FINAL_DECISION` is a transition into
+  baggage claim.
 - Developer A must generate actual NPC dialogue/TTS for the new `FLIGHT_*` and
   current `BAG_001` through `BAG_007` metadata. Dev B still does not author
   final NPC utterances.

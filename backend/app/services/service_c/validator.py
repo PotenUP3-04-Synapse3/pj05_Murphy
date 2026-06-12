@@ -1,4 +1,15 @@
-from backend.app.schemas.game_turn import DevBPolicyOutput, FinalResult, UnrealResponse, UnrealResultResponse
+from backend.app.schemas.game_turn import (
+    DevBPolicyOutput,
+    FinalResult,
+    RealtimeTranscriptClientEvent,
+    UnrealResponse,
+    UnrealResultResponse,
+)
+
+ALLOWED_FINAL_RESULT_SCORING_POLICIES = {
+    "simple_average",
+    "scene_normalized_dimension_average",
+}
 
 
 class ValidationError(ValueError):
@@ -81,17 +92,14 @@ class Validator:
         if not response.npc.audio_url.startswith("/runtime/audio/"):
             raise ValidationError("Unreal response npc.audio_url must point to /runtime/audio/")
 
-        if response.next_action == "COMPLETE_CHAPTER":
-            if response.transition is None:
-                raise ValidationError("COMPLETE_CHAPTER response requires transition metadata")
-            if response.transition.requires_player_input:
-                raise ValidationError("COMPLETE_CHAPTER transition must not require player input")
-            if not response.transition.next_chapter_id:
-                raise ValidationError("COMPLETE_CHAPTER transition requires next_chapter_id")
-            if not response.transition.unreal_event:
-                raise ValidationError("COMPLETE_CHAPTER transition requires unreal_event")
-        elif response.transition is not None:
-            raise ValidationError("transition metadata is only allowed for COMPLETE_CHAPTER responses")
+        if response.flow.contract_version != "dev_c_unreal_flow.v1":
+            raise ValidationError("Unreal flow contract_version must be dev_c_unreal_flow.v1")
+
+        if response.flow.transition_type == "scoreboard" and not response.flow.show_scoreboard:
+            raise ValidationError("scoreboard flow must set show_scoreboard")
+
+        if response.flow.transition_type != "scoreboard" and response.flow.show_scoreboard:
+            raise ValidationError("show_scoreboard is only allowed for scoreboard flow")
 
         if response.report.final_result is not None:
             self.validate_final_result(response.report.final_result)
@@ -101,6 +109,33 @@ class Validator:
             raise ValidationError("Unreal result contract_version must be dev_c_unreal_result.v1")
 
         self.validate_final_result(response.final_result)
+
+    def validate_realtime_transcript_event(
+        self,
+        event: RealtimeTranscriptClientEvent,
+        *,
+        session_started: bool,
+        last_sequence: int | None,
+    ) -> None:
+        if event.contract_version != "dev_c_realtime_stt.v1":
+            raise ValidationError("Realtime STT contract_version must be dev_c_realtime_stt.v1")
+
+        if event.event_type != "session_start" and not session_started:
+            raise ValidationError("session_start is required before transcript events")
+
+        if last_sequence is not None and event.sequence <= last_sequence:
+            raise ValidationError("Realtime STT event sequence must increase monotonically")
+
+        if event.event_type in {"partial_transcript", "final_transcript"}:
+            if event.transcript is None or not event.transcript.strip():
+                raise ValidationError("Realtime STT transcript must not be empty")
+
+        if event.event_type == "audio_chunk":
+            if event.provider != "elevenlabs_relay":
+                raise ValidationError("audio_chunk events require provider=elevenlabs_relay")
+
+            if event.audio_base64 is None or not event.audio_base64.strip():
+                raise ValidationError("Realtime STT audio_base64 must not be empty")
 
     def validate_final_result(self, final_result: FinalResult) -> None:
         if not 0 <= final_result.final_score_100 <= 100:
@@ -122,8 +157,8 @@ class Validator:
         if scores.overall != final_result.final_score_100:
             raise ValidationError("final_result.final_score_100 must match quantitative_scores.overall")
 
-        if scores.scoring_policy != "simple_average":
-            raise ValidationError("final_result.quantitative_scores.scoring_policy must be simple_average")
+        if scores.scoring_policy not in ALLOWED_FINAL_RESULT_SCORING_POLICIES:
+            raise ValidationError("final_result.quantitative_scores.scoring_policy is not allowed")
 
         if final_result.report_summary.included_node_count < 0:
             raise ValidationError("final_result.report_summary.included_node_count is out of range")

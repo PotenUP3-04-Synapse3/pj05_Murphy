@@ -7,6 +7,8 @@ from backend.app.services.service_b.final_result_score_policy import (
     OpenKBFinalResultRecordReader,
 )
 
+ALPHA_FINAL_SCOREBOARD_NODE_ID = "ALPHA_999_FINAL_SCOREBOARD"
+
 
 class DevBPolicyClient:
     def __init__(
@@ -23,7 +25,7 @@ class DevBPolicyClient:
 
     def evaluate_turn(self, payload: DevBPolicyInput) -> DevBPolicyOutput:
         output = self.agent.evaluate_turn(payload)
-        if output.branch.branch_type != "final":
+        if output.branch.branch_type != "final" or payload.current_node_id != ALPHA_FINAL_SCOREBOARD_NODE_ID:
             return output
 
         final_result = self.final_result_policy.build_result(

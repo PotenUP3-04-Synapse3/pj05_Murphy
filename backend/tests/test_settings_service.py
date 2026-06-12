@@ -26,6 +26,14 @@ def _clear_runtime_env(monkeypatch) -> None:
         "MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS",
         "MURPHY_UNREAL_REQUEST_CAPTURE_MODE",
         "MURPHY_UNREAL_REQUEST_CAPTURE_ROOT",
+        "ELEVENLABS_API_KEY",
+        "ELEVENLABS_REALTIME_STT_ENDPOINT",
+        "ELEVENLABS_REALTIME_STT_MODEL",
+        "ELEVENLABS_REALTIME_AUDIO_FORMAT",
+        "ELEVENLABS_REALTIME_COMMIT_STRATEGY",
+        "ELEVENLABS_REALTIME_RECEIVE_TIMEOUT_S",
+        "ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD",
+        "MURPHY_STT_DEBUG_LOG_MODE",
     ]:
         monkeypatch.delenv(key, raising=False)
 
@@ -54,6 +62,14 @@ def test_app_settings_reads_values_from_env_file(tmp_path, monkeypatch) -> None:
                 "MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS=10.5",
                 "MURPHY_UNREAL_REQUEST_CAPTURE_MODE=debug",
                 f"MURPHY_UNREAL_REQUEST_CAPTURE_ROOT={tmp_path / 'captures'}",
+                "ELEVENLABS_API_KEY=xi-test-env-file",
+                "ELEVENLABS_REALTIME_STT_ENDPOINT=wss://example.test/v1/speech-to-text/realtime",
+                "ELEVENLABS_REALTIME_STT_MODEL=scribe_v2_realtime",
+                "ELEVENLABS_REALTIME_AUDIO_FORMAT=pcm_16000",
+                "ELEVENLABS_REALTIME_COMMIT_STRATEGY=manual",
+                "ELEVENLABS_REALTIME_RECEIVE_TIMEOUT_S=0.25",
+                "ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD=0.004",
+                "MURPHY_STT_DEBUG_LOG_MODE=debug",
             ]
         ),
         encoding="utf-8",
@@ -79,6 +95,14 @@ def test_app_settings_reads_values_from_env_file(tmp_path, monkeypatch) -> None:
     assert settings.murphy_understanding_llm_timeout_seconds == 10.5
     assert settings.murphy_unreal_request_capture_mode == "debug"
     assert settings.murphy_unreal_request_capture_root == tmp_path / "captures"
+    assert settings.elevenlabs_api_key == "xi-test-env-file"
+    assert settings.elevenlabs_realtime_stt_endpoint == "wss://example.test/v1/speech-to-text/realtime"
+    assert settings.elevenlabs_realtime_stt_model == "scribe_v2_realtime"
+    assert settings.elevenlabs_realtime_audio_format == "pcm_16000"
+    assert settings.elevenlabs_realtime_commit_strategy == "manual"
+    assert settings.elevenlabs_realtime_receive_timeout_s == 0.25
+    assert settings.elevenlabs_realtime_estimated_cost_per_minute_usd == 0.004
+    assert settings.murphy_stt_debug_log_mode == "debug"
 
 
 def test_stt_runtimes_use_settings_loaded_from_env_file(tmp_path, monkeypatch) -> None:

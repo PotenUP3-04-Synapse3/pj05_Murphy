@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SessionContext(BaseModel):
@@ -327,7 +327,7 @@ class QuantitativeScores(BaseModel):
     vocabulary_range: int = Field(ge=0, le=100)
     clarity: int = Field(ge=0, le=100)
     interaction_problem_solving: int = Field(ge=0, le=100)
-    scoring_policy: Literal["simple_average"]
+    scoring_policy: Literal["simple_average", "scene_normalized_dimension_average"]
 
 
 class FinalReportSummary(BaseModel):
@@ -579,6 +579,89 @@ class ReportResponse(BaseModel):
     final_result: FinalResult | None = None
 
 
+class FlowResponse(BaseModel):
+    contract_version: Literal["dev_c_unreal_flow.v1"] = "dev_c_unreal_flow.v1"
+    transition_type: Literal["none", "scene_transition", "cutscene", "scoreboard"] = "none"
+    transition_id: str | None = None
+    from_scene_id: str | None = None
+    to_scene_id: str | None = None
+    cinematic_id: str | None = None
+    skip_allowed: bool = False
+    show_scoreboard: bool = False
+
+
+class RealtimeTranscriptClientEvent(BaseModel):
+    contract_version: Literal["dev_c_realtime_stt.v1"]
+    event_type: Literal[
+        "session_start",
+        "audio_chunk",
+        "partial_transcript",
+        "final_transcript",
+        "cancel",
+    ]
+    request_id: str
+    session_id: str
+    turn_index: int = Field(ge=0)
+    sequence: int = Field(ge=0)
+    chapter_id: str | None = None
+    scene_id: str | None = None
+    current_node_id: str | None = None
+    provider: Literal["unreal_bridge", "stt_provider_websocket", "elevenlabs_relay", "mock"] = "unreal_bridge"
+    language_hint: str | None = None
+    transcript: str | None = None
+    audio_base64: str | None = None
+    commit: bool = False
+    sample_rate_hz: int | None = Field(default=None, ge=8000)
+    previous_text: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    language_detected: str | None = None
+
+    @model_validator(mode="after")
+    def require_transcript_for_transcript_events(self) -> "RealtimeTranscriptClientEvent":
+        if self.event_type in {"partial_transcript", "final_transcript"}:
+            if self.transcript is None or not self.transcript.strip():
+                raise ValueError("transcript is required for transcript events")
+
+        if self.event_type == "audio_chunk":
+            if self.audio_base64 is None or not self.audio_base64.strip():
+                raise ValueError("audio_base64 is required for audio_chunk events")
+
+        return self
+
+
+class RealtimeSubtitlePayload(BaseModel):
+    text: str
+    is_final: bool
+    display_mode: Literal["replace"] = "replace"
+
+
+class RealtimeTranscriptServerEvent(BaseModel):
+    contract_version: Literal["dev_c_realtime_stt.v1"] = "dev_c_realtime_stt.v1"
+    event_type: Literal[
+        "session_started",
+        "partial_transcript",
+        "final_transcript",
+        "session_cancelled",
+        "contract_error",
+        "provider_error",
+    ]
+    request_id: str | None = None
+    session_id: str | None = None
+    turn_index: int | None = None
+    sequence: int | None = None
+    provider: Literal[
+        "unreal_bridge",
+        "stt_provider_websocket",
+        "elevenlabs_relay",
+        "local_batch_fallback",
+        "mock",
+    ] | None = None
+    subtitle: RealtimeSubtitlePayload | None = None
+    committed: bool = False
+    target_endpoint: str | None = None
+    error_message: str | None = None
+
+
 class TurnTimingMs(BaseModel):
     total_ms: int = Field(default=0, ge=0)
     stt_ms: int = Field(default=0, ge=0)
@@ -623,6 +706,7 @@ class UnrealResponse(BaseModel):
     stt: SttResponse
     npc: NpcResponse
     ui: UiResponse
+    flow: FlowResponse = Field(default_factory=FlowResponse)
     state_delta: StateDelta
     evaluation: EvaluationResponse
     report: ReportResponse

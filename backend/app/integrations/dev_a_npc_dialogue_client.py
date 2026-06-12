@@ -138,9 +138,6 @@ class DevANpcDialogueClient:
 
     def _next_node_question(self, payload: DevADialogueInput) -> str:
         next_node_id = payload.developer_b_policy.branch.next_node_id
-        if not next_node_id.startswith("IMM_"):
-            return ""
-
         try:
             node_context = self.openkb_service.get_node_context(payload.node_context.chapter_id, next_node_id)
         except ValueError:

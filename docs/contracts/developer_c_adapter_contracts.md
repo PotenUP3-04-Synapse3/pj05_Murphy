@@ -100,6 +100,11 @@ Understanding, Developer B, C logging, Developer A/TTS, response building, and
 validation. Timing values are for Alpha latency analysis only and must not be
 used as gameplay branch decisions.
 
+Developer C now also emits additive `flow` metadata with contract version
+`dev_c_unreal_flow.v1`. This is Unreal presentation guidance for scene
+transitions, cutscenes, skip eligibility, and scoreboard display. It does not
+replace Developer B branch authority.
+
 ## File Ownership
 
 Developer C may implement these adapters under:
@@ -178,65 +183,112 @@ Rules:
 - Tests must not require local model downloads or real STT provider
   credentials.
 
-## Alpha Realtime Caption Transport Candidate
+## Alpha Realtime Caption Transport
 
-For realtime STT captions in Unreal, Developer C should add a streaming STT
-session beside the existing batch `/respond` endpoint instead of replacing the
-stable wav request immediately.
+For realtime STT captions in Unreal, Developer C now exposes a provider-neutral
+transcript WebSocket beside the existing batch `/respond` endpoint. This does
+not replace the stable wav request immediately.
 
-Recommended Alpha structure:
+Implemented Alpha 3C structure:
 
 ```text
 Unreal microphone
-  -> Developer C WebSocket /api/game/ai/stt/realtime
-  -> STT provider WebSocket or local streaming runtime
-  -> Developer C caption events
+  -> Developer C WebSocket /api/game/ai/stt/stream
+  -> ElevenLabs WSS /v1/speech-to-text/realtime
+  -> Developer C subtitle event mapping
   -> Unreal subtitle UI
 
 Unreal final commit or stop speaking
-  -> Developer C committed transcript
-  -> existing /respond-style orchestrator path
+  -> Developer C final_transcript event
+  -> existing /respond fallback path with committed transcript
   -> Developer B policy
   -> Developer A dialogue/TTS
   -> Unreal response JSON
 ```
 
-Event shape for the C-owned WebSocket should stay small and provider-neutral:
+Client event shape for the C-owned WebSocket stays small and provider-neutral:
 
 ```json
 {
-  "event": "partial_transcript",
-  "request_id": "req_imm_duration_0001",
-  "session_id": "session_001",
-  "text": "I will stay for",
-  "is_final": false
+  "contract_version": "dev_c_realtime_stt.v1",
+  "event_type": "audio_chunk",
+  "request_id": "req_realtime_0001",
+  "session_id": "session_realtime_001",
+  "turn_index": 3,
+  "sequence": 1,
+  "provider": "elevenlabs_relay",
+  "audio_base64": "UklGRiQAAABXQVZFZm10IBAAAAABAAEA",
+  "commit": false,
+  "sample_rate_hz": 16000
 }
 ```
 
 ```json
 {
-  "event": "committed_transcript",
-  "request_id": "req_imm_duration_0001",
-  "session_id": "session_001",
-  "text": "I will stay for 5 days.",
-  "is_final": true
+  "contract_version": "dev_c_realtime_stt.v1",
+  "event_type": "final_transcript",
+  "request_id": "req_realtime_0001",
+  "session_id": "session_realtime_001",
+  "turn_index": 3,
+  "sequence": 2,
+  "provider": "elevenlabs_relay",
+  "subtitle": {
+    "text": "I will stay for five days.",
+    "is_final": true,
+    "display_mode": "replace"
+  },
+  "committed": true,
+  "target_endpoint": "POST /api/game/ai/respond"
 }
 ```
 
 Rules:
 
-- Unreal must not hold provider API keys. Developer C either relays audio to the
-  STT provider or issues short-lived provider tokens only when a provider
-  supports safe client-side auth.
+- Unreal must not hold provider API keys. Alpha now uses the Developer C relay
+  path with `ELEVENLABS_API_KEY` kept in the backend `.env`.
+- `session_start.provider = "elevenlabs_relay"` opens a backend outbound WSS
+  connection to ElevenLabs realtime STT with `xi-api-key` in the provider
+  header.
+- `audio_chunk` events are base64 PCM chunks. The current smoke-test path
+  expects 16 kHz mono 16-bit PCM wav chunks and sends
+  `audio_format=pcm_16000`.
 - Partial transcripts are UI-only subtitle previews and must not call Developer
   B or Developer A.
-- Only committed transcripts enter the normal C orchestrator path.
+- Only committed final transcripts may enter the normal C orchestrator path.
+- Recommended Alpha runtime: use ElevenLabs realtime relay as the primary
+  caption path and keep the existing local Whisper STT runtime as a
+  batch-on-commit fallback. The local runtime can recover a final transcript
+  from buffered PCM when the provider fails or returns no final transcript, but
+  it does not provide partial streaming subtitles.
+- Fallback final events use `provider = "local_batch_fallback"` and still set
+  `target_endpoint = "POST /api/game/ai/respond"` so Unreal can reuse the
+  existing committed transcript path.
+- `MURPHY_STT_DEBUG_LOG_MODE=debug` appends a C-owned
+  `realtime_stt_relay` record to the shared unified AgentRun JSONL/Markdown
+  logs. The record includes chunk count, audio bytes, estimated duration,
+  primary/fallback provider metadata, final transcript summary, token counts
+  fixed at zero, and an estimated cost derived from
+  `ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD`.
+- Alpha 3C does not yet pipe the WebSocket final event directly into the
+  orchestrator. It returns `target_endpoint = "POST /api/game/ai/respond"` so
+  Unreal can reuse the existing committed transcript fallback.
+- The first event must be `session_start`; later transcript events must use a
+  monotonically increasing `sequence`.
 - The existing multipart wav `/respond` path remains the fallback and contract
   baseline until realtime STT is verified.
 - UDP is not the first Alpha choice for captions because ordering, loss
   recovery, auth, and commit semantics would become C/Unreal-owned protocol
   work. WebSocket gives bidirectional ordered messages that match partial and
   committed transcript events.
+
+Manual solo smoke test:
+
+```powershell
+Copy-Item .env.example .env
+# Fill ELEVENLABS_API_KEY in .env
+uv run uvicorn backend.app.main:app --reload
+uv run python scripts/smoke_elevenlabs_realtime_stt_relay.py --wav path\to\mono_16k_pcm.wav
+```
 
 ## OpenKB Service Contract
 
@@ -485,7 +537,9 @@ Rules:
 - Developer B owns `FinalResultScorePolicy` and the numeric scoring policy.
 - Developer C may read B-owned runtime records through the Developer B adapter
   and may not mutate records under `backend/runtime/openkb/dev_b/`.
-- Final-branch `evaluate_turn(...)` may attach `DevBPolicyOutput.final_result`.
+- Final-branch `evaluate_turn(...)` may attach `DevBPolicyOutput.final_result`
+  only for the Alpha final scoreboard node `ALPHA_999_FINAL_SCOREBOARD`.
+  `IMM_007_FINAL_DECISION` is treated as an immigration-to-baggage transition.
 - `GET /api/game/ai/result/{session_id}` returns
   `dev_c_unreal_result.v1` with the validated B `final_result`.
 - `/api/game/ai/respond` includes the same object under
@@ -723,6 +777,7 @@ Inputs:
 - normalized input metadata
 - current session and node metadata
 - C-owned Alpha interaction metadata
+- C-owned Alpha flow metadata
 - C-owned diagnostic timing metadata
 - logging summary
 

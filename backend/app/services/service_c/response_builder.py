@@ -3,6 +3,7 @@ from backend.app.schemas.game_turn import (
     DevADialogueOutput,
     DevBPolicyOutput,
     EvaluationResponse,
+    FlowResponse,
     NormalizedInput,
     NpcResponse,
     PrePrototypeRequest,
@@ -68,6 +69,12 @@ class ResponseBuilder:
                     priority=dev_b_output.in_game_feedback.priority,
                 ),
             ),
+            flow=_build_flow_response(
+                current_scene_id=request.turn.session.scene_id,
+                current_node_id=request.turn.session.current_node_id,
+                next_node_id=dev_b_output.branch.next_node_id,
+                next_action=dev_b_output.branch.next_action,
+            ),
             state_delta=dev_b_output.state_delta,
             evaluation=EvaluationResponse(
                 verdict=dev_b_output.evaluation.verdict,
@@ -86,6 +93,7 @@ class ResponseBuilder:
                 contract_versions=[
                     request.turn.contract_version,
                     request.turn.interaction.contract_version,
+                    "dev_c_unreal_flow.v1",
                     dev_b_output.contract_version,
                     dev_a_output.contract_version,
                     "dev_c_unreal_response.v1",
@@ -93,3 +101,40 @@ class ResponseBuilder:
                 timing_ms=timing_ms or TurnTimingMs(),
             ),
         )
+
+
+def _build_flow_response(
+    *,
+    current_scene_id: str,
+    current_node_id: str,
+    next_node_id: str,
+    next_action: str,
+) -> FlowResponse:
+    if current_node_id == "FLIGHT_005_WRAP_UP" and next_node_id == "IMM_001_PASSPORT":
+        return FlowResponse(
+            transition_type="cutscene",
+            transition_id="flight_to_immigration_arrival",
+            from_scene_id=current_scene_id,
+            to_scene_id="IMMIGRATION_ALPHA",
+            cinematic_id="CIN_FLIGHT_ARRIVAL_JFK",
+            skip_allowed=True,
+        )
+
+    if current_node_id == "IMM_007_FINAL_DECISION" and next_node_id == "BAG_001_NOTICE_BAG_MISSING":
+        return FlowResponse(
+            transition_type="scene_transition",
+            transition_id="immigration_to_baggage_claim",
+            from_scene_id=current_scene_id,
+            to_scene_id="BAGGAGE_MISSING",
+        )
+
+    if current_node_id == "ALPHA_999_FINAL_SCOREBOARD" and next_action == "FINAL_DECISION":
+        return FlowResponse(
+            transition_type="scoreboard",
+            transition_id="alpha_final_scoreboard",
+            from_scene_id=current_scene_id,
+            to_scene_id="ALPHA_SCOREBOARD",
+            show_scoreboard=True,
+        )
+
+    return FlowResponse(from_scene_id=current_scene_id, to_scene_id=current_scene_id)

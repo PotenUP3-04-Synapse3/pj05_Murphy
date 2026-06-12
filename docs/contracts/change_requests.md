@@ -257,6 +257,43 @@ player-first and quest vs ambient turns, plus diagnostic response timing. This
 does not yet implement the full Alpha scene flow, but it gives Unreal and A/B/C
 logs a stable metadata surface for the next scenario-flow phase.
 
+Developer C Alpha 3A update, 2026-06-12: C adopted the B-owned Alpha node
+expansion at the runtime boundary for the base route. `IMM_007_FINAL_DECISION`
+now remains a transition into `BAG_001_NOTICE_BAG_MISSING`, final-result
+attachment is limited to `ALPHA_999_FINAL_SCOREBOARD`, C accepts
+`scene_normalized_dimension_average` as a final score policy name, and rule-mode
+Understanding can consume B-authored generic slot metadata for flight/BAG-style
+nodes. Cutscene/skip orchestration, Unreal scene-state wiring, and final
+`out_game_feedback` UI exposure remain open.
+
+Developer C Alpha 3B update, 2026-06-12: C added additive
+`dev_c_unreal_flow.v1` response metadata for the base Alpha presentation
+transitions. Current flow ids are `flight_to_immigration_arrival` with
+`CIN_FLIGHT_ARRIVAL_JFK` and skip eligibility, `immigration_to_baggage_claim`,
+and `alpha_final_scoreboard`. Unreal still owns playing the actual cinematics,
+moving scene state, and rendering scoreboard UI. Final `out_game_feedback` UI
+exposure remains open.
+
+Developer C Alpha 3C update, 2026-06-12: C added the provider-neutral
+`dev_c_realtime_stt.v1` WebSocket contract at `/api/game/ai/stt/stream`.
+The endpoint accepts `session_start`, `partial_transcript`, `final_transcript`,
+and `cancel` events from Unreal or a safe STT bridge, returns subtitle-ready
+events for Unreal, and marks final transcript events as committed candidates
+for `POST /api/game/ai/respond`. Partial transcripts remain UI-only and do not
+call Understanding, Developer B, Developer A, or TTS. Actual provider auth,
+short-lived token issuance, and direct streaming-to-orchestrator commit remain
+future integration work.
+
+Developer C Alpha 3D update, 2026-06-12: C added the backend relay path for
+ElevenLabs realtime STT. `session_start.provider = "elevenlabs_relay"` opens a
+server-side WSS connection to ElevenLabs `/v1/speech-to-text/realtime` using
+`ELEVENLABS_API_KEY` from the backend environment, `audio_chunk` events are
+forwarded as ElevenLabs `input_audio_chunk` messages, and ElevenLabs
+`partial_transcript` / `committed_transcript` messages are mapped back to
+`dev_c_realtime_stt.v1` subtitle events. Unreal still must capture and send
+base64 audio chunks, and direct final-transcript-to-orchestrator commit remains
+future work.
+
 ### Requested By
 Developer B
 
@@ -294,9 +331,8 @@ Developer C should add or approve request/response fields and orchestration for:
   - keep optional events out of numeric scoring unless a later explicit weight
     is added.
 - Update C-owned schema/validator acceptance for the new score policy name when
-  C adopts the contract. Current C-owned `QuantitativeScores.scoring_policy`
-  and `Validator` still accept only `simple_average`, so Developer B keeps the
-  runtime-compatible field value until C widens the contract.
+  C adopts the contract. Developer C now accepts both `simple_average` and
+  `scene_normalized_dimension_average`.
 
 Developer A should consume B difficulty metadata and scene/NPC role context for:
 
@@ -310,12 +346,38 @@ Chapter 0 immigration tests should continue to pass.
 
 ### Temporary Workaround
 Developer B can keep authoring B-owned scenario nodes, hint policy, diagnostic
-policy, and report seeds, but integrated Alpha runtime behavior remains blocked
-on A/C orchestration and dialogue support.
+policy, and report seeds. Base C runtime routing and flow metadata now exist;
+integrated Alpha behavior still depends on Unreal scene-state wiring and A-owned
+dialogue support.
 
 ## Change Request - 2026-06-09 - Remove Developer B NPC Wording From A Adapter Payload
 
 Status: Open.
+
+Developer C Alpha 3A update, 2026-06-12: C adopted the base runtime routing
+portion of this request. `ALPHA_999_FINAL_SCOREBOARD` is now the only C adapter
+trigger for attached `final_result`; `IMM_007_FINAL_DECISION` advances to
+`BAG_001_NOTICE_BAG_MISSING`; the A adapter can seed next-node prompts for
+non-`IMM_` nodes through OpenKB; and C rule Understanding has generic
+B-metadata slot coverage for the new flight/BAG-style nodes. Unreal cutscene
+state wiring and A-owned generated dialogue/TTS polish remain separate follow-up
+work.
+
+Developer C Alpha 3B update, 2026-06-12: C now emits `flow` metadata for
+flight-to-immigration cutscene, immigration-to-baggage transition, and Alpha
+scoreboard display. This gives Unreal a stable backend hint surface while
+keeping actual scene/cinematic execution outside the backend.
+
+Developer C Alpha 3C update, 2026-06-12: C now exposes
+`/api/game/ai/stt/stream` for realtime STT subtitle events. This does not
+change the A-facing dialogue payload yet; it only gives Unreal a stable C-owned
+surface for partial and final transcript events while preserving the existing
+`/respond` orchestration path.
+
+Developer C Alpha 3D update, 2026-06-12: C now supports `elevenlabs_relay` as a
+server-side realtime STT provider mode. This still does not alter the A-facing
+dialogue payload; it only changes how subtitle transcripts can be produced
+before the committed `/respond` turn.
 
 ### Requested By
 Developer B

@@ -51,6 +51,14 @@ through `backend/app/services/service_c/settings_service.py`:
 | `MURPHY_UNDERSTANDING_LLM_FALLBACK` | `none` | `none` or `gemma4_vllm` |
 | `MURPHY_UNDERSTANDING_LLM_MODEL` | `gpt-4o-mini` | Primary Understanding Agent LLM model |
 | `MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS` | `10` | Understanding Agent LLM timeout |
+| `ELEVENLABS_API_KEY` | unset | Server-side key for ElevenLabs realtime STT relay |
+| `ELEVENLABS_REALTIME_STT_ENDPOINT` | `wss://api.elevenlabs.io/v1/speech-to-text/realtime` | ElevenLabs realtime STT WSS endpoint |
+| `ELEVENLABS_REALTIME_STT_MODEL` | `scribe_v2_realtime` | ElevenLabs realtime STT model id |
+| `ELEVENLABS_REALTIME_AUDIO_FORMAT` | `pcm_16000` | Audio format sent to ElevenLabs |
+| `ELEVENLABS_REALTIME_COMMIT_STRATEGY` | `manual` | ElevenLabs commit strategy, `manual` or `vad` |
+| `ELEVENLABS_REALTIME_RECEIVE_TIMEOUT_S` | `0.2` | Short drain timeout for provider events after each audio chunk |
+| `ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD` | `0` | Optional local estimate used only for realtime STT debug cost logs |
+| `MURPHY_STT_DEBUG_LOG_MODE` | `off` | `debug` appends realtime STT AgentRun records to unified C logs |
 
 This keeps the Unreal request simple while still satisfying the Developer B
 `dev_b_policy.v1` input contract.
@@ -67,6 +75,7 @@ preserve the current prototype behavior.
 | --- | --- | --- | --- |
 | Unreal turn request | `dev_c_unreal_turn.v1` | Developer C | Public request envelope from Unreal to Developer C |
 | Internal turn context | `dev_c_internal_turn.v1` | Developer C | Orchestrator state shared between C-owned workflow nodes |
+| Realtime STT stream | `dev_c_realtime_stt.v1` | Developer C | WebSocket transcript event contract for Unreal subtitle previews |
 | Developer B policy | `dev_b_policy.v1` | Developer B | Evaluation, hint, feedback, state, and branch policy |
 | Developer A dialogue | `dev_a_dialogue.v1` | Developer C adapter / Developer A consumer | NPC dialogue generation adapter contract |
 | Unreal response | `dev_c_unreal_response.v1` | Developer C | Final validated JSON returned to Unreal |
@@ -120,6 +129,104 @@ The mock payload still represents a wav turn. The `transcript` field is a test
 harness shortcut used by the deterministic local Whisper service boundary and
 should be removed or ignored when real wav bytes are connected to the local
 runtime.
+
+## Realtime STT Stream
+
+Alpha 3C adds a C-owned WebSocket surface for realtime transcript events:
+
+```text
+WebSocket /api/game/ai/stt/stream
+```
+
+The stream is additive and does not replace `POST /api/game/ai/respond`.
+It supports two Alpha paths:
+
+1. Provider-neutral transcript echo, where Unreal or a safe STT bridge sends
+   already-transcribed `partial_transcript` and `final_transcript` events.
+2. C backend relay mode, where Unreal sends `audio_chunk` events with
+   `provider = "elevenlabs_relay"` and Developer C relays audio to ElevenLabs
+   with the server-side `ELEVENLABS_API_KEY`.
+   If ElevenLabs fails on a committed chunk, or commit returns no provider final
+   transcript, Developer C wraps the buffered PCM chunks as a wav and runs the
+   existing local Whisper batch STT runtime as `local_batch_fallback`.
+
+```text
+Unreal microphone
+  -> Developer C WebSocket /api/game/ai/stt/stream
+  -> ElevenLabs WSS /v1/speech-to-text/realtime
+  -> Developer C subtitle event mapping
+  -> Unreal subtitle UI
+```
+
+Partial transcripts are subtitle previews only. They must not call the
+Understanding Agent, Developer B, Developer A, or TTS. A final transcript is a
+committed transcript candidate that Unreal can send into the existing
+`/respond` fallback path through the deterministic `audio.transcript` shortcut
+until a future streaming-to-orchestrator commit endpoint is approved.
+
+Client event:
+
+```json
+{
+  "contract_version": "dev_c_realtime_stt.v1",
+  "event_type": "audio_chunk",
+  "request_id": "req_realtime_0001",
+  "session_id": "session_realtime_001",
+  "turn_index": 3,
+  "sequence": 1,
+  "provider": "elevenlabs_relay",
+  "audio_base64": "UklGRiQAAABXQVZFZm10IBAAAAABAAEA",
+  "commit": false,
+  "sample_rate_hz": 16000
+}
+```
+
+Server event:
+
+```json
+{
+  "contract_version": "dev_c_realtime_stt.v1",
+  "event_type": "partial_transcript",
+  "request_id": "req_realtime_0001",
+  "session_id": "session_realtime_001",
+  "turn_index": 3,
+  "sequence": 1,
+  "provider": "elevenlabs_relay",
+  "subtitle": {
+    "text": "I will stay",
+    "is_final": false,
+    "display_mode": "replace"
+  },
+  "committed": false
+}
+```
+
+Final server events set `event_type = "final_transcript"`,
+`subtitle.is_final = true`, `committed = true`, and
+`target_endpoint = "POST /api/game/ai/respond"`.
+
+Rules:
+
+- The first client event in a connection must be `session_start`.
+- `sequence` must increase monotonically per WebSocket connection.
+- `partial_transcript` and `final_transcript` events must include non-empty
+  `transcript`.
+- `audio_chunk` events must include non-empty `audio_base64` and use
+  `provider = "elevenlabs_relay"`.
+- ElevenLabs realtime relay uses `xi-api-key` only from the C backend
+  environment. Unreal must not receive or send the API key.
+- The existing local Whisper STT runtime is retained as a batch fallback for
+  committed realtime chunks. It is not a partial-streaming engine.
+- When `MURPHY_STT_DEBUG_LOG_MODE=debug`, each realtime STT session appends a
+  `realtime_stt_relay` Developer C AgentRun record to
+  `backend/runtime/generated/agent_runs/unified_agent_runs.jsonl` and `.md`.
+  STT token counts are logged as zero because audio STT providers do not report
+  LLM token usage; cost is an estimate from
+  `ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD` and measured audio bytes.
+- Invalid events return `event_type = "contract_error"` instead of entering the
+  C orchestrator.
+- Provider values are currently `unreal_bridge`, `stt_provider_websocket`,
+  `elevenlabs_relay`, `local_batch_fallback`, or `mock`.
 
 ## Unreal Turn Request
 
@@ -691,6 +798,16 @@ Developer C returns only validated, Unreal-safe data.
       "priority": "low"
     }
   },
+  "flow": {
+    "contract_version": "dev_c_unreal_flow.v1",
+    "transition_type": "none",
+    "transition_id": null,
+    "from_scene_id": "JFK_IMMIGRATION_HALL",
+    "to_scene_id": "JFK_IMMIGRATION_HALL",
+    "cinematic_id": null,
+    "skip_allowed": false,
+    "show_scoreboard": false
+  },
   "state_delta": {
     "patience_delta": 0,
     "suspicion_delta": 0,
@@ -725,6 +842,7 @@ Developer C returns only validated, Unreal-safe data.
     "contract_versions": [
       "dev_c_unreal_turn.v1",
       "dev_c_interaction_context.v1",
+      "dev_c_unreal_flow.v1",
       "dev_b_policy.v1",
       "dev_a_dialogue.v1",
       "dev_c_unreal_response.v1"
@@ -762,6 +880,12 @@ Rules:
 - `state_delta` must come from Developer B output after validation.
 - `interaction` echoes the C-owned request interaction context so Unreal can
   correlate NPC-first, player-first, quest, ambient, and timed turns.
+- `flow` is C-owned Unreal presentation metadata for scene/cutscene/scoreboard
+  transitions. It does not grant branch authority and must not override
+  Developer B `next_node_id` or `next_action`.
+- Alpha 3B flow ids currently emitted by Developer C are
+  `flight_to_immigration_arrival`, `immigration_to_baggage_claim`, and
+  `alpha_final_scoreboard`.
 - NPC text and `npc.audio_url` must come from Developer A output through the
   Developer C adapter, not directly from Developer B.
 - `npc.audio_url` points to a Developer C-served runtime artifact under
@@ -799,7 +923,7 @@ Response envelope:
       "vocabulary_range": 90,
       "clarity": 90,
       "interaction_problem_solving": 90,
-      "scoring_policy": "simple_average"
+      "scoring_policy": "scene_normalized_dimension_average"
     },
     "report_summary": {
       "overall": "You passed the immigration check with clear, usable travel English.",
@@ -838,13 +962,17 @@ Developer C validator must enforce at least these rules:
 14. Developer B optional `rubric_scores.total` stays in the 0-12 range.
 15. Developer B optional `feedback_generation` is trace metadata only and does
     not grant LLM branch or state authority.
-16. Developer B optional `final_result.final_score_100` is 0-100 and must match
+16. Unreal `flow.contract_version` must be `dev_c_unreal_flow.v1`, scoreboard
+    flow must set `show_scoreboard`, and non-scoreboard flow must not set it.
+17. Developer B optional `final_result.final_score_100` is 0-100 and must match
     `final_result.quantitative_scores.overall`.
-17. Developer B optional `final_result.quantitative_scores.scoring_policy` must
-    be `simple_average` in v1.
-18. Developer C may expose `final_result` inside `/respond` on final branches
+18. Developer B optional `final_result.quantitative_scores.scoring_policy` must
+    be `simple_average` or `scene_normalized_dimension_average`.
+19. `ALPHA_999_FINAL_SCOREBOARD` is the Alpha final-result trigger.
+    `IMM_007_FINAL_DECISION` is an immigration-clearance transition into
+    baggage claim, not an Alpha final-result trigger.
+20. Developer C may expose `final_result` inside `/respond` on final branches
     and through `GET /api/game/ai/result/{session_id}`.
-19. `COMPLETE_CHAPTER` Unreal responses must include `transition` metadata with
-    `requires_player_input=false`, a non-empty `next_chapter_id`, and a
-    non-empty `unreal_event`. Non-`COMPLETE_CHAPTER` responses must not include
-    transition metadata.
+21. Realtime STT WebSocket events must use `dev_c_realtime_stt.v1`, start with
+    `session_start`, keep monotonically increasing `sequence`, and never route
+    partial transcript events into Developer B, Developer A, or TTS.
