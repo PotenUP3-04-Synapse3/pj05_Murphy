@@ -66,7 +66,7 @@ final NPC wording.
 | Field | Required when present | Use |
 | --- | --- | --- |
 | `scene` | yes | Scene id or scene key that frames the interaction |
-| `npc_role` | yes | Role cue such as `immigration_officer`, `seatmate_passenger`, or `baggage_service_agent` |
+| `npc_role` | yes | Role cue such as `immigration_officer`, `seatmate_passenger`, `baggage_service_agent`, or `customs_officer` |
 | `surface_goal` | yes | What the NPC appears to be trying to accomplish |
 | `hidden_assessment_goal` | yes | Learning/diagnostic purpose behind the exchange |
 | `opening_intent` | yes | Initial intent the Dialogue Agent may realize in its own words |
@@ -81,6 +81,11 @@ final NPC wording.
 
 Developer B controls assessment targets and slots. Developer A controls actual
 NPC text, tone realization, TTS text, audio, and animation.
+
+For the Alpha baggage route, Developer B emits `baggage_service_agent` for
+`BAG_001` through `BAG_004` service-desk nodes and `customs_officer` for
+`BAG_005` through `BAG_007` customs-hold nodes. These are role cues only;
+Developer A still owns the final NPC wording, voice, and animation.
 
 For Alpha flight small talk, Developer B now provides three 5-turn diagnostic
 route candidates:

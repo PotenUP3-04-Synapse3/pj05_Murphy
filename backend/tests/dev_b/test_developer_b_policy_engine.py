@@ -613,6 +613,42 @@ def test_dialogue_seed_contains_generation_metadata_without_final_npc_text(tmp_p
 
 
 @pytest.mark.parametrize(
+    ("node_id", "expected_role"),
+    [
+        ("BAG_001_REPORT_MISSING_AT_DESK", "baggage_service_agent"),
+        ("BAG_002_PROVIDE_CLAIM_TAG", "baggage_service_agent"),
+        ("BAG_003_CONFIRM_SEARCHED_CAROUSEL", "baggage_service_agent"),
+        ("BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD", "baggage_service_agent"),
+        ("BAG_005_CUSTOMS_HOLD_EXPLANATION", "customs_officer"),
+        ("BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM", "customs_officer"),
+        ("BAG_007_CUSTOMS_CLEARANCE", "customs_officer"),
+    ],
+)
+def test_dialogue_seed_routes_baggage_service_and_customs_roles(
+    node_id: str,
+    expected_role: str,
+    tmp_path: Path,
+) -> None:
+    context = _node_context(node_id)
+
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text=context.recommended_expression,
+            intent_success=True,
+            confidence=0.92,
+            extracted_slots={context.required_slots[0]: "acknowledged"},
+            missing_slots=[],
+            tier="Silver",
+            client_allowed_next_nodes=context.allowed_next_nodes,
+        )
+    )
+
+    assert result.dialogue_seed is not None
+    assert result.dialogue_seed.npc_role == expected_role
+
+
+@pytest.mark.parametrize(
     ("node_id", "slot_name", "slot_value", "success_next_node"),
     [
         ("FLIGHT_A_001_SEATMATE_SMALLTALK", "polite_response", "offered_help", "FLIGHT_A_002_TRAVEL_PURPOSE"),
