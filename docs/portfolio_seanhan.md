@@ -40,6 +40,10 @@ For Alpha realtime captions, Sean added a C-owned ElevenLabs WebSocket relay
 with the existing local Whisper runtime kept as a batch fallback on committed
 audio chunks, plus unified AgentRun debug logs for STT metadata, token counts,
 and estimated cost.
+Sean also refactored the Developer C turn orchestrator into a LangGraph v1.2.2
+workflow with explicit state, C-owned graph tools, transition handling, and
+unified AgentRun runtime metadata while preserving Developer A/B adapter
+boundaries.
 
 ## Main Modules
 
@@ -100,3 +104,5 @@ paths.
 - Added a realtime STT relay/debug path that keeps provider keys server-side,
   preserves local STT fallback, and records audio/cost metadata in unified
   AgentRun logs.
+- Replaced hardcoded C orchestration with a LangGraph state graph and C-owned
+  graph tool wrappers without editing Developer A/B implementation files.
