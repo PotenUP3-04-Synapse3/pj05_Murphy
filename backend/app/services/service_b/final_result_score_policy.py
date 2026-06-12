@@ -12,7 +12,7 @@ from backend.app.schemas.game_turn import (
     QuantitativeScores,
 )
 
-FINAL_DECISION_NODE_ID = "IMM_007_FINAL_DECISION"
+FINAL_DECISION_NODE_IDS = {"IMM_007_FINAL_DECISION", "ALPHA_999_FINAL_SCOREBOARD"}
 SCENE_SCORE_WEIGHTS = {
     "flight": 20,
     "immigration": 50,
@@ -119,7 +119,7 @@ class FinalResultScorePolicy:
         non_final_records = [
             record
             for record in scored_records
-            if str(record.get("node_id", "")) != FINAL_DECISION_NODE_ID
+            if str(record.get("node_id", "")) not in FINAL_DECISION_NODE_IDS
         ]
         return non_final_records or scored_records
 

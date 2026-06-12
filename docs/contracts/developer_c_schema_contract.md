@@ -597,6 +597,9 @@ Rules:
 - They are learning metadata only.
 - They must not override `evaluation.verdict`, `branch`, `next_node_id`, or
   `state_delta`.
+- `report_seed_summary` and `dialogue_seed` are optional Developer B seed
+  metadata. They may be validated or logged by Developer C, but they are not a
+  final result screen payload and they do not introduce NPC final text fields.
 - Tests and deterministic flows must pass with `feedback_generation.mode` set
   to `rule` or `fallback` and without real API keys.
 

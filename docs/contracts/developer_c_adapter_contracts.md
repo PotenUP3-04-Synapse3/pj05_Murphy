@@ -391,6 +391,8 @@ Required output fields:
 Optional output fields:
 
 - `dialogue_directive`
+- `report_seed_summary`
+- `dialogue_seed`
 - `openkb_write`
 - `rubric_scores`
 - `difficulty_profile`
@@ -424,6 +426,11 @@ Developer C must validate:
 - feedback strategy-specific candidate fields are present
 - `out_game_feedback_seed.focus_on_form_targets` is non-empty when final report
   inclusion is requested
+- `report_seed_summary` is optional seed metadata and is not treated as a final
+  result UI payload
+- `dialogue_seed` is optional A-facing generation metadata and must not contain
+  final NPC utterance fields such as `npc_text`, `npc_utterance`, or
+  `final_dialogue_line`
 - `openkb_write.namespace == "dev_b"` when a write reference is present
 - successful `openkb_write` references point to expected local OpenKB runtime
   paths and do not escape the B-owned namespace

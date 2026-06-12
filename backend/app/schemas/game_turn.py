@@ -201,6 +201,69 @@ class Scores(BaseModel):
     politeness: int
 
 
+class ReportSeedCategoryScores(BaseModel):
+    task_success: int = Field(ge=0, le=100)
+    clarity: int = Field(ge=0, le=100)
+    grammar: int = Field(ge=0, le=100)
+    vocabulary: int = Field(ge=0, le=100)
+    politeness: int = Field(ge=0, le=100)
+    problem_solving: int = Field(ge=0, le=100)
+
+
+class ReportSeedStrength(BaseModel):
+    title: str
+    evidence: str
+    ui_priority: int = Field(ge=1)
+
+
+class ReportSeedCriticalBreakdown(BaseModel):
+    user_utterance: str
+    issue_type: Literal["grammar", "clarity", "vocabulary", "task", "politeness", "problem_solving"]
+    why_it_matters: str
+    better_version: str
+    reusable_pattern: str
+    ui_priority: int = Field(ge=1)
+
+
+class ReportSeedCorrectedExample(BaseModel):
+    original: str
+    corrected: str
+    brief_explanation: str
+    pattern: str
+
+
+class ReportSeedSummary(BaseModel):
+    estimated_level: Literal["beginner", "intermediate", "advanced"]
+    tier: Literal["Bronze", "Silver", "Gold"]
+    scenario_result: Literal["passed", "conditional_pass", "failed"]
+    overall_score_candidate: int = Field(ge=0, le=100)
+    category_scores: ReportSeedCategoryScores
+    strengths: list[ReportSeedStrength] = Field(default_factory=list)
+    critical_breakdowns: list[ReportSeedCriticalBreakdown] = Field(default_factory=list)
+    corrected_examples: list[ReportSeedCorrectedExample] = Field(default_factory=list)
+    reusable_sentence_patterns: list[str] = Field(default_factory=list)
+    next_practice_goal: str
+    feedback_focus: list[str] = Field(default_factory=list)
+    ui_priority_order: list[str] = Field(default_factory=list)
+    display_policy_by_tier: dict[str, str] = Field(default_factory=dict)
+
+
+class DialogueSeed(BaseModel):
+    scene: str
+    npc_role: str
+    surface_goal: str
+    hidden_assessment_goal: str
+    opening_intent: str
+    assessment_targets: list[str] = Field(default_factory=list)
+    required_slots: list[str] = Field(default_factory=list)
+    max_turns: int = Field(ge=1, le=12)
+    difficulty_profile: str
+    feedback_focus: list[str] = Field(default_factory=list)
+    tone_guidance: str
+    allowed_followup_intents: list[str] = Field(default_factory=list)
+    stop_condition: str
+
+
 class RubricScores(BaseModel):
     comprehension: int = Field(ge=0, le=2)
     fluency: int = Field(ge=0, le=2)
@@ -400,6 +463,8 @@ class DevBPolicyOutput(BaseModel):
     in_game_feedback: InGameFeedback
     error_capture: ErrorCapture
     out_game_feedback_seed: OutGameFeedbackSeed
+    report_seed_summary: ReportSeedSummary | None = None
+    dialogue_seed: DialogueSeed | None = None
     branch: Branch
     state_delta: StateDelta
     report_item: ReportItem
