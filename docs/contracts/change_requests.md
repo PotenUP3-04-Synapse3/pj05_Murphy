@@ -274,6 +274,16 @@ and `alpha_final_scoreboard`. Unreal still owns playing the actual cinematics,
 moving scene state, and rendering scoreboard UI. Final `out_game_feedback` UI
 exposure remains open.
 
+Developer C Alpha 3C update, 2026-06-12: C added the provider-neutral
+`dev_c_realtime_stt.v1` WebSocket contract at `/api/game/ai/stt/stream`.
+The endpoint accepts `session_start`, `partial_transcript`, `final_transcript`,
+and `cancel` events from Unreal or a safe STT bridge, returns subtitle-ready
+events for Unreal, and marks final transcript events as committed candidates
+for `POST /api/game/ai/respond`. Partial transcripts remain UI-only and do not
+call Understanding, Developer B, Developer A, or TTS. Actual provider auth,
+short-lived token issuance, and direct streaming-to-orchestrator commit remain
+future integration work.
+
 ### Requested By
 Developer B
 
@@ -347,6 +357,12 @@ Developer C Alpha 3B update, 2026-06-12: C now emits `flow` metadata for
 flight-to-immigration cutscene, immigration-to-baggage transition, and Alpha
 scoreboard display. This gives Unreal a stable backend hint surface while
 keeping actual scene/cinematic execution outside the backend.
+
+Developer C Alpha 3C update, 2026-06-12: C now exposes
+`/api/game/ai/stt/stream` for realtime STT subtitle events. This does not
+change the A-facing dialogue payload yet; it only gives Unreal a stable C-owned
+surface for partial and final transcript events while preserving the existing
+`/respond` orchestration path.
 
 ### Requested By
 Developer B

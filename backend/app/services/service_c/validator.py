@@ -1,4 +1,10 @@
-from backend.app.schemas.game_turn import DevBPolicyOutput, FinalResult, UnrealResponse, UnrealResultResponse
+from backend.app.schemas.game_turn import (
+    DevBPolicyOutput,
+    FinalResult,
+    RealtimeTranscriptClientEvent,
+    UnrealResponse,
+    UnrealResultResponse,
+)
 
 ALLOWED_FINAL_RESULT_SCORING_POLICIES = {
     "simple_average",
@@ -103,6 +109,26 @@ class Validator:
             raise ValidationError("Unreal result contract_version must be dev_c_unreal_result.v1")
 
         self.validate_final_result(response.final_result)
+
+    def validate_realtime_transcript_event(
+        self,
+        event: RealtimeTranscriptClientEvent,
+        *,
+        session_started: bool,
+        last_sequence: int | None,
+    ) -> None:
+        if event.contract_version != "dev_c_realtime_stt.v1":
+            raise ValidationError("Realtime STT contract_version must be dev_c_realtime_stt.v1")
+
+        if event.event_type != "session_start" and not session_started:
+            raise ValidationError("session_start is required before transcript events")
+
+        if last_sequence is not None and event.sequence <= last_sequence:
+            raise ValidationError("Realtime STT event sequence must increase monotonically")
+
+        if event.event_type in {"partial_transcript", "final_transcript"}:
+            if event.transcript is None or not event.transcript.strip():
+                raise ValidationError("Realtime STT transcript must not be empty")
 
     def validate_final_result(self, final_result: FinalResult) -> None:
         if not 0 <= final_result.final_score_100 <= 100:

@@ -71,6 +71,61 @@ metadata, C-owned Understanding postprocessing, and C-owned runtime adapter
 alignment only; any future change requiring A/B logic changes must be filed as a
 change request first.
 
+## 2026-06-12 Developer C Alpha 3C Follow-up
+
+Developer C added a provider-neutral realtime STT transcript WebSocket for
+Unreal subtitle previews:
+
+```text
+WebSocket /api/game/ai/stt/stream
+```
+
+The new event contract is `dev_c_realtime_stt.v1`. It accepts `session_start`,
+`partial_transcript`, `final_transcript`, and `cancel` events from Unreal or a
+safe STT bridge. The endpoint returns subtitle-ready server events that Unreal
+can render immediately while the player is speaking.
+
+Implemented behavior:
+
+- `session_start` returns `session_started`.
+- `partial_transcript` returns a non-committed `subtitle` payload with
+  `display_mode=replace`.
+- `final_transcript` returns `committed=true` and
+  `target_endpoint=POST /api/game/ai/respond`.
+- Invalid events return `contract_error` instead of entering orchestration.
+- Per-connection `sequence` must increase monotonically.
+
+Important boundary:
+
+- Partial transcripts are UI-only and do not call the Understanding Agent,
+  Developer B, Developer A, or TTS.
+- Alpha 3C does not yet connect a real provider SDK or short-lived provider
+  token flow.
+- Alpha 3C does not yet pipe final WebSocket events directly into the
+  orchestrator; it points Unreal back to the existing `/respond` committed
+  transcript path.
+
+Changed:
+
+- Added realtime STT client/server event schemas in
+  `backend/app/schemas/game_turn.py`.
+- Added WebSocket handling in `backend/app/api/ai_respond.py`.
+- Added realtime STT event validation in
+  `backend/app/services/service_c/validator.py`.
+- Added focused WebSocket contract tests in
+  `backend/tests/test_realtime_stt_websocket.py`.
+- Updated Developer C schema, adapter, change-request, and handoff docs.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_realtime_stt_websocket.py -q`: PASS, 3
+  passed, 2 warnings.
+- `uv run pytest backend/tests/test_realtime_stt_websocket.py backend/tests/test_preprototype_flow.py backend/tests/test_final_result_payload.py -q`:
+  PASS, 30 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 203 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 92 source files.
+
 ## 2026-06-12 Developer C Alpha 3B Follow-up
 
 Developer C added additive Unreal flow metadata to `dev_c_unreal_response.v1`.

@@ -67,6 +67,7 @@ preserve the current prototype behavior.
 | --- | --- | --- | --- |
 | Unreal turn request | `dev_c_unreal_turn.v1` | Developer C | Public request envelope from Unreal to Developer C |
 | Internal turn context | `dev_c_internal_turn.v1` | Developer C | Orchestrator state shared between C-owned workflow nodes |
+| Realtime STT stream | `dev_c_realtime_stt.v1` | Developer C | WebSocket transcript event contract for Unreal subtitle previews |
 | Developer B policy | `dev_b_policy.v1` | Developer B | Evaluation, hint, feedback, state, and branch policy |
 | Developer A dialogue | `dev_a_dialogue.v1` | Developer C adapter / Developer A consumer | NPC dialogue generation adapter contract |
 | Unreal response | `dev_c_unreal_response.v1` | Developer C | Final validated JSON returned to Unreal |
@@ -120,6 +121,83 @@ The mock payload still represents a wav turn. The `transcript` field is a test
 harness shortcut used by the deterministic local Whisper service boundary and
 should be removed or ignored when real wav bytes are connected to the local
 runtime.
+
+## Realtime STT Stream
+
+Alpha 3C adds a C-owned WebSocket surface for realtime transcript events:
+
+```text
+WebSocket /api/game/ai/stt/stream
+```
+
+The stream is additive and does not replace `POST /api/game/ai/respond`.
+It is designed for the path where Unreal or a safe STT bridge receives provider
+partial transcripts and forwards provider-neutral events to Developer C:
+
+```text
+Unreal microphone
+  -> STT provider WebSocket or Unreal STT bridge
+  -> Developer C WebSocket /api/game/ai/stt/stream
+  -> Unreal subtitle UI event echo/ack
+```
+
+Partial transcripts are subtitle previews only. They must not call the
+Understanding Agent, Developer B, Developer A, or TTS. A final transcript is a
+committed transcript candidate that Unreal can send into the existing
+`/respond` fallback path through the deterministic `audio.transcript` shortcut
+until a future streaming-to-orchestrator commit endpoint is approved.
+
+Client event:
+
+```json
+{
+  "contract_version": "dev_c_realtime_stt.v1",
+  "event_type": "partial_transcript",
+  "request_id": "req_realtime_0001",
+  "session_id": "session_realtime_001",
+  "turn_index": 3,
+  "sequence": 1,
+  "transcript": "I will stay",
+  "confidence": 0.72,
+  "language_detected": "en-US",
+  "provider": "stt_provider_websocket"
+}
+```
+
+Server event:
+
+```json
+{
+  "contract_version": "dev_c_realtime_stt.v1",
+  "event_type": "partial_transcript",
+  "request_id": "req_realtime_0001",
+  "session_id": "session_realtime_001",
+  "turn_index": 3,
+  "sequence": 1,
+  "provider": "stt_provider_websocket",
+  "subtitle": {
+    "text": "I will stay",
+    "is_final": false,
+    "display_mode": "replace"
+  },
+  "committed": false
+}
+```
+
+Final server events set `event_type = "final_transcript"`,
+`subtitle.is_final = true`, `committed = true`, and
+`target_endpoint = "POST /api/game/ai/respond"`.
+
+Rules:
+
+- The first client event in a connection must be `session_start`.
+- `sequence` must increase monotonically per WebSocket connection.
+- `partial_transcript` and `final_transcript` events must include non-empty
+  `transcript`.
+- Invalid events return `event_type = "contract_error"` instead of entering the
+  C orchestrator.
+- Provider values are currently `unreal_bridge`, `stt_provider_websocket`, or
+  `mock`.
 
 ## Unreal Turn Request
 
@@ -858,3 +936,6 @@ Developer C validator must enforce at least these rules:
     baggage claim, not an Alpha final-result trigger.
 20. Developer C may expose `final_result` inside `/respond` on final branches
     and through `GET /api/game/ai/result/{session_id}`.
+21. Realtime STT WebSocket events must use `dev_c_realtime_stt.v1`, start with
+    `session_start`, keep monotonically increasing `sequence`, and never route
+    partial transcript events into Developer B, Developer A, or TTS.

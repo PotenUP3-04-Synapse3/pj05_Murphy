@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SessionContext(BaseModel):
@@ -555,6 +555,62 @@ class FlowResponse(BaseModel):
     cinematic_id: str | None = None
     skip_allowed: bool = False
     show_scoreboard: bool = False
+
+
+class RealtimeTranscriptClientEvent(BaseModel):
+    contract_version: Literal["dev_c_realtime_stt.v1"]
+    event_type: Literal[
+        "session_start",
+        "partial_transcript",
+        "final_transcript",
+        "cancel",
+    ]
+    request_id: str
+    session_id: str
+    turn_index: int = Field(ge=0)
+    sequence: int = Field(ge=0)
+    chapter_id: str | None = None
+    scene_id: str | None = None
+    current_node_id: str | None = None
+    provider: Literal["unreal_bridge", "stt_provider_websocket", "mock"] = "unreal_bridge"
+    language_hint: str | None = None
+    transcript: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    language_detected: str | None = None
+
+    @model_validator(mode="after")
+    def require_transcript_for_transcript_events(self) -> "RealtimeTranscriptClientEvent":
+        if self.event_type in {"partial_transcript", "final_transcript"}:
+            if self.transcript is None or not self.transcript.strip():
+                raise ValueError("transcript is required for transcript events")
+
+        return self
+
+
+class RealtimeSubtitlePayload(BaseModel):
+    text: str
+    is_final: bool
+    display_mode: Literal["replace"] = "replace"
+
+
+class RealtimeTranscriptServerEvent(BaseModel):
+    contract_version: Literal["dev_c_realtime_stt.v1"] = "dev_c_realtime_stt.v1"
+    event_type: Literal[
+        "session_started",
+        "partial_transcript",
+        "final_transcript",
+        "session_cancelled",
+        "contract_error",
+    ]
+    request_id: str | None = None
+    session_id: str | None = None
+    turn_index: int | None = None
+    sequence: int | None = None
+    provider: Literal["unreal_bridge", "stt_provider_websocket", "mock"] | None = None
+    subtitle: RealtimeSubtitlePayload | None = None
+    committed: bool = False
+    target_endpoint: str | None = None
+    error_message: str | None = None
 
 
 class TurnTimingMs(BaseModel):

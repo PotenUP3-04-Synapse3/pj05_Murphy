@@ -183,48 +183,61 @@ Rules:
 - Tests must not require local model downloads or real STT provider
   credentials.
 
-## Alpha Realtime Caption Transport Candidate
+## Alpha Realtime Caption Transport
 
-For realtime STT captions in Unreal, Developer C should add a streaming STT
-session beside the existing batch `/respond` endpoint instead of replacing the
-stable wav request immediately.
+For realtime STT captions in Unreal, Developer C now exposes a provider-neutral
+transcript WebSocket beside the existing batch `/respond` endpoint. This does
+not replace the stable wav request immediately.
 
-Recommended Alpha structure:
+Implemented Alpha 3C structure:
 
 ```text
 Unreal microphone
-  -> Developer C WebSocket /api/game/ai/stt/realtime
-  -> STT provider WebSocket or local streaming runtime
-  -> Developer C caption events
+  -> STT provider WebSocket or Unreal STT bridge
+  -> Developer C WebSocket /api/game/ai/stt/stream
+  -> Developer C subtitle event echo/ack
   -> Unreal subtitle UI
 
 Unreal final commit or stop speaking
-  -> Developer C committed transcript
-  -> existing /respond-style orchestrator path
+  -> Developer C final_transcript event
+  -> existing /respond fallback path with committed transcript
   -> Developer B policy
   -> Developer A dialogue/TTS
   -> Unreal response JSON
 ```
 
-Event shape for the C-owned WebSocket should stay small and provider-neutral:
+Client event shape for the C-owned WebSocket stays small and provider-neutral:
 
 ```json
 {
-  "event": "partial_transcript",
-  "request_id": "req_imm_duration_0001",
-  "session_id": "session_001",
-  "text": "I will stay for",
-  "is_final": false
+  "contract_version": "dev_c_realtime_stt.v1",
+  "event_type": "partial_transcript",
+  "request_id": "req_realtime_0001",
+  "session_id": "session_realtime_001",
+  "turn_index": 3,
+  "sequence": 1,
+  "transcript": "I will stay",
+  "confidence": 0.72,
+  "language_detected": "en-US",
+  "provider": "stt_provider_websocket"
 }
 ```
 
 ```json
 {
-  "event": "committed_transcript",
-  "request_id": "req_imm_duration_0001",
-  "session_id": "session_001",
-  "text": "I will stay for 5 days.",
-  "is_final": true
+  "contract_version": "dev_c_realtime_stt.v1",
+  "event_type": "final_transcript",
+  "request_id": "req_realtime_0001",
+  "session_id": "session_realtime_001",
+  "turn_index": 3,
+  "sequence": 2,
+  "subtitle": {
+    "text": "I will stay for five days.",
+    "is_final": true,
+    "display_mode": "replace"
+  },
+  "committed": true,
+  "target_endpoint": "POST /api/game/ai/respond"
 }
 ```
 
@@ -235,7 +248,12 @@ Rules:
   supports safe client-side auth.
 - Partial transcripts are UI-only subtitle previews and must not call Developer
   B or Developer A.
-- Only committed transcripts enter the normal C orchestrator path.
+- Only committed final transcripts may enter the normal C orchestrator path.
+- Alpha 3C does not yet pipe the WebSocket final event directly into the
+  orchestrator. It returns `target_endpoint = "POST /api/game/ai/respond"` so
+  Unreal can reuse the existing committed transcript fallback.
+- The first event must be `session_start`; later transcript events must use a
+  monotonically increasing `sequence`.
 - The existing multipart wav `/respond` path remains the fallback and contract
   baseline until realtime STT is verified.
 - UDP is not the first Alpha choice for captions because ordering, loss
