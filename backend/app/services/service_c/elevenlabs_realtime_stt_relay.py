@@ -52,6 +52,7 @@ class ElevenLabsRealtimeSttRelay:
         self.connection: ProviderWebSocket | None = None
         self._audio_chunks: list[bytes] = []
         self._sample_rate_hz = 16000
+        self._sent_audio_chunk_count = 0
 
     async def start(self, event: RealtimeTranscriptClientEvent) -> list[RealtimeTranscriptServerEvent]:
         if not self.settings.elevenlabs_api_key:
@@ -59,6 +60,7 @@ class ElevenLabsRealtimeSttRelay:
 
         self._audio_chunks = []
         self._sample_rate_hz = event.sample_rate_hz or 16000
+        self._sent_audio_chunk_count = 0
 
         try:
             self.connection = await self.websocket_connect(
@@ -78,18 +80,18 @@ class ElevenLabsRealtimeSttRelay:
         self._audio_chunks.append(audio_chunk)
         self._sample_rate_hz = event.sample_rate_hz or self._sample_rate_hz
 
+        provider_payload: dict[str, Any] = {
+            "message_type": "input_audio_chunk",
+            "audio_base_64": event.audio_base64,
+            "commit": event.commit,
+            "sample_rate": event.sample_rate_hz or 16000,
+        }
+        if self._sent_audio_chunk_count == 0 and event.previous_text and event.previous_text.strip():
+            provider_payload["previous_text"] = event.previous_text
+
         try:
-            await self.connection.send(
-                json.dumps(
-                    {
-                        "message_type": "input_audio_chunk",
-                        "audio_base_64": event.audio_base64,
-                        "commit": event.commit,
-                        "sample_rate": event.sample_rate_hz or 16000,
-                        "previous_text": event.previous_text or "",
-                    }
-                )
-            )
+            await self.connection.send(json.dumps(provider_payload))
+            self._sent_audio_chunk_count += 1
         except (OSError, TimeoutError, WebSocketException) as exc:
             if event.commit:
                 return [
@@ -111,6 +113,7 @@ class ElevenLabsRealtimeSttRelay:
             await self.connection.close()
             self.connection = None
         self._audio_chunks = []
+        self._sent_audio_chunk_count = 0
 
     def _build_realtime_url(self, event: RealtimeTranscriptClientEvent) -> str:
         query: dict[str, str] = {

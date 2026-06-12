@@ -39,6 +39,37 @@ Developer A는 패키지 버전 제약(langchain==1.3.2, langgraph==1.2.2)을 �
 - backend/tests/test_developer_a_npc_roster.py
 - backend/tests/test_developer_a_npc_dialogue.py
 
+## 2026-06-12 Developer C Realtime STT Smoke Fix
+
+Developer C investigated a solo ElevenLabs realtime STT smoke-test failure from
+`scripts/smoke_elevenlabs_realtime_stt_relay.py`. The backend connected to
+ElevenLabs successfully and received `session_started`, but the provider then
+returned `input_error` and closed the socket with
+`previous_text_on_subsequent_input_audio`.
+
+Root cause:
+
+- `backend/app/services/service_c/elevenlabs_realtime_stt_relay.py` sent
+  `previous_text` on every `input_audio_chunk`, even when it was an empty
+  string.
+- ElevenLabs accepts `previous_text` as optional context for the first audio
+  input, but rejects it on subsequent audio chunks.
+
+Fix:
+
+- The relay now omits blank `previous_text`.
+- Non-empty `previous_text` is forwarded only on the first audio chunk of a
+  realtime relay session.
+- Regression tests cover both the blank-value case and repeated-audio-chunk
+  case.
+
+Verification:
+
+- `uv run pytest backend/tests/test_elevenlabs_realtime_stt_relay.py -q`: PASS,
+  8 passed, 1 pytest cache warning when using the default Windows cache.
+- `uv run pytest backend/tests/test_realtime_stt_websocket.py backend/tests/test_settings_service.py::test_app_settings_reads_values_from_env_file -q -p no:cacheprovider --basetemp=backend/runtime/generated/pytest-stt-fix-tmp`:
+  PASS, 6 passed, 2 warnings.
+
 ## Developer C Alpha Plan Notice
 
 2026-06-10 Developer C / Sean Han is moving the prototype toward Alpha in
