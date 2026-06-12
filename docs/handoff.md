@@ -66,9 +66,306 @@ Developer C Alpha phases:
    speech turns if timing data shows batch wav STT is the main latency issue.
 
 No immediate Developer A or Developer B implementation change is required for
-Alpha 1 or Alpha 2. Developer C added additive request/response metadata and
-C-owned Understanding postprocessing only; any future change requiring A/B logic
-changes must be filed as a change request first.
+Alpha 1, Alpha 2, or Alpha 3A. Developer C added additive request/response
+metadata, C-owned Understanding postprocessing, and C-owned runtime adapter
+alignment only; any future change requiring A/B logic changes must be filed as a
+change request first.
+
+## 2026-06-12 Developer C LangGraph Refactor
+
+Developer C refactored the hardcoded procedural orchestrator into a LangGraph
+v1.2.2 workflow while preserving the public `Orchestrator.run_turn()` API and
+A/B adapter boundaries.
+
+Implemented:
+
+- Added `backend/app/graphs/graph.py` with `DeveloperCTurnState`,
+  `build_initial_developer_c_state()`, and the compiled Developer C turn graph.
+- Added C-owned graph tool wrappers under
+  `backend/app/tools/tool_c/developer_c_graph_tools.py`.
+- Replaced the large procedural `Orchestrator.run_turn()` body with a thin
+  LangGraph invocation wrapper.
+- Preserved compatibility for C diagnostics/tests that replace orchestrator
+  dependencies such as `understanding_agent`.
+- Kept Developer A and B implementation files read-only; C still calls A/B
+  only through existing adapters.
+- Added AgentRun metadata showing `runtime.orchestrator = "langgraph"`,
+  graph name, tool style, and graph node order.
+- Moved transition handling into graph state so `COMPLETE_CHAPTER` responses
+  pass `TransitionContext` to Developer A and the response builder.
+- Updated C flow metadata to follow current B transition nodes and events:
+  `START_AIRPORT_ARRIVAL_TUTORIAL`, `ENTER_BAGGAGE_CLAIM`, and
+  `SHOW_ALPHA_SCOREBOARD`.
+- Added sprint tracking at
+  `docs/sprints/2026-06-12-langgraph-refactor-sprint.md`.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_developer_c_langgraph_orchestrator.py -q`:
+  PASS, 2 passed, 1 warning.
+- `uv run pytest backend/tests/test_developer_c_langgraph_orchestrator.py backend/tests/test_preprototype_flow.py backend/tests/test_unified_agent_run_log.py -q`:
+  PASS, 29 passed, 2 warnings.
+- `uv sync`: PASS. It restored the locked environment and removed undeclared
+  local package `en-core-web-sm==3.8.0` from the current virtualenv.
+- `uv run pytest -q`: PASS, 218 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 101 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
+
+## 2026-06-12 Developer C Alpha 3E Follow-up
+
+Developer C updated the realtime STT path to match the recommended Alpha
+runtime: ElevenLabs realtime relay remains the primary subtitle provider, while
+the existing local Whisper STT runtime is retained as a batch-on-commit
+fallback.
+
+Implemented behavior:
+
+- `/api/game/ai/stt/stream` still streams partial/final subtitle events through
+  the C-owned WebSocket.
+- When an `audio_chunk` is committed and ElevenLabs fails to send or returns no
+  final transcript, Developer C wraps the buffered PCM chunks into a wav file
+  and calls the existing local Whisper batch STT boundary.
+- Fallback final events use `provider = "local_batch_fallback"` and keep
+  `target_endpoint = "POST /api/game/ai/respond"` so Unreal can reuse the
+  committed transcript path.
+- The local fallback is not partial-streaming STT; it only recovers the final
+  transcript at commit time.
+- `MURPHY_STT_DEBUG_LOG_MODE=debug` appends standalone
+  `realtime_stt_relay` Developer C AgentRun records to the same unified
+  JSONL/Markdown files as the existing A/B/C logs.
+- Realtime STT debug records include chunk count, total audio bytes, estimated
+  duration, primary/fallback provider metadata, final transcript summary, token
+  counts fixed at zero, and estimated cost from
+  `ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD`.
+
+Changed:
+
+- Added `local_batch_fallback` to the realtime STT server event provider
+  contract.
+- Added local batch fallback buffering to
+  `backend/app/services/service_c/elevenlabs_realtime_stt_relay.py`.
+- Added `backend/app/services/service_c/realtime_stt_debug_log_service.py`.
+- Added realtime STT debug settings to
+  `backend/app/services/service_c/settings_service.py` and `.env.example`.
+- Updated Developer C schema, adapter, dependency, and handoff docs.
+- Added focused tests for fallback final recovery and debug AgentRun append.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_elevenlabs_realtime_stt_relay.py backend/tests/test_realtime_stt_websocket.py::test_realtime_stt_websocket_appends_debug_agent_run_log_for_stt_session backend/tests/test_settings_service.py::test_app_settings_reads_values_from_env_file -q`:
+  PASS, 8 passed, 2 warnings.
+- `uv sync`: PASS. It restored the locked environment and removed undeclared
+  local STT extra packages from the current virtualenv.
+- `uv run pytest -q`: PASS, 211 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 96 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
+
+## 2026-06-12 Developer C Alpha 3D Follow-up
+
+Developer C added a backend relay path for ElevenLabs realtime STT. Unreal can
+connect to the existing C-owned WebSocket and start a relay session with:
+
+```json
+{
+  "contract_version": "dev_c_realtime_stt.v1",
+  "event_type": "session_start",
+  "provider": "elevenlabs_relay"
+}
+```
+
+Developer C then opens a server-side WSS connection to:
+
+```text
+wss://api.elevenlabs.io/v1/speech-to-text/realtime
+```
+
+The ElevenLabs API key stays in backend `.env` as `ELEVENLABS_API_KEY` and is
+sent only as the provider `xi-api-key` header. Unreal sends `audio_chunk` events
+with base64 PCM audio; Developer C forwards those as ElevenLabs
+`input_audio_chunk` messages and maps ElevenLabs `partial_transcript` and
+`committed_transcript` messages back into `dev_c_realtime_stt.v1` subtitle
+events.
+
+Changed:
+
+- Added `websockets` as a direct runtime dependency.
+- Added ElevenLabs realtime settings to
+  `backend/app/services/service_c/settings_service.py` and `.env.example`.
+- Added `audio_chunk` and `elevenlabs_relay` to the realtime STT schema.
+- Added `backend/app/services/service_c/elevenlabs_realtime_stt_relay.py`.
+- Updated `/api/game/ai/stt/stream` to open and use the relay when requested.
+- Added fake-provider tests for settings, relay mapping, and WebSocket route
+  behavior.
+- Added `scripts/smoke_elevenlabs_realtime_stt_relay.py` for solo local smoke
+  testing with a 16 kHz mono 16-bit PCM wav file.
+
+Manual solo smoke test:
+
+```powershell
+Copy-Item .env.example .env
+# Fill ELEVENLABS_API_KEY in .env
+uv run uvicorn backend.app.main:app --reload
+uv run python scripts/smoke_elevenlabs_realtime_stt_relay.py --wav path\to\mono_16k_pcm.wav
+```
+
+Still open:
+
+- Unreal must capture microphone PCM chunks and send `audio_chunk` events.
+- Direct final WebSocket transcript commit into the C orchestrator is not
+  implemented yet; final events still point to `POST /api/game/ai/respond`.
+- Short-lived client token mode is intentionally not used because this phase
+  chose backend relay.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_settings_service.py backend/tests/test_elevenlabs_realtime_stt_relay.py backend/tests/test_realtime_stt_websocket.py -q`:
+  PASS, 8 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 206 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 95 source files.
+
+## 2026-06-12 Developer C Alpha 3C Follow-up
+
+Developer C added a provider-neutral realtime STT transcript WebSocket for
+Unreal subtitle previews:
+
+```text
+WebSocket /api/game/ai/stt/stream
+```
+
+The new event contract is `dev_c_realtime_stt.v1`. It accepts `session_start`,
+`partial_transcript`, `final_transcript`, and `cancel` events from Unreal or a
+safe STT bridge. The endpoint returns subtitle-ready server events that Unreal
+can render immediately while the player is speaking.
+
+Implemented behavior:
+
+- `session_start` returns `session_started`.
+- `partial_transcript` returns a non-committed `subtitle` payload with
+  `display_mode=replace`.
+- `final_transcript` returns `committed=true` and
+  `target_endpoint=POST /api/game/ai/respond`.
+- Invalid events return `contract_error` instead of entering orchestration.
+- Per-connection `sequence` must increase monotonically.
+
+Important boundary:
+
+- Partial transcripts are UI-only and do not call the Understanding Agent,
+  Developer B, Developer A, or TTS.
+- Alpha 3C does not yet connect a real provider SDK or short-lived provider
+  token flow.
+- Alpha 3C does not yet pipe final WebSocket events directly into the
+  orchestrator; it points Unreal back to the existing `/respond` committed
+  transcript path.
+
+Changed:
+
+- Added realtime STT client/server event schemas in
+  `backend/app/schemas/game_turn.py`.
+- Added WebSocket handling in `backend/app/api/ai_respond.py`.
+- Added realtime STT event validation in
+  `backend/app/services/service_c/validator.py`.
+- Added focused WebSocket contract tests in
+  `backend/tests/test_realtime_stt_websocket.py`.
+- Updated Developer C schema, adapter, change-request, and handoff docs.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_realtime_stt_websocket.py -q`: PASS, 3
+  passed, 2 warnings.
+- `uv run pytest backend/tests/test_realtime_stt_websocket.py backend/tests/test_preprototype_flow.py backend/tests/test_final_result_payload.py -q`:
+  PASS, 30 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 203 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 92 source files.
+
+## 2026-06-12 Developer C Alpha 3B Follow-up
+
+Developer C added additive Unreal flow metadata to `dev_c_unreal_response.v1`.
+The new `flow` object uses `dev_c_unreal_flow.v1` and tells Unreal which Alpha
+presentation transition should happen after a validated backend turn. It is
+presentation metadata only and does not override Developer B's `next_node_id` or
+`next_action`.
+
+Implemented flow cues:
+
+- `FLIGHT_005_WRAP_UP -> IMM_001_PASSPORT`: `cutscene` transition
+  `flight_to_immigration_arrival`, `to_scene_id=IMMIGRATION_ALPHA`,
+  `cinematic_id=CIN_FLIGHT_ARRIVAL_JFK`, `skip_allowed=true`.
+- `IMM_007_FINAL_DECISION -> BAG_001_NOTICE_BAG_MISSING`: `scene_transition`
+  `immigration_to_baggage_claim`, `to_scene_id=BAGGAGE_MISSING`.
+- `ALPHA_999_FINAL_SCOREBOARD -> END_ALPHA_SCENARIO`: `scoreboard` transition
+  `alpha_final_scoreboard`, `to_scene_id=ALPHA_SCOREBOARD`,
+  `show_scoreboard=true`.
+
+Changed:
+
+- Added `FlowResponse` and `UnrealResponse.flow` to the C schema.
+- Updated `ResponseBuilder` to emit flow metadata for the base Alpha route.
+- Updated `Validator` to check `dev_c_unreal_flow.v1` and scoreboard flag
+  consistency.
+- Added integration tests for flight arrival cutscene, baggage scene transition,
+  and final scoreboard flow.
+
+Still open:
+
+- Unreal must consume `flow` and actually play/skip cinematics, move scene
+  state, and render the scoreboard.
+- A-owned dialogue/TTS polish for seatmate and baggage staff voices.
+- Dedicated final `out_game_feedback` UI exposure beyond the existing
+  `final_result` payload.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_preprototype_flow.py backend/tests/test_final_result_payload.py -q`:
+  PASS, 27 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 200 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 91 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
+
+## 2026-06-12 Developer C Alpha 3A Follow-up
+
+Developer C adopted the base Alpha scenario node expansion at the C runtime
+boundary without editing B-owned `scenario_nodes.json`. The integrated flow now
+treats `IMM_007_FINAL_DECISION` as an immigration-clearance transition into
+`BAG_001_NOTICE_BAG_MISSING`, and treats `ALPHA_999_FINAL_SCOREBOARD` as the
+only Alpha final-result trigger for attached `report.final_result`.
+
+Changed:
+
+- Updated `DevBPolicyClient` so it attaches B `final_result` only when Developer
+  B returns a final branch from `ALPHA_999_FINAL_SCOREBOARD`.
+- Removed the `IMM_` prefix gate from the C-to-A adapter's next-node question
+  lookup so FLIGHT/BAG/ALPHA nodes can seed Developer A generation through
+  OpenKB metadata.
+- Added generic rule-mode Understanding fallback that consumes B-authored
+  `hint_policy` and allowed slot metadata for non-hardcoded slots such as
+  `missing_bag_observation` and `final_recommendation`.
+- Opened the C schema/validator to accept
+  `scene_normalized_dimension_average` in addition to `simple_average`.
+- Added C integration tests for `IMM_007 -> BAG_001`, `BAG_001 -> BAG_002`, and
+  `ALPHA_999_FINAL_SCOREBOARD -> END_ALPHA_SCENARIO`.
+
+Still open after Alpha 3A:
+
+- Unreal cutscene/skip state wiring for flight exit, arrival, baggage entry,
+  ending cinematic, and scoreboard display. Alpha 3B now exposes backend `flow`
+  metadata for the base route, but Unreal still owns execution.
+- A-owned dialogue/TTS polish for seatmate and baggage staff voices.
+- Dedicated final `out_game_feedback` UI exposure beyond the existing
+  `final_result` payload.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_preprototype_flow.py backend/tests/test_final_result_payload.py backend/tests/test_understanding_agent.py backend/tests/test_understanding_llm_client.py -q`:
+  PASS, 41 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 197 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 91 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
 
 ## 2026-06-12 Developer C Follow-up
 
@@ -1072,8 +1369,9 @@ Changed:
 - Added additive OpenKB v2 record metadata:
   `record_schema_version=dev_b_openkb_record.v2` and
   `record_kind=policy_turn_feedback`.
-- Added B-owned `BAGGAGE_MISSING` node definitions:
-  `BAG_002_FIND_STAFF` through `BAG_007_RESOLUTION`.
+- Added B-owned `BAGGAGE_MISSING` node definitions. The current Alpha route
+  now uses `BAG_001_REPORT_MISSING_AT_DESK` through
+  `BAG_007_CUSTOMS_CLEARANCE`.
 - Added baggage Focus-on-Form target mapping for problem statement, bag
   description, flight/tag statement, delivery request, and follow-up question.
 - Preserved existing OpenKB record keys for compatibility.
@@ -1137,7 +1435,7 @@ Cross-owner findings:
   expose B `FocusOnFormReportPolicy.build_report(...)` as optional
   `out_game_feedback`.
 - Alpha scene orchestration for
-  `FLIGHT_001_SEATMATE_SMALLTALK -> IMMIGRATION_ALPHA -> BAGGAGE_MISSING`,
+  `FLIGHT_A_001_SEATMATE_SMALLTALK -> IMMIGRATION_ALPHA -> BAGGAGE_MISSING`,
   cutscene transition, skip eligibility, and silent level carryover is not yet
   implemented in C-owned runtime code.
 - Developer A still needs to consume B difficulty metadata for tier-aware NPC
@@ -1190,7 +1488,7 @@ Changed:
 
 - Added `FlightSmallTalkDiagnosticPolicy` with minimum-turn, skip-eligibility,
   deferred-feedback, and fallback-question decisions.
-- Added `FLIGHT_001_SEATMATE_SMALLTALK` to B-owned scenario node data.
+- Added `FLIGHT_A_001_SEATMATE_SMALLTALK` to B-owned scenario node data.
 - Updated `EnglishLevelHintAgent` so `FLIGHT_` nodes always create a deferred
   `out_game_feedback_seed` with `smalltalk_response_clarity`.
 - Added a `smalltalk_response_clarity` static Focus-on-Form card.
@@ -1204,13 +1502,13 @@ Changed:
 
 Still C-owned:
 
-- C-owned `QuantitativeScores.scoring_policy` and validator currently allow only
-  `simple_average`. Developer B therefore keeps that field runtime-compatible
-  while exposing the new policy through numeric behavior and
-  `scene_normalized_dimension_average_policy` reason tags.
-- C still needs to orchestrate
-  `FLIGHT_001_SEATMATE_SMALLTALK -> IMMIGRATION_ALPHA -> BAGGAGE_MISSING ->
-scenario_end` and expose final UI `evaluation` plus `out_game_feedback`.
+- C now accepts both `simple_average` and
+  `scene_normalized_dimension_average` score policy names, but final UI
+  `out_game_feedback` exposure is still separate from the existing
+  `final_result` payload.
+- C still needs Unreal-facing cutscene/skip state orchestration for
+  `FLIGHT_A_001_SEATMATE_SMALLTALK -> IMMIGRATION_ALPHA -> BAGGAGE_MISSING ->
+scenario_end`.
 
 ## 2026-06-09 NPC Metadata Ownership Follow-Up
 
@@ -1317,17 +1615,18 @@ Developer C, and Unreal runtime code were not edited.
 Changed implementation:
 
 - Replaced the single flight diagnostic node with a five-turn Dev B node route:
-  `FLIGHT_001_SEATMATE_SMALLTALK -> FLIGHT_002_TRAVEL_PURPOSE ->
-FLIGHT_003_STAY_PLAN -> FLIGHT_004_CLARIFY_OR_ASK_BACK ->
-FLIGHT_005_WRAP_UP`.
+  `FLIGHT_A_001_SEATMATE_SMALLTALK -> FLIGHT_A_002_TRAVEL_PURPOSE ->
+FLIGHT_A_003_STAY_PLAN -> FLIGHT_A_004_CLARIFY_OR_ASK_BACK ->
+FLIGHT_A_005_WRAP_UP`.
 - Updated `FlightSmallTalkDiagnosticPolicy` to require 5 player turns and make
   skip eligibility available at 5 turns.
 - Flight nodes now advance to the next evidence node even for retry, clarify,
   hint, warning, or bad-end branch candidates so small talk collects diagnostic
   samples instead of blocking progression.
-- Added `BAG_001_NOTICE_BAG_MISSING` before the existing missing-bag service
-  route.
-- Routed `BAG_007_RESOLUTION` to `ALPHA_999_FINAL_SCOREBOARD`.
+- Added a mandatory baggage/customs route that starts with
+  `BAG_001_REPORT_MISSING_AT_DESK` and ends at `BAG_007_CUSTOMS_CLEARANCE`.
+- Routed `BAG_007_CUSTOMS_CLEARANCE` to `ALPHA_999_FINAL_SCOREBOARD` through
+  `BAG_999_COMPLETE`.
 - Updated `ScenarioStateMachine` so `ALPHA_999_FINAL_SCOREBOARD` is the Dev B
   final-branch node. `IMM_007_FINAL_DECISION` now behaves as an
   immigration-clearance transition in B policy.
@@ -1361,15 +1660,463 @@ Verification:
 
 Known issues / coordination:
 
-- Developer C-owned `DevBPolicyClient` still contains legacy final-result
-  compatibility for `IMM_007_FINAL_DECISION`. A change request now asks C to
-  adopt `ALPHA_999_FINAL_SCOREBOARD` as the Alpha final-result trigger.
+- Developer C-owned `DevBPolicyClient` now uses `ALPHA_999_FINAL_SCOREBOARD` as
+  the Alpha final-result trigger. `IMM_007_FINAL_DECISION` is a transition into
+  baggage claim.
 - Developer A must generate actual NPC dialogue/TTS for the new `FLIGHT_*` and
-  `BAG_001` metadata. Dev B still does not author final NPC utterances.
+  current `BAG_001` through `BAG_007` metadata. Dev B still does not author
+  final NPC utterances.
 - Unreal must connect flight exit, airport arrival, baggage claim, final
   scoreboard, and ending cinematic flow states.
-- The storyboard's baggage-open/random-item "억까" concept is left as future
-  optional-event work; Alpha base route keeps the existing missing-bag flow.
+- The baggage-open/random-item concept is now mandatory in the Alpha baggage
+  route; Unreal should reveal the random customs item before
+  `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM`.
+
+## 2026-06-12 Alpha Chapter Boundary Transition Nodes
+
+Developer B and Developer C adopted Alpha chapter-boundary transition nodes so
+`chapter_id` now represents ordered scenario phases inside
+`ALPHA_AIRPORT_ARRIVAL`.
+
+Changed implementation:
+
+- Upgraded `backend/app/data/scenario_nodes.json` to
+  `dev_b_scenario_nodes.v2` with top-level `scenario_id`, ordered `chapters`,
+  node-level `chapter_id`, and explicit `node_type`.
+- Added transition nodes `FLIGHT_999_COMPLETE`, `IMM_999_CLEARED`, and
+  `BAG_999_COMPLETE`.
+- Routed `FLIGHT_A_005_WRAP_UP`, `IMM_007_FINAL_DECISION`, and
+  `BAG_007_CUSTOMS_CLEARANCE` success branches to those transition nodes.
+- Added `next_action = COMPLETE_CHAPTER` when Developer B policy reaches a
+  chapter transition node.
+- Kept `ALPHA_999_FINAL_SCOREBOARD` as the final/result node rather than a
+  chapter-complete node.
+- Updated Developer C `NodeContext`, OpenKB loading, response building,
+  orchestration, and validation for optional `transition` metadata.
+- Developer C now passes additive `transition` metadata to the Developer A
+  adapter on `COMPLETE_CHAPTER` so A can choose a closing tone without
+  generating the next chapter's opening question.
+- Removed the Developer C compatibility path that treated
+  `IMM_007_FINAL_DECISION` as the final-result trigger.
+- Demo request helpers now choose the Alpha chapter id from the node prefix.
+
+Docs updated:
+
+- `docs/contracts/change_requests.md`
+- `docs/contracts/developer_b_json_key_value_contract_v1.md`
+- `docs/contracts/developer_b_json_final_v1.md`
+- `docs/contracts/developer_c_adapter_contracts.md`
+- `docs/contracts/developer_c_schema_contract.md`
+
+Tests added or updated:
+
+- OpenKB node-level `chapter_id` loading and wrong-chapter rejection.
+- Transition metadata parsing for chapter-complete nodes.
+- Developer B `COMPLETE_CHAPTER` behavior for flight, immigration, and baggage
+  boundary transitions.
+- Orchestrator integration coverage for Unreal transition events:
+  `START_AIRPORT_ARRIVAL_TUTORIAL`, `ENTER_BAGGAGE_CLAIM`, and
+  `SHOW_ALPHA_SCOREBOARD`.
+- Existing secondary-inspection and final-scoreboard behavior remains covered.
+
+Verification:
+
+- `uv sync` completed.
+- `uv run pytest` passed: 199 tests, 2 existing warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 91 source files.
+
+Known issues / coordination:
+
+- Developer A should treat `next_action=COMPLETE_CHAPTER` as closing-dialogue
+  context and must not generate the next chapter's first question from
+  `transition.entry_node_id`.
+- Unreal should stop current NPC voice-turn capture on `COMPLETE_CHAPTER`,
+  consume `transition.unreal_event`, then enter
+  `transition.next_chapter_id` / `transition.entry_node_id` when applicable.
+- Unreal should not submit player speech turns for `node_type=transition`.
+- `CH0_02_ARRIVAL_TUTORIAL` remains chapter metadata only for this backend
+  change; there is no AI dialogue node for that phase.
+
+## 2026-06-12 Alpha Flight Smalltalk Route Variants
+
+Developer B expanded `CH0_01_FLIGHT_SMALLTALK` from one fixed 5-turn stream to
+three 5-turn route candidates.
+
+Changed implementation:
+
+- Kept the existing Friendly Seatmate route as the default:
+  `FLIGHT_A_001_SEATMATE_SMALLTALK -> FLIGHT_A_002_TRAVEL_PURPOSE ->
+FLIGHT_A_003_STAY_PLAN -> FLIGHT_A_004_CLARIFY_OR_ASK_BACK ->
+FLIGHT_A_005_WRAP_UP -> FLIGHT_999_COMPLETE`.
+- Renamed the previous unlabeled `FLIGHT_001..005` route to `FLIGHT_A_001..005`
+  so all flight variants use the same A/B/C naming scheme.
+- Added Curious Seatmate route:
+  `FLIGHT_B_001_DESTINATION_CHAT -> FLIGHT_B_002_COMPANION_OR_VISIT ->
+FLIGHT_B_003_STAY_PLACE -> FLIGHT_B_004_TRIP_PLANS ->
+FLIGHT_B_005_LANDING_CLOSE -> FLIGHT_999_COMPLETE`.
+- Added Travel Form Help route:
+  `FLIGHT_C_001_FORM_HELP_REQUEST -> FLIGHT_C_002_FIRST_TIME_ENTRY ->
+FLIGHT_C_003_ADDRESS_HELP -> FLIGHT_C_004_HOTEL_HOSTEL_REPAIR ->
+FLIGHT_C_005_FORM_CLOSE -> FLIGHT_999_COMPLETE`.
+- Added `entry_node_ids` to the flight chapter metadata while preserving
+  `entry_node_id = FLIGHT_A_001_SEATMATE_SMALLTALK` as the default.
+- Updated B contract docs and change requests for the additive route metadata.
+
+Tests added or updated:
+
+- Scenario node coverage now verifies the three flight route starts and all
+  15 dialogue nodes.
+- Flight route coverage now verifies that each route has exactly five turns and
+  ends at the shared `FLIGHT_999_COMPLETE` transition node.
+- Route A coverage verifies that legacy unlabeled `FLIGHT_001..005` node IDs
+  are no longer present in scenario node data.
+
+Verification:
+
+- `uv sync` completed.
+- `uv run pytest` passed: 200 tests, 2 existing warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 91 source files.
+
+Known issues / coordination:
+
+- Developer A should add dialogue/TTS coverage for the `FLIGHT_A_*`,
+  `FLIGHT_B_*`, and `FLIGHT_C_*` node metadata.
+- Unreal can keep using the default `entry_node_id`; when ready, it may select
+  one start from `entry_node_ids` and should not mix nodes across routes.
+
+## 2026-06-12 Respond Dialog Flight Start Payload
+
+Developer C demo support was updated so `/respond-dialog` starts from the Alpha
+flight first dialogue node instead of the old immigration purpose node.
+
+Changed implementation:
+
+- `demo/respond-dialog/index.html` now uses
+  `FLIGHT_A_001_SEATMATE_SMALLTALK` as `firstNodeId`.
+- The default turn payload now uses `CH0_01_FLIGHT_SMALLTALK`,
+  `SEATMATE_A_01`, and `npc_role = seatmate`.
+- The default allowed next node is `FLIGHT_A_002_TRAVEL_PURPOSE`.
+- The demo's next-turn updater now auto-loads `FLIGHT_`, `IMM_`, and `BAG_`
+  dialogue nodes on `ADVANCE`.
+
+Tests updated:
+
+- `backend/tests/test_demo_ai_respond_page.py` verifies the flight start
+  defaults and `FLIGHT_` auto-load support.
+
+## 2026-06-12 Respond Dialog Chapter Start Buttons
+
+Developer C demo support was updated so `/respond-dialog` no longer requires a
+Turn JSON upload to start a test turn.
+
+Changed implementation:
+
+- Added chapter start buttons for Flight, Immigration, Baggage, and Result.
+- The default selected chapter is Flight:
+  `CH0_01_FLIGHT_SMALLTALK` / `FLIGHT_A_001_SEATMATE_SMALLTALK`.
+- Clicking a chapter button now regenerates the current turn payload from that
+  chapter's configured start node and refreshes the visible NPC first line.
+- The generated payload is read-only and kept behind a details panel for
+  inspection.
+- WAV upload and in-browser recording can submit the current first turn, so
+  the first player response no longer needs a preloaded JSON file.
+
+Tests and browser verification:
+
+- `backend/tests/test_demo_ai_respond_page.py` verifies chapter buttons, removed
+  `turnFile` upload, generated payload defaults, and recording submission path.
+- Browser verification against `http://127.0.0.1:8017/respond-dialog` confirmed
+  Flight, Immigration, Baggage, and Result buttons update
+  `session.chapter_id`, `session.current_node_id`, active button state, NPC id,
+  scene id, and the first visible NPC line.
+- Microphone permission was not accepted during automated verification; the
+  recording controls and recorded-WAV submission path were verified without
+  starting capture.
+
+Verification:
+
+- `uv sync` completed.
+- `uv run pytest` passed: 200 tests, 2 existing warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 91 source files.
+
+## 2026-06-12 Respond Dialog Flight NPC Fallback Diagnosis
+
+Integrated `/respond-dialog` testing exposed an A/C integration gap after the
+new Flight chapter start buttons were added.
+
+Observed test turn:
+
+- First NPC line: `Seatmate: Could I borrow your pen for this arrival form?`
+- Player STT: `Okay, okay.`
+- Returned NPC line: `Officer Miller: Okay. Please continue.`
+
+Runtime diagnosis:
+
+- Developer C received the correct Flight request:
+  `CH0_01_FLIGHT_SMALLTALK` /
+  `FLIGHT_A_001_SEATMATE_SMALLTALK`.
+- STT returned `Okay, okay.`
+- Understanding and Developer B treated the turn as successful.
+- Developer B returned
+  `SUCCESS -> FLIGHT_A_002_TRAVEL_PURPOSE`.
+- Developer A returned `speaker = Officer Miller` and
+  `text = Okay. Please continue.`
+
+Root cause:
+
+- C's A adapter currently seeds next questions only when the next node id starts
+  with `IMM_`, so the Flight next node question was not passed to A.
+- A's roster currently falls unknown NPC ids back to `officer_miller`, so
+  `SEATMATE_A_01` resolves to Officer Miller.
+- A's fallback text is Officer Miller-specific.
+
+Change request added:
+
+- `docs/contracts/change_requests.md`
+  `Align Developer A/C NPC Routing for Alpha Non-Immigration Nodes`.
+
+Developer C follow-up:
+
+- Allow `backend/app/integrations/dev_a_npc_dialogue_client.py` to resolve
+  next-question seeds for supported Alpha dialogue prefixes beyond `IMM_`,
+  including `FLIGHT_` and `BAG_`.
+- Preserve and validate A-facing `npc_id`, `npc_role`, and chapter/node context.
+- Add diagnostics or validation when requested NPC and returned speaker clearly
+  mismatch.
+- Add regression coverage for the first Flight success turn verifying the A
+  candidate line comes from `FLIGHT_A_002_TRAVEL_PURPOSE`.
+
+Developer A follow-up:
+
+- Add roster profiles for `SEATMATE_A_01`, `SEATMATE_B_01`,
+  `SEATMATE_C_01`, and `BAGGAGE_STAFF_01`.
+- Derive fallback text, display name, default animation, and voice profile from
+  the resolved NPC profile instead of Officer Miller-only defaults.
+- Add natural dialogue/TTS behavior for `FLIGHT_A_*`, `FLIGHT_B_*`,
+  `FLIGHT_C_*`, and `BAG_*` nodes.
+- Keep `COMPLETE_CHAPTER` as a closing-line context.
+
+Current testing caveat:
+
+- `/respond-dialog` can test STT, Understanding, B branching, generated
+  payloads, and transition behavior.
+- Flight/Baggage NPC speaker and text quality still require A/C follow-up before
+  they are reliable integrated test signals.
+
+## 2026-06-12 Baggage Customs Hold Required Flow
+
+Developer B replaced the old missing-bag service route with the mandatory
+customs-hold route requested for Alpha baggage claim.
+
+Changed implementation:
+
+- `CH0_04_BAGGAGE_CLAIM` now starts at
+  `BAG_001_REPORT_MISSING_AT_DESK`.
+- `IMM_999_CLEARED.transition.entry_node_id` now points to
+  `BAG_001_REPORT_MISSING_AT_DESK`.
+- The baggage route is now:
+  `BAG_001_REPORT_MISSING_AT_DESK -> BAG_002_PROVIDE_CLAIM_TAG ->
+BAG_003_CONFIRM_SEARCHED_CAROUSEL ->
+BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD ->
+BAG_005_CUSTOMS_HOLD_EXPLANATION ->
+BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM -> BAG_007_CUSTOMS_CLEARANCE ->
+BAG_999_COMPLETE`.
+- The random customs item explanation is required. Unreal should run the
+  unlock/open-suitcase interaction and reveal the random item between
+  `BAG_005_CUSTOMS_HOLD_EXPLANATION` and
+  `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM`.
+- Added Focus-on-Form target `customs_item_explanation`.
+- `/respond-dialog` Baggage button now starts from
+  `BAG_001_REPORT_MISSING_AT_DESK`.
+
+Developer A follow-up:
+
+- Add or update NPC dialogue/TTS behavior for baggage service staff and customs
+  officer roles in the new `BAG_*` route.
+- Avoid Officer Miller fallback for baggage/customs NPCs.
+
+Developer C follow-up:
+
+- Ensure Understanding supports the new baggage intents and slots.
+- Route the correct NPC context into A for baggage service desk nodes versus
+  customs officer nodes.
+- Preserve `BAG_999_COMPLETE` transition behavior into
+  `ALPHA_999_FINAL_SCOREBOARD`.
+
+Unreal follow-up:
+
+- Implement the mandatory non-dialogue interaction after
+  `BAG_005_CUSTOMS_HOLD_EXPLANATION`: show locked suitcase, unlock it, add it
+  to inventory, open suitcase UI, reveal random customs item, then start
+  `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM`.
+- Use `BAG_999_COMPLETE.transition.unreal_event = SHOW_ALPHA_SCOREBOARD` to
+  enter the final scoreboard.
+
+Verification:
+
+- `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py::test_baggage_route_requires_customs_hold_item_explanation_and_alpha_scoreboard backend/tests/dev_b/test_developer_b_policy_engine.py::test_flight_immigration_baggage_transition_nodes_are_complete_chapter_boundaries backend/tests/dev_b/test_developer_b_policy_engine.py::test_success_branch_advances_to_configured_success_node backend/tests/dev_b/test_developer_b_policy_engine.py::test_retry_branch_returns_same_node_with_retry_action backend/tests/dev_b/test_developer_b_policy_engine.py::test_bronze_broken_english_still_advances_with_feedback_candidate backend/tests/dev_b/test_developer_b_policy_engine.py::test_gold_missing_required_detail_requests_hint_and_focus_form_seed -q`
+  passed with 39 tests.
+- `uv run pytest backend/tests/test_preprototype_flow.py backend/tests/dev_b/test_focus_on_form_report_policy.py backend/tests/dev_b/test_final_result_score_policy.py backend/tests/test_demo_ai_respond_page.py -q`
+  passed with 45 tests and 2 existing warnings.
+- `uv sync` completed.
+- `uv run pytest` passed with 200 tests and 2 existing warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 91 source files.
+
+## 2026-06-12 Consolidated Alpha A/C/Unreal Handoff
+
+This entry consolidates the current Alpha scenario-node/runtime contract after
+the recent chapter-boundary, flight-route, `/respond-dialog`, and baggage
+customs-hold changes.
+
+Current implemented state:
+
+- `backend/app/data/scenario_nodes.json` now uses
+  `contract_version = dev_b_scenario_nodes.v2` and
+  `scenario_id = ALPHA_AIRPORT_ARRIVAL`.
+- `chapter_id` is now the ordered Alpha phase, not a whole-scenario namespace:
+  `CH0_01_FLIGHT_SMALLTALK`,
+  `CH0_02_ARRIVAL_TUTORIAL`,
+  `CH0_03_IMMIGRATION_CHECK`,
+  `CH0_04_BAGGAGE_CLAIM`,
+  `CH0_05_RESULT`.
+- Chapter boundary nodes are explicit transition nodes:
+  `FLIGHT_999_COMPLETE`,
+  `IMM_999_CLEARED`,
+  `BAG_999_COMPLETE`.
+- Transition branches return `next_action = COMPLETE_CHAPTER` and include
+  optional `transition` metadata for Unreal.
+- Flight has three 5-turn diagnostic route starts:
+  `FLIGHT_A_001_SEATMATE_SMALLTALK`,
+  `FLIGHT_B_001_DESTINATION_CHAT`,
+  `FLIGHT_C_001_FORM_HELP_REQUEST`.
+- Baggage claim now starts at `BAG_001_REPORT_MISSING_AT_DESK` and follows the
+  required customs-hold route:
+  `BAG_001_REPORT_MISSING_AT_DESK -> BAG_002_PROVIDE_CLAIM_TAG ->
+BAG_003_CONFIRM_SEARCHED_CAROUSEL ->
+BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD ->
+BAG_005_CUSTOMS_HOLD_EXPLANATION ->
+BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM -> BAG_007_CUSTOMS_CLEARANCE ->
+BAG_999_COMPLETE`.
+- `/respond-dialog` can start Flight, Immigration, Baggage, or Result from
+  buttons, defaults to Flight, and supports first-turn WAV upload/browser
+  recording without JSON upload.
+
+Developer A follow-up:
+
+- Add or map NPC roster/voice profiles for seatmate route A/B/C, baggage
+  service staff, and customs officer.
+- Stop falling non-immigration NPCs back to Officer Miller.
+- Generate natural dialogue/TTS for `FLIGHT_A_*`, `FLIGHT_B_*`,
+  `FLIGHT_C_*`, service-desk `BAG_001` through `BAG_004`, and customs-officer
+  `BAG_005` through `BAG_007`.
+- Treat `COMPLETE_CHAPTER` as a closing-line context only.
+
+Developer C follow-up:
+
+- Extend the Developer A adapter's next-question seed lookup for `FLIGHT_` and
+  `BAG_` nodes, not only `IMM_`.
+- Preserve and validate A-facing `npc_id`, `npc_role`, `chapter_id`, and
+  `node_id` for all Alpha chapters.
+- Add diagnostics when requested NPC role and A returned speaker mismatch.
+- Add Understanding coverage for the new flight route slots and the new baggage
+  customs-hold slots.
+- Route BAG NPC context by phase: service staff for `BAG_001` through
+  `BAG_004`, customs officer for `BAG_005` through `BAG_007`.
+- Pass Unreal-provided random item context into
+  `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM` when available.
+
+Unreal follow-up:
+
+- Use chapter metadata to select a Flight route start. The default start is
+  `FLIGHT_A_001_SEATMATE_SMALLTALK`.
+- Do not submit speech turns for `node_type = transition`.
+- On `next_action = COMPLETE_CHAPTER`, stop voice capture and consume
+  `transition.unreal_event`, `transition.next_chapter_id`, and
+  `transition.entry_node_id`.
+- Handle transition events:
+  `START_AIRPORT_ARRIVAL_TUTORIAL`,
+  `ENTER_BAGGAGE_CLAIM`,
+  `SHOW_ALPHA_SCOREBOARD`.
+- After `BAG_005_CUSTOMS_HOLD_EXPLANATION`, run the non-dialogue suitcase flow:
+  locked suitcase, unlock interaction, add suitcase to inventory, open suitcase
+  UI, reveal random customs item, then start
+  `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM`.
+
+Docs updated:
+
+- `docs/contracts/change_requests.md`
+  `Consolidated Alpha Follow-up for Developer A, Developer C, and Unreal`.
+
+Latest verification:
+
+- `uv sync` completed.
+- `uv run pytest` passed with 201 tests and 2 existing warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 91 source files.
+
+## 2026-06-12 Developer B NPC Emotion Enum Propagation
+
+Developer B now sends a turn-level NPC emotion cue to Developer C.
+
+Changed implementation:
+
+- Added `NpcEmotion` enum and `DevBPolicyOutput.npc_emotion` to
+  `backend/app/schemas/game_turn.py`.
+- Developer B sets `npc_emotion` in
+  `backend/app/agents/agent_b/english_level_hint_agent.py`.
+- Current rule mapping:
+  normal success -> `Nomal`, clarify/retry/hint -> `Confusion`,
+  warning/bad-end/critical risk -> `Suspicion`.
+- Developer C passes the value to Developer A as A-facing `npc.emotion` in
+  `backend/app/integrations/dev_a_npc_dialogue_client.py`.
+- Developer C returns the same value to Unreal as response `npc.emotion` from
+  `backend/app/services/service_c/response_builder.py`.
+
+Allowed emotion values:
+
+```text
+Nomal
+Joy
+Anger
+Sadness
+Panic
+Suspicion
+Disgust
+Fear
+Smirk
+Surprise
+Pain
+Confusion
+Boredom
+```
+
+Developer A follow-up:
+
+- Use `npc.emotion` as the preferred enum cue for facial expression, TTS style,
+  animation tone, and fallback behavior.
+
+Unreal follow-up:
+
+- Consume response `npc.emotion` for NPC expression/animation mapping.
+
+Docs updated:
+
+- `docs/contracts/change_requests.md`
+  `Propagate Developer B NPC Emotion Enum`.
+- `docs/contracts/developer_b_json_final_v1.md`
+- `docs/contracts/developer_c_adapter_contracts.md`
+- `docs/contracts/developer_c_schema_contract.md`
+
+Verification:
+
+- `uv sync` completed.
+- `uv run pytest` passed with 201 tests and 2 existing warnings.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 91 source files.
 
 ## Resume Instructions
 
@@ -1410,5 +2157,5 @@ Changed:
 - Added a new Change Request to `docs/contracts/change_requests.md` proposing schema and adapter extensions to accept the new audio parameters and 13-type input emotion strings from Level Design.
 
 Coordination:
-- Developer C is currently refactoring the backend orchestrator using LangChain/LangGraph. Developer A's updated plan ensures the Dialogue Agent will expose itself as a single node/subgraph rather than trying to own the overall orchestration, avoiding graph and term conflicts.
 
+- Developer C is currently refactoring the backend orchestrator using LangChain/LangGraph. Developer A's updated plan ensures the Dialogue Agent will expose itself as a single node/subgraph rather than trying to own the overall orchestration, avoiding graph and term conflicts.

@@ -31,6 +31,14 @@ class AppSettings(BaseSettings):
     murphy_understanding_llm_timeout_seconds: float = 10.0
     murphy_unreal_request_capture_mode: Literal["off", "debug"] = "off"
     murphy_unreal_request_capture_root: Path = Path("backend/runtime/generated/unreal_requests")
+    elevenlabs_api_key: str | None = None
+    elevenlabs_realtime_stt_endpoint: str = "wss://api.elevenlabs.io/v1/speech-to-text/realtime"
+    elevenlabs_realtime_stt_model: str = "scribe_v2_realtime"
+    elevenlabs_realtime_audio_format: str = "pcm_16000"
+    elevenlabs_realtime_commit_strategy: Literal["manual", "vad"] = "manual"
+    elevenlabs_realtime_receive_timeout_s: float = 0.2
+    elevenlabs_realtime_estimated_cost_per_minute_usd: float = 0.0
+    murphy_stt_debug_log_mode: Literal["off", "debug"] = "off"
 
     @classmethod
     def from_env_file(cls, env_file: str | Path) -> "AppSettings":

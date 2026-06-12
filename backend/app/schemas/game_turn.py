@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SessionContext(BaseModel):
@@ -133,9 +133,21 @@ class HintPolicy(BaseModel):
     action_hint: str
 
 
+class TransitionContext(BaseModel):
+    status: Literal["chapter_complete"]
+    completed_chapter_id: str
+    next_chapter_id: str
+    entry_node_id: str | None = None
+    unreal_event: str
+    requires_player_input: bool = False
+
+
 class NodeContext(BaseModel):
     node_id: str
+    scenario_id: str = "ALPHA_AIRPORT_ARRIVAL"
     chapter_id: str
+    node_type: Literal["dialogue", "transition", "result", "ending"] = "dialogue"
+    transition: TransitionContext | None = None
     npc_question: str
     npc_question_goal: str
     objective_kr: str | None = None
@@ -178,6 +190,24 @@ class UnderstandingOutput(BaseModel):
     extracted_slots: dict[str, str]
     missing_slots: list[str]
     needs_clarification: bool
+
+
+# `Nomal` spelling follows the current external emotion enum contract.
+NpcEmotion = Literal[
+    "Nomal",
+    "Joy",
+    "Anger",
+    "Sadness",
+    "Panic",
+    "Suspicion",
+    "Disgust",
+    "Fear",
+    "Smirk",
+    "Surprise",
+    "Pain",
+    "Confusion",
+    "Boredom",
+]
 
 
 class DevBPolicyInput(BaseModel):
@@ -297,7 +327,7 @@ class QuantitativeScores(BaseModel):
     vocabulary_range: int = Field(ge=0, le=100)
     clarity: int = Field(ge=0, le=100)
     interaction_problem_solving: int = Field(ge=0, le=100)
-    scoring_policy: Literal["simple_average"]
+    scoring_policy: Literal["simple_average", "scene_normalized_dimension_average"]
 
 
 class FinalReportSummary(BaseModel):
@@ -436,7 +466,7 @@ class OpenKBWriteResult(BaseModel):
 
 class Branch(BaseModel):
     branch_type: Literal["success", "retry", "clarify", "hint", "warning", "bad_end", "final"]
-    next_action: Literal["ADVANCE", "REASK", "GIVE_HINT", "WARNING", "FAIL_END", "FINAL_DECISION"]
+    next_action: Literal["ADVANCE", "REASK", "GIVE_HINT", "WARNING", "FAIL_END", "FINAL_DECISION", "COMPLETE_CHAPTER"]
     next_node_id: str
     branch_reason: str
     allowed_next_node_checked: bool
@@ -466,6 +496,7 @@ class ReportItem(BaseModel):
 class DevBPolicyOutput(BaseModel):
     contract_version: Literal["dev_b_policy.v1"]
     node_id: str
+    npc_emotion: NpcEmotion = "Nomal"
     evaluation: Evaluation
     level_hint: LevelHint
     in_game_feedback: InGameFeedback
@@ -494,6 +525,7 @@ class DevADialogueInput(BaseModel):
     node_context: NodeContext
     understanding: UnderstandingOutput
     developer_b_policy: DevBPolicyOutput
+    transition: TransitionContext | None = None
 
 
 class DevADialogueOutput(BaseModel):
@@ -516,6 +548,7 @@ class RecordedErrorSummary(BaseModel):
 class NpcResponse(BaseModel):
     speaker: str
     text: str
+    emotion: NpcEmotion
     tone: str
     animation: str
     audio_url: str | None = None
@@ -544,6 +577,89 @@ class ReportResponse(BaseModel):
     recorded_error_count: int
     report_item: ReportItem
     final_result: FinalResult | None = None
+
+
+class FlowResponse(BaseModel):
+    contract_version: Literal["dev_c_unreal_flow.v1"] = "dev_c_unreal_flow.v1"
+    transition_type: Literal["none", "scene_transition", "cutscene", "scoreboard"] = "none"
+    transition_id: str | None = None
+    from_scene_id: str | None = None
+    to_scene_id: str | None = None
+    cinematic_id: str | None = None
+    skip_allowed: bool = False
+    show_scoreboard: bool = False
+
+
+class RealtimeTranscriptClientEvent(BaseModel):
+    contract_version: Literal["dev_c_realtime_stt.v1"]
+    event_type: Literal[
+        "session_start",
+        "audio_chunk",
+        "partial_transcript",
+        "final_transcript",
+        "cancel",
+    ]
+    request_id: str
+    session_id: str
+    turn_index: int = Field(ge=0)
+    sequence: int = Field(ge=0)
+    chapter_id: str | None = None
+    scene_id: str | None = None
+    current_node_id: str | None = None
+    provider: Literal["unreal_bridge", "stt_provider_websocket", "elevenlabs_relay", "mock"] = "unreal_bridge"
+    language_hint: str | None = None
+    transcript: str | None = None
+    audio_base64: str | None = None
+    commit: bool = False
+    sample_rate_hz: int | None = Field(default=None, ge=8000)
+    previous_text: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    language_detected: str | None = None
+
+    @model_validator(mode="after")
+    def require_transcript_for_transcript_events(self) -> "RealtimeTranscriptClientEvent":
+        if self.event_type in {"partial_transcript", "final_transcript"}:
+            if self.transcript is None or not self.transcript.strip():
+                raise ValueError("transcript is required for transcript events")
+
+        if self.event_type == "audio_chunk":
+            if self.audio_base64 is None or not self.audio_base64.strip():
+                raise ValueError("audio_base64 is required for audio_chunk events")
+
+        return self
+
+
+class RealtimeSubtitlePayload(BaseModel):
+    text: str
+    is_final: bool
+    display_mode: Literal["replace"] = "replace"
+
+
+class RealtimeTranscriptServerEvent(BaseModel):
+    contract_version: Literal["dev_c_realtime_stt.v1"] = "dev_c_realtime_stt.v1"
+    event_type: Literal[
+        "session_started",
+        "partial_transcript",
+        "final_transcript",
+        "session_cancelled",
+        "contract_error",
+        "provider_error",
+    ]
+    request_id: str | None = None
+    session_id: str | None = None
+    turn_index: int | None = None
+    sequence: int | None = None
+    provider: Literal[
+        "unreal_bridge",
+        "stt_provider_websocket",
+        "elevenlabs_relay",
+        "local_batch_fallback",
+        "mock",
+    ] | None = None
+    subtitle: RealtimeSubtitlePayload | None = None
+    committed: bool = False
+    target_endpoint: str | None = None
+    error_message: str | None = None
 
 
 class TurnTimingMs(BaseModel):
@@ -585,10 +701,12 @@ class UnrealResponse(BaseModel):
     current_node_id: str
     next_node_id: str
     next_action: str
+    transition: TransitionContext | None = None
     interaction: InteractionContext
     stt: SttResponse
     npc: NpcResponse
     ui: UiResponse
+    flow: FlowResponse = Field(default_factory=FlowResponse)
     state_delta: StateDelta
     evaluation: EvaluationResponse
     report: ReportResponse

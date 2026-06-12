@@ -136,7 +136,7 @@ def test_unified_agent_run_log_store_appends_jsonl_and_markdown(tmp_path) -> Non
         "status": "completed",
         "started_at": "2026-06-04T00:00:00+00:00",
         "completed_at": "2026-06-04T00:00:01+00:00",
-        "source_window": {"source_type": "level_design_json", "chapter_id": "CH0_IMMIGRATION"},
+        "source_window": {"source_type": "level_design_json", "chapter_id": "CH0_03_IMMIGRATION_CHECK"},
         "model": {
             "model_name": "rule_based",
             "input_tokens": 0,

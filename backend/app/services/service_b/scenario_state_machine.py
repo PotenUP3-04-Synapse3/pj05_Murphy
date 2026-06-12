@@ -7,12 +7,13 @@ from backend.app.schemas.game_turn import DevBPolicyInput
 
 
 BranchType = Literal["success", "retry", "clarify", "hint", "warning", "bad_end", "final"]
-NextAction = Literal["ADVANCE", "REASK", "GIVE_HINT", "WARNING", "FAIL_END", "FINAL_DECISION"]
+NextAction = Literal["ADVANCE", "REASK", "GIVE_HINT", "WARNING", "FAIL_END", "FINAL_DECISION", "COMPLETE_CHAPTER"]
 Verdict = Literal["SUCCESS", "PARTIAL", "UNCLEAR", "FAIL", "CRITICAL_FAIL"]
 
 GOLD_CHALLENGE_SOURCE_NODE_ID = "IMM_005_RETURN_TICKET"
 GOLD_BAG_CONTENT_CHALLENGE_NODE_ID = "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK"
 ALPHA_FINAL_SCOREBOARD_NODE_ID = "ALPHA_999_FINAL_SCOREBOARD"
+CHAPTER_COMPLETE_NODE_IDS = {"FLIGHT_999_COMPLETE", "IMM_999_CLEARED", "BAG_999_COMPLETE"}
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,8 @@ class ScenarioStateMachine:
         next_action: NextAction,
     ) -> ScenarioDecision:
         next_node_id = self._checked_next_node(self._preferred_success_node(payload), payload)
+        if next_node_id in CHAPTER_COMPLETE_NODE_IDS:
+            next_action = "COMPLETE_CHAPTER"
         return ScenarioDecision(
             verdict="SUCCESS",
             branch_type=branch_type,

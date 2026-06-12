@@ -3,12 +3,14 @@ from backend.app.schemas.game_turn import (
     DevADialogueOutput,
     DevBPolicyOutput,
     EvaluationResponse,
+    FlowResponse,
     NormalizedInput,
     NpcResponse,
     PrePrototypeRequest,
     RecordedErrorSummary,
     ReportResponse,
     SttResponse,
+    TransitionContext,
     TurnTimingMs,
     UiFeedback,
     UiResponse,
@@ -26,6 +28,7 @@ class ResponseBuilder:
         dev_b_output: DevBPolicyOutput,
         dev_a_output: DevADialogueOutput,
         logging_summary: RecordedErrorSummary,
+        transition: TransitionContext | None = None,
         timing_ms: TurnTimingMs | None = None,
     ) -> UnrealResponse:
         return UnrealResponse(
@@ -36,6 +39,7 @@ class ResponseBuilder:
             current_node_id=request.turn.session.current_node_id,
             next_node_id=dev_b_output.branch.next_node_id,
             next_action=dev_b_output.branch.next_action,
+            transition=transition,
             interaction=request.turn.interaction,
             stt=SttResponse(
                 model=normalized_input.stt_model,
@@ -50,6 +54,7 @@ class ResponseBuilder:
             npc=NpcResponse(
                 speaker=dev_a_output.speaker,
                 text=dev_a_output.text,
+                emotion=dev_b_output.npc_emotion,
                 tone=dev_a_output.tone,
                 animation=dev_a_output.animation,
                 audio_url=dev_a_output.audio_url,
@@ -63,6 +68,13 @@ class ResponseBuilder:
                     feedback_strategy=dev_b_output.in_game_feedback.feedback_strategy,
                     priority=dev_b_output.in_game_feedback.priority,
                 ),
+            ),
+            flow=_build_flow_response(
+                current_scene_id=request.turn.session.scene_id,
+                current_node_id=request.turn.session.current_node_id,
+                next_node_id=dev_b_output.branch.next_node_id,
+                next_action=dev_b_output.branch.next_action,
+                transition=transition,
             ),
             state_delta=dev_b_output.state_delta,
             evaluation=EvaluationResponse(
@@ -82,6 +94,7 @@ class ResponseBuilder:
                 contract_versions=[
                     request.turn.contract_version,
                     request.turn.interaction.contract_version,
+                    "dev_c_unreal_flow.v1",
                     dev_b_output.contract_version,
                     dev_a_output.contract_version,
                     "dev_c_unreal_response.v1",
@@ -89,3 +102,68 @@ class ResponseBuilder:
                 timing_ms=timing_ms or TurnTimingMs(),
             ),
         )
+
+
+def _build_flow_response(
+    *,
+    current_scene_id: str,
+    current_node_id: str,
+    next_node_id: str,
+    next_action: str,
+    transition: TransitionContext | None,
+) -> FlowResponse:
+    if transition is not None and transition.unreal_event == "START_AIRPORT_ARRIVAL_TUTORIAL":
+        return FlowResponse(
+            transition_type="cutscene",
+            transition_id="flight_to_arrival_tutorial",
+            from_scene_id=current_scene_id,
+            to_scene_id="ARRIVAL_TUTORIAL",
+            cinematic_id="CIN_FLIGHT_ARRIVAL_JFK",
+            skip_allowed=True,
+        )
+
+    if transition is not None and transition.unreal_event == "ENTER_BAGGAGE_CLAIM":
+        return FlowResponse(
+            transition_type="scene_transition",
+            transition_id="immigration_to_baggage_claim",
+            from_scene_id=current_scene_id,
+            to_scene_id="BAGGAGE_MISSING",
+        )
+
+    if transition is not None and transition.unreal_event == "SHOW_ALPHA_SCOREBOARD":
+        return FlowResponse(
+            transition_type="scoreboard",
+            transition_id="alpha_final_scoreboard",
+            from_scene_id=current_scene_id,
+            to_scene_id="ALPHA_SCOREBOARD",
+            show_scoreboard=True,
+        )
+
+    if current_node_id == "FLIGHT_005_WRAP_UP" and next_node_id == "IMM_001_PASSPORT":
+        return FlowResponse(
+            transition_type="cutscene",
+            transition_id="flight_to_immigration_arrival",
+            from_scene_id=current_scene_id,
+            to_scene_id="IMMIGRATION_ALPHA",
+            cinematic_id="CIN_FLIGHT_ARRIVAL_JFK",
+            skip_allowed=True,
+        )
+
+    if current_node_id == "IMM_007_FINAL_DECISION" and next_node_id == "BAG_001_NOTICE_BAG_MISSING":
+        return FlowResponse(
+            transition_type="scene_transition",
+            transition_id="immigration_to_baggage_claim",
+            from_scene_id=current_scene_id,
+            to_scene_id="BAGGAGE_MISSING",
+        )
+
+    if current_node_id == "ALPHA_999_FINAL_SCOREBOARD" and next_action == "FINAL_DECISION":
+        return FlowResponse(
+            transition_type="scoreboard",
+            transition_id="alpha_final_scoreboard",
+            from_scene_id=current_scene_id,
+            to_scene_id="ALPHA_SCOREBOARD",
+            show_scoreboard=True,
+        )
+
+    return FlowResponse(from_scene_id=current_scene_id, to_scene_id=current_scene_id)

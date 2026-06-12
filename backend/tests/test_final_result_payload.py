@@ -28,7 +28,7 @@ def _turn_payload() -> dict[str, Any]:
         "session": {
             "session_id": "session_final_result",
             "player_id": "player_final_result",
-            "chapter_id": "CH0_IMMIGRATION",
+            "chapter_id": "CH0_03_IMMIGRATION_CHECK",
             "scene_id": "JFK_IMMIGRATION_HALL",
             "current_node_id": "IMM_007_FINAL_DECISION",
             "turn_index": 8,
@@ -138,10 +138,15 @@ def _final_result(score: int = 87) -> dict[str, Any]:
     }
 
 
-def _dev_b_output(final_result: dict[str, Any] | None = None) -> DevBPolicyOutput:
+def _dev_b_output(
+    final_result: dict[str, Any] | None = None,
+    *,
+    node_id: str = "IMM_007_FINAL_DECISION",
+    next_node_id: str = "END_PASS",
+) -> DevBPolicyOutput:
     payload: dict[str, Any] = {
         "contract_version": "dev_b_policy.v1",
-        "node_id": "IMM_007_FINAL_DECISION",
+        "node_id": node_id,
         "evaluation": {
             "verdict": "SUCCESS",
             "detected_intents": ["summarize_final_result"],
@@ -201,7 +206,7 @@ def _dev_b_output(final_result: dict[str, Any] | None = None) -> DevBPolicyOutpu
         "branch": {
             "branch_type": "final",
             "next_action": "FINAL_DECISION",
-            "next_node_id": "END_PASS",
+            "next_node_id": next_node_id,
             "branch_reason": "Final result is ready.",
             "allowed_next_node_checked": True,
         },
@@ -262,6 +267,23 @@ def test_validator_rejects_inconsistent_final_result_overall_score() -> None:
             allowed_next_nodes=["END_PASS", "END_SECONDARY_INSPECTION"],
             client_allowed_next_nodes=["END_PASS", "END_SECONDARY_INSPECTION"],
         )
+
+
+def test_validator_accepts_alpha_scene_normalized_score_policy() -> None:
+    final_result = _final_result()
+    final_result["quantitative_scores"]["scoring_policy"] = "scene_normalized_dimension_average"
+    policy_output = _dev_b_output(
+        final_result=final_result,
+        node_id="ALPHA_999_FINAL_SCOREBOARD",
+        next_node_id="END_ALPHA_SCENARIO",
+    )
+
+    Validator().validate_dev_b_policy_output(
+        policy_output,
+        current_node_id="ALPHA_999_FINAL_SCOREBOARD",
+        allowed_next_nodes=["END_ALPHA_SCENARIO"],
+        client_allowed_next_nodes=["END_ALPHA_SCENARIO"],
+    )
 
 
 def test_result_endpoint_returns_unreal_result_payload(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -18,7 +18,8 @@ level/hint/scenario branch logic.
 - `backend/app/services/`
 - `backend/app/agents/understanding_agent.py`
 - `backend/app/prompts/understanding_prompt.md`
-- `backend/app/graphs/developer_c_graph.py`
+- `backend/app/graphs/graph.py`
+- `backend/app/tools/tool_c/`
 - `backend/app/integrations/`
 - `backend/app/kb/`
 - `backend/tests/`
@@ -70,4 +71,7 @@ agents.
 
 LangGraph may orchestrate Developer C-owned workflow nodes only. It must not
 replace the Developer B scenario state machine, rule-based branch control, or
-the validator.
+the validator. The current C graph is implemented in
+`backend/app/graphs/graph.py`; each graph node delegates concrete work to
+C-owned wrappers under `backend/app/tools/tool_c/` and calls A/B only through
+the existing adapters.
