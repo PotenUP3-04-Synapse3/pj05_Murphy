@@ -11,7 +11,7 @@ from backend.app.agents.agent_c.understanding_llm_client import (
     build_understanding_llm_client_from_settings,
 )
 from backend.app.agents.agent_c.visit_purpose_classifier import classify_visit_purpose
-from backend.app.schemas.game_turn import NodeContext, UnderstandingOutput
+from backend.app.schemas.game_turn import NodeContext, SlotEvidence, UnderstandingOutput
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -74,10 +74,18 @@ class UnderstandingAgent:
                 )
                 return output
 
-            output, postprocessing = _repair_missing_allowed_slots(
+            output, slot_evidence_postprocessing = _apply_generic_slot_evidence(
+                output,
+                node_context,
+            )
+            output, slot_repair_postprocessing = _repair_missing_allowed_slots(
                 output,
                 player_text,
                 node_context,
+            )
+            postprocessing = _merge_postprocessing(
+                slot_evidence_postprocessing,
+                slot_repair_postprocessing,
             )
             self.last_trace = _build_llm_trace(
                 player_text=player_text,
@@ -298,6 +306,18 @@ def _repair_missing_allowed_slots(
     repaired_slot_names = {repair["slot"] for repair in repairs}
     missing_slots = [slot for slot in output.missing_slots if slot not in repaired_slot_names]
     primary_repair = repairs[0]
+    slot_evidence = [
+        *output.slot_evidence,
+        *[
+            SlotEvidence(
+                slot=repair["slot"],
+                value=repair["value"],
+                confidence=0.94 if repair["slot"] == "visit_purpose" else 0.92,
+                evidence_text=repair["value"],
+            )
+            for repair in repairs
+        ],
+    ]
     repaired = output.model_copy(
         update={
             "intent": _required_intent_for_slot(node_context, primary_repair["slot"]),
@@ -312,6 +332,7 @@ def _repair_missing_allowed_slots(
             "risk_delta": 0,
             "risk_reason": "The required slot is clear and no risk expression was found.",
             "risk_tags": [],
+            "slot_evidence": slot_evidence,
             "extracted_slots": extracted_slots,
             "missing_slots": missing_slots,
             "needs_clarification": len(missing_slots) > 0,
@@ -338,6 +359,95 @@ def _repair_missing_allowed_slots(
         "value": primary_repair["value"],
         "reason": "llm_missing_allowed_slot",
     }
+
+
+def _apply_generic_slot_evidence(
+    output: UnderstandingOutput,
+    node_context: NodeContext,
+) -> tuple[UnderstandingOutput, dict[str, Any]]:
+    allowed_slots = _allowed_slot_names(node_context)
+    accepted_evidence: list[SlotEvidence] = []
+    dropped_slots: list[str] = []
+
+    for evidence in output.slot_evidence:
+        if evidence.slot in allowed_slots:
+            accepted_evidence.append(evidence)
+        else:
+            dropped_slots.append(evidence.slot)
+
+    extracted_slots = {
+        slot: value
+        for slot, value in output.extracted_slots.items()
+        if slot in allowed_slots and value
+    }
+    for evidence in accepted_evidence:
+        extracted_slots.setdefault(evidence.slot, evidence.value)
+
+    missing_slots = [
+        slot for slot in node_context.required_slots if slot not in extracted_slots
+    ]
+    applied = bool(accepted_evidence) and (
+        any(evidence.slot not in output.extracted_slots for evidence in accepted_evidence)
+        or missing_slots != output.missing_slots
+    )
+    filtered = len(accepted_evidence) != len(output.slot_evidence)
+    if not applied and not filtered and missing_slots == output.missing_slots:
+        return output, {
+            "generic_slot_evidence_applied": False,
+            "accepted_slot_evidence": [],
+            "dropped_slot_evidence": [],
+        }
+
+    has_clear_required_slots = len(missing_slots) == 0
+    normalized = output.model_copy(
+        update={
+            "intent_success": output.intent_success
+            or (
+                has_clear_required_slots
+                and output.answer_relevance != "off_topic"
+                and output.risk_delta <= 0
+            ),
+            "slot_evidence": accepted_evidence,
+            "extracted_slots": extracted_slots,
+            "missing_slots": missing_slots,
+            "needs_clarification": len(missing_slots) > 0,
+        }
+    )
+    return normalized, {
+        "generic_slot_evidence_applied": applied,
+        "accepted_slot_evidence": [evidence.slot for evidence in accepted_evidence],
+        "dropped_slot_evidence": dropped_slots,
+    }
+
+
+def _allowed_slot_names(node_context: NodeContext) -> set[str]:
+    return {
+        *node_context.required_slots,
+        *node_context.optional_slots,
+        *node_context.critical_slots,
+    }
+
+
+def _merge_postprocessing(
+    slot_evidence_postprocessing: dict[str, Any],
+    slot_repair_postprocessing: dict[str, Any],
+) -> dict[str, Any]:
+    slot_evidence_changed = bool(
+        slot_evidence_postprocessing.get("generic_slot_evidence_applied")
+        or slot_evidence_postprocessing.get("dropped_slot_evidence")
+    )
+    slot_repair_changed = bool(slot_repair_postprocessing.get("slot_repair_applied"))
+    if slot_evidence_changed and slot_repair_changed:
+        return {
+            **slot_evidence_postprocessing,
+            **slot_repair_postprocessing,
+        }
+    if slot_evidence_changed:
+        return {
+            **slot_evidence_postprocessing,
+            "slot_repair_applied": False,
+        }
+    return slot_repair_postprocessing
 
 
 def _required_intent_for_slot(node_context: NodeContext, slot_name: str) -> str:
@@ -471,6 +581,8 @@ def _understanding_output_summary(output: UnderstandingOutput) -> dict[str, Any]
         "confidence": output.confidence,
         "answer_relevance": output.answer_relevance,
         "risk_delta": output.risk_delta,
+        "extracted_slots": output.extracted_slots,
+        "slot_evidence_slots": [evidence.slot for evidence in output.slot_evidence],
         "missing_slots": output.missing_slots,
         "needs_clarification": output.needs_clarification,
     }

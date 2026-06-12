@@ -66,8 +66,51 @@ Developer C Alpha phases:
    speech turns if timing data shows batch wav STT is the main latency issue.
 
 No immediate Developer A or Developer B implementation change is required for
-Alpha 1. Developer C added additive request/response metadata only; any future
-change requiring A/B logic changes must be filed as a change request first.
+Alpha 1 or Alpha 2. Developer C added additive request/response metadata and
+C-owned Understanding postprocessing only; any future change requiring A/B logic
+changes must be filed as a change request first.
+
+## 2026-06-12 Developer C Follow-up
+
+Developer C implemented Alpha 2 generic slot evidence in the C-owned
+Understanding layer. The LLM can now return `slot_evidence` entries for the
+current node's required, optional, or critical slots. Developer C filters those
+entries to the current node, drops unrelated or forbidden slot names such as
+`next_node_id` and `npc_text`, and converts accepted evidence into the existing
+`extracted_slots` dict before Developer B receives the policy input.
+
+Changed:
+
+- Added `SlotEvidence` and `UnderstandingOutput.slot_evidence` to the C schema.
+- Updated the Understanding LLM strict schema and normalization so generic slot
+  evidence can fill `extracted_slots` without adding one strict slot key per
+  scenario node.
+- Added C postprocessing that accepts only current-node slots and keeps
+  Developer B as the sole branch/progression authority.
+- Kept deterministic `visit_purpose` and `stay_duration` repairs as regression
+  guards for the existing prototype nodes.
+- Added tests for `stay_location` generic evidence, forbidden slot filtering,
+  and strict schema compatibility.
+
+Changed files for this update:
+
+- `backend/app/schemas/game_turn.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/test_understanding_llm_client.py`
+- `docs/contracts/developer_c_schema_contract.md`
+- `docs/contracts/developer_c_adapter_contracts.md`
+- `docs/handoff.md`
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_understanding_llm_client.py backend/tests/test_preprototype_flow.py -q`:
+  PASS, 34 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 193 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 91 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
 
 ## 2026-06-11 Developer C Follow-up
 

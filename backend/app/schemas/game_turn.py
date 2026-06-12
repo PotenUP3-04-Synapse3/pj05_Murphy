@@ -156,6 +156,13 @@ class NodeContext(BaseModel):
     allowed_next_nodes: list[str]
 
 
+class SlotEvidence(BaseModel):
+    slot: str
+    value: str
+    confidence: float = Field(ge=0, le=1)
+    evidence_text: str
+
+
 class UnderstandingOutput(BaseModel):
     intent: str
     intent_success: bool
@@ -167,6 +174,7 @@ class UnderstandingOutput(BaseModel):
     risk_delta: int
     risk_reason: str
     risk_tags: list[str]
+    slot_evidence: list[SlotEvidence] = Field(default_factory=list)
     extracted_slots: dict[str, str]
     missing_slots: list[str]
     needs_clarification: bool

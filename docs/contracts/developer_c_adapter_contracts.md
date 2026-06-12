@@ -300,6 +300,14 @@ Output:
   "risk_delta": 0,
   "risk_reason": "The purpose is clear and no risk expression was found.",
   "risk_tags": [],
+  "slot_evidence": [
+    {
+      "slot": "visit_purpose",
+      "value": "tourism",
+      "confidence": 0.94,
+      "evidence_text": "tourism"
+    }
+  ],
   "extracted_slots": {
     "visit_purpose": "tourism"
   },
@@ -322,16 +330,20 @@ Rules:
   the trace records fallback mode and the rule output summary.
 - LLM fallback failures are logged through the C runtime logger before rule
   fallback is used.
-- The OpenAI structured output schema uses strict-compatible objects. Optional
-  slot values are represented as required nullable schema fields, then
-  normalized back into `extracted_slots: dict[str, str]` before Pydantic
-  validation.
-- In LLM mode, Developer C applies a narrow semantic slot guard after a valid
-  LLM response. If the current node requires `visit_purpose`, the LLM leaves
-  that slot missing, no risk expression is present, and the deterministic
-  allowed-value classifier detects a clear purpose such as `uncle ->
-  family_visit`, C repairs the Understanding output before sending it to
-  Developer B. This is recorded in `last_trace.postprocessing` and is not
+- The OpenAI structured output schema uses strict-compatible objects. Legacy
+  `visit_purpose` and `stay_duration` slot values are still represented as
+  required nullable schema fields, then normalized back into
+  `extracted_slots: dict[str, str]` before Pydantic validation.
+- Alpha 2 generic slots are represented as `slot_evidence` items. Developer C
+  accepts only slot names present in the current `node_context.required_slots`,
+  `optional_slots`, or `critical_slots`, drops unrelated names, and converts the
+  accepted evidence into `extracted_slots` for Developer B.
+- In LLM mode, Developer C still applies narrow deterministic repairs for
+  current regression guards. If the current node requires `visit_purpose` or
+  `stay_duration`, the LLM leaves that slot missing, no risk expression is
+  present, and the deterministic guard detects a clear value such as `uncle ->
+  family_visit` or `5 days`, C repairs the Understanding output before sending
+  it to Developer B. This is recorded in `last_trace.postprocessing` and is not
   counted as LLM fallback.
 - Rule fallback recognizes the current `visit_purpose` allowed values:
   `family_visit`, `friend_visit`, `business`, `study`, `transit`, and
