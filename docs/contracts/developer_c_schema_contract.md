@@ -722,6 +722,10 @@ Rules:
 The orchestrator may keep this Developer C-owned shape while a turn is being
 processed.
 
+Runtime note: Developer C now carries this state through the LangGraph
+workflow in `backend/app/graphs/graph.py`. This is internal C runtime data and
+does not change the public Unreal request or response contracts.
+
 ```json
 {
   "contract_version": "dev_c_internal_turn.v1",
@@ -883,9 +887,9 @@ Rules:
 - `flow` is C-owned Unreal presentation metadata for scene/cutscene/scoreboard
   transitions. It does not grant branch authority and must not override
   Developer B `next_node_id` or `next_action`.
-- Alpha 3B flow ids currently emitted by Developer C are
-  `flight_to_immigration_arrival`, `immigration_to_baggage_claim`, and
-  `alpha_final_scoreboard`.
+- Flow metadata is now derived from `transition.unreal_event` where possible.
+  Current flow ids emitted by Developer C are `flight_to_arrival_tutorial`,
+  `immigration_to_baggage_claim`, and `alpha_final_scoreboard`.
 - NPC text and `npc.audio_url` must come from Developer A output through the
   Developer C adapter, not directly from Developer B.
 - `npc.audio_url` points to a Developer C-served runtime artifact under

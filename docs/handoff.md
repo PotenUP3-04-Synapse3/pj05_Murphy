@@ -71,6 +71,47 @@ metadata, C-owned Understanding postprocessing, and C-owned runtime adapter
 alignment only; any future change requiring A/B logic changes must be filed as a
 change request first.
 
+## 2026-06-12 Developer C LangGraph Refactor
+
+Developer C refactored the hardcoded procedural orchestrator into a LangGraph
+v1.2.2 workflow while preserving the public `Orchestrator.run_turn()` API and
+A/B adapter boundaries.
+
+Implemented:
+
+- Added `backend/app/graphs/graph.py` with `DeveloperCTurnState`,
+  `build_initial_developer_c_state()`, and the compiled Developer C turn graph.
+- Added C-owned graph tool wrappers under
+  `backend/app/tools/tool_c/developer_c_graph_tools.py`.
+- Replaced the large procedural `Orchestrator.run_turn()` body with a thin
+  LangGraph invocation wrapper.
+- Preserved compatibility for C diagnostics/tests that replace orchestrator
+  dependencies such as `understanding_agent`.
+- Kept Developer A and B implementation files read-only; C still calls A/B
+  only through existing adapters.
+- Added AgentRun metadata showing `runtime.orchestrator = "langgraph"`,
+  graph name, tool style, and graph node order.
+- Moved transition handling into graph state so `COMPLETE_CHAPTER` responses
+  pass `TransitionContext` to Developer A and the response builder.
+- Updated C flow metadata to follow current B transition nodes and events:
+  `START_AIRPORT_ARRIVAL_TUTORIAL`, `ENTER_BAGGAGE_CLAIM`, and
+  `SHOW_ALPHA_SCOREBOARD`.
+- Added sprint tracking at
+  `docs/sprints/2026-06-12-langgraph-refactor-sprint.md`.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_developer_c_langgraph_orchestrator.py -q`:
+  PASS, 2 passed, 1 warning.
+- `uv run pytest backend/tests/test_developer_c_langgraph_orchestrator.py backend/tests/test_preprototype_flow.py backend/tests/test_unified_agent_run_log.py -q`:
+  PASS, 29 passed, 2 warnings.
+- `uv sync`: PASS. It restored the locked environment and removed undeclared
+  local package `en-core-web-sm==3.8.0` from the current virtualenv.
+- `uv run pytest -q`: PASS, 218 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 101 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
+
 ## 2026-06-12 Developer C Alpha 3E Follow-up
 
 Developer C updated the realtime STT path to match the recommended Alpha

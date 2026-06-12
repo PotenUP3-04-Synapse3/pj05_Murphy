@@ -74,6 +74,7 @@ class ResponseBuilder:
                 current_node_id=request.turn.session.current_node_id,
                 next_node_id=dev_b_output.branch.next_node_id,
                 next_action=dev_b_output.branch.next_action,
+                transition=transition,
             ),
             state_delta=dev_b_output.state_delta,
             evaluation=EvaluationResponse(
@@ -109,7 +110,35 @@ def _build_flow_response(
     current_node_id: str,
     next_node_id: str,
     next_action: str,
+    transition: TransitionContext | None,
 ) -> FlowResponse:
+    if transition is not None and transition.unreal_event == "START_AIRPORT_ARRIVAL_TUTORIAL":
+        return FlowResponse(
+            transition_type="cutscene",
+            transition_id="flight_to_arrival_tutorial",
+            from_scene_id=current_scene_id,
+            to_scene_id="ARRIVAL_TUTORIAL",
+            cinematic_id="CIN_FLIGHT_ARRIVAL_JFK",
+            skip_allowed=True,
+        )
+
+    if transition is not None and transition.unreal_event == "ENTER_BAGGAGE_CLAIM":
+        return FlowResponse(
+            transition_type="scene_transition",
+            transition_id="immigration_to_baggage_claim",
+            from_scene_id=current_scene_id,
+            to_scene_id="BAGGAGE_MISSING",
+        )
+
+    if transition is not None and transition.unreal_event == "SHOW_ALPHA_SCOREBOARD":
+        return FlowResponse(
+            transition_type="scoreboard",
+            transition_id="alpha_final_scoreboard",
+            from_scene_id=current_scene_id,
+            to_scene_id="ALPHA_SCOREBOARD",
+            show_scoreboard=True,
+        )
+
     if current_node_id == "FLIGHT_005_WRAP_UP" and next_node_id == "IMM_001_PASSPORT":
         return FlowResponse(
             transition_type="cutscene",

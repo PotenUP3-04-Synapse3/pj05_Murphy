@@ -61,6 +61,13 @@ The user's proposed flow is correct with one refinement: OpenKB retrieval,
 response building, logging, and validation are Developer C-owned steps inside
 the Orchestrator path.
 
+Developer C now implements that path as a LangGraph v1.2.2 workflow. The
+compiled graph in `backend/app/graphs/graph.py` owns the node order and shared
+state shape. Concrete C-owned work happens through graph-style tool wrappers in
+`backend/app/tools/tool_c/developer_c_graph_tools.py`. The public
+`Orchestrator.run_turn()` method remains as a thin compatibility entry point
+that invokes the graph.
+
 ```text
 Unreal wav
   -> STT
@@ -112,6 +119,8 @@ Developer C may implement these adapters under:
 - `backend/app/services/service_c/stt_service.py`
 - `backend/app/services/service_c/openkb_service.py`
 - `backend/app/services/service_c/orchestrator.py`
+- `backend/app/graphs/graph.py`
+- `backend/app/tools/tool_c/`
 - `backend/app/services/service_c/logging_service.py`
 - `backend/app/services/service_c/response_builder.py`
 - `backend/app/services/service_c/validator.py`
