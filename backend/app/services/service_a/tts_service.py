@@ -4,31 +4,38 @@ from typing import Any, Literal
 from backend.app.services.service_a.npc_roster_service import resolve_npc_profile_by_display_name
 from backend.app.services.service_a.tts_provider_service import TTSProviderRequest
 
-TTSStatus = Literal["ok", "failed", "fallback_mock"]
+# 음성 합성 상태(TTS Status)를 나타내는 리터럴(Literal) 타입입니다.
+TTSStatus = Literal[
+    "ok",            # 성공
+    "failed",        # 합성 오류 발생
+    "fallback_mock", # 모의(Mock) 합성으로 대체 제공됨
+]
 
 
+# 음성 합성을 호출하기 위한 텍스트 및 기본 메타정보를 묶은 요청 데이터 구조 클래스(Class)입니다.
 @dataclass(frozen=True)
 class TTSRequest:
-    text: str
-    speaker: str
-    tone: str
+    text: str    # 합성 대상 영문 대사 텍스트
+    speaker: str # 발화 대상 화자 이름
+    tone: str    # 발화 톤 명세 키값
 
 
+# 최종 합성 완료된 오디오 음원의 속성 및 주소 정보를 담고 있는 데이터 클래스(Data Class)입니다.
 @dataclass(frozen=True)
 class TTSAudio:
-    provider: str
-    audio_url: str | None
-    voice_id: str
-    duration_ms: int
-    audio_path: str | None = None
-    sample_rate: int | None = None
-    status: TTSStatus = "ok"
-    fallback: dict[str, Any] | None = None
+    provider: str                    # 사용한 음성 엔진 이름 (예: mock, kokoro, edge)
+    audio_url: str | None            # 클라이언트가 접근할 웹 다운로드 경로(URL)
+    voice_id: str                    # 적용된 고유 음성 코드
+    duration_ms: int                 # 음원의 실제 길이 (단위: 밀리초(ms))
+    audio_path: str | None = None    # 서버 디스크 상의 저장 경로
+    sample_rate: int | None = None   # 샘플 레이트 (Hz)
+    status: TTSStatus = "ok"         # 합성 상태 코드
+    fallback: dict[str, Any] | None = None # 대체 생성 시 작동 정보 사전
 
 
 def synthesize_speech(request: TTSRequest) -> TTSAudio:
-    """외부 TTS provider 호출 없이 mock 음성 metadata를 반환한다."""
-    # 테스트와 로컬 개발은 실제 TTS credential 없이 재현 가능해야 한다.
+    """실제 클라우드 API 호출이나 AI 로드 없이 빠른 테스팅용 모의(Mock) 음성 정보 데이터를 생성하여 리턴합니다."""
+    # 자격 증명(Credential) 설정이나 모델 부하 없이 유닛 테스트 및 기본 로컬 개발 환경에서 빠르게 재생 통계를 확인하기 위해 사용됩니다.
     return TTSAudio(
         provider="mock",
         audio_url=None,
@@ -38,6 +45,7 @@ def synthesize_speech(request: TTSRequest) -> TTSAudio:
 
 
 def _voice_id(speaker: str) -> str:
+    """전달받은 화자 이름을 기준으로 로컬 모의 음성 식별 코드를 찾아냅니다."""
     profile = resolve_npc_profile_by_display_name(speaker)
     if profile is not None:
         return profile.mock_voice_id
@@ -45,6 +53,7 @@ def _voice_id(speaker: str) -> str:
 
 
 def _duration_ms(tone: str) -> int:
+    """발화 톤(Tone)에 맞게 물리 오디오 음원의 길이(ms)를 적합한 수치로 유추하여 대략적으로 결정합니다."""
     if tone == "formal_neutral":
         return 2400
     if tone == "formal_warning":
@@ -66,7 +75,8 @@ def build_kokoro_provider_request(
     emotion: str | None = None,
     emotion_intensity: float | None = None,
 ) -> TTSProviderRequest:
-    """Kokoro 교체 가능 provider interface에 맞춘 TTS 요청을 만든다."""
+    """온디바이스 Kokoro 음성 엔진에 인가할 규격화된 TTSProviderRequest 인스턴스(Instance)를 생성합니다."""
+    # 화자 톤 및 영어 등급에 맞춰 속도(Speed)를 보정합니다.
     speed = _kokoro_speed(tone=tone, english_level=english_level)
     tts_emotion = emotion or _emotion_for_tone(tone)
     return TTSProviderRequest(
@@ -98,7 +108,7 @@ def build_edge_provider_request(
     pitch: str = "+0Hz",
     output_format: str = "wav",
 ) -> TTSProviderRequest:
-    """Edge TTS provider interface에 맞는 요청을 만든다."""
+    """Microsoft Edge 웹 서비스용 합성 규칙 및 부가 파라미터(volume, pitch 등)가 조립된 TTSProviderRequest 객체를 리턴합니다."""
     speed = _kokoro_speed(tone=tone, english_level=english_level)
     return TTSProviderRequest(
         provider="edge",
@@ -113,6 +123,7 @@ def build_edge_provider_request(
         pitch=0.0,
         sample_rate=24000,
         output_format=output_format,
+        # Edge TTS의 CLI에 전달할 고유 제어 속성들을 지정합니다.
         provider_options={
             "voice": edge_voice,
             "rate": rate,
@@ -138,7 +149,7 @@ def build_chatterbox_provider_request(
     language_id: str = "en",
     output_format: str = "wav",
 ) -> TTSProviderRequest:
-    """Chatterbox TTS provider가 쓰는 감정/참조 음성 파라미터를 포함한 요청을 만든다."""
+    """로컬 딥러닝 Chatterbox 모델용 전용 매개변수(exaggeration, cfg_weight, device)를 패킹한 요청을 생성합니다."""
     tts_emotion = _emotion_for_tone(tone)
     return TTSProviderRequest(
         provider="chatterbox",
@@ -153,6 +164,7 @@ def build_chatterbox_provider_request(
         pitch=0.0,
         sample_rate=24000,
         output_format=output_format,
+        # 학습 모델 구동용 세부 사양을 딕셔너리로 패킹합니다.
         provider_options={
             "voice": voice_id,
             "audio_prompt_path": audio_prompt_path,
@@ -184,7 +196,7 @@ def build_elevenlabs_provider_request(
     timeout_seconds: float = 60.0,
     use_speaker_boost: bool = True,
 ) -> TTSProviderRequest:
-    """ElevenLabs API provider가 쓰는 voice setting과 인증 정보를 포함한 요청을 만든다."""
+    """ElevenLabs REST API 규격에 명시된 인증 토큰, 모델 고유 코드 및 세부 목소리 제어 지표를 묶어 요청을 조립합니다."""
     tts_emotion = _emotion_for_tone(tone)
     return TTSProviderRequest(
         provider="elevenlabs",
@@ -199,6 +211,7 @@ def build_elevenlabs_provider_request(
         pitch=0.0,
         sample_rate=24000,
         output_format=output_format,
+        # API 헤더 및 페이로드에 들어갈 속성들을 매핑합니다.
         provider_options={
             "api_key": api_key,
             "base_url": base_url,
@@ -217,6 +230,7 @@ def build_elevenlabs_provider_request(
 
 
 def _kokoro_speed(tone: str, english_level: str) -> float:
+    """화자 상태 및 플레이어 수준을 판단하여 자연스러운 발화 재생 속도 비율을 조절합니다. (초보자일 경우 속도를 느리게 조절)"""
     if tone == "formal_warning":
         return 0.84
     if tone == "formal_stern":
@@ -231,6 +245,7 @@ def _kokoro_speed(tone: str, english_level: str) -> float:
 
 
 def _emotion_for_tone(tone: str) -> str:
+    """지정된 대사 톤(Tone)에 매핑되는 내부 감정 이름(Emotion Name) 문자열을 구합니다."""
     if tone == "formal_warning":
         return "warning_official"
     if tone == "formal_stern":
@@ -243,6 +258,7 @@ def _emotion_for_tone(tone: str) -> str:
 
 
 def _intensity_for_emotion(emotion: str) -> float:
+    """감정 유형에 대응하는 기본적 표현 감정 세기(Intensity) 수치 값을 매핑합니다."""
     if emotion == "warning_official":
         return 0.92
     if emotion == "stern_official":

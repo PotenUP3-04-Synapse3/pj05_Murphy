@@ -46,6 +46,7 @@ from backend.app.tools.tool_a.npc_dialogue_evidence_tool import build_npc_dialog
 PROMPT_VERSION = "npc_dialogue_prompt_v1"
 
 
+# NPC 대사 생성 결과(NPCDialogueResult)와 음성 파일(TTSAudio)을 하나의 객체로 묶어 제공하는 보관 데이터 클래스(Data Class)입니다.
 @dataclass(frozen=True)
 class VoiceOutput:
     dialogue: NPCDialogueResult
@@ -53,7 +54,7 @@ class VoiceOutput:
 
 
 def build_voice_output(dialogue: NPCDialogueResult) -> VoiceOutput:
-    # Unreal 응답 조립은 Developer C 책임이므로 여기서는 voice payload만 묶는다.
+    """NPC 대사와 가짜(Mock) 음성 데이터를 조립하여 단일 패키지로 반환합니다."""
     audio = synthesize_speech(
         TTSRequest(
             text=dialogue.text,
@@ -75,10 +76,14 @@ def build_voice_output_from_level_design(
     audio_url_base: str | None = None,
     agent_run_root: Path | None = None,
 ) -> dict[str, Any]:
-    """Level Design JSON에서 NPC 대사와 fake Kokoro 음성 metadata를 함께 만든다."""
+    """레벨 디자인 에이전트 JSON을 수신하여 NPC 대사를 최종 튜닝하고 대응하는 TTS 음향 합성 자원을 결합해 조립합니다.
+    
+    이 함수는 개발자 A 컴포넌트의 통합 진입점(Entry Point) 역할을 수행합니다.
+    """
     root = runtime_root or Path("backend/runtime")
     run_root = agent_run_root or root / "agent_runs"
     agent_run_middleware = NPCDialogueAgentRunMiddleware()
+    # 에이전트 실행 추적이 가능하도록 디버그 근거 요약을 빌드합니다.
     evidence_metadata = build_npc_dialogue_evidence_summary(payload)
     agent_run_middleware.record_event(
         evidence_metadata,
@@ -96,6 +101,7 @@ def build_voice_output_from_level_design(
     )
 
     try:
+        # 1. 원본 입력을 내부 처리 사양으로 정규화(Normalization)합니다.
         normalized = normalize_level_design_payload(payload)
         agent_run_middleware.record_event(
             evidence_metadata,
@@ -112,6 +118,7 @@ def build_voice_output_from_level_design(
                 "candidate_text_available": bool(normalized.get("candidate_text")),
             },
         )
+        # 2. 대화 생성 엔진을 구동하여 NPC 텍스트 대사를 생성합니다.
         dialogue = generate_npc_dialogue_from_level_design(payload, use_llm=use_llm_dialogue)
         npc_profile = resolve_npc_profile(_npc_id(payload))
         agent_run_middleware.record_event(
@@ -130,6 +137,7 @@ def build_voice_output_from_level_design(
                 "llm": dialogue.get("llm"),
             },
         )
+        # 3. 사용자 및 NPC의 특성을 반영하여 일관된 목소리 프로필(Voice Profile)을 획득합니다.
         voice_profile = resolve_voice_profile(
             user_id=user_id or session_id or str(payload.get("user_id", "")),
             npc_id=npc_profile.npc_id,
@@ -145,6 +153,7 @@ def build_voice_output_from_level_design(
                 "voice_id": voice_profile.voice_id,
             },
         )
+        # 4. 사용될 TTS 엔진 종류를 판단하여 해당 엔진에 맞춘 데이터 구조를 인가합니다.
         tts_provider_name = _selected_tts_provider(use_real_tts=use_real_tts)
         tts_request = _build_provider_request(
             provider_name=tts_provider_name,
@@ -184,6 +193,7 @@ def build_voice_output_from_level_design(
                 "text_length": len(tts_request.text),
             },
         )
+        # 5. 지정된 프로바이더(Provider)를 사용하여 음향 데이터 WAV 생성을 처리합니다.
         tts = _build_kokoro_audio(
             tts_request=tts_request,
             runtime_root=root,
@@ -219,6 +229,7 @@ def build_voice_output_from_level_design(
                 "fallback": dialogue.get("fallback"),
             },
         )
+        # 6. 실행 상세 결과를 AgentRun 로그 DB에 파일로 기록 및 커밋합니다.
         (
             agent_run,
             unified_agent_run_path,
@@ -243,7 +254,7 @@ def build_voice_output_from_level_design(
         }
         return output
     except Exception as exc:
-        # Developer A는 branch를 바꾸지 않고 음성 실패 metadata만 반환한다.
+        # 오류 발생 시 시스템 중단을 막기 위해 기본 텍스트 대사 및 오디오 폴백(Fallback) 개체를 신속히 구성해 제공합니다.
         fallback_tts = build_audio_fallback(
             provider="kokoro",
             voice_id="am_michael",
@@ -294,12 +305,14 @@ def _build_kokoro_audio(
     branch_type: str | None = None,
     provider_name: str = "kokoro",
 ) -> dict[str, Any]:
+    """선택된 TTS 엔진을 사용하여 실제로 오디오 음원 파일을 합성하고, 캐시 검사 및 품질 분석 메타데이터를 취합하여 반환합니다."""
     voice = str(tts_request.provider_options["voice"])
     model_version = _provider_cache_model_version(
         provider_name=provider_name,
         use_real_tts=use_real_tts,
         tts_request=tts_request,
     )
+    # 캐싱(Caching) 파일 경로 식별을 위한 유일 해시 키를 획득합니다.
     cache_key = build_audio_cache_key(
         text=tts_request.text,
         voice=voice,
@@ -309,6 +322,7 @@ def _build_kokoro_audio(
         model_version=model_version,
         provider=provider_name,
     )
+    # 음원 파일이 실제로 저장될 스토리지 절대 경로를 확보합니다.
     output_path = audio_output_path(
         root=runtime_root,
         cache_key=cache_key,
@@ -319,8 +333,10 @@ def _build_kokoro_audio(
         voice_id=voice,
         provider=provider_name,
     )
+    # TTS 엔진 인터페이스를 동적 해독하여 음원 합성을 수행합니다.
     provider = _resolve_tts_provider(provider_name=provider_name, use_real_tts=use_real_tts)
     metadata = provider.synthesize(tts_request, output_path)
+    # 윈도우 진폭 연산(RMS)을 이용해 침묵(Silence) 비율 등 파형 기본 정보를 획득합니다.
     quality_metadata = analyze_wav_quality(output_path)
     audio_url = _build_audio_url(audio_url_base, output_path, runtime_root)
     return {
@@ -330,11 +346,13 @@ def _build_kokoro_audio(
         "voice_profile_id": tts_request.voice_profile_id,
         "cache_key": cache_key,
         "quality_metadata": quality_metadata,
+        # 향후 2차 후처리를 위한 디렉티브 메타데이터를 추가합니다.
         "postprocess_policy": build_postprocess_policy(provider=str(metadata["provider"])),
     }
 
 
 def _build_audio_url(audio_url_base: str | None, output_path: Path, runtime_root: Path) -> str | None:
+    """웹 서버가 외부 클라이언트에 노출할 오디오 파일의 인터넷 주소(URL)를 조립합니다."""
     if not audio_url_base:
         return None
     relative_path = output_path.relative_to(runtime_root / "audio").as_posix()
@@ -352,6 +370,7 @@ def _build_provider_request(
     english_level: str,
     dialogue: dict[str, Any],
 ) -> Any:
+    """설정된 TTS 엔진 명세에 대응되는 개별 파라미터 구조체(Request Object)를 분기 빌드합니다."""
     if provider_name == "elevenlabs":
         return build_elevenlabs_provider_request(
             text=text,
@@ -431,6 +450,7 @@ def _build_provider_request(
 
 
 def _resolve_tts_provider(provider_name: str, use_real_tts: bool) -> Any:
+    """합성 옵션을 분기 해석하여 실제 AI 인스턴스 또는 모의(Mock)용 프로바이더 인스턴스를 빌드해 제공합니다."""
     if not use_real_tts:
         return FakeKokoroProvider()
     if provider_name == "elevenlabs":
@@ -443,6 +463,7 @@ def _resolve_tts_provider(provider_name: str, use_real_tts: bool) -> Any:
 
 
 def _selected_tts_provider(*, use_real_tts: bool) -> str:
+    """환경 변수 및 설정을 기반으로 활성화할 타겟 TTS 프로바이더 이름을 판별합니다."""
     if not use_real_tts:
         return "kokoro"
     provider = _env_value("MURPHY_TTS_PROVIDER", "kokoro").lower()
@@ -450,6 +471,7 @@ def _selected_tts_provider(*, use_real_tts: bool) -> str:
 
 
 def _model_version(*, provider_name: str, use_real_tts: bool) -> str:
+    """캐시 키 식별을 위한 타겟 TTS의 릴리즈 가중치 모델 및 라이브러리 버전을 문자열로 매핑합니다."""
     if not use_real_tts:
         return "fake-kokoro-v1"
     if provider_name == "elevenlabs":
@@ -462,6 +484,7 @@ def _model_version(*, provider_name: str, use_real_tts: bool) -> str:
 
 
 def _provider_cache_model_version(*, provider_name: str, use_real_tts: bool, tts_request: Any) -> str:
+    """TTS 엔진별로 캐싱 타겟 여부를 조율하기 위해 추가 파라미터를 보정한 정밀 캐시 모델 버전을 조립합니다."""
     model_version = _model_version(provider_name=provider_name, use_real_tts=use_real_tts)
     if provider_name != "elevenlabs":
         return model_version
@@ -479,6 +502,7 @@ def _provider_cache_model_version(*, provider_name: str, use_real_tts: bool, tts
 
 
 def _tts_provider_tool_name(provider_name: str) -> str:
+    """AgentRun 로그 타임라인 기록 시 식별을 위한 하위 툴 클래스의 메서드 지표 이름을 문자열로 매핑합니다."""
     if provider_name == "elevenlabs":
         return "tts_provider_service.elevenlabs.synthesize"
     if provider_name == "chatterbox":
@@ -489,10 +513,12 @@ def _tts_provider_tool_name(provider_name: str) -> str:
 
 
 def _env_value(key: str, default: str) -> str:
+    """안전하게 OS 환경 변수 또는 로컬 .env 설정 파일에서 환경 설정을 우선순위대로 획득합니다."""
     return os.getenv(key) or _read_env_file(Path(".env")).get(key, default)
 
 
 def _env_float(key: str, default: float) -> float:
+    """환경 설정에 정의된 문자열 값을 파싱하여 소수점(Float) 수치로 가져옵니다."""
     raw_value = _env_value(key, str(default))
     try:
         return float(raw_value)
@@ -501,6 +527,7 @@ def _env_float(key: str, default: float) -> float:
 
 
 def _env_bool(key: str, default: bool) -> bool:
+    """설정된 환경 매개변수 값(True/False, 1/0 등)을 부울(Boolean) 참/거짓 값으로 분석합니다."""
     raw_value = _env_value(key, str(default)).lower()
     if raw_value in {"1", "true", "yes", "on"}:
         return True
@@ -510,6 +537,7 @@ def _env_bool(key: str, default: bool) -> bool:
 
 
 def _elevenlabs_stability_for_tone(tone: str) -> float:
+    """ElevenLabs 성우의 감정 톤(Tone)에 가장 어울리는 기본 목소리 안정성(Stability) 지표를 매핑합니다."""
     if tone == "formal_warning":
         return 0.38
     if tone == "formal_stern":
@@ -522,6 +550,7 @@ def _elevenlabs_stability_for_tone(tone: str) -> float:
 
 
 def _elevenlabs_style_for_tone(tone: str) -> float:
+    """ElevenLabs 성우의 감정에 어울리는 어조 과장 수준(Style) 지표를 조율합니다."""
     if tone == "formal_warning":
         return 0.78
     if tone == "formal_stern":
@@ -534,6 +563,7 @@ def _elevenlabs_style_for_tone(tone: str) -> float:
 
 
 def _elevenlabs_speed_for_tone(tone: str) -> float:
+    """ElevenLabs 발화 어조 속도를 매핑합니다."""
     if tone == "formal_warning":
         return 0.76
     if tone == "formal_stern":
@@ -544,6 +574,7 @@ def _elevenlabs_speed_for_tone(tone: str) -> float:
 
 
 def _chatterbox_exaggeration_for_tone(tone: str) -> float:
+    """Chatterbox 연산 시 감정의 극대화 스케일 값을 리턴합니다."""
     if tone == "formal_warning":
         return 0.9
     if tone == "formal_stern":
@@ -556,6 +587,7 @@ def _chatterbox_exaggeration_for_tone(tone: str) -> float:
 
 
 def _chatterbox_cfg_weight_for_tone(tone: str) -> float:
+    """Chatterbox CFG 가중치를 매핑합니다."""
     if tone == "formal_warning":
         return 0.25
     if tone == "formal_stern":
@@ -566,6 +598,7 @@ def _chatterbox_cfg_weight_for_tone(tone: str) -> float:
 
 
 def _read_env_file(path: Path) -> dict[str, str]:
+    """로컬 .env 파일을 키-값 매핑 구조로 해독합니다."""
     if not path.exists():
         return {}
     values: dict[str, str] = {}
@@ -589,6 +622,7 @@ def _record_agent_run(
     request_id: str | None,
     session_id: str | None,
 ) -> tuple[dict[str, Any], Path, Path]:
+    """에이전트 구동에 따른 성공 실행 상태 기록을 수집하고 로그(AgentRun) 파일로 구조화해 씁니다."""
     llm_metadata = _as_dict(dialogue.get("llm"))
     model_name = str(
         llm_metadata.get("model_name")
@@ -598,6 +632,7 @@ def _record_agent_run(
     output_tokens = _int_from_metadata(llm_metadata.get("output_tokens"))
     fallback = _as_dict(dialogue.get("fallback"))
 
+    # 실행 근거 메타데이터를 강화해 줍니다.
     evidence_metadata["npc_context"] = {
         "npc_id": _npc_id(payload),
         "npc_emotion": _npc_emotion(payload, dialogue),
@@ -615,6 +650,7 @@ def _record_agent_run(
         "reason": fallback.get("reason"),
     }
 
+    # 미들웨어를 사용하여 레코드 조립을 실행합니다.
     middleware = NPCDialogueAgentRunMiddleware()
     agent_run = middleware.start_run(
         prompt_version=PROMPT_VERSION,
@@ -635,6 +671,7 @@ def _record_agent_run(
         ),
     )
 
+    # 영구 저장소에 최종 레코드를 보관 조치합니다.
     store = NPCDialogueAgentRunStore(run_root)
     unified_path, readable_path = store.append_unified_agent_run(
         agent_run,
@@ -663,6 +700,7 @@ def _record_failed_agent_run(
     request_id: str | None,
     session_id: str | None,
 ) -> tuple[dict[str, Any], Path, Path]:
+    """예외 처리 발생 시 실패 상태 레코드(AgentRun Failed)를 조립하여 기록합니다."""
     evidence_metadata["fallback"] = {"used": True, "reason": type(error).__name__}
     evidence_metadata["tts_summary"] = _tts_summary(fallback_tts)
     evidence_metadata["dialogue_source_trace"] = _failed_dialogue_source_trace(
@@ -681,6 +719,7 @@ def _record_failed_agent_run(
     )
     agent_run = middleware.fail_run(agent_run, error=type(error).__name__)
     evidence = evidence_metadata["evidence_summary"][0]
+    # 디버깅 편의를 위해 아티팩트도 함께 조립합니다.
     _artifact = build_npc_dialogue_artifact(
         agent_run_id=str(agent_run["agent_run_id"]),
         npc_id=_npc_id(payload),
@@ -711,6 +750,7 @@ def _record_failed_agent_run(
 
 
 def _source_window(payload: dict[str, Any], normalized: dict[str, Any]) -> dict[str, Any]:
+    """게임 클라이언트 시나리오 윈도우(Scenario Window)의 생명 주기 데이터를 파싱합니다."""
     return {
         "source_type": "level_design_json",
         "node_id": normalized.get("node_id") or payload.get("node_id"),
@@ -720,6 +760,7 @@ def _source_window(payload: dict[str, Any], normalized: dict[str, Any]) -> dict[
 
 
 def _tts_summary(tts: dict[str, Any]) -> dict[str, Any]:
+    """합성 완료된 음원 정보의 핵심 요약 정보를 빌드합니다."""
     return {
         "provider": tts.get("provider"),
         "voice_id": tts.get("voice_id"),
@@ -732,6 +773,7 @@ def _tts_summary(tts: dict[str, Any]) -> dict[str, Any]:
 
 
 def _tts_generation_speed(tts: dict[str, Any]) -> dict[str, Any]:
+    """합성 속도 및 실시간 계수(Real-time Factor) 연산 통계를 조립합니다."""
     return {
         "generation_seconds": _optional_float(tts.get("generation_seconds")),
         "audio_seconds": _optional_float(tts.get("audio_seconds")),
@@ -746,6 +788,7 @@ def _dialogue_source_trace(
     dialogue: dict[str, Any],
     tts: dict[str, Any],
 ) -> dict[str, Any]:
+    """에이전트 실행에 직접 인가된 모든 변수와 인자 상태를 역추적(Trace)하기 위한 상세 지도를 그립니다."""
     npc_profile = resolve_npc_profile(_npc_id(payload))
     node_context = _as_dict(payload.get("node_context"))
     evaluation_summary = _as_dict(payload.get("evaluation_summary") or payload.get("evaluation"))
@@ -823,6 +866,7 @@ def _dialogue_source_trace(
 
 
 def _npc_text_source(*, llm_used: bool, seed_fallback_used: bool, candidate_text: str) -> str:
+    """대화 텍스트가 최종적으로 파싱/생성된 출처를 식별합니다."""
     if llm_used and seed_fallback_used:
         return "llm_dialogue_from_fallback_seed"
     if llm_used:
@@ -836,6 +880,7 @@ def _failed_dialogue_source_trace(
     fallback_tts: dict[str, Any],
     error: Exception,
 ) -> dict[str, Any]:
+    """오류 폴백 상태에서의 획득 출처 지도를 조립합니다."""
     npc_profile = resolve_npc_profile(_npc_id(payload))
     return {
         "npc_profile": {
@@ -859,11 +904,13 @@ def _failed_dialogue_source_trace(
 
 
 def _npc_id(payload: dict[str, Any]) -> str:
+    """입력 데이터 구조에서 매핑되는 NPC 고유 코드를 찾아 안전 반환합니다."""
     npc = _as_dict(payload.get("npc"))
     return resolve_npc_profile(_optional_str(npc.get("npc_id") or npc.get("id"))).npc_id
 
 
 def _npc_emotion(payload: dict[str, Any], dialogue: dict[str, Any]) -> str:
+    """NPC의 감정 상태 텍스트를 추출합니다."""
     npc = _as_dict(payload.get("npc"))
     generation_profile = _as_dict(dialogue.get("generation_profile"))
     emotion = _as_dict(generation_profile.get("npc_emotion"))
@@ -871,26 +918,32 @@ def _npc_emotion(payload: dict[str, Any], dialogue: dict[str, Any]) -> str:
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
+    """Null 또는 기타 자료형을 안전하게 사전(Dictionary)으로 치환합니다."""
     return value if isinstance(value, dict) else {}
 
 
 def _int_from_metadata(value: Any) -> int:
+    """안전 정수 변환 유틸리티 함수입니다."""
     return value if isinstance(value, int) else 0
 
 
 def _optional_str(value: Any) -> str | None:
+    """안전 문자열 캐스팅 함수입니다."""
     return str(value) if value is not None else None
 
 
 def _optional_int(value: Any) -> int | None:
+    """안전 정수 또는 Null 반환 함수입니다."""
     return value if isinstance(value, int) else None
 
 
 def _optional_float(value: Any) -> float | None:
+    """안전 실수 또는 Null 반환 함수입니다."""
     return float(value) if isinstance(value, int | float) else None
 
 
 def _preview_text(value: Any, limit: int = 120) -> str | None:
+    """긴 대사 텍스트를 로그에서 보기 편하게 특정 임계치 길이로 슬라이싱해 주는 요약용 유틸리티 함수입니다."""
     if value is None:
         return None
     text = str(value).strip()
