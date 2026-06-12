@@ -71,6 +71,56 @@ metadata, C-owned Understanding postprocessing, and C-owned runtime adapter
 alignment only; any future change requiring A/B logic changes must be filed as a
 change request first.
 
+## 2026-06-12 Developer C Alpha 3E Follow-up
+
+Developer C updated the realtime STT path to match the recommended Alpha
+runtime: ElevenLabs realtime relay remains the primary subtitle provider, while
+the existing local Whisper STT runtime is retained as a batch-on-commit
+fallback.
+
+Implemented behavior:
+
+- `/api/game/ai/stt/stream` still streams partial/final subtitle events through
+  the C-owned WebSocket.
+- When an `audio_chunk` is committed and ElevenLabs fails to send or returns no
+  final transcript, Developer C wraps the buffered PCM chunks into a wav file
+  and calls the existing local Whisper batch STT boundary.
+- Fallback final events use `provider = "local_batch_fallback"` and keep
+  `target_endpoint = "POST /api/game/ai/respond"` so Unreal can reuse the
+  committed transcript path.
+- The local fallback is not partial-streaming STT; it only recovers the final
+  transcript at commit time.
+- `MURPHY_STT_DEBUG_LOG_MODE=debug` appends standalone
+  `realtime_stt_relay` Developer C AgentRun records to the same unified
+  JSONL/Markdown files as the existing A/B/C logs.
+- Realtime STT debug records include chunk count, total audio bytes, estimated
+  duration, primary/fallback provider metadata, final transcript summary, token
+  counts fixed at zero, and estimated cost from
+  `ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD`.
+
+Changed:
+
+- Added `local_batch_fallback` to the realtime STT server event provider
+  contract.
+- Added local batch fallback buffering to
+  `backend/app/services/service_c/elevenlabs_realtime_stt_relay.py`.
+- Added `backend/app/services/service_c/realtime_stt_debug_log_service.py`.
+- Added realtime STT debug settings to
+  `backend/app/services/service_c/settings_service.py` and `.env.example`.
+- Updated Developer C schema, adapter, dependency, and handoff docs.
+- Added focused tests for fallback final recovery and debug AgentRun append.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_elevenlabs_realtime_stt_relay.py backend/tests/test_realtime_stt_websocket.py::test_realtime_stt_websocket_appends_debug_agent_run_log_for_stt_session backend/tests/test_settings_service.py::test_app_settings_reads_values_from_env_file -q`:
+  PASS, 8 passed, 2 warnings.
+- `uv sync`: PASS. It restored the locked environment and removed undeclared
+  local STT extra packages from the current virtualenv.
+- `uv run pytest -q`: PASS, 211 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 96 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
+
 ## 2026-06-12 Developer C Alpha 3D Follow-up
 
 Developer C added a backend relay path for ElevenLabs realtime STT. Unreal can

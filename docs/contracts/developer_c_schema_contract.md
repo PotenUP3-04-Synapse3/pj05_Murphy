@@ -57,6 +57,8 @@ through `backend/app/services/service_c/settings_service.py`:
 | `ELEVENLABS_REALTIME_AUDIO_FORMAT` | `pcm_16000` | Audio format sent to ElevenLabs |
 | `ELEVENLABS_REALTIME_COMMIT_STRATEGY` | `manual` | ElevenLabs commit strategy, `manual` or `vad` |
 | `ELEVENLABS_REALTIME_RECEIVE_TIMEOUT_S` | `0.2` | Short drain timeout for provider events after each audio chunk |
+| `ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD` | `0` | Optional local estimate used only for realtime STT debug cost logs |
+| `MURPHY_STT_DEBUG_LOG_MODE` | `off` | `debug` appends realtime STT AgentRun records to unified C logs |
 
 This keeps the Unreal request simple while still satisfying the Developer B
 `dev_b_policy.v1` input contract.
@@ -144,6 +146,9 @@ It supports two Alpha paths:
 2. C backend relay mode, where Unreal sends `audio_chunk` events with
    `provider = "elevenlabs_relay"` and Developer C relays audio to ElevenLabs
    with the server-side `ELEVENLABS_API_KEY`.
+   If ElevenLabs fails on a committed chunk, or commit returns no provider final
+   transcript, Developer C wraps the buffered PCM chunks as a wav and runs the
+   existing local Whisper batch STT runtime as `local_batch_fallback`.
 
 ```text
 Unreal microphone
@@ -210,10 +215,18 @@ Rules:
   `provider = "elevenlabs_relay"`.
 - ElevenLabs realtime relay uses `xi-api-key` only from the C backend
   environment. Unreal must not receive or send the API key.
+- The existing local Whisper STT runtime is retained as a batch fallback for
+  committed realtime chunks. It is not a partial-streaming engine.
+- When `MURPHY_STT_DEBUG_LOG_MODE=debug`, each realtime STT session appends a
+  `realtime_stt_relay` Developer C AgentRun record to
+  `backend/runtime/generated/agent_runs/unified_agent_runs.jsonl` and `.md`.
+  STT token counts are logged as zero because audio STT providers do not report
+  LLM token usage; cost is an estimate from
+  `ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD` and measured audio bytes.
 - Invalid events return `event_type = "contract_error"` instead of entering the
   C orchestrator.
 - Provider values are currently `unreal_bridge`, `stt_provider_websocket`,
-  `elevenlabs_relay`, or `mock`.
+  `elevenlabs_relay`, `local_batch_fallback`, or `mock`.
 
 ## Unreal Turn Request
 

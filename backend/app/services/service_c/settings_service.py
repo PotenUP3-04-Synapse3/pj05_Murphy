@@ -37,6 +37,8 @@ class AppSettings(BaseSettings):
     elevenlabs_realtime_audio_format: str = "pcm_16000"
     elevenlabs_realtime_commit_strategy: Literal["manual", "vad"] = "manual"
     elevenlabs_realtime_receive_timeout_s: float = 0.2
+    elevenlabs_realtime_estimated_cost_per_minute_usd: float = 0.0
+    murphy_stt_debug_log_mode: Literal["off", "debug"] = "off"
 
     @classmethod
     def from_env_file(cls, env_file: str | Path) -> "AppSettings":

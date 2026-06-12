@@ -616,7 +616,13 @@ class RealtimeTranscriptServerEvent(BaseModel):
     session_id: str | None = None
     turn_index: int | None = None
     sequence: int | None = None
-    provider: Literal["unreal_bridge", "stt_provider_websocket", "elevenlabs_relay", "mock"] | None = None
+    provider: Literal[
+        "unreal_bridge",
+        "stt_provider_websocket",
+        "elevenlabs_relay",
+        "local_batch_fallback",
+        "mock",
+    ] | None = None
     subtitle: RealtimeSubtitlePayload | None = None
     committed: bool = False
     target_endpoint: str | None = None

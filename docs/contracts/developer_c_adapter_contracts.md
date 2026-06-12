@@ -255,6 +255,20 @@ Rules:
 - Partial transcripts are UI-only subtitle previews and must not call Developer
   B or Developer A.
 - Only committed final transcripts may enter the normal C orchestrator path.
+- Recommended Alpha runtime: use ElevenLabs realtime relay as the primary
+  caption path and keep the existing local Whisper STT runtime as a
+  batch-on-commit fallback. The local runtime can recover a final transcript
+  from buffered PCM when the provider fails or returns no final transcript, but
+  it does not provide partial streaming subtitles.
+- Fallback final events use `provider = "local_batch_fallback"` and still set
+  `target_endpoint = "POST /api/game/ai/respond"` so Unreal can reuse the
+  existing committed transcript path.
+- `MURPHY_STT_DEBUG_LOG_MODE=debug` appends a C-owned
+  `realtime_stt_relay` record to the shared unified AgentRun JSONL/Markdown
+  logs. The record includes chunk count, audio bytes, estimated duration,
+  primary/fallback provider metadata, final transcript summary, token counts
+  fixed at zero, and an estimated cost derived from
+  `ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD`.
 - Alpha 3C does not yet pipe the WebSocket final event directly into the
   orchestrator. It returns `target_endpoint = "POST /api/game/ai/respond"` so
   Unreal can reuse the existing committed transcript fallback.

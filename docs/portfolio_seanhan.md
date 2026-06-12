@@ -36,6 +36,10 @@ Sean also added an optional real AI mode for the Developer C Understanding
 Agent, using structured JSON output with deterministic rule fallback so branch
 authority remains with Developer B and final safety remains with Developer C
 validation.
+For Alpha realtime captions, Sean added a C-owned ElevenLabs WebSocket relay
+with the existing local Whisper runtime kept as a batch fallback on committed
+audio chunks, plus unified AgentRun debug logs for STT metadata, token counts,
+and estimated cost.
 
 ## Main Modules
 
@@ -93,3 +97,6 @@ paths.
   prompts for contract-first parallel work.
 - Established a portfolio-ready documentation structure for backend
   architecture, reliability, and integration boundaries.
+- Added a realtime STT relay/debug path that keeps provider keys server-side,
+  preserves local STT fallback, and records audio/cost metadata in unified
+  AgentRun logs.

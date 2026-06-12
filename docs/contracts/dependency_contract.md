@@ -108,6 +108,11 @@ WSS with `ELEVENLABS_API_KEY` kept server-side. Unreal must not hold provider
 API keys. Tests use fake WebSocket connectors and must pass without ElevenLabs
 credentials or network access.
 
+Realtime STT debug mode is local-file logging only. When
+`MURPHY_STT_DEBUG_LOG_MODE=debug`, Developer C appends a standalone
+`realtime_stt_relay` unified AgentRun record with token counts set to zero and
+cost estimated from `ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD`.
+
 Tests must pass without local model downloads, external API keys, real TTS
 providers, real LLM providers, Unreal Engine runtime, or remote OpenKB.
 
