@@ -196,6 +196,10 @@ def _developer_instructions() -> str:
         "friend_visit; business, meeting, or conference to business; study or "
         "school to study; transit or layover to transit; and tourism, travel, "
         "vacation, or sightseeing to tourism."
+        " For extracted_slots.stay_duration, extract concise duration text "
+        "such as 5 days, five days, one week, two weeks, three months, or "
+        "until Friday when the current node asks for stay duration; otherwise "
+        "return null."
     )
 
 
@@ -235,12 +239,13 @@ def _understanding_schema() -> dict[str, Any]:
             "extracted_slots": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["visit_purpose"],
+                "required": ["visit_purpose", "stay_duration"],
                 "properties": {
                     "visit_purpose": {
                         "type": ["string", "null"],
                         "enum": [*VISIT_PURPOSE_VALUES, None],
-                    }
+                    },
+                    "stay_duration": {"type": ["string", "null"]},
                 },
             },
             "missing_slots": {"type": "array", "items": {"type": "string"}},

@@ -53,17 +53,42 @@ Developer C Alpha phases:
    time-limit metadata. Add stage timing to responses/log summaries so STT,
    Understanding, Developer B, Developer A/TTS, response build, and validation
    latency can be measured.
-3. Alpha 2 - Scenario flow contract. Map Alpha scene ids, quest ids, and
+3. Alpha 2 - Understanding Agent generic slot extraction. Replace the current
+   per-slot strict schema/repair pattern with a generic slot evidence contract
+   that can read `node_context.required_slots`, return allowed slot evidence,
+   and keep Developer B as the only branch authority.
+4. Alpha 3 - Scenario flow contract. Map Alpha scene ids, quest ids, and
    interactability rules without replacing Developer B's branch authority or
    Developer A's NPC wording authority.
-4. Alpha 3 - STT provider benchmark. Compare the current local-first Whisper
+5. Alpha 4 - STT provider benchmark. Compare the current local-first Whisper
    path with an API provider path behind the C-owned STT adapter.
-5. Alpha 4 - Realtime voice path. Evaluate WebSocket streaming STT for player
+6. Alpha 5 - Realtime voice path. Evaluate WebSocket streaming STT for player
    speech turns if timing data shows batch wav STT is the main latency issue.
 
 No immediate Developer A or Developer B implementation change is required for
 Alpha 1. Developer C added additive request/response metadata only; any future
 change requiring A/B logic changes must be filed as a change request first.
+
+## 2026-06-11 Developer C Follow-up
+
+Developer C fixed the IMM_003_DURATION progression issue in the C-owned
+Understanding layer. The root cause was that rule mode, LLM structured output,
+and LLM postprocessing only knew how to fill `visit_purpose`, while the duration
+node requires `stay_duration`. C now recognizes duration answers such as
+`5 days`, `five days`, `one week`, and `until Friday`, and repairs missing
+LLM `stay_duration` slots before calling Developer B. Developer B's
+`intent_success and not missing_slots` success policy remains unchanged.
+
+Developer C also documented the Alpha realtime caption transport candidate:
+add a C-owned WebSocket STT session for partial and committed transcripts while
+keeping the existing multipart wav `/respond` path as the fallback baseline.
+Partial transcripts are for Unreal subtitle UI only; committed transcripts enter
+the normal C orchestrator path.
+
+Next Alpha priority: refactor the C-owned Understanding Agent around generic
+slot evidence before expanding the full Alpha scenario flow. The current
+`visit_purpose` and `stay_duration` extractors are acceptable regression guards,
+but new scene slots should not require one hardcoded extractor per node.
 
 ## Last Completed Task
 

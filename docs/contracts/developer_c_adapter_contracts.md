@@ -178,6 +178,66 @@ Rules:
 - Tests must not require local model downloads or real STT provider
   credentials.
 
+## Alpha Realtime Caption Transport Candidate
+
+For realtime STT captions in Unreal, Developer C should add a streaming STT
+session beside the existing batch `/respond` endpoint instead of replacing the
+stable wav request immediately.
+
+Recommended Alpha structure:
+
+```text
+Unreal microphone
+  -> Developer C WebSocket /api/game/ai/stt/realtime
+  -> STT provider WebSocket or local streaming runtime
+  -> Developer C caption events
+  -> Unreal subtitle UI
+
+Unreal final commit or stop speaking
+  -> Developer C committed transcript
+  -> existing /respond-style orchestrator path
+  -> Developer B policy
+  -> Developer A dialogue/TTS
+  -> Unreal response JSON
+```
+
+Event shape for the C-owned WebSocket should stay small and provider-neutral:
+
+```json
+{
+  "event": "partial_transcript",
+  "request_id": "req_imm_duration_0001",
+  "session_id": "session_001",
+  "text": "I will stay for",
+  "is_final": false
+}
+```
+
+```json
+{
+  "event": "committed_transcript",
+  "request_id": "req_imm_duration_0001",
+  "session_id": "session_001",
+  "text": "I will stay for 5 days.",
+  "is_final": true
+}
+```
+
+Rules:
+
+- Unreal must not hold provider API keys. Developer C either relays audio to the
+  STT provider or issues short-lived provider tokens only when a provider
+  supports safe client-side auth.
+- Partial transcripts are UI-only subtitle previews and must not call Developer
+  B or Developer A.
+- Only committed transcripts enter the normal C orchestrator path.
+- The existing multipart wav `/respond` path remains the fallback and contract
+  baseline until realtime STT is verified.
+- UDP is not the first Alpha choice for captions because ordering, loss
+  recovery, auth, and commit semantics would become C/Unreal-owned protocol
+  work. WebSocket gives bidirectional ordered messages that match partial and
+  committed transcript events.
+
 ## OpenKB Service Contract
 
 Developer C service:

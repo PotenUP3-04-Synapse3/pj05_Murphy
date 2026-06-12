@@ -397,8 +397,9 @@ Runtime modes:
   TTS, or Unreal command fields.
 - OpenAI strict structured output requires every object to set
   `additionalProperties: false` and every property to be listed in `required`.
-  Developer C therefore asks the LLM for `extracted_slots.visit_purpose` as a
-  required nullable field and removes null slot values before validating the
+  Developer C therefore asks the LLM for known slot keys such as
+  `extracted_slots.visit_purpose` and `extracted_slots.stay_duration` as
+  required nullable fields and removes null slot values before validating the
   final `UnderstandingOutput`.
 - When OpenAI Responses API returns `usage`, Developer C stores those token
   counts in the Understanding trace and in the C unified AgentRun `model`
@@ -409,6 +410,15 @@ Runtime modes:
   `friend_visit` for friend; `business` for business, meeting, conference;
   `study` for study, school; `transit` for transit, layover; and `tourism` for
   tourism, travel, vacation, sightseeing.
+- Rule fallback and LLM postprocessing fill `stay_duration` for duration
+  answers such as `5 days`, `five days`, `one week`, and `until Friday` when
+  the current node requires `stay_duration`.
+- Alpha 2 should replace the growing per-slot schema/repair list with a
+  generic slot evidence contract. The LLM may propose slot evidence for
+  `node_context.required_slots` and `node_context.optional_slots`; Developer C
+  must filter that evidence to allowed node slots before building
+  `extracted_slots` for Developer B. Developer B remains the only branch and
+  progression authority.
 
 ```json
 {

@@ -30,6 +30,10 @@ def _purpose_node_context():
     return OpenKBService().get_node_context("CH0_IMMIGRATION", "IMM_002_PURPOSE")
 
 
+def _duration_node_context():
+    return OpenKBService().get_node_context("CH0_IMMIGRATION", "IMM_003_DURATION")
+
+
 def test_understanding_agent_uses_llm_client_in_llm_mode() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {
@@ -165,6 +169,46 @@ def test_understanding_agent_repairs_llm_missing_allowed_visit_purpose_slot() ->
     }
 
 
+def test_understanding_agent_repairs_llm_missing_stay_duration_slot() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_stay_duration",
+            "intent_success": True,
+            "confidence": 0.9,
+            "meaning_summary_kr": "The player gave a stay duration.",
+            "emotion": "calm",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "none",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "extracted_slots": {},
+            "missing_slots": ["stay_duration"],
+            "needs_clarification": False,
+            "__llm_usage": {"input_tokens": 640, "output_tokens": 120, "total_tokens": 760},
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text("I will stay for 5 days.", _duration_node_context())
+
+    assert output.intent == "state_stay_duration"
+    assert output.intent_success is True
+    assert output.extracted_slots == {"stay_duration": "5 days"}
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
+    assert agent.last_trace["postprocessing"] == {
+        "slot_repair_applied": True,
+        "source": "rule_stay_duration_classifier",
+        "slot": "stay_duration",
+        "value": "5 days",
+        "reason": "llm_missing_allowed_slot",
+    }
+
+
 def test_understanding_agent_rule_mode_recognizes_allowed_visit_purpose_values() -> None:
     agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
 
@@ -174,3 +218,21 @@ def test_understanding_agent_rule_mode_recognizes_allowed_visit_purpose_values()
     assert output.intent_success is True
     assert output.extracted_slots == {"visit_purpose": "family_visit"}
     assert output.missing_slots == []
+
+
+def test_understanding_agent_rule_mode_recognizes_stay_duration_values() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    cases = {
+        "I will stay for 5 days.": "5 days",
+        "I will stay for five days.": "five days",
+        "I will stay one week.": "one week",
+        "I will stay until Friday.": "until friday",
+    }
+    for player_text, stay_duration in cases.items():
+        output = agent.analyze_player_text(player_text, _duration_node_context())
+
+        assert output.intent == "state_stay_duration"
+        assert output.intent_success is True
+        assert output.extracted_slots == {"stay_duration": stay_duration}
+        assert output.missing_slots == []
