@@ -3,9 +3,8 @@ from hashlib import sha256
 from typing import Any
 
 
+# NPC Dialogue Agent 실행 과정(Life Cycle)을 추적하며 구조화된 실행 이력(AgentRun) 데이터를 단계별로 상태 조립하는 미들웨어(Middleware) 클래스(Class)입니다.
 class NPCDialogueAgentRunMiddleware:
-    """NPC Dialogue Agent 실행 1회를 구조화된 AgentRun 기록으로 조립한다."""
-
     def start_run(
         self,
         *,
@@ -16,8 +15,10 @@ class NPCDialogueAgentRunMiddleware:
         permission_level: str,
         metadata: dict[str, Any],
     ) -> dict[str, Any]:
+        """에이전트 최초 기동 시 상태를 'running'으로 기입하고, 실행 세션 고유 식별자(Run ID)를 해시 생성하여 기록지를 시작합니다."""
         metadata.setdefault("events", [])
         now = datetime.now(UTC).isoformat()
+        # 시간, 캐시 키, 모델명을 혼합하여 충돌 방지용 고유 시드(Seed) 바이트를 구성합니다.
         run_id_seed = f"{now}:{cache_key}:{model_name}".encode("utf-8")
         return {
             "agent_run_id": f"npcdlg_run_{sha256(run_id_seed).hexdigest()[:12]}",
@@ -49,11 +50,13 @@ class NPCDialogueAgentRunMiddleware:
         output_summary: dict[str, Any] | None = None,
         error: str | None = None,
     ) -> None:
+        """대화 생성 파이프라인 중간(예: 도구 호출 완료, 번역 등)에 일어나는 세부 실행 타임라인 이벤트(Timeline Event)를 누적 기록합니다."""
         events = metadata.setdefault("events", [])
         if not isinstance(events, list):
             metadata["events"] = []
             events = metadata["events"]
 
+        # 기록할 이벤트의 스냅샷 데이터를 조립합니다.
         item: dict[str, Any] = {
             "event": event,
             "status": status,
@@ -79,6 +82,7 @@ class NPCDialogueAgentRunMiddleware:
         output_tokens: int,
         estimated_cost_usd: float,
     ) -> dict[str, Any]:
+        """에이전트가 오류 없이 정상 연산을 완료했을 때 상태를 'completed'로 매핑하고 사용 토큰 수 및 예상 비용을 기록지에 반영하여 완료 마크합니다."""
         run["status"] = "completed"
         run["input_tokens"] = input_tokens
         run["output_tokens"] = output_tokens
@@ -88,6 +92,7 @@ class NPCDialogueAgentRunMiddleware:
         return run
 
     def fail_run(self, run: dict[str, Any], *, error: str) -> dict[str, Any]:
+        """파이프라인 구동 중 오류나 예외(Exception)가 발발했을 때 상태를 'failed'로 변경하고 오류 사유를 기입해 로그를 조기 차단(Close)합니다."""
         run["status"] = "failed"
         run["metadata"]["error"] = error
         run["completed_at"] = datetime.now(UTC).isoformat()

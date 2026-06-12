@@ -6,15 +6,19 @@ repository state as of the latest handoff entry.
 ## Change Request - 2026-06-03 - Developer A NPC Dialogue/TTS Implementation
 
 ### Requested By
+
 Developer A / kimyonghee
 
 ### Affected Owner
+
 Developer C / Sean Han
 
 ### Reason
+
 Developer A needs to implement NPC dialogue and TTS output while preserving Developer C ownership of orchestration, tests, dependency contracts, adapters, and runtime response assembly.
 
 ### Proposed Contract Change
+
 1. Allow Developer A to add focused tests for Developer A owned services.
    - Proposed location: `backend/tests/developer_a/`
    - Reason: `backend/tests/` is currently Developer C owned, but Developer A needs isolated verification for dialogue/TTS services.
@@ -31,9 +35,11 @@ Developer A needs to implement NPC dialogue and TTS output while preserving Deve
    - Proposed URL field: `audio_url`, nullable until Developer C static serving is ready.
 
 ### Compatibility Impact
+
 No existing Developer C mock should break if Developer C keeps using its current adapter behavior. Developer A will keep legacy `text` fields where useful and add `npc_text` for the new contract shape.
 
 ### Temporary Workaround
+
 Developer A will implement a fake Kokoro provider that creates valid local wav files without adding external dependencies. Real Kokoro integration and Developer A test placement will wait for contract approval.
 
 Use this format for future requests:
@@ -42,21 +48,27 @@ Use this format for future requests:
 ## Change Request - YYYY-MM-DD - Short Title
 
 ### Requested By
+
 Developer C / Sean Han
 
 ### Affected Owner
+
 Developer A or Developer B
 
 ### Reason
+
 Why this change is needed.
 
 ### Proposed Contract Change
+
 Exact input/output or behavior change.
 
 ### Compatibility Impact
+
 Does this break existing mocks or tests?
 
 ### Temporary Workaround
+
 What Developer C will do until the change is accepted.
 ```
 
@@ -66,18 +78,22 @@ Status: Resolved in the integrated pre-prototype. Keep this entry for contract
 history.
 
 ### Requested By
+
 Developer B
 
 ### Affected Owner
+
 Developer C / Sean Han
 
 ### Reason
+
 Developer B exposes a real deterministic `dev_b_policy.v1` policy engine
 under `backend/app/agents/agent_b/` and `backend/app/services/service_b/`.
 At the time this request was filed, the runtime still called the C-owned mock
 adapter at `backend/app/integrations/dev_b_level_hint_client.py`.
 
 ### Proposed Contract Change
+
 Keep the existing `DevBPolicyInput` and `DevBPolicyOutput` schemas unchanged.
 Update `DevBPolicyClient.evaluate_turn()` to delegate to
 `backend.app.agents.agent_b.EnglishLevelHintAgent.evaluate_turn()` after
@@ -88,12 +104,14 @@ OpenKB runtime so all Chapter 0 immigration nodes are available beyond
 `IMM_002_PURPOSE`.
 
 ### Compatibility Impact
+
 No schema-breaking change is requested. Existing mock tests may need expectation
 updates if they depend on the previous simplified C mock behavior, especially
 `dialogue_directive.do_not_generate_npc_text`, `error_capture`, and warning or
 hint branch behavior.
 
 ### Temporary Workaround
+
 Developer C can keep using the existing mock adapter until the adapter handoff is
 accepted. Developer B tests call the B engine directly.
 
@@ -105,18 +123,22 @@ validation of successful `openkb_write.namespace` and path references is still
 not implemented.
 
 ### Requested By
+
 Developer B
 
 ### Affected Owner
+
 Developer C / Sean Han
 
 ### Reason
+
 Developer B now owns feedback/error/focus-on-form runtime writes under the
 OpenKB `dev_b` namespace. The B policy output includes an optional
 `openkb_write` reference so C can validate and later retrieve the record without
 creating duplicate log entries.
 
 ### Proposed Contract Change
+
 Keep the existing `DevBPolicyOutput` fields and add the optional
 `openkb_write` field:
 
@@ -138,11 +160,13 @@ Developer C should update logging/validator/final-report code so that:
    `record_id`.
 
 ### Compatibility Impact
+
 The field is additive and optional, so existing response assembly can continue
 to work. Tests that compare the full `DevBPolicyOutput` dump may need to accept
 the new optional `openkb_write` object.
 
 ### Temporary Workaround
+
 Until C updates logging and final report retrieval, Developer B writes records
 under `backend/runtime/openkb/dev_b/` and C can continue using existing response
 payload fields. Any duplicate C-side markdown logging should be treated as a
@@ -155,18 +179,22 @@ validates final-result output, but C-owned validation of `feedback_generation`
 and `difficulty_profile` metadata is still not implemented.
 
 ### Requested By
+
 Developer B
 
 ### Affected Owner
+
 Developer C / Sean Han
 
 ### Reason
+
 Developer B now exposes optional LLM-assisted learning feedback metadata while
 keeping branch, verdict, next-node, and state-delta decisions rule-based. The
 metadata helps C validator, final report, and future UI/debug views distinguish
 rule, LLM, and fallback feedback.
 
 ### Proposed Contract Change
+
 Keep all existing `DevBPolicyOutput` fields and add optional fields:
 
 - `rubric_scores`
@@ -185,10 +213,12 @@ Developer C should update validator/final-report consumers so that:
    `state_delta`, or `evaluation.verdict`.
 
 ### Compatibility Impact
+
 The fields are optional and additive. Existing C response assembly can ignore
 them until validator/final-report integration is ready.
 
 ### Temporary Workaround
+
 Developer B stores these fields in the B-owned OpenKB `dev_b` runtime record.
 C can continue consuming the existing `level_hint`, `evaluation`,
 `report_item`, and `openkb_write` fields.
@@ -196,53 +226,65 @@ C can continue consuming the existing `level_hint`, `evaluation`,
 ## Change Request - 2026-06-04 - Expose OpenKB objective_kr to Unreal UI
 
 ### Requested By
+
 Developer B
 
 ### Affected Owner
+
 Developer C / Sean Han
 
 ### Reason
+
 Developer B now defines `objective_kr` in Chapter 0 scenario node content so the
 current node's Korean objective can be shown consistently in Unreal UI.
 
 ### Proposed Contract Change
+
 `NodeContext.objective_kr` is an optional field populated from
 `backend/app/data/scenario_nodes.json`. Developer C may expose it through the
 final Unreal UI response when the response contract is ready for objective
 display.
 
 ### Compatibility Impact
+
 The field is optional and additive. Existing Understanding, Developer B policy,
 Developer A dialogue, and response builder behavior can ignore it.
 
 ### Temporary Workaround
+
 Until C adds a UI response field, `objective_kr` is available in the internal
 node context only.
 
 ## Change Request - 2026-06-08 - Expose Developer B Focus-on-Form Report v1
 
 ### Requested By
+
 Developer B
 
 ### Affected Owner
+
 Developer C / Sean Han
 
 ### Reason
+
 Developer B now has a B-owned `FocusOnFormReportPolicy` that can build an
 out-game Focus-on-Form report from B-owned OpenKB `dev_b` records and static
 B-owned learning cards. Developer C owns final result endpoint shape and Unreal
 response assembly, so Developer B cannot expose this report directly.
 
 ### Proposed Contract Change
+
 Add an optional `out_game_feedback` object to the C-owned final result response
 or a C-owned result detail endpoint. Treat it as learning feedback metadata
 only. It must not affect branch, verdict, next node, state delta, or numeric
 score authority.
 
 ### Compatibility Impact
+
 Additive optional field only. Existing clients may ignore it.
 
 ### Temporary Workaround
+
 Developer B keeps the report builder as a directly tested B-owned service.
 Developer C can continue returning the existing final result payload until the
 response surface is ready.
@@ -295,12 +337,15 @@ base64 audio chunks, and direct final-transcript-to-orchestrator commit remains
 future work.
 
 ### Requested By
+
 Developer B
 
 ### Affected Owner
+
 Developer A and Developer C / Sean Han
 
 ### Reason
+
 Developer B now has Alpha scenario plan artifacts and B-owned baggage policy
 nodes, but the integrated runtime still primarily behaves like an immigration
 prototype. Alpha requires the scene order
@@ -310,6 +355,7 @@ small talk, cutscene/skip signals, non-immigration NPC roles, and a final
 scenario-end result UI containing B-owned `evaluation` plus `out_game_feedback`.
 
 ### Proposed Contract Change
+
 Developer C should add or approve request/response fields and orchestration for:
 
 - Alpha scene transitions, including cutscene and skip eligibility.
@@ -341,10 +387,12 @@ Developer A should consume B difficulty metadata and scene/NPC role context for:
 - Baggage service staff dialogue.
 
 ### Compatibility Impact
+
 All fields should be additive until Alpha scene contracts are finalized. Existing
 Chapter 0 immigration tests should continue to pass.
 
 ### Temporary Workaround
+
 Developer B can keep authoring B-owned scenario nodes, hint policy, diagnostic
 policy, and report seeds. Base C runtime routing and flow metadata now exist;
 integrated Alpha behavior still depends on Unreal scene-state wiring and A-owned
@@ -380,12 +428,15 @@ dialogue payload; it only changes how subtitle transcripts can be produced
 before the committed `/respond` turn.
 
 ### Requested By
+
 Developer B
 
 ### Affected Owner
+
 Developer A and Developer C / Sean Han
 
 ### Reason
+
 Developer B should not author final NPC dialogue. The current integrated path
 allows C to pass `node_context.npc_question` and generated next-question text to
 Developer A as candidate dialogue, which makes B-owned scenario data behave like
@@ -394,6 +445,7 @@ because Developer A receives text to polish instead of metadata to generate
 from.
 
 ### Proposed Contract Change
+
 Developer C should update the internal C-to-A adapter payload only. Do not
 change the external Unreal request/response contract for this migration.
 
@@ -408,14 +460,14 @@ Remove these fields from the A-facing payload:
 
 Keep or pass these metadata fields instead:
 
-| Key | Value | Meaning |
-| --- | --- | --- |
-| `npc_question_goal` | string such as `ask_stay_duration` | Communicative goal for Developer A generation |
-| `required_slots` | list of strings | Information Developer A should prompt for |
-| `target_slot` | string or null | Primary slot for the current dialogue turn |
-| `npc_speech_speed` | integer `0-10` | `0` = very slow and learner-friendly, `10` = near-native fast |
-| `question_complexity` | integer `0-10` | `0` = very simple one-part question, `10` = complex multi-part question |
-| `emotion_change` | `positive`, `neutral`, `negative` | NPC emotional/tone direction caused by the current turn |
+| Key                   | Value                              | Meaning                                                                 |
+| --------------------- | ---------------------------------- | ----------------------------------------------------------------------- |
+| `npc_question_goal`   | string such as `ask_stay_duration` | Communicative goal for Developer A generation                           |
+| `required_slots`      | list of strings                    | Information Developer A should prompt for                               |
+| `target_slot`         | string or null                     | Primary slot for the current dialogue turn                              |
+| `npc_speech_speed`    | integer `0-10`                     | `0` = very slow and learner-friendly, `10` = near-native fast           |
+| `question_complexity` | integer `0-10`                     | `0` = very simple one-part question, `10` = complex multi-part question |
+| `emotion_change`      | `positive`, `neutral`, `negative`  | NPC emotional/tone direction caused by the current turn                 |
 
 `hint_frequency` remains Developer B feedback policy and should not be passed
 as Developer A NPC-generation input.
@@ -429,12 +481,14 @@ provides scenario goal, required intent/slot, difficulty policy, emotion-change
 direction, hint policy, scoring policy, and report seeds only.
 
 ### Compatibility Impact
+
 This is an internal adapter contract change. External Unreal payloads do not
 need to change. Existing deterministic A/C tests that assert exact static
 `npc_question` output will need to be updated to assert goal/slot metadata and
 A-owned generated text behavior instead.
 
 ### Temporary Workaround
+
 Until C updates the adapter and schema, Developer B may keep `npc_question` in
 `scenario_nodes.json` as legacy node context required by current schemas, but it
 must be treated as fallback/debug context rather than final NPC dialogue
@@ -445,12 +499,15 @@ authority.
 Status: Open.
 
 ### Requested By
+
 Developer B
 
 ### Affected Owner
+
 Developer A, Developer C / Sean Han, and Unreal
 
 ### Reason
+
 Developer B expanded the Alpha scenario node sequence to support five-turn
 flight small-talk diagnostics, immigration-to-baggage transition, missing-bag
 problem solving, and a dedicated Alpha final-scoreboard node. Dev B can author
@@ -458,6 +515,7 @@ and validate node policy, but integrated runtime behavior requires A/C/Unreal
 ownership changes.
 
 ### Proposed Contract Change
+
 Developer C should adopt the following runtime flow:
 
 ```text
@@ -513,12 +571,14 @@ Unreal follow-up:
   deferred feedback only at the Alpha scenario end.
 
 ### Compatibility Impact
+
 The Dev B node expansion is additive for node data but changes semantic routing:
 `IMM_007_FINAL_DECISION` is no longer the Alpha scenario-end terminal in B
 policy. Existing C-owned final-result adapter behavior may keep treating
 `IMM_007_FINAL_DECISION` as a legacy final trigger until C adopts this request.
 
 ### Temporary Workaround
+
 Developer B keeps `IMM_007_FINAL_DECISION` in the node set and documents the
 legacy C adapter mismatch. Integrated runtime can continue using the legacy
 result endpoint while A/C/Unreal migrate to `ALPHA_999_FINAL_SCOREBOARD`.
@@ -529,18 +589,22 @@ Status: Implemented in B/C pre-prototype runtime; Developer A and Unreal should
 consume the additive metadata when their integration surfaces are ready.
 
 ### Requested By
+
 Developer B
 
 ### Affected Owner
+
 Developer A, Developer C / Sean Han, and Unreal
 
 ### Reason
+
 `chapter_id` previously acted like a whole-scenario namespace and did not tell
 Unreal when a major NPC interaction was complete. Alpha needs explicit boundary
 signals so Unreal can stop the current NPC dialogue and enter the airport
 arrival tutorial, baggage claim, or result screen.
 
 ### Proposed Contract Change
+
 Adopt `dev_b_scenario_nodes.v2`:
 
 - `scenario_id = ALPHA_AIRPORT_ARRIVAL`.
@@ -571,12 +635,14 @@ Unreal follow-up:
   node; allow `entry_node_id=null` for the airport-arrival tutorial phase.
 
 ### Compatibility Impact
+
 This is a breaking semantic change for callers that still send
 `CH0_IMMIGRATION`. Current immigration dialogue requests must send
 `CH0_03_IMMIGRATION_CHECK`. The response `transition` field is additive and
 nullable for normal dialogue responses.
 
 ### Temporary Workaround
+
 Unreal can continue ordinary dialogue turns by using the node's new chapter id.
 Until Unreal consumes the transition payload, chapter-complete responses can be
 handled by checking `next_action == COMPLETE_CHAPTER` and reading
@@ -589,17 +655,21 @@ consume the additive route metadata when they select or render the flight
 small-talk opening.
 
 ### Requested By
+
 Developer B
 
 ### Affected Owner
+
 Developer A, Developer C / Sean Han, and Unreal
 
 ### Reason
+
 The previous flight chapter was one fixed 5-turn stream. Alpha needs multiple
 natural small-talk variants so the flight scene can feel less scripted while
 still collecting a stable 5-turn level diagnostic sample.
 
 ### Proposed Contract Change
+
 `CH0_01_FLIGHT_SMALLTALK` now has three route starts in chapter metadata:
 
 - `FLIGHT_A_001_SEATMATE_SMALLTALK` for Friendly Seatmate.
@@ -631,12 +701,15 @@ is ready; Developer A and Developer C follow-up is required for natural Flight
 and Baggage testing.
 
 ### Requested By
+
 Developer B
 
 ### Affected Owner
+
 Developer A and Developer C / Sean Han
 
 ### Reason
+
 `/respond-dialog` now correctly starts `CH0_01_FLIGHT_SMALLTALK` at
 `FLIGHT_A_001_SEATMATE_SMALLTALK`, but the first integrated test response still
 returned:
@@ -660,6 +733,7 @@ The mismatch occurs after B:
   `Okay. Please continue.`
 
 ### Requested Contract / Runtime Change
+
 Developer C follow-up:
 
 - Update `backend/app/integrations/dev_a_npc_dialogue_client.py` so
@@ -687,11 +761,13 @@ Developer A follow-up:
   the next chapter's first question.
 
 ### Compatibility Impact
+
 This change does not alter B scenario branching. It fixes A/C integration for
 non-immigration chapters so existing `chapter_id`, `node_id`, `npc_id`, and
 `next_node_id` values produce the correct speaker and dialogue style.
 
 ### Temporary Workaround
+
 Until A/C complete this request, `/respond-dialog` can validate STT,
 Understanding, B branching, transition behavior, and payload generation, but
 NPC speaker/text quality for Flight and Baggage may still show Officer Miller
@@ -703,12 +779,15 @@ Status: Implemented in B-owned scenario node data; Developer A, Developer C,
 and Unreal follow-up is required for natural integrated play.
 
 ### Requested By
+
 Developer B
 
 ### Affected Owner
+
 Developer A, Developer C / Sean Han, and Unreal
 
 ### Reason
+
 The previous baggage route treated the missing suitcase as a service-desk report
 and delivery-resolution flow. Alpha now requires a more natural airport flow:
 the service desk confirms the bag is being held, the player returns to baggage
@@ -716,6 +795,7 @@ claim, a customs officer unlocks the suitcase, Unreal reveals a random item,
 and the player explains that item before clearance.
 
 ### Proposed Contract Change
+
 `CH0_04_BAGGAGE_CLAIM.entry_node_id` is now
 `BAG_001_REPORT_MISSING_AT_DESK`, and the required baggage route is:
 
@@ -772,11 +852,13 @@ Unreal follow-up:
   the final scoreboard transition.
 
 ### Compatibility Impact
+
 This replaces the old `BAG_001_NOTICE_BAG_MISSING` through
 `BAG_007_RESOLUTION` route. Any caller or test fixture still using the old BAG
 IDs must migrate to the new route IDs above.
 
 ### Temporary Workaround
+
 Until A/C/Unreal complete their follow-up, `/respond-dialog` can validate B
 branching and response structure, but custom service-desk/customs NPC voice and
 the suitcase unlock/random-item interaction remain integration work.
@@ -788,12 +870,15 @@ chapter transitions, flight route variants, `/respond-dialog` chapter starts,
 and the required baggage customs-hold route.
 
 ### Requested By
+
 Developer B
 
 ### Affected Owner
+
 Developer A, Developer C / Sean Han, and Unreal
 
 ### Current Implemented State
+
 Developer B/C pre-prototype data now uses:
 
 - `scenario_id = ALPHA_AIRPORT_ARRIVAL`.
@@ -816,11 +901,11 @@ Developer B/C pre-prototype data now uses:
 - Baggage claim now starts at `BAG_001_REPORT_MISSING_AT_DESK` and requires
   the customs-hold/random-item explanation route:
   `BAG_001_REPORT_MISSING_AT_DESK -> BAG_002_PROVIDE_CLAIM_TAG ->
-  BAG_003_CONFIRM_SEARCHED_CAROUSEL ->
-  BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD ->
-  BAG_005_CUSTOMS_HOLD_EXPLANATION ->
-  BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM -> BAG_007_CUSTOMS_CLEARANCE ->
-  BAG_999_COMPLETE`.
+BAG_003_CONFIRM_SEARCHED_CAROUSEL ->
+BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD ->
+BAG_005_CUSTOMS_HOLD_EXPLANATION ->
+BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM -> BAG_007_CUSTOMS_CLEARANCE ->
+BAG_999_COMPLETE`.
 - `/respond-dialog` can start Flight, Immigration, Baggage, and Result from
   buttons without uploading a JSON turn file. The first turn can be submitted
   with WAV upload or browser recording.
@@ -880,6 +965,7 @@ Developer B/C pre-prototype data now uses:
   `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM`.
 
 ### Compatibility Impact
+
 Old callers using `CH0_IMMIGRATION`, `FLIGHT_001_*`, or the previous baggage
 route `BAG_001_NOTICE_BAG_MISSING` through `BAG_007_RESOLUTION` must migrate
 to the current chapter IDs and node IDs.
@@ -897,12 +983,15 @@ Status: Implemented in B/C pre-prototype runtime; Developer A and Unreal should
 consume the additive field when ready.
 
 ### Requested By
+
 Developer B
 
 ### Affected Owner
+
 Developer A, Developer C / Sean Han, and Unreal
 
 ### Proposed Contract Change
+
 Developer B now returns `npc_emotion` on `DevBPolicyOutput`. Allowed values are:
 
 ```text
@@ -945,6 +1034,7 @@ Unreal follow-up:
 - Map the enum values above to available facial expression/animation states.
 
 ### Compatibility Impact
+
 This is an additive field. Existing clients that ignore `npc_emotion` or
 response `npc.emotion` can continue using `npc.tone` and `npc.animation`.
 
@@ -954,3 +1044,59 @@ response `npc.emotion` can continue using `npc.tone` and `npc.animation`.
 - `uv run pytest` passed with 201 tests and 2 existing warnings.
 - `uv run ruff check .` passed.
 - `uv run mypy .` passed with no issues in 91 source files.
+
+## Change Request - 2026-06-12 - Expand NPC Dialogue Client Payload for Dynamic Emotion & Audio Parameters
+
+Status: Open.
+
+### Requested By
+
+Developer A
+
+### Affected Owner
+
+Developer C / Sean Han, and Developer B
+
+### Reason
+
+Developer A is refactoring the NPC Dialogue generation flow to use a dynamic, unified single agent design. Under this design:
+
+1. ElevenLabs TTS parameters (stability, style, speed, similarity_boost) will be dynamically calculated by the LLM based on emotion and context, rather than hardcoded in the service layer.
+2. The Level Design Agent will provide one of 13 official emotion types (`joy`, `panic`, `sad`, `suspicion`, `disgust`, `fear`, `smirk`, `normal`, `anger`, `surprise`, `pain`, `confusion`, `boredom`) in its payload to Developer A.
+3. Roster-defined personas (e.g. `persona_instruction`) will be resolved and injected dynamically into the system prompt.
+   This requires Developer C adapters and schemas to support the expanded output fields.
+
+### Proposed Contract Change
+
+Developer C should update the `dev_a_npc_dialogue_client.py` adapter and the shared Pydantic response schemas to accept the following fields returned by the Developer A dialogue agent:
+
+```json
+{
+  "speaker": "Arabella",
+  "npc_text": "Hi there! Welcome to the flight.",
+  "tts_text": "Hi there! ... Welcome to the flight.",
+  "feedback_kr": "반갑습니다! 편안한 비행 되세요.",
+  "tone": "formal_neutral",
+  "animation": "move",
+  "npc_emotion": "joy",
+  "stability": 0.75,
+  "style": 0.45,
+  "speed": 1.0,
+  "similarity_boost": 0.85
+}
+```
+
+Developer C follow-up:
+
+- Update the Pydantic validator schemas in `backend/app/schemas/` to allow these new fields (or relax strict schema validation temporarily).
+- Forward these audio tuning parameters to the TTS service wrapper for ElevenLabs invocation.
+- Integrate the LangChain-based NPC Dialogue Agent as a **single node/subgraph** inside the main orchestrator graph (`developer_c_graph.py`).
+
+Developer B follow-up:
+
+- Update payloads to ensure the `npc_emotion` field from the Level Design Agent contains one of the 13 supported emotion strings.
+- Pass the correct `npc_id` and player `tier` inside the payload.
+
+### Compatibility Impact
+
+This change is additive for schema fields. The fallback and legacy adapters can safely default to standard parameters if the new fields are not populated.

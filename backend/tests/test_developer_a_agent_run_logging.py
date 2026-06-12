@@ -1,4 +1,5 @@
 import json
+import wave
 
 from backend.app.middleware.middleware_a.npc_dialogue_agent_run_middleware import (
     NPCDialogueAgentRunMiddleware,
@@ -6,7 +7,10 @@ from backend.app.middleware.middleware_a.npc_dialogue_agent_run_middleware impor
 from backend.app.services.service_a.npc_dialogue_agent_run_store import (
     NPCDialogueAgentRunStore,
 )
+from backend.app.services.service_a.tts_provider_service import ChatterboxTTSProvider
+from backend.app.services.service_a.tts_provider_service import ElevenLabsTTSProvider
 from backend.app.services.service_a.voice_output_service import build_voice_output_from_level_design
+from backend.app.services.service_a.tts_provider_service import TTSProviderRequest
 from backend.app.services.shared.agent_run_log_store import AgentRunLogStore
 from backend.app.services.shared.agent_run_markdown_formatter import format_agent_run_markdown
 from backend.app.tools.tool_a.npc_dialogue_artifact_tool import (
@@ -396,7 +400,7 @@ def test_voice_output_logs_llm_dialogue_as_output_source(tmp_path, monkeypatch) 
                 "tts_text": "Please answer the question directly.",
                 "feedback_kr": "방문 목적을 짧게 말하면 됩니다.",
                 "tone": "formal_firm",
-                "animation": "ignored_by_roster",
+                "animation": "move",
                 "llm_reason": "source trace test",
                 "__fallback_model": "google/gemma-4-26B-A4B-it",
                 "__llm_usage": {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30},
@@ -435,3 +439,361 @@ def test_voice_output_logs_llm_dialogue_as_output_source(tmp_path, monkeypatch) 
 
     assert trace["output_decision"]["npc_text_source"] == "llm_dialogue_from_fallback_seed"
     assert trace["output_decision"]["tts_text_source"] == "llm_dialogue"
+
+
+def test_voice_output_can_switch_to_edge_tts_provider_with_wav_output(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    def fake_edge_synthesize(self: object, request: TTSProviderRequest, output_path) -> dict:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(output_path), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(request.sample_rate)
+            wav.writeframes(b"\x00\x00" * request.sample_rate)
+        return {
+            "provider": "edge",
+            "voice_id": request.provider_options["voice"],
+            "audio_path": str(output_path),
+            "audio_url": None,
+            "sample_rate": request.sample_rate,
+            "format": request.output_format,
+            "audio_seconds": 1.0,
+            "generation_seconds": 0.25,
+            "conversion_seconds": 0.05,
+            "real_time_factor": 0.25,
+            "status": "ok",
+        }
+
+    monkeypatch.setenv("MURPHY_TTS_PROVIDER", "edge")
+    monkeypatch.setenv("MURPHY_EDGE_TTS_VOICE", "en-US-GuyNeural")
+    monkeypatch.setenv("MURPHY_EDGE_TTS_OUTPUT_FORMAT", "wav")
+    monkeypatch.setattr(
+        "backend.app.services.service_a.tts_provider_service.EdgeTTSProvider.synthesize",
+        fake_edge_synthesize,
+    )
+
+    output = build_voice_output_from_level_design(
+        {
+            "chapter_id": "CH0_IMMIGRATION",
+            "turn_id": "turn_edge_001",
+            "node_id": "IMM_002_PURPOSE",
+            "npc": {"npc_id": "officer_miller", "emotion": "neutral"},
+            "player": {"utterance": "I'm here for tourism.", "language_level": "beginner"},
+            "evaluation": {"branch_type": "success", "target_slot": "visit_purpose"},
+        },
+        runtime_root=tmp_path / "runtime",
+        request_id="req_edge_1",
+        session_id="session_edge_1",
+        use_llm_dialogue=False,
+        use_real_tts=True,
+        audio_url_base="/runtime/audio",
+        agent_run_root=tmp_path,
+    )
+
+    assert output["tts"]["provider"] == "edge"
+    assert output["tts"]["voice_id"] == "en-US-GuyNeural"
+    assert output["tts"]["audio_path"].endswith(".wav")
+    assert "\\edge\\" in output["tts"]["audio_path"] or "/edge/" in output["tts"]["audio_path"]
+    assert output["tts"]["audio_url"].startswith("/runtime/audio/edge/")
+
+    run = json.loads((tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    edge_event = next(
+        event for event in run["events"] if event.get("tool_name") == "tts_provider_service.edge.synthesize"
+    )
+    assert edge_event["output_summary"]["provider"] == "edge"
+    assert edge_event["output_summary"]["conversion_seconds"] == 0.05
+
+
+def test_voice_output_can_switch_to_chatterbox_tts_provider_with_emotion_parameters(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    def fake_chatterbox_synthesize(self: object, request: TTSProviderRequest, output_path) -> dict:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(output_path), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(request.sample_rate)
+            wav.writeframes(b"\x00\x00" * request.sample_rate)
+        return {
+            "provider": "chatterbox",
+            "voice_id": request.provider_options["voice"],
+            "audio_path": str(output_path),
+            "audio_url": None,
+            "sample_rate": request.sample_rate,
+            "format": request.output_format,
+            "audio_seconds": 1.0,
+            "generation_seconds": 0.75,
+            "real_time_factor": 0.75,
+            "status": "ok",
+            "provider_options": {
+                "audio_prompt_path": request.provider_options["audio_prompt_path"],
+                "exaggeration": request.provider_options["exaggeration"],
+                "cfg_weight": request.provider_options["cfg_weight"],
+                "temperature": request.provider_options["temperature"],
+                "device": request.provider_options["device"],
+            },
+        }
+
+    monkeypatch.setenv("MURPHY_TTS_PROVIDER", "chatterbox")
+    monkeypatch.setenv("MURPHY_CHATTERBOX_VOICE_ID", "officer_miller_ref")
+    monkeypatch.setenv("MURPHY_CHATTERBOX_REFERENCE_AUDIO", "backend/app/assets/voices/officer_miller_ref.wav")
+    monkeypatch.setenv("MURPHY_CHATTERBOX_EXAGGERATION", "0.85")
+    monkeypatch.setenv("MURPHY_CHATTERBOX_CFG_WEIGHT", "0.30")
+    monkeypatch.setenv("MURPHY_CHATTERBOX_TEMPERATURE", "0.60")
+    monkeypatch.setenv("MURPHY_CHATTERBOX_DEVICE", "cuda")
+    monkeypatch.setattr(
+        "backend.app.services.service_a.tts_provider_service.ChatterboxTTSProvider.synthesize",
+        fake_chatterbox_synthesize,
+    )
+
+    output = build_voice_output_from_level_design(
+        {
+            "chapter_id": "CH0_IMMIGRATION",
+            "turn_id": "turn_chatterbox_001",
+            "node_id": "IMM_002_PURPOSE",
+            "npc": {"npc_id": "officer_miller", "emotion": "suspicious"},
+            "player": {"utterance": "I'm here for tourism.", "language_level": "beginner"},
+            "evaluation": {"branch_type": "success", "target_slot": "visit_purpose"},
+        },
+        runtime_root=tmp_path / "runtime",
+        request_id="req_chatterbox_1",
+        session_id="session_chatterbox_1",
+        use_llm_dialogue=False,
+        use_real_tts=True,
+        audio_url_base="/runtime/audio",
+        agent_run_root=tmp_path,
+    )
+
+    assert output["tts"]["provider"] == "chatterbox"
+    assert output["tts"]["voice_id"] == "officer_miller_ref"
+    assert output["tts"]["audio_path"].endswith(".wav")
+    assert "\\chatterbox\\" in output["tts"]["audio_path"] or "/chatterbox/" in output["tts"]["audio_path"]
+    assert output["tts"]["audio_url"].startswith("/runtime/audio/chatterbox/")
+    assert output["tts"]["provider_options"]["exaggeration"] == 0.85
+    assert output["tts"]["provider_options"]["cfg_weight"] == 0.3
+
+    run = json.loads((tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    build_event = next(
+        event
+        for event in run["events"]
+        if event.get("tool_name") == "tts_service.build_chatterbox_provider_request"
+    )
+    assert build_event["output_summary"]["provider"] == "chatterbox"
+    assert build_event["output_summary"]["exaggeration"] == 0.85
+    assert build_event["output_summary"]["cfg_weight"] == 0.3
+    chatterbox_event = next(
+        event
+        for event in run["events"]
+        if event.get("tool_name") == "tts_provider_service.chatterbox.synthesize"
+    )
+    assert chatterbox_event["output_summary"]["provider"] == "chatterbox"
+
+
+def test_chatterbox_provider_does_not_pass_language_id_to_base_generate(tmp_path, monkeypatch) -> None:
+    class FakeChatterboxModel:
+        sr = 24000
+
+        def generate(self, text: str, **kwargs):
+            assert text == "Answer directly."
+            assert "language_id" not in kwargs
+            return [0.0] * self.sr
+
+    monkeypatch.setattr(
+        "backend.app.services.service_a.tts_provider_service._load_chatterbox_model",
+        lambda device: FakeChatterboxModel(),
+    )
+
+    request = TTSProviderRequest(
+        provider="chatterbox",
+        text="Answer directly.",
+        speaker_id="officer_miller",
+        voice_profile_id="session:officer_miller",
+        language="en",
+        emotion="warning_official",
+        tone="formal_warning",
+        intensity=0.85,
+        speaking_rate=1.0,
+        pitch=0.0,
+        sample_rate=24000,
+        output_format="wav",
+        provider_options={
+            "voice": "officer_miller_ref",
+            "audio_prompt_path": "",
+            "exaggeration": 0.85,
+            "cfg_weight": 0.3,
+            "temperature": 0.6,
+            "device": "cpu",
+            "language_id": "en",
+        },
+    )
+
+    metadata = ChatterboxTTSProvider().synthesize(request, tmp_path / "chatterbox.wav")
+
+    assert metadata["provider"] == "chatterbox"
+    assert metadata["provider_options"]["language_id"] == "en"
+    assert metadata["audio_seconds"] == 1.0
+
+
+def test_voice_output_can_switch_to_elevenlabs_tts_provider_with_voice_settings(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    def fake_elevenlabs_synthesize(self: object, request: TTSProviderRequest, output_path) -> dict:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(output_path), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(request.sample_rate)
+            wav.writeframes(b"\x00\x00" * request.sample_rate)
+        return {
+            "provider": "elevenlabs",
+            "voice_id": request.provider_options["voice"],
+            "audio_path": str(output_path),
+            "audio_url": None,
+            "sample_rate": request.sample_rate,
+            "format": request.output_format,
+            "audio_seconds": 1.0,
+            "generation_seconds": 0.31,
+            "conversion_seconds": 0.04,
+            "real_time_factor": 0.31,
+            "status": "ok",
+            "provider_options": {
+                "model_id": request.provider_options["model_id"],
+                "api_output_format": request.provider_options["api_output_format"],
+                "stability": request.provider_options["stability"],
+                "similarity_boost": request.provider_options["similarity_boost"],
+                "style": request.provider_options["style"],
+                "speed": request.provider_options["speed"],
+            },
+        }
+
+    monkeypatch.setenv("MURPHY_TTS_PROVIDER", "elevenlabs")
+    monkeypatch.setenv("MURPHY_ELEVENLABS_API_KEY", "test_key")
+    monkeypatch.setenv("MURPHY_ELEVENLABS_VOICE_ID", "voice_officer_miller")
+    monkeypatch.setenv("MURPHY_ELEVENLABS_MODEL_ID", "eleven_flash_v2_5")
+    monkeypatch.setenv("MURPHY_ELEVENLABS_SPEED", "0.80")
+    monkeypatch.setattr(
+        "backend.app.services.service_a.tts_provider_service.ElevenLabsTTSProvider.synthesize",
+        fake_elevenlabs_synthesize,
+    )
+
+    output = build_voice_output_from_level_design(
+        {
+            "chapter_id": "CH0_IMMIGRATION",
+            "turn_id": "turn_elevenlabs_001",
+            "node_id": "IMM_002_PURPOSE",
+            "npc": {"npc_id": "officer_miller", "emotion": "suspicious"},
+            "player": {"utterance": "I'm here for tourism.", "language_level": "beginner"},
+            "evaluation": {"branch_type": "success", "target_slot": "visit_purpose"},
+        },
+        runtime_root=tmp_path / "runtime",
+        request_id="req_elevenlabs_1",
+        session_id="session_elevenlabs_1",
+        use_llm_dialogue=False,
+        use_real_tts=True,
+        audio_url_base="/runtime/audio",
+        agent_run_root=tmp_path,
+    )
+
+    assert output["tts"]["provider"] == "elevenlabs"
+    assert output["tts"]["voice_id"] == "voice_officer_miller"
+    assert output["tts"]["audio_path"].endswith(".wav")
+    assert "\\elevenlabs\\" in output["tts"]["audio_path"] or "/elevenlabs/" in output["tts"]["audio_path"]
+    assert output["tts"]["audio_url"].startswith("/runtime/audio/elevenlabs/")
+    assert output["tts"]["provider_options"]["model_id"] == "eleven_flash_v2_5"
+    assert output["tts"]["provider_options"]["speed"] == 0.8
+
+    run = json.loads((tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    build_event = next(
+        event
+        for event in run["events"]
+        if event.get("tool_name") == "tts_service.build_elevenlabs_provider_request"
+    )
+    assert build_event["output_summary"]["provider"] == "elevenlabs"
+    assert build_event["output_summary"]["model_id"] == "eleven_flash_v2_5"
+    assert build_event["output_summary"]["speed"] == 0.8
+    tts_event = next(
+        event
+        for event in run["events"]
+        if event.get("tool_name") == "tts_provider_service.elevenlabs.synthesize"
+    )
+    assert tts_event["output_summary"]["provider"] == "elevenlabs"
+
+
+def test_elevenlabs_provider_uses_api_key_without_returning_secret(tmp_path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        content = b"fake mp3 bytes"
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class FakeClient:
+        def __init__(self, timeout: float) -> None:
+            captured["timeout"] = timeout
+
+        def __enter__(self) -> "FakeClient":
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        def post(self, url: str, **kwargs) -> FakeResponse:
+            captured["url"] = url
+            captured["kwargs"] = kwargs
+            return FakeResponse()
+
+    def fake_convert_mp3_to_wav(input_path, output_path, sample_rate: int) -> None:
+        with wave.open(str(output_path), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(sample_rate)
+            wav.writeframes(b"\x00\x00" * sample_rate)
+
+    monkeypatch.setattr("backend.app.services.service_a.tts_provider_service.httpx.Client", FakeClient)
+    monkeypatch.setattr(
+        "backend.app.services.service_a.tts_provider_service._convert_mp3_to_wav",
+        fake_convert_mp3_to_wav,
+    )
+    request = TTSProviderRequest(
+        provider="elevenlabs",
+        text="How long will you be staying?",
+        speaker_id="officer_miller",
+        voice_profile_id="session:officer_miller",
+        language="en",
+        emotion="firm_official",
+        tone="formal_firm",
+        intensity=0.6,
+        speaking_rate=0.8,
+        pitch=0.0,
+        sample_rate=24000,
+        output_format="wav",
+        provider_options={
+            "api_key": "secret_test_key",
+            "base_url": "https://api.elevenlabs.io/v1",
+            "voice": "voice_123",
+            "model_id": "eleven_flash_v2_5",
+            "api_output_format": "mp3_44100_128",
+            "stability": 0.52,
+            "similarity_boost": 0.82,
+            "style": 0.42,
+            "speed": 0.8,
+            "use_speaker_boost": True,
+            "timeout_seconds": 30.0,
+        },
+    )
+
+    metadata = ElevenLabsTTSProvider().synthesize(request, tmp_path / "elevenlabs.wav")
+
+    assert metadata["provider"] == "elevenlabs"
+    assert metadata["provider_options"]["model_id"] == "eleven_flash_v2_5"
+    assert "api_key" not in metadata["provider_options"]
+    assert "secret_test_key" not in json.dumps(metadata)
+    post_kwargs = captured["kwargs"]
+    assert isinstance(post_kwargs, dict)
+    assert post_kwargs["headers"]["xi-api-key"] == "secret_test_key"
+    assert post_kwargs["json"]["voice_settings"]["speed"] == 0.8

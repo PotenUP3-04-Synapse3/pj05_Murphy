@@ -38,7 +38,7 @@ def test_generate_success_response_uses_officer_miller_style_and_feedback() -> N
         speaker="Officer Miller",
         text="Travel. Okay. How long will you stay?",
         tone="formal_neutral",
-        animation="officer_check_passport",
+        animation="move",
         feedback_kr="좋아요. 더 자연스럽게는: I'm here for travel.",
     )
 
@@ -71,7 +71,7 @@ def test_generate_retry_response_stays_brief_formal_and_kind() -> None:
     assert result.speaker == "Officer Miller"
     assert result.text == "I need a clear answer. Where will you stay?"
     assert result.tone == "formal_firm"
-    assert result.animation == "officer_waiting"
+    assert result.animation == "move"
     assert result.feedback_kr == "괜찮아요. 짧게 이렇게 말해보세요: I will stay at a hotel."
 
 
@@ -95,7 +95,7 @@ def test_build_voice_output_combines_dialogue_and_tts_metadata() -> None:
         speaker="Officer Miller",
         text="I need a clear answer. Where will you stay?",
         tone="formal_firm",
-        animation="officer_waiting",
+        animation="move",
         feedback_kr="괜찮아요. 짧게 이렇게 말해보세요: I will stay at a hotel.",
     )
 
@@ -113,10 +113,12 @@ def test_level_design_dialogue_uses_npc_roster_profile(monkeypatch) -> None:
             npc_id="supervisor_lee",
             display_name="Supervisor Lee",
             role="immigration_supervisor",
-            default_animation="supervisor_review_passport",
+            default_animation="move",
             fallback_text="Please wait here.",
             mock_voice_id="supervisor_lee_mock",
             kokoro_voices=("af_heart",),
+            persona_instruction="friendly, warm passenger.",
+            elevenlabs_voice_id=None,
         )
 
     monkeypatch.setattr(
@@ -145,7 +147,7 @@ def test_level_design_dialogue_uses_npc_roster_profile(monkeypatch) -> None:
     )
 
     assert result["speaker"] == "Supervisor Lee"
-    assert result["animation"] == "supervisor_review_passport"
+    assert result["animation"] == "move"
 
 
 def test_level_design_dialogue_ignores_developer_b_progression_control_fields() -> None:
@@ -193,10 +195,12 @@ def test_level_design_llm_dialogue_keeps_roster_speaker_and_animation(monkeypatc
             npc_id="supervisor_lee",
             display_name="Supervisor Lee",
             role="immigration_supervisor",
-            default_animation="supervisor_review_passport",
+            default_animation="move",
             fallback_text="Please wait here.",
             mock_voice_id="supervisor_lee_mock",
             kokoro_voices=("af_heart",),
+            persona_instruction="friendly, warm passenger.",
+            elevenlabs_voice_id=None,
         )
 
     monkeypatch.setattr(
@@ -220,7 +224,7 @@ def test_level_design_llm_dialogue_keeps_roster_speaker_and_animation(monkeypatc
     )
 
     assert result["speaker"] == "Supervisor Lee"
-    assert result["animation"] == "supervisor_review_passport"
+    assert result["animation"] == "move"
 
 
 def test_level_design_llm_dialogue_uses_rule_fields_when_llm_omits_optional_schema_fields() -> None:
