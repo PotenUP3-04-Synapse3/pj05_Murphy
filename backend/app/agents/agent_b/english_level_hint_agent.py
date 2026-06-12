@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -8,6 +9,7 @@ from backend.app.schemas.game_turn import (
     DevBPolicyInput,
     DevBPolicyOutput,
     DialogueDirective,
+    DialogueSeed,
     ErrorCapture,
     ErrorItem,
     Evaluation,
@@ -15,6 +17,11 @@ from backend.app.schemas.game_turn import (
     LevelHint,
     OpenKBWriteResult,
     OutGameFeedbackSeed,
+    ReportSeedCategoryScores,
+    ReportSeedCorrectedExample,
+    ReportSeedCriticalBreakdown,
+    ReportSeedStrength,
+    ReportSeedSummary,
     ReportItem,
     Scores,
     StateDelta,
@@ -210,6 +217,12 @@ class EnglishLevelHintAgent:
                     "rubric_scores": tier_result.rubric_scores,
                     "difficulty_profile": tier_result.difficulty_profile,
                     "feedback_generation": feedback_generation.trace,
+                }
+            )
+            output = output.model_copy(
+                update={
+                    "report_seed_summary": self._build_report_seed_summary(payload, output),
+                    "dialogue_seed": self._build_dialogue_seed(payload, output),
                 }
             )
             _validate_b_policy_output(payload, output)
@@ -451,6 +464,212 @@ class EnglishLevelHintAgent:
             report_priority=priority,
         )
 
+    def _build_report_seed_summary(
+        self,
+        payload: DevBPolicyInput,
+        output: DevBPolicyOutput,
+    ) -> ReportSeedSummary:
+        category_scores = ReportSeedCategoryScores(
+            task_success=_score_candidate(output.evaluation.scores.task_success),
+            clarity=_score_candidate(output.evaluation.scores.clarity),
+            grammar=_score_candidate(output.evaluation.scores.grammar),
+            vocabulary=_score_candidate(output.evaluation.scores.vocabulary),
+            politeness=_score_candidate(output.evaluation.scores.politeness),
+            problem_solving=_score_candidate(output.evaluation.scores.problem_solving),
+        )
+        category_values = [
+            category_scores.task_success,
+            category_scores.clarity,
+            category_scores.grammar,
+            category_scores.vocabulary,
+            category_scores.politeness,
+            category_scores.problem_solving,
+        ]
+        return ReportSeedSummary(
+            estimated_level=output.level_hint.english_level,
+            tier=payload.player_profile.tier,
+            scenario_result=self._scenario_result_candidate(output),
+            overall_score_candidate=_average_score_candidate(category_values),
+            category_scores=category_scores,
+            strengths=self._report_seed_strengths(payload, output),
+            critical_breakdowns=self._report_seed_critical_breakdowns(payload, output),
+            corrected_examples=self._report_seed_corrected_examples(payload, output),
+            reusable_sentence_patterns=_unique_non_empty(
+                [
+                    payload.node_context.hint_policy.sentence_pattern,
+                    payload.node_context.recommended_expression,
+                ]
+            ),
+            next_practice_goal=output.report_item.improvement,
+            feedback_focus=_unique_non_empty(
+                [
+                    output.in_game_feedback.focus,
+                    *output.out_game_feedback_seed.focus_on_form_targets,
+                    *output.evaluation.feedback_tags,
+                ]
+            ),
+            ui_priority_order=[
+                "scenario_result",
+                "overall_score_candidate",
+                "category_scores",
+                "strengths",
+                "critical_breakdowns",
+                "corrected_examples",
+                "next_practice_goal",
+            ],
+            display_policy_by_tier={
+                "Bronze": "show simple correction and reusable sentence patterns first",
+                "Silver": "show correction, reason, and one grammar explanation",
+                "Gold": "show naturalness, politeness, and contextual nuance",
+            },
+        )
+
+    def _report_seed_strengths(
+        self,
+        payload: DevBPolicyInput,
+        output: DevBPolicyOutput,
+    ) -> list[ReportSeedStrength]:
+        strengths: list[ReportSeedStrength] = []
+        if output.evaluation.verdict in {"SUCCESS", "PARTIAL"}:
+            strengths.append(
+                ReportSeedStrength(
+                    title="Core answer understood",
+                    evidence=output.report_item.summary,
+                    ui_priority=1,
+                )
+            )
+        if output.evaluation.filled_slots:
+            strengths.append(
+                ReportSeedStrength(
+                    title="Required information provided",
+                    evidence=", ".join(sorted(output.evaluation.filled_slots)),
+                    ui_priority=len(strengths) + 1,
+                )
+            )
+        if not strengths:
+            strengths.append(
+                ReportSeedStrength(
+                    title="Retry target identified",
+                    evidence=payload.node_context.npc_question_goal,
+                    ui_priority=1,
+                )
+            )
+        return strengths[:3]
+
+    def _report_seed_critical_breakdowns(
+        self,
+        payload: DevBPolicyInput,
+        output: DevBPolicyOutput,
+    ) -> list[ReportSeedCriticalBreakdown]:
+        breakdowns: list[ReportSeedCriticalBreakdown] = []
+        for index, item in enumerate(output.error_capture.error_items[:3], start=1):
+            issue_type = _report_issue_type(item.error_type)
+            breakdowns.append(
+                ReportSeedCriticalBreakdown(
+                    user_utterance=item.original_utterance,
+                    issue_type=issue_type,
+                    why_it_matters=_why_issue_matters(issue_type),
+                    better_version=item.suggested_expression,
+                    reusable_pattern=payload.node_context.hint_policy.sentence_pattern,
+                    ui_priority=index,
+                )
+            )
+        return breakdowns
+
+    def _report_seed_corrected_examples(
+        self,
+        payload: DevBPolicyInput,
+        output: DevBPolicyOutput,
+    ) -> list[ReportSeedCorrectedExample]:
+        examples: list[ReportSeedCorrectedExample] = []
+        for item in output.error_capture.error_items[:3]:
+            examples.append(
+                ReportSeedCorrectedExample(
+                    original=item.original_utterance,
+                    corrected=item.suggested_expression,
+                    brief_explanation=output.report_item.improvement,
+                    pattern=payload.node_context.hint_policy.sentence_pattern,
+                )
+            )
+        return examples
+
+    def _scenario_result_candidate(
+        self,
+        output: DevBPolicyOutput,
+    ) -> Literal["passed", "conditional_pass", "failed"]:
+        if output.evaluation.verdict == "CRITICAL_FAIL" or output.branch.branch_type == "bad_end":
+            return "failed"
+        if output.evaluation.verdict == "SUCCESS":
+            return "passed"
+        return "conditional_pass"
+
+    def _build_dialogue_seed(
+        self,
+        payload: DevBPolicyInput,
+        output: DevBPolicyOutput,
+    ) -> DialogueSeed:
+        return DialogueSeed(
+            scene=payload.scene_id,
+            npc_role=self._npc_role(payload),
+            surface_goal=payload.node_context.npc_question_goal,
+            hidden_assessment_goal="estimate_user_travel_speaking_level",
+            opening_intent=self._opening_intent(payload),
+            assessment_targets=_unique_non_empty(
+                [
+                    *payload.node_context.required_intents,
+                    *payload.node_context.required_slots,
+                    *payload.node_context.critical_slots,
+                ]
+            ),
+            required_slots=payload.node_context.required_slots,
+            max_turns=5 if payload.current_node_id.startswith("FLIGHT_") else 4,
+            difficulty_profile="auto",
+            feedback_focus=_unique_non_empty(
+                [
+                    output.in_game_feedback.focus,
+                    *payload.node_context.required_slots,
+                    *output.out_game_feedback_seed.focus_on_form_targets,
+                ]
+            ),
+            tone_guidance=output.dialogue_directive.tone_hint if output.dialogue_directive else "neutral",
+            allowed_followup_intents=self._allowed_followup_intents(payload, output),
+            stop_condition=(
+                "enough_evidence_for_level_estimation"
+                if payload.current_node_id.startswith("FLIGHT_")
+                else "required_slots_filled_or_retry_policy_triggered"
+            ),
+        )
+
+    def _npc_role(self, payload: DevBPolicyInput) -> str:
+        if payload.current_node_id.startswith("FLIGHT_"):
+            return "seatmate_passenger"
+        if payload.current_node_id.startswith("BAG_"):
+            return "baggage_service_agent"
+        return "immigration_officer"
+
+    def _opening_intent(self, payload: DevBPolicyInput) -> str:
+        if payload.node_context.required_slots:
+            return f"ask_{payload.node_context.required_slots[0]}"
+        if payload.node_context.required_intents:
+            return payload.node_context.required_intents[0]
+        return payload.node_context.npc_question_goal
+
+    def _allowed_followup_intents(
+        self,
+        payload: DevBPolicyInput,
+        output: DevBPolicyOutput,
+    ) -> list[str]:
+        intents = [f"ask_{slot}" for slot in payload.node_context.required_slots]
+        if output.branch.branch_type in {"success", "final"}:
+            intents.extend(["advance_to_next_prompt", "offer_reassurance"])
+        elif output.branch.branch_type == "clarify":
+            intents.append("ask_clarification")
+        elif output.branch.branch_type in {"warning", "bad_end"}:
+            intents.append("warn_about_risk")
+        else:
+            intents.extend(["prompt_retry", "offer_reassurance"])
+        return _unique_non_empty(intents)
+
     def _build_dialogue_directive(
         self,
         payload: DevBPolicyInput,
@@ -608,6 +827,62 @@ def _policy_input_summary(payload: DevBPolicyInput) -> dict[str, Any]:
         "retry_count": payload.scenario_state.retry_count,
         "suspicion": payload.scenario_state.suspicion,
     }
+
+
+def _score_candidate(score: int) -> int:
+    return max(0, min(100, round(score / 3 * 100)))
+
+
+def _average_score_candidate(scores: list[int]) -> int:
+    if not scores:
+        return 0
+    return round(sum(scores) / len(scores))
+
+
+def _unique_non_empty(values: Iterable[str | None]) -> list[str]:
+    unique_values: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        unique_values.append(text)
+    return unique_values
+
+
+def _report_issue_type(
+    error_type: str,
+) -> Literal["grammar", "clarity", "vocabulary", "task", "politeness", "problem_solving"]:
+    if error_type == "grammar":
+        return "grammar"
+    if error_type == "vocabulary":
+        return "vocabulary"
+    if error_type == "politeness":
+        return "politeness"
+    if error_type == "problem_solving":
+        return "problem_solving"
+    if error_type == "clarity":
+        return "clarity"
+    if error_type == "task_response":
+        return "task"
+    if error_type == "risk_expression":
+        return "problem_solving"
+    return "clarity"
+
+
+def _why_issue_matters(
+    issue_type: Literal["grammar", "clarity", "vocabulary", "task", "politeness", "problem_solving"],
+) -> str:
+    if issue_type == "task":
+        return "The required travel detail may be missing or hard to verify."
+    if issue_type == "problem_solving":
+        return "This can change how the travel situation is judged."
+    if issue_type == "politeness":
+        return "Polite, direct wording helps keep the official interaction stable."
+    return "A clearer complete sentence helps the listener understand the travel answer quickly."
 
 
 def _decision_summary(decision: ScenarioDecision) -> dict[str, Any]:

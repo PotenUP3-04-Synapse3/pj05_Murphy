@@ -28,6 +28,8 @@ Developer B가 정의하거나 반환하는 데이터:
 - `in_game_feedback`
 - `error_capture`
 - `out_game_feedback_seed`
+- `report_seed_summary`
+- `dialogue_seed`
 - `branch`
 - `state_delta`
 - `dialogue_directive`
@@ -533,6 +535,52 @@ In-game feedback is for maintaining communication and mission flow. It should no
 | `focus_on_form_targets` | array<string> | yes | Focus on Form target ids |
 | `report_priority` | string | yes | `low`, `medium`, `high` |
 
+### 7.6A `report_seed_summary`
+
+`report_seed_summary` is optional and additive. It is seed metadata for a final
+report assembler or Unreal UI, not a completed final result UI payload.
+
+| Key | Type | Required when present | Description |
+| --- | --- | --- | --- |
+| `estimated_level` | string | yes | Candidate level: `beginner`, `intermediate`, `advanced` |
+| `tier` | string | yes | `Bronze`, `Silver`, or `Gold` |
+| `scenario_result` | string | yes | Candidate result: `passed`, `conditional_pass`, `failed` |
+| `overall_score_candidate` | integer | yes | 0-100 score candidate, not a certified final score |
+| `category_scores` | object | yes | 0-100 task, clarity, grammar, vocabulary, politeness, problem-solving candidates |
+| `strengths` | array<object> | yes | Positive evidence ordered by `ui_priority` |
+| `critical_breakdowns` | array<object> | yes | Most important communication-blocking issues only |
+| `corrected_examples` | array<object> | yes | Original utterance, corrected sentence, short explanation, reusable pattern |
+| `reusable_sentence_patterns` | array<string> | yes | Practice patterns for the result screen |
+| `next_practice_goal` | string | yes | Next short learning goal |
+| `feedback_focus` | array<string> | yes | Tags or dimensions for report assembly |
+| `ui_priority_order` | array<string> | yes | Recommended display ordering |
+| `display_policy_by_tier` | object | yes | Bronze/Silver/Gold density guidance |
+
+### 7.6B `dialogue_seed`
+
+`dialogue_seed` is optional and additive. It gives Developer A purpose, target,
+slot, and tone metadata for dialogue generation. It must not contain final NPC
+utterance text.
+
+Forbidden keys in Developer B output include `npc_text`, `npc_utterance`, and
+`final_dialogue_line`.
+
+| Key | Type | Required when present | Description |
+| --- | --- | --- | --- |
+| `scene` | string | yes | Scene id or scene key |
+| `npc_role` | string | yes | Role cue for Developer A |
+| `surface_goal` | string | yes | Visible interaction goal |
+| `hidden_assessment_goal` | string | yes | Learning/diagnostic goal |
+| `opening_intent` | string | yes | Intent id that A may realize in its own wording |
+| `assessment_targets` | array<string> | yes | Intents, slots, and critical targets B needs evidence for |
+| `required_slots` | array<string> | yes | Slots that drive rule-based B evaluation |
+| `max_turns` | integer | yes | Suggested local exchange turn budget |
+| `difficulty_profile` | string | yes | Current value: `auto` |
+| `feedback_focus` | array<string> | yes | Feedback dimensions to preserve |
+| `tone_guidance` | string | yes | Tone cue, not final wording |
+| `allowed_followup_intents` | array<string> | yes | Follow-up intent ids A may realize |
+| `stop_condition` | string | yes | Stop condition for the local exchange |
+
 ### 7.7 `openkb_write`
 
 `openkb_write` is optional and additive. It reports whether Developer B wrote
@@ -890,9 +938,41 @@ This is the minimum shape Developer C can safely consume.
 }
 ```
 
-## 14. Change Control
+## 14. Alpha Dev B Scenario Node Flow
 
-## 13.1 Final Result Score Payload
+Developer B owns the Alpha scenario node definitions for language assessment and
+branch recommendation only. Menu screens, cutscenes, movement, Unreal UI, final
+NPC utterances, and TTS remain outside this node contract.
+
+Current Alpha Dev B node order:
+
+```text
+FLIGHT_001_SEATMATE_SMALLTALK
+-> FLIGHT_002_TRAVEL_PURPOSE
+-> FLIGHT_003_STAY_PLAN
+-> FLIGHT_004_CLARIFY_OR_ASK_BACK
+-> FLIGHT_005_WRAP_UP
+-> IMM_001_PASSPORT
+-> existing IMM_* route
+-> IMM_007_FINAL_DECISION
+-> BAG_001_NOTICE_BAG_MISSING
+-> BAG_002_FIND_STAFF
+-> existing BAG_003..BAG_007 route
+-> ALPHA_999_FINAL_SCOREBOARD
+```
+
+Flight nodes are diagnostic samples. They should advance to the next evidence
+node even when the answer needs retry, clarification, or a hint. Immediate
+out-game feedback remains disallowed for the flight scene; records are deferred
+to the final Alpha report.
+
+`IMM_007_FINAL_DECISION` is an immigration-clearance transition node in the
+Alpha flow. `ALPHA_999_FINAL_SCOREBOARD` is the Dev B final-branch node for
+scenario-end scoring.
+
+## 15. Change Control
+
+## 15.1 Final Result Score Payload
 
 Developer B owns the final score policy. In implementation v1, B may attach an
 optional `final_result` object to `DevBPolicyOutput` when the current branch is
@@ -929,9 +1009,11 @@ Required `final_result` fields:
 
 Policy rules:
 
-- Each per-turn `rubric_scores.total` is converted from 0-12 to 0-100.
-- Chapter 0 v1 uses simple unweighted average across scored nodes.
-- `IMM_007_FINAL_DECISION` is excluded when earlier scored nodes exist.
+- Each rubric dimension is converted from 0-2 to 0-100.
+- Alpha v1 uses scene-normalized dimension averages with default weights:
+  flight 20%, immigration 50%, baggage 30%.
+- `IMM_007_FINAL_DECISION` and `ALPHA_999_FINAL_SCOREBOARD` are excluded when
+  earlier scored nodes exist.
 - feedback/error/focus-on-form records do not add a separate numeric penalty in
   v1; they affect `reason_tags` and `report_summary`.
 - `final_score_100` must match `quantitative_scores.overall`.

@@ -515,8 +515,10 @@ Developer B는 최종 응답 JSON을 만들지 않는다. 대신 Developer C가 
 | `in_game_feedback` | Developer B | C adapter, Developer A, Unreal UI | 플레이 중 의사소통 유지를 위한 Recast/Clarification/Elicitation/Scaffolding 전략 |
 | `error_capture` | Developer B | C storage/logging, final report builder | 최종 피드백용 오류 markdown 저장 후보 |
 | `out_game_feedback_seed` | Developer B | C OpenKB retrieval, final report builder | Focus on Form 최종 피드백 생성을 위한 OpenKB query seed |
+| `report_seed_summary` | Developer B | C/Unreal final report assembler | 최종 UI payload가 아니라 결과 화면 조립용 후보 seed |
 | `branch` | Developer B | C adapter, Validator | 다음 행동과 노드 추천 |
 | `state_delta` | Developer B | C state handler | 상태 변화 제안 |
+| `dialogue_seed` | Developer B | Developer A, C adapter | NPC 최종 대사가 아니라 대사 생성을 위한 목적/평가/슬롯 seed |
 | `dialogue_directive` | Developer B | A/C optional | NPC 대사 생성을 위한 방향값 |
 | `report_item` | Developer B | Result Screen | 최종 리포트 누적 항목 |
 
@@ -940,6 +942,11 @@ Recommendation thresholds:
 
 | Node ID | Required Intent | Required Slot | 기본 Success Next | 핵심 평가 |
 | --- | --- | --- | --- | --- |
+| `FLIGHT_001_SEATMATE_SMALLTALK` | `respond_to_seatmate_request` | `polite_response` | `FLIGHT_002_TRAVEL_PURPOSE` | 부탁에 대한 공손한 반응 |
+| `FLIGHT_002_TRAVEL_PURPOSE` | `state_travel_purpose` | `travel_purpose` | `FLIGHT_003_STAY_PLAN` | 여행 목적 설명 |
+| `FLIGHT_003_STAY_PLAN` | `state_stay_plan` | `stay_plan` | `FLIGHT_004_CLARIFY_OR_ASK_BACK` | 체류 계획 설명 |
+| `FLIGHT_004_CLARIFY_OR_ASK_BACK` | `handle_clarification_or_ask_back` | `interaction_repair` | `FLIGHT_005_WRAP_UP` | 되묻기/확인/상호작용 복구 |
+| `FLIGHT_005_WRAP_UP` | `close_smalltalk_politely` | `smalltalk_closing` | `IMM_001_PASSPORT` | 스몰토크 마무리 |
 | `IMM_001_PASSPORT` | `submit_passport` | `passport_submission_status` | `IMM_002_PURPOSE` | 여권 제출 요청 이해 |
 | `IMM_002_PURPOSE` | `state_visit_purpose` | `visit_purpose` | `IMM_003_DURATION` | 방문 목적 명확성 |
 | `IMM_003_DURATION` | `state_stay_duration` | `stay_duration` | `IMM_004_STAY_LOCATION` | 체류 기간 구체성 |
@@ -947,7 +954,15 @@ Recommendation thresholds:
 | `IMM_005_RETURN_TICKET` | `confirm_return_ticket` | `return_ticket_status` | `IMM_006_DECLARATION_CHECK` | 귀국 항공권과 귀국 의사 |
 | `IMM_006_DECLARATION_CHECK` | `explain_declared_item` | `item_purpose` | `IMM_006B_PACKED_BAG_CHECK` | 신고 물품 용도와 문제 해결력 |
 | `IMM_006B_PACKED_BAG_CHECK` | `confirm_packed_by_self` | `packed_by_self` | `IMM_007_FINAL_DECISION` | 직접 포장과 내용물 인지 |
-| `IMM_007_FINAL_DECISION` | `summarize_final_result` | `final_recommendation` | ending node | 누적 결과 최종 판정 |
+| `IMM_007_FINAL_DECISION` | `acknowledge_immigration_clearance` | `immigration_transition_acknowledgement` | `BAG_001_NOTICE_BAG_MISSING` | 입국심사 통과 후 수화물 이동 |
+| `BAG_001_NOTICE_BAG_MISSING` | `notice_missing_bag` | `missing_bag_observation` | `BAG_002_FIND_STAFF` | 수화물 미도착 인지 |
+| `BAG_002_FIND_STAFF` | `ask_baggage_help` | `missing_bag_status` | `BAG_003_REPORT_MISSING_BAG` | 직원에게 도움 요청 |
+| `BAG_003_REPORT_MISSING_BAG` | `report_missing_bag` | `missing_bag_report` | `BAG_004_DESCRIBE_BAG` | 수화물 미도착 설명 |
+| `BAG_004_DESCRIBE_BAG` | `describe_missing_bag` | `bag_description` | `BAG_005_PROVIDE_FLIGHT_OR_TAG` | 가방 특징 설명 |
+| `BAG_005_PROVIDE_FLIGHT_OR_TAG` | `provide_baggage_tag_or_flight_info` | `baggage_tag_or_flight_info` | `BAG_006_CONTACT_AND_DELIVERY` | 수화물 태그/항공편 정보 제공 |
+| `BAG_006_CONTACT_AND_DELIVERY` | `provide_delivery_contact` | `delivery_contact` | `BAG_007_RESOLUTION` | 배송 주소/연락처 제공 |
+| `BAG_007_RESOLUTION` | `acknowledge_baggage_resolution` | `resolution_acknowledgement` | `ALPHA_999_FINAL_SCOREBOARD` | 신고 접수 결과 이해 |
+| `ALPHA_999_FINAL_SCOREBOARD` | `summarize_alpha_result` | `final_recommendation` | ending node | 알파 전체 누적 결과 최종 판정 |
 
 ## 16. Developer B가 만들지 않는 것
 

@@ -12,6 +12,7 @@ Verdict = Literal["SUCCESS", "PARTIAL", "UNCLEAR", "FAIL", "CRITICAL_FAIL"]
 
 GOLD_CHALLENGE_SOURCE_NODE_ID = "IMM_005_RETURN_TICKET"
 GOLD_BAG_CONTENT_CHALLENGE_NODE_ID = "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK"
+ALPHA_FINAL_SCOREBOARD_NODE_ID = "ALPHA_999_FINAL_SCOREBOARD"
 
 
 @dataclass(frozen=True)
@@ -36,7 +37,7 @@ class ScenarioStateMachine:
             return self._critical_fail(payload, risk_total)
 
         if self._is_success(payload):
-            if payload.current_node_id == "IMM_007_FINAL_DECISION":
+            if payload.current_node_id == ALPHA_FINAL_SCOREBOARD_NODE_ID:
                 return self._success(payload, branch_type="final", next_action="FINAL_DECISION")
             return self._success(payload, branch_type="success", next_action="ADVANCE")
 

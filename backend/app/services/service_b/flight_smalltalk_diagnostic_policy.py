@@ -4,14 +4,14 @@ from dataclasses import dataclass
 
 
 SCENE_ID = "FLIGHT_001_SEATMATE_SMALLTALK"
-MINIMUM_PLAYER_TURNS = 3
+MINIMUM_PLAYER_TURNS = 5
 SKIP_ELIGIBLE_PLAYER_TURNS = 5
 FALLBACK_QUESTIONS = [
-    "Is this your first time flying to New York?",
-    "What are you most excited to do after you land?",
-    "Are you traveling alone or with someone?",
-    "How long will you stay in the United States?",
-    "Do you usually like window seats or aisle seats?",
+    "Could I borrow your pen for this form?",
+    "Are you visiting New York for a trip?",
+    "How long will you stay there?",
+    "Sorry, did you say this is your first time in America?",
+    "Looks like we're landing soon. Are you ready for immigration?",
 ]
 
 
