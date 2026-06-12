@@ -66,9 +66,50 @@ Developer C Alpha phases:
    speech turns if timing data shows batch wav STT is the main latency issue.
 
 No immediate Developer A or Developer B implementation change is required for
-Alpha 1 or Alpha 2. Developer C added additive request/response metadata and
-C-owned Understanding postprocessing only; any future change requiring A/B logic
-changes must be filed as a change request first.
+Alpha 1, Alpha 2, or Alpha 3A. Developer C added additive request/response
+metadata, C-owned Understanding postprocessing, and C-owned runtime adapter
+alignment only; any future change requiring A/B logic changes must be filed as a
+change request first.
+
+## 2026-06-12 Developer C Alpha 3A Follow-up
+
+Developer C adopted the base Alpha scenario node expansion at the C runtime
+boundary without editing B-owned `scenario_nodes.json`. The integrated flow now
+treats `IMM_007_FINAL_DECISION` as an immigration-clearance transition into
+`BAG_001_NOTICE_BAG_MISSING`, and treats `ALPHA_999_FINAL_SCOREBOARD` as the
+only Alpha final-result trigger for attached `report.final_result`.
+
+Changed:
+
+- Updated `DevBPolicyClient` so it attaches B `final_result` only when Developer
+  B returns a final branch from `ALPHA_999_FINAL_SCOREBOARD`.
+- Removed the `IMM_` prefix gate from the C-to-A adapter's next-node question
+  lookup so FLIGHT/BAG/ALPHA nodes can seed Developer A generation through
+  OpenKB metadata.
+- Added generic rule-mode Understanding fallback that consumes B-authored
+  `hint_policy` and allowed slot metadata for non-hardcoded slots such as
+  `missing_bag_observation` and `final_recommendation`.
+- Opened the C schema/validator to accept
+  `scene_normalized_dimension_average` in addition to `simple_average`.
+- Added C integration tests for `IMM_007 -> BAG_001`, `BAG_001 -> BAG_002`, and
+  `ALPHA_999_FINAL_SCOREBOARD -> END_ALPHA_SCENARIO`.
+
+Still open for later Alpha 3 slices:
+
+- Unreal cutscene/skip state wiring for flight exit, arrival, baggage entry,
+  ending cinematic, and scoreboard display.
+- A-owned dialogue/TTS polish for seatmate and baggage staff voices.
+- Dedicated final `out_game_feedback` UI exposure beyond the existing
+  `final_result` payload.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_preprototype_flow.py backend/tests/test_final_result_payload.py backend/tests/test_understanding_agent.py backend/tests/test_understanding_llm_client.py -q`:
+  PASS, 41 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 197 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 91 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
 
 ## 2026-06-12 Developer C Follow-up
 
@@ -1052,13 +1093,13 @@ Changed:
 
 Still C-owned:
 
-- C-owned `QuantitativeScores.scoring_policy` and validator currently allow only
-  `simple_average`. Developer B therefore keeps that field runtime-compatible
-  while exposing the new policy through numeric behavior and
-  `scene_normalized_dimension_average_policy` reason tags.
-- C still needs to orchestrate
+- C now accepts both `simple_average` and
+  `scene_normalized_dimension_average` score policy names, but final UI
+  `out_game_feedback` exposure is still separate from the existing
+  `final_result` payload.
+- C still needs Unreal-facing cutscene/skip state orchestration for
   `FLIGHT_001_SEATMATE_SMALLTALK -> IMMIGRATION_ALPHA -> BAGGAGE_MISSING ->
-  scenario_end` and expose final UI `evaluation` plus `out_game_feedback`.
+  scenario_end`.
 
 ## 2026-06-09 NPC Metadata Ownership Follow-Up
 
@@ -1209,9 +1250,9 @@ Verification:
 
 Known issues / coordination:
 
-- Developer C-owned `DevBPolicyClient` still contains legacy final-result
-  compatibility for `IMM_007_FINAL_DECISION`. A change request now asks C to
-  adopt `ALPHA_999_FINAL_SCOREBOARD` as the Alpha final-result trigger.
+- Developer C-owned `DevBPolicyClient` now uses `ALPHA_999_FINAL_SCOREBOARD` as
+  the Alpha final-result trigger. `IMM_007_FINAL_DECISION` is a transition into
+  baggage claim.
 - Developer A must generate actual NPC dialogue/TTS for the new `FLIGHT_*` and
   `BAG_001` metadata. Dev B still does not author final NPC utterances.
 - Unreal must connect flight exit, airport arrival, baggage claim, final

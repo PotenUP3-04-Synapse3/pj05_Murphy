@@ -1,5 +1,10 @@
 from backend.app.schemas.game_turn import DevBPolicyOutput, FinalResult, UnrealResponse, UnrealResultResponse
 
+ALLOWED_FINAL_RESULT_SCORING_POLICIES = {
+    "simple_average",
+    "scene_normalized_dimension_average",
+}
+
 
 class ValidationError(ValueError):
     pass
@@ -110,8 +115,8 @@ class Validator:
         if scores.overall != final_result.final_score_100:
             raise ValidationError("final_result.final_score_100 must match quantitative_scores.overall")
 
-        if scores.scoring_policy != "simple_average":
-            raise ValidationError("final_result.quantitative_scores.scoring_policy must be simple_average")
+        if scores.scoring_policy not in ALLOWED_FINAL_RESULT_SCORING_POLICIES:
+            raise ValidationError("final_result.quantitative_scores.scoring_policy is not allowed")
 
         if final_result.report_summary.included_node_count < 0:
             raise ValidationError("final_result.report_summary.included_node_count is out of range")

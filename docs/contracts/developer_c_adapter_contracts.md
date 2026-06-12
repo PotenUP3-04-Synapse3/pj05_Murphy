@@ -485,7 +485,9 @@ Rules:
 - Developer B owns `FinalResultScorePolicy` and the numeric scoring policy.
 - Developer C may read B-owned runtime records through the Developer B adapter
   and may not mutate records under `backend/runtime/openkb/dev_b/`.
-- Final-branch `evaluate_turn(...)` may attach `DevBPolicyOutput.final_result`.
+- Final-branch `evaluate_turn(...)` may attach `DevBPolicyOutput.final_result`
+  only for the Alpha final scoreboard node `ALPHA_999_FINAL_SCOREBOARD`.
+  `IMM_007_FINAL_DECISION` is treated as an immigration-to-baggage transition.
 - `GET /api/game/ai/result/{session_id}` returns
   `dev_c_unreal_result.v1` with the validated B `final_result`.
 - `/api/game/ai/respond` includes the same object under

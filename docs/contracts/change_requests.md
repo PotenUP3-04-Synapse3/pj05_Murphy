@@ -257,6 +257,15 @@ player-first and quest vs ambient turns, plus diagnostic response timing. This
 does not yet implement the full Alpha scene flow, but it gives Unreal and A/B/C
 logs a stable metadata surface for the next scenario-flow phase.
 
+Developer C Alpha 3A update, 2026-06-12: C adopted the B-owned Alpha node
+expansion at the runtime boundary for the base route. `IMM_007_FINAL_DECISION`
+now remains a transition into `BAG_001_NOTICE_BAG_MISSING`, final-result
+attachment is limited to `ALPHA_999_FINAL_SCOREBOARD`, C accepts
+`scene_normalized_dimension_average` as a final score policy name, and rule-mode
+Understanding can consume B-authored generic slot metadata for flight/BAG-style
+nodes. Cutscene/skip orchestration, Unreal scene-state wiring, and final
+`out_game_feedback` UI exposure remain open.
+
 ### Requested By
 Developer B
 
@@ -294,9 +303,8 @@ Developer C should add or approve request/response fields and orchestration for:
   - keep optional events out of numeric scoring unless a later explicit weight
     is added.
 - Update C-owned schema/validator acceptance for the new score policy name when
-  C adopts the contract. Current C-owned `QuantitativeScores.scoring_policy`
-  and `Validator` still accept only `simple_average`, so Developer B keeps the
-  runtime-compatible field value until C widens the contract.
+  C adopts the contract. Developer C now accepts both `simple_average` and
+  `scene_normalized_dimension_average`.
 
 Developer A should consume B difficulty metadata and scene/NPC role context for:
 
@@ -316,6 +324,15 @@ on A/C orchestration and dialogue support.
 ## Change Request - 2026-06-09 - Remove Developer B NPC Wording From A Adapter Payload
 
 Status: Open.
+
+Developer C Alpha 3A update, 2026-06-12: C adopted the base runtime routing
+portion of this request. `ALPHA_999_FINAL_SCOREBOARD` is now the only C adapter
+trigger for attached `final_result`; `IMM_007_FINAL_DECISION` advances to
+`BAG_001_NOTICE_BAG_MISSING`; the A adapter can seed next-node prompts for
+non-`IMM_` nodes through OpenKB; and C rule Understanding has generic
+B-metadata slot coverage for the new flight/BAG-style nodes. Unreal cutscene
+state wiring and A-owned generated dialogue/TTS polish remain separate follow-up
+work.
 
 ### Requested By
 Developer B

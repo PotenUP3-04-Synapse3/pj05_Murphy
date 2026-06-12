@@ -791,7 +791,7 @@ Response envelope:
       "vocabulary_range": 90,
       "clarity": 90,
       "interaction_problem_solving": 90,
-      "scoring_policy": "simple_average"
+      "scoring_policy": "scene_normalized_dimension_average"
     },
     "report_summary": {
       "overall": "You passed the immigration check with clear, usable travel English.",
@@ -833,6 +833,9 @@ Developer C validator must enforce at least these rules:
 16. Developer B optional `final_result.final_score_100` is 0-100 and must match
     `final_result.quantitative_scores.overall`.
 17. Developer B optional `final_result.quantitative_scores.scoring_policy` must
-    be `simple_average` in v1.
-18. Developer C may expose `final_result` inside `/respond` on final branches
+    be `simple_average` or `scene_normalized_dimension_average`.
+18. `ALPHA_999_FINAL_SCOREBOARD` is the Alpha final-result trigger.
+    `IMM_007_FINAL_DECISION` is an immigration-clearance transition into
+    baggage claim, not an Alpha final-result trigger.
+19. Developer C may expose `final_result` inside `/respond` on final branches
     and through `GET /api/game/ai/result/{session_id}`.

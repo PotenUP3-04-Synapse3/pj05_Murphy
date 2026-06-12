@@ -297,7 +297,7 @@ class QuantitativeScores(BaseModel):
     vocabulary_range: int = Field(ge=0, le=100)
     clarity: int = Field(ge=0, le=100)
     interaction_problem_solving: int = Field(ge=0, le=100)
-    scoring_policy: Literal["simple_average"]
+    scoring_policy: Literal["simple_average", "scene_normalized_dimension_average"]
 
 
 class FinalReportSummary(BaseModel):

@@ -258,6 +258,139 @@ def test_orchestrator_advances_stay_duration_answer_to_location_node() -> None:
     assert response.evaluation.feedback_tags == ["intent_matched", "required_slot_filled"]
 
 
+def test_orchestrator_treats_immigration_final_decision_as_baggage_transition() -> None:
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = "req_alpha_imm_to_bag_0001"
+    turn_payload["session"]["scene_id"] = "IMMIGRATION_ALPHA"
+    turn_payload["session"]["current_node_id"] = "IMM_007_FINAL_DECISION"
+    turn_payload["session"]["turn_index"] = 8
+    turn_payload["npc"]["last_npc_message"] = "All right, you're cleared to enter. Enjoy your stay."
+    turn_payload["game_state"]["current_objective"] = "Move to baggage claim"
+    turn_payload["game_state"]["completed_intents"] = [
+        "submit_passport",
+        "state_visit_purpose",
+        "state_stay_duration",
+        "confirm_packed_by_self",
+    ]
+    turn_payload["previous_node_results"].append(
+        {
+            "node_id": "IMM_006B_PACKED_BAG_CHECK",
+            "verdict": "SUCCESS",
+            "next_action": "ADVANCE",
+        }
+    )
+    turn_payload["client_allowed_next_nodes"] = [
+        "BAG_001_NOTICE_BAG_MISSING",
+        "IMM_007_RETRY_FINAL_DECISION",
+        "IMM_EXTRA_007_CLARIFY_FINAL_DECISION",
+        "END_SECONDARY_INSPECTION",
+    ]
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://alpha/immigration_clearance_ack.wav",
+            transcript="Thank you, officer.",
+        ),
+    )
+
+    response = Orchestrator().run_turn(request)
+
+    assert response.next_action == "ADVANCE"
+    assert response.next_node_id == "BAG_001_NOTICE_BAG_MISSING"
+    assert response.report.final_result is None
+    assert "carousel" in response.npc.text.lower()
+
+
+def test_orchestrator_advances_baggage_notice_to_staff_node() -> None:
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = "req_alpha_bag_notice_0001"
+    turn_payload["session"]["scene_id"] = "BAGGAGE_MISSING"
+    turn_payload["session"]["current_node_id"] = "BAG_001_NOTICE_BAG_MISSING"
+    turn_payload["session"]["turn_index"] = 9
+    turn_payload["npc"]["npc_id"] = "BAGGAGE_STAFF"
+    turn_payload["npc"]["npc_role"] = "baggage_service_staff"
+    turn_payload["npc"]["last_npc_message"] = (
+        "The carousel has stopped, and your suitcase still isn't here. What do you need to do?"
+    )
+    turn_payload["game_state"]["current_objective"] = "Report the missing bag"
+    turn_payload["game_state"]["flags"] = ["arrived_at_jfk", "immigration_cleared", "bag_missing"]
+    turn_payload["previous_node_results"].append(
+        {
+            "node_id": "IMM_007_FINAL_DECISION",
+            "verdict": "SUCCESS",
+            "next_action": "ADVANCE",
+        }
+    )
+    turn_payload["client_allowed_next_nodes"] = [
+        "BAG_002_FIND_STAFF",
+        "BAG_001_RETRY_NOTICE_BAG_MISSING",
+        "BAG_001_CLARIFY_NOTICE_BAG_MISSING",
+        "END_BAGGAGE_REPORT_INCOMPLETE",
+    ]
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://alpha/baggage_notice_missing.wav",
+            transcript="My suitcase didn't arrive. I need to ask for help.",
+        ),
+    )
+
+    response = Orchestrator().run_turn(request)
+
+    assert response.next_action == "ADVANCE"
+    assert response.next_node_id == "BAG_002_FIND_STAFF"
+    assert response.evaluation.verdict == "SUCCESS"
+
+
+def test_orchestrator_attaches_final_result_only_on_alpha_scoreboard_node() -> None:
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = "req_alpha_scoreboard_0001"
+    turn_payload["session"]["scene_id"] = "ALPHA_SCOREBOARD"
+    turn_payload["session"]["current_node_id"] = "ALPHA_999_FINAL_SCOREBOARD"
+    turn_payload["session"]["turn_index"] = 16
+    turn_payload["npc"]["last_npc_message"] = (
+        "Your airport arrival scenario is complete. Let's review your result."
+    )
+    turn_payload["game_state"]["current_objective"] = "Review the Alpha result"
+    turn_payload["game_state"]["flags"] = [
+        "arrived_at_jfk",
+        "immigration_cleared",
+        "baggage_report_completed",
+    ]
+    turn_payload["previous_node_results"] = [
+        {
+            "node_id": "FLIGHT_001_SEATMATE_SMALLTALK",
+            "verdict": "SUCCESS",
+            "next_action": "ADVANCE",
+        },
+        {
+            "node_id": "IMM_007_FINAL_DECISION",
+            "verdict": "SUCCESS",
+            "next_action": "ADVANCE",
+        },
+        {
+            "node_id": "BAG_007_RESOLUTION",
+            "verdict": "SUCCESS",
+            "next_action": "ADVANCE",
+        },
+    ]
+    turn_payload["client_allowed_next_nodes"] = ["END_ALPHA_SCENARIO"]
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://alpha/final_scoreboard_ack.wav",
+            transcript="Thank you. Let's review the result.",
+        ),
+    )
+
+    response = Orchestrator().run_turn(request)
+
+    assert response.next_action == "FINAL_DECISION"
+    assert response.next_node_id == "END_ALPHA_SCENARIO"
+    assert response.report.final_result is not None
+    assert 0 <= response.report.final_result.final_score_100 <= 100
+
+
 def test_orchestrator_uses_repaired_llm_visit_purpose_before_developer_a_dialogue() -> None:
     orchestrator = Orchestrator()
     orchestrator.understanding_agent = UnderstandingAgent(
