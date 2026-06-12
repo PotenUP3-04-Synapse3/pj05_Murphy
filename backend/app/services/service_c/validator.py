@@ -86,6 +86,15 @@ class Validator:
         if not response.npc.audio_url.startswith("/runtime/audio/"):
             raise ValidationError("Unreal response npc.audio_url must point to /runtime/audio/")
 
+        if response.flow.contract_version != "dev_c_unreal_flow.v1":
+            raise ValidationError("Unreal flow contract_version must be dev_c_unreal_flow.v1")
+
+        if response.flow.transition_type == "scoreboard" and not response.flow.show_scoreboard:
+            raise ValidationError("scoreboard flow must set show_scoreboard")
+
+        if response.flow.transition_type != "scoreboard" and response.flow.show_scoreboard:
+            raise ValidationError("show_scoreboard is only allowed for scoreboard flow")
+
         if response.report.final_result is not None:
             self.validate_final_result(response.report.final_result)
 

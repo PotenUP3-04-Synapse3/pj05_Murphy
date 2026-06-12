@@ -100,6 +100,11 @@ Understanding, Developer B, C logging, Developer A/TTS, response building, and
 validation. Timing values are for Alpha latency analysis only and must not be
 used as gameplay branch decisions.
 
+Developer C now also emits additive `flow` metadata with contract version
+`dev_c_unreal_flow.v1`. This is Unreal presentation guidance for scene
+transitions, cutscenes, skip eligibility, and scoreboard display. It does not
+replace Developer B branch authority.
+
 ## File Ownership
 
 Developer C may implement these adapters under:
@@ -716,6 +721,7 @@ Inputs:
 - normalized input metadata
 - current session and node metadata
 - C-owned Alpha interaction metadata
+- C-owned Alpha flow metadata
 - C-owned diagnostic timing metadata
 - logging summary
 

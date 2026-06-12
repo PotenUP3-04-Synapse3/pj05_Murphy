@@ -266,6 +266,14 @@ Understanding can consume B-authored generic slot metadata for flight/BAG-style
 nodes. Cutscene/skip orchestration, Unreal scene-state wiring, and final
 `out_game_feedback` UI exposure remain open.
 
+Developer C Alpha 3B update, 2026-06-12: C added additive
+`dev_c_unreal_flow.v1` response metadata for the base Alpha presentation
+transitions. Current flow ids are `flight_to_immigration_arrival` with
+`CIN_FLIGHT_ARRIVAL_JFK` and skip eligibility, `immigration_to_baggage_claim`,
+and `alpha_final_scoreboard`. Unreal still owns playing the actual cinematics,
+moving scene state, and rendering scoreboard UI. Final `out_game_feedback` UI
+exposure remains open.
+
 ### Requested By
 Developer B
 
@@ -318,8 +326,9 @@ Chapter 0 immigration tests should continue to pass.
 
 ### Temporary Workaround
 Developer B can keep authoring B-owned scenario nodes, hint policy, diagnostic
-policy, and report seeds, but integrated Alpha runtime behavior remains blocked
-on A/C orchestration and dialogue support.
+policy, and report seeds. Base C runtime routing and flow metadata now exist;
+integrated Alpha behavior still depends on Unreal scene-state wiring and A-owned
+dialogue support.
 
 ## Change Request - 2026-06-09 - Remove Developer B NPC Wording From A Adapter Payload
 
@@ -333,6 +342,11 @@ non-`IMM_` nodes through OpenKB; and C rule Understanding has generic
 B-metadata slot coverage for the new flight/BAG-style nodes. Unreal cutscene
 state wiring and A-owned generated dialogue/TTS polish remain separate follow-up
 work.
+
+Developer C Alpha 3B update, 2026-06-12: C now emits `flow` metadata for
+flight-to-immigration cutscene, immigration-to-baggage transition, and Alpha
+scoreboard display. This gives Unreal a stable backend hint surface while
+keeping actual scene/cinematic execution outside the backend.
 
 ### Requested By
 Developer B

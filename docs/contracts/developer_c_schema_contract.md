@@ -689,6 +689,16 @@ Developer C returns only validated, Unreal-safe data.
       "priority": "low"
     }
   },
+  "flow": {
+    "contract_version": "dev_c_unreal_flow.v1",
+    "transition_type": "none",
+    "transition_id": null,
+    "from_scene_id": "JFK_IMMIGRATION_HALL",
+    "to_scene_id": "JFK_IMMIGRATION_HALL",
+    "cinematic_id": null,
+    "skip_allowed": false,
+    "show_scoreboard": false
+  },
   "state_delta": {
     "patience_delta": 0,
     "suspicion_delta": 0,
@@ -723,6 +733,7 @@ Developer C returns only validated, Unreal-safe data.
     "contract_versions": [
       "dev_c_unreal_turn.v1",
       "dev_c_interaction_context.v1",
+      "dev_c_unreal_flow.v1",
       "dev_b_policy.v1",
       "dev_a_dialogue.v1",
       "dev_c_unreal_response.v1"
@@ -754,6 +765,12 @@ Rules:
 - `state_delta` must come from Developer B output after validation.
 - `interaction` echoes the C-owned request interaction context so Unreal can
   correlate NPC-first, player-first, quest, ambient, and timed turns.
+- `flow` is C-owned Unreal presentation metadata for scene/cutscene/scoreboard
+  transitions. It does not grant branch authority and must not override
+  Developer B `next_node_id` or `next_action`.
+- Alpha 3B flow ids currently emitted by Developer C are
+  `flight_to_immigration_arrival`, `immigration_to_baggage_claim`, and
+  `alpha_final_scoreboard`.
 - NPC text and `npc.audio_url` must come from Developer A output through the
   Developer C adapter, not directly from Developer B.
 - `npc.audio_url` points to a Developer C-served runtime artifact under
@@ -830,12 +847,14 @@ Developer C validator must enforce at least these rules:
 14. Developer B optional `rubric_scores.total` stays in the 0-12 range.
 15. Developer B optional `feedback_generation` is trace metadata only and does
     not grant LLM branch or state authority.
-16. Developer B optional `final_result.final_score_100` is 0-100 and must match
+16. Unreal `flow.contract_version` must be `dev_c_unreal_flow.v1`, scoreboard
+    flow must set `show_scoreboard`, and non-scoreboard flow must not set it.
+17. Developer B optional `final_result.final_score_100` is 0-100 and must match
     `final_result.quantitative_scores.overall`.
-17. Developer B optional `final_result.quantitative_scores.scoring_policy` must
+18. Developer B optional `final_result.quantitative_scores.scoring_policy` must
     be `simple_average` or `scene_normalized_dimension_average`.
-18. `ALPHA_999_FINAL_SCOREBOARD` is the Alpha final-result trigger.
+19. `ALPHA_999_FINAL_SCOREBOARD` is the Alpha final-result trigger.
     `IMM_007_FINAL_DECISION` is an immigration-clearance transition into
     baggage claim, not an Alpha final-result trigger.
-19. Developer C may expose `final_result` inside `/respond` on final branches
+20. Developer C may expose `final_result` inside `/respond` on final branches
     and through `GET /api/game/ai/result/{session_id}`.

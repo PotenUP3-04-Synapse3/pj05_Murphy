@@ -391,6 +391,101 @@ def test_orchestrator_attaches_final_result_only_on_alpha_scoreboard_node() -> N
     assert 0 <= response.report.final_result.final_score_100 <= 100
 
 
+def test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition() -> None:
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = "req_alpha_flight_to_imm_0001"
+    turn_payload["session"]["scene_id"] = "FLIGHT_SEATMATE_SMALLTALK"
+    turn_payload["session"]["current_node_id"] = "FLIGHT_005_WRAP_UP"
+    turn_payload["session"]["turn_index"] = 5
+    turn_payload["npc"]["npc_id"] = "SEATMATE_EMILY"
+    turn_payload["npc"]["npc_role"] = "seatmate"
+    turn_payload["npc"]["last_npc_message"] = (
+        "Looks like we're landing soon. Are you ready for immigration?"
+    )
+    turn_payload["game_state"]["current_objective"] = "Finish the flight small talk"
+    turn_payload["game_state"]["flags"] = ["flight_level_test_active"]
+    turn_payload["client_allowed_next_nodes"] = ["IMM_001_PASSPORT"]
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://alpha/flight_wrap_up_ready.wav",
+            transcript="I think I'm ready. Thanks for talking with me.",
+        ),
+    )
+
+    response = Orchestrator().run_turn(request)
+
+    assert response.next_node_id == "IMM_001_PASSPORT"
+    assert response.flow.transition_type == "cutscene"
+    assert response.flow.transition_id == "flight_to_immigration_arrival"
+    assert response.flow.to_scene_id == "IMMIGRATION_ALPHA"
+    assert response.flow.cinematic_id == "CIN_FLIGHT_ARRIVAL_JFK"
+    assert response.flow.skip_allowed is True
+    assert response.flow.show_scoreboard is False
+
+
+def test_orchestrator_marks_immigration_clearance_as_baggage_scene_transition() -> None:
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = "req_alpha_imm_to_bag_flow_0001"
+    turn_payload["session"]["scene_id"] = "IMMIGRATION_ALPHA"
+    turn_payload["session"]["current_node_id"] = "IMM_007_FINAL_DECISION"
+    turn_payload["session"]["turn_index"] = 8
+    turn_payload["npc"]["last_npc_message"] = "All right, you're cleared to enter. Enjoy your stay."
+    turn_payload["game_state"]["current_objective"] = "Move to baggage claim"
+    turn_payload["client_allowed_next_nodes"] = ["BAG_001_NOTICE_BAG_MISSING"]
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://alpha/immigration_clearance_ack.wav",
+            transcript="Thank you, officer.",
+        ),
+    )
+
+    response = Orchestrator().run_turn(request)
+
+    assert response.next_node_id == "BAG_001_NOTICE_BAG_MISSING"
+    assert response.flow.transition_type == "scene_transition"
+    assert response.flow.transition_id == "immigration_to_baggage_claim"
+    assert response.flow.to_scene_id == "BAGGAGE_MISSING"
+    assert response.flow.cinematic_id is None
+    assert response.flow.skip_allowed is False
+
+
+def test_orchestrator_marks_alpha_final_branch_as_scoreboard_flow() -> None:
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = "req_alpha_scoreboard_flow_0001"
+    turn_payload["session"]["scene_id"] = "BAGGAGE_MISSING"
+    turn_payload["session"]["current_node_id"] = "ALPHA_999_FINAL_SCOREBOARD"
+    turn_payload["session"]["turn_index"] = 16
+    turn_payload["npc"]["last_npc_message"] = (
+        "Your airport arrival scenario is complete. Let's review your result."
+    )
+    turn_payload["game_state"]["current_objective"] = "Review the Alpha result"
+    turn_payload["game_state"]["flags"] = [
+        "arrived_at_jfk",
+        "immigration_cleared",
+        "baggage_report_completed",
+    ]
+    turn_payload["client_allowed_next_nodes"] = ["END_ALPHA_SCENARIO"]
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://alpha/final_scoreboard_ack.wav",
+            transcript="Thank you. Let's review the result.",
+        ),
+    )
+
+    response = Orchestrator().run_turn(request)
+
+    assert response.next_action == "FINAL_DECISION"
+    assert response.flow.transition_type == "scoreboard"
+    assert response.flow.transition_id == "alpha_final_scoreboard"
+    assert response.flow.to_scene_id == "ALPHA_SCOREBOARD"
+    assert response.flow.show_scoreboard is True
+    assert response.flow.skip_allowed is False
+    assert "dev_c_unreal_flow.v1" in response.debug.contract_versions
+
+
 def test_orchestrator_uses_repaired_llm_visit_purpose_before_developer_a_dialogue() -> None:
     orchestrator = Orchestrator()
     orchestrator.understanding_agent = UnderstandingAgent(

@@ -546,6 +546,17 @@ class ReportResponse(BaseModel):
     final_result: FinalResult | None = None
 
 
+class FlowResponse(BaseModel):
+    contract_version: Literal["dev_c_unreal_flow.v1"] = "dev_c_unreal_flow.v1"
+    transition_type: Literal["none", "scene_transition", "cutscene", "scoreboard"] = "none"
+    transition_id: str | None = None
+    from_scene_id: str | None = None
+    to_scene_id: str | None = None
+    cinematic_id: str | None = None
+    skip_allowed: bool = False
+    show_scoreboard: bool = False
+
+
 class TurnTimingMs(BaseModel):
     total_ms: int = Field(default=0, ge=0)
     stt_ms: int = Field(default=0, ge=0)
@@ -589,6 +600,7 @@ class UnrealResponse(BaseModel):
     stt: SttResponse
     npc: NpcResponse
     ui: UiResponse
+    flow: FlowResponse = Field(default_factory=FlowResponse)
     state_delta: StateDelta
     evaluation: EvaluationResponse
     report: ReportResponse

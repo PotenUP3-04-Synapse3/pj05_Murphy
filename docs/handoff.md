@@ -71,6 +71,51 @@ metadata, C-owned Understanding postprocessing, and C-owned runtime adapter
 alignment only; any future change requiring A/B logic changes must be filed as a
 change request first.
 
+## 2026-06-12 Developer C Alpha 3B Follow-up
+
+Developer C added additive Unreal flow metadata to `dev_c_unreal_response.v1`.
+The new `flow` object uses `dev_c_unreal_flow.v1` and tells Unreal which Alpha
+presentation transition should happen after a validated backend turn. It is
+presentation metadata only and does not override Developer B's `next_node_id` or
+`next_action`.
+
+Implemented flow cues:
+
+- `FLIGHT_005_WRAP_UP -> IMM_001_PASSPORT`: `cutscene` transition
+  `flight_to_immigration_arrival`, `to_scene_id=IMMIGRATION_ALPHA`,
+  `cinematic_id=CIN_FLIGHT_ARRIVAL_JFK`, `skip_allowed=true`.
+- `IMM_007_FINAL_DECISION -> BAG_001_NOTICE_BAG_MISSING`: `scene_transition`
+  `immigration_to_baggage_claim`, `to_scene_id=BAGGAGE_MISSING`.
+- `ALPHA_999_FINAL_SCOREBOARD -> END_ALPHA_SCENARIO`: `scoreboard` transition
+  `alpha_final_scoreboard`, `to_scene_id=ALPHA_SCOREBOARD`,
+  `show_scoreboard=true`.
+
+Changed:
+
+- Added `FlowResponse` and `UnrealResponse.flow` to the C schema.
+- Updated `ResponseBuilder` to emit flow metadata for the base Alpha route.
+- Updated `Validator` to check `dev_c_unreal_flow.v1` and scoreboard flag
+  consistency.
+- Added integration tests for flight arrival cutscene, baggage scene transition,
+  and final scoreboard flow.
+
+Still open:
+
+- Unreal must consume `flow` and actually play/skip cinematics, move scene
+  state, and render the scoreboard.
+- A-owned dialogue/TTS polish for seatmate and baggage staff voices.
+- Dedicated final `out_game_feedback` UI exposure beyond the existing
+  `final_result` payload.
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_preprototype_flow.py backend/tests/test_final_result_payload.py -q`:
+  PASS, 27 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 200 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 91 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
+
 ## 2026-06-12 Developer C Alpha 3A Follow-up
 
 Developer C adopted the base Alpha scenario node expansion at the C runtime
@@ -94,10 +139,11 @@ Changed:
 - Added C integration tests for `IMM_007 -> BAG_001`, `BAG_001 -> BAG_002`, and
   `ALPHA_999_FINAL_SCOREBOARD -> END_ALPHA_SCENARIO`.
 
-Still open for later Alpha 3 slices:
+Still open after Alpha 3A:
 
 - Unreal cutscene/skip state wiring for flight exit, arrival, baggage entry,
-  ending cinematic, and scoreboard display.
+  ending cinematic, and scoreboard display. Alpha 3B now exposes backend `flow`
+  metadata for the base route, but Unreal still owns execution.
 - A-owned dialogue/TTS polish for seatmate and baggage staff voices.
 - Dedicated final `out_game_feedback` UI exposure beyond the existing
   `final_result` payload.
