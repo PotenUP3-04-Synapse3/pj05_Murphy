@@ -189,6 +189,11 @@ def _developer_instructions() -> str:
         "NPC dialogue, TTS text, Unreal commands, or state_delta. Treat "
         "immigration risk expressions seriously and keep the Korean meaning "
         "summary concise."
+        " Put every understood slot in slot_evidence using the slot names from "
+        "node_context.required_slots, node_context.optional_slots, or "
+        "node_context.critical_slots. Each evidence item must include the slot "
+        "name, concise value, confidence, and the exact player-text phrase that "
+        "supports it."
         " For extracted_slots.visit_purpose, use one of "
         f"{', '.join(VISIT_PURPOSE_VALUES)} when the purpose is clear, or null "
         "when the visit purpose is missing. Map family words such as uncle, "
@@ -196,6 +201,10 @@ def _developer_instructions() -> str:
         "friend_visit; business, meeting, or conference to business; study or "
         "school to study; transit or layover to transit; and tourism, travel, "
         "vacation, or sightseeing to tourism."
+        " For extracted_slots.stay_duration, extract concise duration text "
+        "such as 5 days, five days, one week, two weeks, three months, or "
+        "until Friday when the current node asks for stay duration; otherwise "
+        "return null."
     )
 
 
@@ -214,6 +223,7 @@ def _understanding_schema() -> dict[str, Any]:
             "risk_delta",
             "risk_reason",
             "risk_tags",
+            "slot_evidence",
             "extracted_slots",
             "missing_slots",
             "needs_clarification",
@@ -232,15 +242,30 @@ def _understanding_schema() -> dict[str, Any]:
             "risk_delta": {"type": "integer"},
             "risk_reason": {"type": "string"},
             "risk_tags": {"type": "array", "items": {"type": "string"}},
+            "slot_evidence": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["slot", "value", "confidence", "evidence_text"],
+                    "properties": {
+                        "slot": {"type": "string"},
+                        "value": {"type": "string"},
+                        "confidence": {"type": "number"},
+                        "evidence_text": {"type": "string"},
+                    },
+                },
+            },
             "extracted_slots": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["visit_purpose"],
+                "required": ["visit_purpose", "stay_duration"],
                 "properties": {
                     "visit_purpose": {
                         "type": ["string", "null"],
                         "enum": [*VISIT_PURPOSE_VALUES, None],
-                    }
+                    },
+                    "stay_duration": {"type": ["string", "null"]},
                 },
             },
             "missing_slots": {"type": "array", "items": {"type": "string"}},
@@ -292,6 +317,8 @@ def _strip_json_fence(text: str) -> str:
 
 
 def _normalize_structured_result(result: dict[str, Any]) -> dict[str, Any]:
+    slot_evidence = _normalize_slot_evidence(result.get("slot_evidence"))
+    result["slot_evidence"] = slot_evidence
     extracted_slots = result.get("extracted_slots")
     if isinstance(extracted_slots, dict):
         result["extracted_slots"] = {
@@ -301,7 +328,40 @@ def _normalize_structured_result(result: dict[str, Any]) -> dict[str, Any]:
         }
     else:
         result["extracted_slots"] = {}
+    for evidence in slot_evidence:
+        result["extracted_slots"].setdefault(evidence["slot"], evidence["value"])
     return result
+
+
+def _normalize_slot_evidence(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        slot = str(item.get("slot") or "").strip()
+        slot_value = str(item.get("value") or "").strip()
+        if not slot or not slot_value:
+            continue
+        normalized.append(
+            {
+                "slot": slot,
+                "value": slot_value,
+                "confidence": _normalize_confidence(item.get("confidence")),
+                "evidence_text": str(item.get("evidence_text") or slot_value).strip() or slot_value,
+            }
+        )
+    return normalized
+
+
+def _normalize_confidence(value: Any) -> float:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return min(1.0, max(0.0, confidence))
 
 
 def _http_status_error_detail(exc: httpx.HTTPStatusError) -> str:

@@ -21,8 +21,17 @@ def test_understanding_schema_is_openai_strict_compatible() -> None:
     _assert_strict_object_schema(schema)
     extracted_slots = schema["properties"]["extracted_slots"]
     assert extracted_slots["additionalProperties"] is False
-    assert extracted_slots["required"] == ["visit_purpose"]
+    assert extracted_slots["required"] == ["visit_purpose", "stay_duration"]
     assert extracted_slots["properties"]["visit_purpose"]["type"] == ["string", "null"]
+    assert extracted_slots["properties"]["stay_duration"]["type"] == ["string", "null"]
+    slot_evidence = schema["properties"]["slot_evidence"]
+    assert slot_evidence["type"] == "array"
+    assert slot_evidence["items"]["required"] == [
+        "slot",
+        "value",
+        "confidence",
+        "evidence_text",
+    ]
 
 
 def test_extract_structured_json_drops_null_optional_slot_values() -> None:
@@ -40,7 +49,7 @@ def test_extract_structured_json_drops_null_optional_slot_values() -> None:
                     "risk_delta": 0,
                     "risk_reason": "No risk expression was found.",
                     "risk_tags": [],
-                    "extracted_slots": {"visit_purpose": None},
+                    "extracted_slots": {"visit_purpose": None, "stay_duration": None},
                     "missing_slots": ["visit_purpose"],
                     "needs_clarification": True,
                 },
@@ -50,6 +59,55 @@ def test_extract_structured_json_drops_null_optional_slot_values() -> None:
     )
 
     assert result["extracted_slots"] == {}
+
+
+def test_extract_structured_json_builds_slots_from_generic_evidence() -> None:
+    result = _extract_structured_json(
+        {
+            "output_text": json.dumps(
+                {
+                    "intent": "state_stay_location",
+                    "intent_success": True,
+                    "confidence": 0.88,
+                    "meaning_summary_kr": "The player said they will stay at a hotel.",
+                    "emotion": "calm",
+                    "answer_relevance": "on_topic",
+                    "ambiguity_type": "none",
+                    "risk_delta": 0,
+                    "risk_reason": "No risk expression was found.",
+                    "risk_tags": [],
+                    "slot_evidence": [
+                        {
+                            "slot": "stay_location",
+                            "value": "hotel",
+                            "confidence": 0.9,
+                            "evidence_text": "hotel",
+                        },
+                        {
+                            "slot": "",
+                            "value": "ignored",
+                            "confidence": 0.4,
+                            "evidence_text": "ignored",
+                        },
+                    ],
+                    "extracted_slots": {},
+                    "missing_slots": ["stay_location"],
+                    "needs_clarification": True,
+                },
+                ensure_ascii=False,
+            )
+        }
+    )
+
+    assert result["slot_evidence"] == [
+        {
+            "slot": "stay_location",
+            "value": "hotel",
+            "confidence": 0.9,
+            "evidence_text": "hotel",
+        }
+    ]
+    assert result["extracted_slots"] == {"stay_location": "hotel"}
 
 
 def test_extract_structured_json_preserves_llm_usage() -> None:

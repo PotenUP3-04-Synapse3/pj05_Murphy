@@ -53,17 +53,85 @@ Developer C Alpha phases:
    time-limit metadata. Add stage timing to responses/log summaries so STT,
    Understanding, Developer B, Developer A/TTS, response build, and validation
    latency can be measured.
-3. Alpha 2 - Scenario flow contract. Map Alpha scene ids, quest ids, and
+3. Alpha 2 - Understanding Agent generic slot extraction. Replace the current
+   per-slot strict schema/repair pattern with a generic slot evidence contract
+   that can read `node_context.required_slots`, return allowed slot evidence,
+   and keep Developer B as the only branch authority.
+4. Alpha 3 - Scenario flow contract. Map Alpha scene ids, quest ids, and
    interactability rules without replacing Developer B's branch authority or
    Developer A's NPC wording authority.
-4. Alpha 3 - STT provider benchmark. Compare the current local-first Whisper
+5. Alpha 4 - STT provider benchmark. Compare the current local-first Whisper
    path with an API provider path behind the C-owned STT adapter.
-5. Alpha 4 - Realtime voice path. Evaluate WebSocket streaming STT for player
+6. Alpha 5 - Realtime voice path. Evaluate WebSocket streaming STT for player
    speech turns if timing data shows batch wav STT is the main latency issue.
 
 No immediate Developer A or Developer B implementation change is required for
-Alpha 1. Developer C added additive request/response metadata only; any future
-change requiring A/B logic changes must be filed as a change request first.
+Alpha 1 or Alpha 2. Developer C added additive request/response metadata and
+C-owned Understanding postprocessing only; any future change requiring A/B logic
+changes must be filed as a change request first.
+
+## 2026-06-12 Developer C Follow-up
+
+Developer C implemented Alpha 2 generic slot evidence in the C-owned
+Understanding layer. The LLM can now return `slot_evidence` entries for the
+current node's required, optional, or critical slots. Developer C filters those
+entries to the current node, drops unrelated or forbidden slot names such as
+`next_node_id` and `npc_text`, and converts accepted evidence into the existing
+`extracted_slots` dict before Developer B receives the policy input.
+
+Changed:
+
+- Added `SlotEvidence` and `UnderstandingOutput.slot_evidence` to the C schema.
+- Updated the Understanding LLM strict schema and normalization so generic slot
+  evidence can fill `extracted_slots` without adding one strict slot key per
+  scenario node.
+- Added C postprocessing that accepts only current-node slots and keeps
+  Developer B as the sole branch/progression authority.
+- Kept deterministic `visit_purpose` and `stay_duration` repairs as regression
+  guards for the existing prototype nodes.
+- Added tests for `stay_location` generic evidence, forbidden slot filtering,
+  and strict schema compatibility.
+
+Changed files for this update:
+
+- `backend/app/schemas/game_turn.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/test_understanding_llm_client.py`
+- `docs/contracts/developer_c_schema_contract.md`
+- `docs/contracts/developer_c_adapter_contracts.md`
+- `docs/handoff.md`
+
+Verification for this update:
+
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_understanding_llm_client.py backend/tests/test_preprototype_flow.py -q`:
+  PASS, 34 passed, 2 warnings.
+- `uv run pytest -q`: PASS, 193 passed, 2 warnings.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 91 source files.
+- `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
+
+## 2026-06-11 Developer C Follow-up
+
+Developer C fixed the IMM_003_DURATION progression issue in the C-owned
+Understanding layer. The root cause was that rule mode, LLM structured output,
+and LLM postprocessing only knew how to fill `visit_purpose`, while the duration
+node requires `stay_duration`. C now recognizes duration answers such as
+`5 days`, `five days`, `one week`, and `until Friday`, and repairs missing
+LLM `stay_duration` slots before calling Developer B. Developer B's
+`intent_success and not missing_slots` success policy remains unchanged.
+
+Developer C also documented the Alpha realtime caption transport candidate:
+add a C-owned WebSocket STT session for partial and committed transcripts while
+keeping the existing multipart wav `/respond` path as the fallback baseline.
+Partial transcripts are for Unreal subtitle UI only; committed transcripts enter
+the normal C orchestrator path.
+
+Next Alpha priority: refactor the C-owned Understanding Agent around generic
+slot evidence before expanding the full Alpha scenario flow. The current
+`visit_purpose` and `stay_duration` extractors are acceptable regression guards,
+but new scene slots should not require one hardcoded extractor per node.
 
 ## Last Completed Task
 

@@ -397,9 +397,9 @@ Runtime modes:
   TTS, or Unreal command fields.
 - OpenAI strict structured output requires every object to set
   `additionalProperties: false` and every property to be listed in `required`.
-  Developer C therefore asks the LLM for `extracted_slots.visit_purpose` as a
-  required nullable field and removes null slot values before validating the
-  final `UnderstandingOutput`.
+  Developer C keeps legacy nullable `extracted_slots.visit_purpose` and
+  `extracted_slots.stay_duration` fields for backwards compatibility, but new
+  Alpha slots should travel through generic `slot_evidence` items.
 - When OpenAI Responses API returns `usage`, Developer C stores those token
   counts in the Understanding trace and in the C unified AgentRun `model`
   object. `estimated_cost_usd` is a runtime estimate for C-owned LLM calls, not
@@ -409,6 +409,15 @@ Runtime modes:
   `friend_visit` for friend; `business` for business, meeting, conference;
   `study` for study, school; `transit` for transit, layover; and `tourism` for
   tourism, travel, vacation, sightseeing.
+- Rule fallback and LLM postprocessing fill `stay_duration` for duration
+  answers such as `5 days`, `five days`, `one week`, and `until Friday` when
+  the current node requires `stay_duration`.
+- Alpha 2 uses a generic slot evidence contract. The LLM may propose slot
+  evidence for `node_context.required_slots`, `node_context.optional_slots`, and
+  `node_context.critical_slots`. Developer C filters that evidence to allowed
+  node slots, drops forbidden or unrelated slot names, and then builds
+  `extracted_slots` for Developer B. Developer B remains the only branch and
+  progression authority.
 
 ```json
 {
@@ -422,6 +431,14 @@ Runtime modes:
   "risk_delta": 0,
   "risk_reason": "The purpose is clear and no risk expression was found.",
   "risk_tags": [],
+  "slot_evidence": [
+    {
+      "slot": "visit_purpose",
+      "value": "tourism",
+      "confidence": 0.94,
+      "evidence_text": "tourism"
+    }
+  ],
   "extracted_slots": {
     "visit_purpose": "tourism"
   },

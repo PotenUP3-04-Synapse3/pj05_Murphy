@@ -220,6 +220,44 @@ def test_orchestrator_advances_family_visit_purpose_to_duration_node() -> None:
     assert response.debug.understanding_confidence == pytest.approx(0.94)
 
 
+def test_orchestrator_advances_stay_duration_answer_to_location_node() -> None:
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = "req_imm_duration_0001"
+    turn_payload["session"]["current_node_id"] = "IMM_003_DURATION"
+    turn_payload["session"]["turn_index"] = 3
+    turn_payload["npc"]["last_npc_message"] = "How long will you be staying?"
+    turn_payload["game_state"]["current_objective"] = "State the stay duration"
+    turn_payload["game_state"]["completed_intents"] = ["submit_passport", "state_visit_purpose"]
+    turn_payload["previous_node_results"].append(
+        {
+            "node_id": "IMM_002_PURPOSE",
+            "verdict": "SUCCESS",
+            "next_action": "ADVANCE",
+        }
+    )
+    turn_payload["client_allowed_next_nodes"] = [
+        "IMM_004_STAY_LOCATION",
+        "IMM_003_RETRY_DURATION",
+        "IMM_EXTRA_002_CLARIFY_DURATION",
+        "END_SECONDARY_INSPECTION",
+    ]
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://immigration/stay_duration_five_days.wav",
+            transcript="I will stay for 5 days.",
+        ),
+    )
+
+    response = Orchestrator().run_turn(request)
+
+    assert response.stt.player_text == "I will stay for 5 days."
+    assert response.next_action == "ADVANCE"
+    assert response.next_node_id == "IMM_004_STAY_LOCATION"
+    assert response.evaluation.verdict == "SUCCESS"
+    assert response.evaluation.feedback_tags == ["intent_matched", "required_slot_filled"]
+
+
 def test_orchestrator_uses_repaired_llm_visit_purpose_before_developer_a_dialogue() -> None:
     orchestrator = Orchestrator()
     orchestrator.understanding_agent = UnderstandingAgent(

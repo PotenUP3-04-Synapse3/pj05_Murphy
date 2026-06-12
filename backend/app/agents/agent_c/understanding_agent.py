@@ -1,5 +1,6 @@
 import logging
 from pydantic import ValidationError as PydanticValidationError
+import re
 from time import perf_counter
 from typing import Any
 
@@ -10,7 +11,7 @@ from backend.app.agents.agent_c.understanding_llm_client import (
     build_understanding_llm_client_from_settings,
 )
 from backend.app.agents.agent_c.visit_purpose_classifier import classify_visit_purpose
-from backend.app.schemas.game_turn import NodeContext, UnderstandingOutput
+from backend.app.schemas.game_turn import NodeContext, SlotEvidence, UnderstandingOutput
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -73,10 +74,18 @@ class UnderstandingAgent:
                 )
                 return output
 
-            output, postprocessing = _repair_missing_allowed_visit_purpose_slot(
+            output, slot_evidence_postprocessing = _apply_generic_slot_evidence(
+                output,
+                node_context,
+            )
+            output, slot_repair_postprocessing = _repair_missing_allowed_slots(
                 output,
                 player_text,
                 node_context,
+            )
+            postprocessing = _merge_postprocessing(
+                slot_evidence_postprocessing,
+                slot_repair_postprocessing,
             )
             self.last_trace = _build_llm_trace(
                 player_text=player_text,
@@ -144,11 +153,13 @@ class UnderstandingAgent:
             player_text,
             node_context.allowed_slot_values.get("visit_purpose"),
         )
+        stay_duration = _extract_stay_duration(player_text)
         risky = any(keyword in normalized for keyword in node_context.risk_keywords)
+        primary_required_slot = node_context.required_slots[0] if node_context.required_slots else None
 
         if risky:
             return UnderstandingOutput(
-                intent="state_visit_purpose",
+                intent=_required_intent_for_slot(node_context, primary_required_slot or "unknown"),
                 intent_success=False,
                 confidence=0.9,
                 meaning_summary_kr="The player used a risky immigration expression.",
@@ -159,8 +170,42 @@ class UnderstandingAgent:
                 risk_reason="Risk keyword found in player answer.",
                 risk_tags=["risk_expression"],
                 extracted_slots={},
-                missing_slots=["visit_purpose"],
+                missing_slots=node_context.required_slots,
                 needs_clarification=False,
+            )
+
+        if "stay_duration" in node_context.required_slots:
+            if stay_duration is not None:
+                return UnderstandingOutput(
+                    intent=_required_intent_for_slot(node_context, "stay_duration"),
+                    intent_success=True,
+                    confidence=0.92,
+                    meaning_summary_kr=_stay_duration_summary(stay_duration),
+                    emotion="calm",
+                    answer_relevance="on_topic",
+                    ambiguity_type="none",
+                    risk_delta=0,
+                    risk_reason="The stay duration is clear and no risk expression was found.",
+                    risk_tags=[],
+                    extracted_slots={"stay_duration": stay_duration},
+                    missing_slots=[],
+                    needs_clarification=False,
+                )
+
+            return UnderstandingOutput(
+                intent=_required_intent_for_slot(node_context, "stay_duration"),
+                intent_success=False,
+                confidence=0.55,
+                meaning_summary_kr="The player answer did not clearly state a stay duration.",
+                emotion="nervous",
+                answer_relevance="partially_related",
+                ambiguity_type="unclear_duration",
+                risk_delta=0,
+                risk_reason="No risk expression was found.",
+                risk_tags=[],
+                extracted_slots={},
+                missing_slots=["stay_duration"],
+                needs_clarification=True,
             )
 
         if visit_purpose is not None:
@@ -210,61 +255,234 @@ def _visit_purpose_summary(visit_purpose: str) -> str:
     return f"The player clearly stated a visit purpose: {visit_purpose}."
 
 
-def _repair_missing_allowed_visit_purpose_slot(
+def _stay_duration_summary(stay_duration: str) -> str:
+    return f"The player clearly stated a stay duration: {stay_duration}."
+
+
+def _repair_missing_allowed_slots(
     output: UnderstandingOutput,
     player_text: str,
     node_context: NodeContext,
 ) -> tuple[UnderstandingOutput, dict[str, Any]]:
     no_repair = {"slot_repair_applied": False}
-    if "visit_purpose" not in node_context.required_slots:
-        return output, no_repair
-    if output.extracted_slots.get("visit_purpose") is not None:
-        return output, no_repair
     if _has_risk_expression(player_text, node_context):
         return output, no_repair
 
-    visit_purpose = classify_visit_purpose(
-        player_text,
-        node_context.allowed_slot_values.get("visit_purpose"),
-    )
-    if visit_purpose is None:
+    repairs: list[dict[str, str]] = []
+    extracted_slots = dict(output.extracted_slots)
+
+    if "visit_purpose" in node_context.required_slots and extracted_slots.get("visit_purpose") is None:
+        visit_purpose = classify_visit_purpose(
+            player_text,
+            node_context.allowed_slot_values.get("visit_purpose"),
+        )
+        if visit_purpose is not None:
+            extracted_slots["visit_purpose"] = visit_purpose
+            repairs.append(
+                {
+                    "source": "rule_visit_purpose_classifier",
+                    "slot": "visit_purpose",
+                    "value": visit_purpose,
+                    "summary": _visit_purpose_summary(visit_purpose),
+                }
+            )
+
+    if "stay_duration" in node_context.required_slots and extracted_slots.get("stay_duration") is None:
+        stay_duration = _extract_stay_duration(player_text)
+        if stay_duration is not None:
+            extracted_slots["stay_duration"] = stay_duration
+            repairs.append(
+                {
+                    "source": "rule_stay_duration_classifier",
+                    "slot": "stay_duration",
+                    "value": stay_duration,
+                    "summary": _stay_duration_summary(stay_duration),
+                }
+            )
+
+    if not repairs:
         return output, no_repair
 
-    missing_slots = [slot for slot in output.missing_slots if slot != "visit_purpose"]
+    repaired_slot_names = {repair["slot"] for repair in repairs}
+    missing_slots = [slot for slot in output.missing_slots if slot not in repaired_slot_names]
+    primary_repair = repairs[0]
+    slot_evidence = [
+        *output.slot_evidence,
+        *[
+            SlotEvidence(
+                slot=repair["slot"],
+                value=repair["value"],
+                confidence=0.94 if repair["slot"] == "visit_purpose" else 0.92,
+                evidence_text=repair["value"],
+            )
+            for repair in repairs
+        ],
+    ]
     repaired = output.model_copy(
         update={
-            "intent": _required_intent_for_slot(node_context, "visit_purpose"),
+            "intent": _required_intent_for_slot(node_context, primary_repair["slot"]),
             "intent_success": len(missing_slots) == 0,
-            "confidence": max(output.confidence, 0.94),
-            "meaning_summary_kr": _visit_purpose_summary(visit_purpose),
+            "confidence": max(
+                output.confidence,
+                0.94 if primary_repair["slot"] == "visit_purpose" else 0.92,
+            ),
+            "meaning_summary_kr": primary_repair["summary"],
             "answer_relevance": "on_topic",
             "ambiguity_type": "none" if len(missing_slots) == 0 else output.ambiguity_type,
             "risk_delta": 0,
-            "risk_reason": "The purpose is clear and no risk expression was found.",
+            "risk_reason": "The required slot is clear and no risk expression was found.",
             "risk_tags": [],
-            "extracted_slots": {**output.extracted_slots, "visit_purpose": visit_purpose},
+            "slot_evidence": slot_evidence,
+            "extracted_slots": extracted_slots,
             "missing_slots": missing_slots,
             "needs_clarification": len(missing_slots) > 0,
         }
     )
+    if len(repairs) > 1:
+        return repaired, {
+            "slot_repair_applied": True,
+            "repairs": [
+                {
+                    "source": repair["source"],
+                    "slot": repair["slot"],
+                    "value": repair["value"],
+                    "reason": "llm_missing_allowed_slot",
+                }
+                for repair in repairs
+            ],
+        }
+
     return repaired, {
         "slot_repair_applied": True,
-        "source": "rule_visit_purpose_classifier",
-        "slot": "visit_purpose",
-        "value": visit_purpose,
+        "source": primary_repair["source"],
+        "slot": primary_repair["slot"],
+        "value": primary_repair["value"],
         "reason": "llm_missing_allowed_slot",
     }
+
+
+def _apply_generic_slot_evidence(
+    output: UnderstandingOutput,
+    node_context: NodeContext,
+) -> tuple[UnderstandingOutput, dict[str, Any]]:
+    allowed_slots = _allowed_slot_names(node_context)
+    accepted_evidence: list[SlotEvidence] = []
+    dropped_slots: list[str] = []
+
+    for evidence in output.slot_evidence:
+        if evidence.slot in allowed_slots:
+            accepted_evidence.append(evidence)
+        else:
+            dropped_slots.append(evidence.slot)
+
+    extracted_slots = {
+        slot: value
+        for slot, value in output.extracted_slots.items()
+        if slot in allowed_slots and value
+    }
+    for evidence in accepted_evidence:
+        extracted_slots.setdefault(evidence.slot, evidence.value)
+
+    missing_slots = [
+        slot for slot in node_context.required_slots if slot not in extracted_slots
+    ]
+    applied = bool(accepted_evidence) and (
+        any(evidence.slot not in output.extracted_slots for evidence in accepted_evidence)
+        or missing_slots != output.missing_slots
+    )
+    filtered = len(accepted_evidence) != len(output.slot_evidence)
+    if not applied and not filtered and missing_slots == output.missing_slots:
+        return output, {
+            "generic_slot_evidence_applied": False,
+            "accepted_slot_evidence": [],
+            "dropped_slot_evidence": [],
+        }
+
+    has_clear_required_slots = len(missing_slots) == 0
+    normalized = output.model_copy(
+        update={
+            "intent_success": output.intent_success
+            or (
+                has_clear_required_slots
+                and output.answer_relevance != "off_topic"
+                and output.risk_delta <= 0
+            ),
+            "slot_evidence": accepted_evidence,
+            "extracted_slots": extracted_slots,
+            "missing_slots": missing_slots,
+            "needs_clarification": len(missing_slots) > 0,
+        }
+    )
+    return normalized, {
+        "generic_slot_evidence_applied": applied,
+        "accepted_slot_evidence": [evidence.slot for evidence in accepted_evidence],
+        "dropped_slot_evidence": dropped_slots,
+    }
+
+
+def _allowed_slot_names(node_context: NodeContext) -> set[str]:
+    return {
+        *node_context.required_slots,
+        *node_context.optional_slots,
+        *node_context.critical_slots,
+    }
+
+
+def _merge_postprocessing(
+    slot_evidence_postprocessing: dict[str, Any],
+    slot_repair_postprocessing: dict[str, Any],
+) -> dict[str, Any]:
+    slot_evidence_changed = bool(
+        slot_evidence_postprocessing.get("generic_slot_evidence_applied")
+        or slot_evidence_postprocessing.get("dropped_slot_evidence")
+    )
+    slot_repair_changed = bool(slot_repair_postprocessing.get("slot_repair_applied"))
+    if slot_evidence_changed and slot_repair_changed:
+        return {
+            **slot_evidence_postprocessing,
+            **slot_repair_postprocessing,
+        }
+    if slot_evidence_changed:
+        return {
+            **slot_evidence_postprocessing,
+            "slot_repair_applied": False,
+        }
+    return slot_repair_postprocessing
 
 
 def _required_intent_for_slot(node_context: NodeContext, slot_name: str) -> str:
     if slot_name == "visit_purpose" and "state_visit_purpose" in node_context.required_intents:
         return "state_visit_purpose"
+    if slot_name == "stay_duration" and "state_stay_duration" in node_context.required_intents:
+        return "state_stay_duration"
     return node_context.required_intents[0] if node_context.required_intents else "unknown"
 
 
 def _has_risk_expression(player_text: str, node_context: NodeContext) -> bool:
     normalized = player_text.lower()
     return any(keyword in normalized for keyword in node_context.risk_keywords)
+
+
+def _extract_stay_duration(player_text: str) -> str | None:
+    normalized = " ".join(player_text.lower().replace("-", " ").split())
+    quantity = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|a|an)"
+    duration_match = re.search(rf"\b({quantity}\s+(?:day|days|week|weeks|month|months))\b", normalized)
+    if duration_match:
+        value = duration_match.group(1)
+        if value.startswith("a "):
+            return f"one {value[2:]}"
+        if value.startswith("an "):
+            return f"one {value[3:]}"
+        return value
+
+    until_match = re.search(
+        r"\b(until\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|next\s+\w+|\w+\s+\d{1,2}|\d{1,2}/\d{1,2}(?:/\d{2,4})?))\b",
+        normalized,
+    )
+    if until_match:
+        return until_match.group(1)
+
+    return None
 
 
 def _build_rule_trace(output: UnderstandingOutput | None = None) -> dict[str, Any]:
@@ -363,6 +581,8 @@ def _understanding_output_summary(output: UnderstandingOutput) -> dict[str, Any]
         "confidence": output.confidence,
         "answer_relevance": output.answer_relevance,
         "risk_delta": output.risk_delta,
+        "extracted_slots": output.extracted_slots,
+        "slot_evidence_slots": [evidence.slot for evidence in output.slot_evidence],
         "missing_slots": output.missing_slots,
         "needs_clarification": output.needs_clarification,
     }
