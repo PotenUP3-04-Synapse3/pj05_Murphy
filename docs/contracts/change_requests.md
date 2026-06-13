@@ -1100,3 +1100,36 @@ Developer B follow-up:
 ### Compatibility Impact
 
 This change is additive for schema fields. The fallback and legacy adapters can safely default to standard parameters if the new fields are not populated.
+
+## Change Request - 2026-06-13 - Update Developer C Tests to Support TTS Slimming Refactor
+
+### Requested By
+
+Developer A / kimyonghee
+
+### Affected Owner
+
+Developer C / Sean Han
+
+### Reason
+
+Developer A is executing the cleanup and TTS slimming refactor plan (removing Chatterbox/Kokoro packages and unifying fallback to Edge TTS).
+Since the default fallback provider changes from `kokoro` to `edge`, integrated test cases owned by Developer C that assert or mock the `kokoro` audio URL path will fail.
+Specifically:
+- `backend/tests/test_preprototype_flow.py` (L840) expects `/runtime/audio/kokoro/` URL prefix.
+- `backend/tests/test_demo_ai_respond_page.py` (L404) uses `/runtime/audio/kokoro/demo.wav` as mock data.
+- `backend/tests/test_final_result_payload.py` (L243) uses `/runtime/audio/kokoro/final.wav` as mock data.
+
+### Proposed Contract Change
+
+1. Update `backend/tests/test_preprototype_flow.py` to assert the `edge` audio URL path prefix instead of `kokoro` (e.g. `assert body["npc"]["audio_url"].startswith("/runtime/audio/edge/")`).
+2. Update mock URL configurations in `backend/tests/test_demo_ai_respond_page.py` and `backend/tests/test_final_result_payload.py` to point to `/runtime/audio/edge/` paths.
+3. This aligns with Developer A's refactored `voice_output_service.py` where the default fallback and served directory name is changed from `kokoro` to `edge`.
+
+### Compatibility Impact
+
+This change will resolve failing assertions in Developer C's integration tests after Developer A finishes removing the `kokoro` and `chatterbox` libraries. Until this change is made, `pytest` will fail during the integration validation phase.
+
+### Temporary Workaround
+
+Developer A can temporarily comment out or bypass these assertions during local development of Service A services, but the repository main branch tests will remain broken until Developer C applies these updates to the test assertions.
