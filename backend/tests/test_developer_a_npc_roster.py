@@ -16,11 +16,9 @@ def test_resolve_known_npc_profile_for_officer_miller() -> None:
         default_animation="move",
         fallback_text="Okay. Please continue.",
         mock_voice_id="officer_miller_mock_baritone",
-        kokoro_voices=("am_michael",),
         persona_instruction="concise, official, calm, and dry immigration officer.",
         elevenlabs_voice_id=None,
     )
-    assert profile.kokoro_voices == ("am_michael",)
 
 
 def test_resolve_unknown_npc_profile_falls_back_to_officer_miller() -> None:
@@ -37,8 +35,8 @@ def test_resolve_voice_profile_uses_normalized_npc_id_and_roster_voice() -> None
     assert profile.user_id == "session_1"
     assert profile.npc_id == "officer_miller"
     assert profile.voice_profile_id == "session_1:officer_miller"
-    assert profile.provider == "kokoro"
-    assert profile.voice_id == "am_michael"
+    assert profile.provider == "edge"
+    assert profile.voice_id == "en-US-GuyNeural"
 
 
 def test_resolve_voice_profile_unknown_npc_uses_default_roster_profile() -> None:
@@ -46,7 +44,7 @@ def test_resolve_voice_profile_unknown_npc_uses_default_roster_profile() -> None
 
     assert profile.npc_id == "officer_miller"
     assert profile.voice_profile_id == "session_1:officer_miller"
-    assert profile.voice_id == "am_michael"
+    assert profile.voice_id == "en-US-GuyNeural"
 
 
 def test_mock_tts_uses_roster_mock_voice_for_known_speaker() -> None:

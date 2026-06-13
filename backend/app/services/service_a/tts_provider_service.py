@@ -1,18 +1,13 @@
 from dataclasses import dataclass, field
-from importlib import import_module
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 import httpx
 import math
-import os
-import subprocess
 import struct
+import subprocess
 import sys
 import time
 import wave
-
-# Chatterbox 모델 인스턴스(Instance)를 메모리에 싱글톤(Singleton) 형태로 보관하기 위한 전역 캐시 변수(Variable)입니다.
-_CHATTERBOX_MODEL_CACHE: dict[str, Any] = {}
 
 
 # 각 TTS 엔진이 기술적으로 지원할 수 있는 하드웨어 및 소프트웨어 기능 명세 사양을 나타내는 데이터 클래스(Data Class)입니다.
@@ -25,32 +20,12 @@ class TTSCapabilities:
     output_sample_rates: tuple[int, ...]  # 합성 가능한 샘플 레이트(Sample Rate) 주파수 목록 (튜플 형식)
 
 
-# Kokoro 엔진에 특화된 기능 명세 정보입니다.
-KOKORO_CAPABILITIES = TTSCapabilities(
-    supports_emotion_prompt=False,
-    supports_voice_clone=False,
-    supports_speed=True,
-    supports_pitch=False,
-    output_sample_rates=(24000,),
-)
-# Kokoro 모델 가중치를 다운로드할 기본 허그페이스(Hugging Face) 저장소 식별자(ID)입니다.
-KOKORO_DEFAULT_REPO_ID = "hexgrad/Kokoro-82M"
-
 # Microsoft Edge TTS 엔진에 특화된 기능 명세 정보입니다.
 EDGE_TTS_CAPABILITIES = TTSCapabilities(
     supports_emotion_prompt=False,
     supports_voice_clone=False,
     supports_speed=True,
     supports_pitch=True,
-    output_sample_rates=(24000,),
-)
-
-# 자체 개발용 Chatterbox TTS 엔진에 특화된 기능 명세 정보입니다.
-CHATTERBOX_TTS_CAPABILITIES = TTSCapabilities(
-    supports_emotion_prompt=True,
-    supports_voice_clone=True,
-    supports_speed=False,
-    supports_pitch=False,
     output_sample_rates=(24000,),
 )
 
@@ -67,7 +42,7 @@ ELEVENLABS_TTS_CAPABILITIES = TTSCapabilities(
 # 음성 합성을 요청할 때 엔진에 전달되어야 할 설정값들을 담는 단일 파라미터(Parameter) 데이터 클래스(Data Class)입니다.
 @dataclass(frozen=True)
 class TTSProviderRequest:
-    provider: str                    # 호출할 대상 TTS 프로바이더 이름 (예: 'edge', 'kokoro')
+    provider: str                    # 호출할 대상 TTS 프로바이더 이름 (예: 'edge', 'elevenlabs')
     text: str                        # 합성할 영어 대사 텍스트
     speaker_id: str                  # 발화할 NPC 캐릭터 식별자(ID) (예: 'officer_miller')
     voice_profile_id: str            # 유저별 개인화 세션 음성 프로필 식별자(ID)
@@ -93,77 +68,26 @@ class TTSProvider(Protocol):
 
 
 # 외부 인공지능 가중치 모델 로드 및 복잡한 환경 설정 절차 없이, 유효한 포맷의 모의(Mock) WAV 파일만을 즉시 자동 작성하는 테스트 목적의 모의 합성 클래스(Class)입니다.
-class FakeKokoroProvider:
-    provider_name = "kokoro"
-    capabilities = KOKORO_CAPABILITIES
+class FakeTTSProvider:
+    provider_name = "mock"
+    capabilities = EDGE_TTS_CAPABILITIES
 
     def synthesize(self, request: TTSProviderRequest, output_path: Path) -> dict[str, Any]:
-        """실제 Kokoro 의존성 라이브러리 없이 분석 가능한 최소 크기의 가짜 WAV 파일을 생성합니다."""
+        """실제 라이브러리 없이 분석 가능한 최소 크기의 가짜 WAV 파일을 생성합니다."""
         started_at = time.perf_counter()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         audio_seconds = 1.0  # 1.0초 길이의 고정 주파수 음원을 생성합니다.
         
-        # 물리 파형 신호 발생 함수를 호출하여 유효한 헤더를 갖춘 WAV 바이너리를 디스크에 씁니다.
+        # 물리 파형 신호 발생 함수를 호출하여 WAV 바이너리를 디스크에 씁니다.
         _write_valid_fake_wav(output_path, sample_rate=request.sample_rate, seconds=audio_seconds)
         generation_seconds = time.perf_counter() - started_at
         
         return {
             "provider": self.provider_name,
-            "voice_id": str(request.provider_options.get("voice", "am_michael")),
+            "voice_id": str(request.provider_options.get("voice", "mock_voice")),
             "audio_path": str(output_path),
             "audio_url": None,
             "sample_rate": request.sample_rate,
-            "format": request.output_format,
-            "audio_seconds": audio_seconds,
-            "generation_seconds": generation_seconds,
-            "real_time_factor": generation_seconds / audio_seconds if audio_seconds else None,
-            "status": "ok",
-        }
-
-
-# Hugging Face로부터 Kokoro 모델 가중치(Weight)를 직접 가져와 로컬 PC 자원을 통해 온디바이스(On-device) 음성 합성을 구동하는 클래스(Class)입니다.
-class RealKokoroProvider:
-    provider_name = "kokoro"
-    capabilities = KOKORO_CAPABILITIES
-
-    def synthesize(self, request: TTSProviderRequest, output_path: Path) -> dict[str, Any]:
-        """Kokoro 실제 AI 모델을 사용하여 WAV 파일을 생성합니다."""
-        # Windows OS 환경에서 espeak-ng 음소화 엔진 바인딩을 활성화합니다.
-        configure_espeak_runtime()
-
-        # 프로젝트 초기 로드 지연 및 모듈 간 임포트 충돌 완화를 위해 실제 프로바이더 호출 시점까지 AI 라이브러리 임포트를 지연합니다.
-        sf = import_module("soundfile")
-        kokoro_module = import_module("kokoro")
-        pipeline_type = cast(Any, kokoro_module).KPipeline
-
-        started_at = time.perf_counter()
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # 1. 언어 코드 및 레포지토리 식별자를 바인딩하여 텍스트 음소 변환용 파이프라인 인스턴스(Pipeline Instance)를 초기화합니다.
-        pipeline = pipeline_type(
-            lang_code=str(request.provider_options.get("lang_code", "a")),
-            repo_id=KOKORO_DEFAULT_REPO_ID,
-        )
-        # 2. 파이프라인을 구동하여 원시 오디오 신호 배열(Audio Array)을 순차적으로 생성하는 제너레이터(Generator)를 실행합니다.
-        generator = pipeline(
-            request.text,
-            voice=str(request.provider_options.get("voice", "am_michael")),
-            speed=request.speaking_rate,
-        )
-        _, _, audio = next(generator)
-        # 3. 도출된 오디오 파형 벡터 배열 데이터를 soundfile 모듈을 사용해 대상 경로에 WAV 파일로 저장합니다.
-        sf.write(output_path, audio, request.sample_rate)
-
-        generation_seconds = time.perf_counter() - started_at
-        info = sf.info(output_path)
-        audio_seconds = info.frames / info.samplerate if info.samplerate else 0.0
-        
-        return {
-            "provider": self.provider_name,
-            "voice_id": str(request.provider_options.get("voice", "am_michael")),
-            "audio_path": str(output_path),
-            "audio_url": None,
-            "sample_rate": info.samplerate,
             "format": request.output_format,
             "audio_seconds": audio_seconds,
             "generation_seconds": generation_seconds,
@@ -232,65 +156,6 @@ class EdgeTTSProvider:
                 "volume": volume,
                 "pitch": pitch,
                 "edge_media_path": str(media_path),
-            },
-        }
-
-
-# 자체 연구용 Chatterbox 모델 가중치(Weight)를 기반으로 그래픽 카드 장치 자원(GPU)을 활용해 음성을 조절하고 합성해주는 로컬 딥러닝 음향 생성 클래스(Class)입니다.
-class ChatterboxTTSProvider:
-    provider_name = "chatterbox"
-    capabilities = CHATTERBOX_TTS_CAPABILITIES
-
-    def synthesize(self, request: TTSProviderRequest, output_path: Path) -> dict[str, Any]:
-        """Chatterbox TTS 모델을 메모리에 로드하고, 감정 매개변수와 참조 대상 음성을 반영한 WAV 파일을 생성합니다."""
-        started_at = time.perf_counter()
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        sf = import_module("soundfile")
-        # GPU 사용 가능 여부와 런타임 하드웨어 장치(Device)를 감지합니다.
-        device = _resolve_chatterbox_device(str(request.provider_options.get("device", "auto")))
-        model = _load_chatterbox_model(device=device)
-
-        # 모델 발화 생성을 위한 매개변수(Arguments)들을 딕셔너리로 바인딩합니다.
-        generate_kwargs: dict[str, Any] = {
-            "exaggeration": float(request.provider_options.get("exaggeration", request.intensity)),  # 감정 극대화 강도
-            "cfg_weight": float(request.provider_options.get("cfg_weight", 0.4)),                   # 분류기 없는 가이드 가중치(CFG Weight)
-            "temperature": float(request.provider_options.get("temperature", 0.6)),                  # 샘플링 온도(Temperature)
-        }
-        audio_prompt_path = str(request.provider_options.get("audio_prompt_path", "")).strip()
-        # 음성 복제(Cloning)를 수행할 훈련용 참조 대상 원본 음원 파일이 실제로 디스크에 존재하는지 검증합니다.
-        if audio_prompt_path and Path(audio_prompt_path).exists():
-            generate_kwargs["audio_prompt_path"] = audio_prompt_path
-
-        # 딥러닝 모델 추론(Inference)을 구동하여 원시 오디오 신호 배열을 도출합니다.
-        audio = model.generate(request.text, **generate_kwargs)
-        sample_rate = int(getattr(model, "sr", request.sample_rate))
-        # 도출된 파이토치 텐서(PyTorch Tensor) 파형 데이터를 사운드파일을 통해 디스크에 WAV 형식으로 기록합니다.
-        cast(Any, sf).write(output_path, _to_soundfile_audio(audio), sample_rate)
-
-        generation_seconds = time.perf_counter() - started_at
-        info = cast(Any, sf).info(output_path)
-        audio_seconds = info.frames / info.samplerate if info.samplerate else 0.0
-        
-        return {
-            "provider": self.provider_name,
-            "voice_id": str(request.provider_options.get("voice", request.voice_profile_id)),
-            "audio_path": str(output_path),
-            "audio_url": None,
-            "sample_rate": info.samplerate,
-            "format": request.output_format,
-            "audio_seconds": audio_seconds,
-            "generation_seconds": generation_seconds,
-            "real_time_factor": generation_seconds / audio_seconds if audio_seconds else None,
-            "status": "ok",
-            "provider_options": {
-                "audio_prompt_path": str(request.provider_options.get("audio_prompt_path", "")),
-                "exaggeration": generate_kwargs["exaggeration"],
-                "cfg_weight": generate_kwargs["cfg_weight"],
-                "temperature": generate_kwargs["temperature"],
-                "device": device,
-                "language_id": request.provider_options.get("language_id"),
-                "reference_audio_exists": bool(audio_prompt_path and Path(audio_prompt_path).exists()),
             },
         }
 
@@ -425,66 +290,6 @@ def _wav_duration_seconds(path: Path) -> float:
     with wave.open(str(path), "rb") as wav:
         frame_rate = wav.getframerate()
         return wav.getnframes() / frame_rate if frame_rate else 0.0
-
-
-def _load_chatterbox_model(*, device: str) -> Any:
-    """싱글톤(Singleton) 패턴 형태로 Chatterbox 모델 데이터를 최초 1회에 한하여 메모리에 로드 및 캐싱(Caching)합니다."""
-    cached = _CHATTERBOX_MODEL_CACHE.get(device)
-    if cached is not None:
-        return cached
-    chatterbox_module = import_module("chatterbox.tts")
-    model_type = cast(Any, chatterbox_module).ChatterboxTTS
-    # 지정한 장치(CPU/CUDA) 상으로 사전 학습된 체크포인트를 올립니다.
-    model = model_type.from_pretrained(device=device)
-    _CHATTERBOX_MODEL_CACHE[device] = model
-    return model
-
-
-def _resolve_chatterbox_device(device: str) -> str:
-    """시스템 런타임 환경에서 NVIDIA CUDA GPU 그래픽 가속 장치가 작동하는지 검출하여 적절한 디바이스 명칭을 리턴합니다."""
-    if device != "auto":
-        return device
-    try:
-        torch_module = import_module("torch")
-    except ImportError:
-        return "cpu"
-    cuda = getattr(cast(Any, torch_module), "cuda", None)
-    if cuda is not None and cuda.is_available():
-        return "cuda"
-    return "cpu"
-
-
-def _to_soundfile_audio(audio: Any) -> Any:
-    """딥러닝 파형 시계열 텐서(Tensor) 객체를 일반 사운드 입출력 모듈이 해석할 수 있는 넘파이(Numpy) 다차원 배열 형태로 가공합니다."""
-    if hasattr(audio, "detach"):
-        audio = audio.detach().cpu().numpy()
-    if getattr(audio, "ndim", 1) == 2 and audio.shape[0] < audio.shape[1]:
-        return audio.T
-    return audio
-
-
-def configure_espeak_runtime() -> None:
-    """Windows 운영체제 환경에서 온디바이스 Kokoro AI 가 정상 작동하도록 음소 변환용 espeak-ng 런타임 라이브러리 DLL 절대 경로를 주입하는 환경 셋업(Environment Setup) 함수입니다."""
-    try:
-        espeakng_loader = import_module("espeakng_loader")
-        wrapper_module = import_module("phonemizer.backend.espeak.wrapper")
-    except ImportError:
-        return
-
-    espeak_wrapper = cast(Any, wrapper_module).EspeakWrapper
-    library_path = cast(Any, espeakng_loader).get_library_path()
-    data_path = cast(Any, espeakng_loader).get_data_path()
-    # 파이썬 런타임 엔진이 espeak C-library를 동적 로드하도록 환경 변수를 설정하고 싱글톤 클래스 속성에 주입합니다.
-    os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = library_path
-    os.environ["ESPEAK_DATA_PATH"] = data_path
-    espeak_wrapper.set_library(library_path)
-    if not hasattr(espeak_wrapper, "set_data_path"):
-
-        def set_data_path(path: str) -> None:
-            espeak_wrapper.data_path = path
-
-        espeak_wrapper.set_data_path = staticmethod(set_data_path)
-    espeak_wrapper.set_data_path(data_path)
 
 
 def _write_valid_fake_wav(path: Path, sample_rate: int, seconds: float) -> None:

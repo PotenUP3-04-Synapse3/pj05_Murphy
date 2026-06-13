@@ -10,8 +10,6 @@ class NPCProfile:
     default_animation: str  # 대기 상태에서 취할 기본 애니메이션 키값
     fallback_text: str      # 통신 두절 등 에러 시 노출할 안전 대사
     mock_voice_id: str      # 로컬 개발 및 유닛 테스트 시 매핑할 가짜 목소리 아이디
-    # Kokoro 모델에서 지원하는 실제 voice id 중 이 NPC에 배정할 오디오 샘플 리스트 후보군입니다.
-    kokoro_voices: tuple[str, ...]
     persona_instruction: str # LLM 프롬프트에 결합할 이 NPC의 성격 및 말투 지침입니다.
     elevenlabs_voice_id: str | None = None  # ElevenLabs 전용 목소리 식별 코드
 
@@ -28,7 +26,6 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         default_animation="move",
         fallback_text="Okay. Please continue.",
         mock_voice_id="officer_miller_mock_baritone",
-        kokoro_voices=("am_michael",),
         persona_instruction="concise, official, calm, and dry immigration officer.",
         elevenlabs_voice_id=None,
     ),
@@ -39,7 +36,6 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         default_animation="move",
         fallback_text="Hi there! Traveling is always exciting, isn't it?",
         mock_voice_id="arabella_mock",
-        kokoro_voices=("af_bella",),
         persona_instruction="very friendly, warm, patient, socially easygoing, and welcoming passenger.",
         elevenlabs_voice_id="Z3R5wn05IrDiVCyEkUrK",
     ),
@@ -50,7 +46,6 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         default_animation="move",
         fallback_text="Hello. Pleased to meet you.",
         mock_voice_id="novak_mock",
-        kokoro_voices=("am_michael",),
         persona_instruction="polite, slightly quiet, but friendly and helpful passenger.",
         elevenlabs_voice_id="3TStB8f3X3To0Uj5R7RK",
     ),
@@ -61,7 +56,6 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         default_animation="move",
         fallback_text="State the purpose of your visit clearly.",
         mock_voice_id="hale_mock",
-        kokoro_voices=("am_michael",),
         persona_instruction="stern, direct, and authoritative immigration officer.",
         elevenlabs_voice_id="dXtC3XhB9GtPusIpNtQx",
     ),
@@ -72,7 +66,6 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         default_animation="move",
         fallback_text="Passport, please. I need to see your documentation.",
         mock_voice_id="harris_mock",
-        kokoro_voices=("af_sarah",),
         persona_instruction="professional, meticulous, yet supportive immigration officer.",
         elevenlabs_voice_id="u0REnIJvUgcGQYW2Ux8K",
     ),
@@ -83,7 +76,6 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         default_animation="move",
         fallback_text="Please stop there. What is inside this luggage?",
         mock_voice_id="dan_mock",
-        kokoro_voices=("am_michael",),
         persona_instruction="firm, alert, and strict security officer.",
         elevenlabs_voice_id="1cuDPO8sIMatoOE4Z2Zv",
     ),
@@ -94,7 +86,6 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         default_animation="move",
         fallback_text="Hello, how can I assist you with your baggage claim?",
         mock_voice_id="brielle_mock",
-        kokoro_voices=("af_bella",),
         persona_instruction="helpful, bright, polite, and service-oriented baggage claim desk clerk.",
         elevenlabs_voice_id="6u6JbqKdaQy89ENzLSju",
     )

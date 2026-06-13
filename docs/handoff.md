@@ -1,5 +1,24 @@
 # Handoff
 
+## 2026-06-13 Developer A TTS Slimming Refactor Implementation & Testing Complete
+
+Developer A는 Chatterbox, Kokoro 등 사용하지 않는 로컬 온디바이스 TTS 엔진 및 무거운 PyTorch(`torch`, `torchaudio`) 의존성 제거와 `edge-tts`로의 단일화 리팩토링 작업을 완수하고 관련 테스트 코드 수정을 완료했습니다.
+
+구현 및 수정 내용:
+- **의존성 정리**: `pyproject.toml`에서 무거운 의존성인 `chatterbox-tts`, `kokoro`, `espeakng-loader`, `torch` 등을 제거하고 `uv sync`를 실행하여 가상환경(Virtual Environment)을 경량화했습니다.
+- **서비스 리팩토링**: `tts_provider_service.py`, `tts_service.py`, `voice_output_service.py`, `npc_roster_service.py`, `voice_profile_service.py` 내의 Kokoro 및 Chatterbox 로직을 제거하고, 기본 폴백(Fallback) 엔진 및 오디오 저장 경로 명칭을 `edge`로 일원화했습니다.
+- **Developer A 테스트 수정 완료**: `test_developer_a_agent_run_logging.py` 내의 목소리 검증 단언문(Assertion) 중 기존 코코로 음성 ID(`am_michael`)를 기대하던 부분을 새로운 기본 폴백인 엣지 TTS 음성 ID(`en-US-GuyNeural`)로 수정하여, Developer A 소유의 모든 단위 테스트(35개 케이스)가 100% 성공적으로 패스하도록 조치했습니다.
+- **Ruff 및 Mypy 검증 완료**: `uv run ruff check .` 및 `uv run mypy .`를 실행하여 린트 오류 및 타입 정적 분석 오류가 발생하지 않음을 교차 검증했습니다.
+
+남은 연동 이슈 (Developer C 작업 대기):
+- [change_requests.md](file:///C:/5th_project/pj05_Murphy/docs/contracts/change_requests.md)에 등록된 대로 Developer C 소유의 통합 테스트 파일들([test_preprototype_flow.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_preprototype_flow.py), [test_demo_ai_respond_page.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_demo_ai_respond_page.py), [test_final_result_payload.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_final_result_payload.py))에서 `audio_url` 내 `kokoro` 경로 대신 `edge` 경로를 기대하도록 검증 식을 수정해야 전체 테스트가 정상적으로 완료될 수 있습니다.
+
+## 2026-06-13 Developer A TTS Slimming Refactor Plan & Change Request
+
+Developer A는 시스템 경량화(Slimming)를 위해 사용하지 않는 로컬 온디바이스 TTS 엔진(Chatterbox, Kokoro)과 무거운 PyTorch(`torch`, `torchaudio`) 의존성을 제거하고, ElevenLabs API의 폴백(Fallback) 엔진을 `edge-tts`로 단일화하는 리팩토링 계획을 수립했습니다.
+
+이와 관련하여 Developer C 소유의 통합 테스트 파일들([test_preprototype_flow.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_preprototype_flow.py), [test_demo_ai_respond_page.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_demo_ai_respond_page.py), [test_final_result_payload.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_final_result_payload.py))에서 `audio_url` 경로로 `kokoro`를 기대하는 단언(Assertion) 및 Mock 데이터가 확인되어, [change_requests.md](file:///C:/5th_project/pj05_Murphy/docs/contracts/change_requests.md)에 테스트 수정을 요청하는 변경 요청(Change Request)을 등록했습니다.
+
 ## Current Status
 
 Phase 1 bootstrap is complete, Phase 2 contracts exist, and the AI-only

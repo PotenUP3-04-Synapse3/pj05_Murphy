@@ -1,7 +1,7 @@
 from backend.app.services.service_a.dialogue_policy_service import build_dialogue_policy
 from backend.app.services.service_a.npc_emotion_service import infer_npc_emotion_state
 from backend.app.services.service_a.player_language_profile_service import build_player_language_profile
-from backend.app.services.service_a.tts_service import build_kokoro_provider_request
+from backend.app.services.service_a.tts_service import build_edge_provider_request
 from backend.app.services.service_a.tts_text_polisher_service import polish_tts_text
 
 
@@ -47,26 +47,22 @@ def test_repeated_blocking_escalates_to_warning_tone() -> None:
     assert policy.max_sentence_count == 1
 
 
-def test_kokoro_request_slows_down_as_officer_gets_stricter() -> None:
-    firm = build_kokoro_provider_request(
+def test_edge_request_slows_down_as_officer_gets_stricter() -> None:
+    firm = build_edge_provider_request(
         text="I need a clear answer.",
         speaker_id="officer_miller",
         voice_profile_id="session_1:officer_miller",
-        kokoro_voice="am_michael",
+        edge_voice="en-US-GuyNeural",
         tone="formal_firm",
         english_level="beginner",
-        emotion="firm_official",
-        emotion_intensity=0.7,
     )
-    warning = build_kokoro_provider_request(
+    warning = build_edge_provider_request(
         text="Answer directly.",
         speaker_id="officer_miller",
         voice_profile_id="session_1:officer_miller",
-        kokoro_voice="am_michael",
+        edge_voice="en-US-GuyNeural",
         tone="formal_warning",
         english_level="beginner",
-        emotion="warning_official",
-        emotion_intensity=0.92,
     )
 
     assert firm.speaking_rate == 0.9

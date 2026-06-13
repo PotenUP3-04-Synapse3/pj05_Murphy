@@ -7,7 +7,6 @@ from backend.app.middleware.middleware_a.npc_dialogue_agent_run_middleware impor
 from backend.app.services.service_a.npc_dialogue_agent_run_store import (
     NPCDialogueAgentRunStore,
 )
-from backend.app.services.service_a.tts_provider_service import ChatterboxTTSProvider
 from backend.app.services.service_a.tts_provider_service import ElevenLabsTTSProvider
 from backend.app.services.service_a.voice_output_service import build_voice_output_from_level_design
 from backend.app.services.service_a.tts_provider_service import TTSProviderRequest
@@ -285,12 +284,12 @@ def test_voice_output_writes_only_unified_agent_run_records(tmp_path) -> None:
     assert "agent_end" in event_names
     assert "developer_a_input_service.normalize_level_design_payload" in tool_names
     assert "agent_a.npc_dialogue_agent.generate_npc_dialogue_from_level_design" in tool_names
-    assert "tts_service.build_kokoro_provider_request" in tool_names
-    assert "tts_provider_service.KokoroProvider.synthesize" in tool_names
+    assert "tts_service.build_edge_provider_request" in tool_names
+    assert "tts_provider_service.edge.synthesize" in tool_names
     tts_event = next(
         event
         for event in unified_runs[0]["events"]
-        if event.get("tool_name") == "tts_provider_service.KokoroProvider.synthesize"
+        if event.get("tool_name") == "tts_provider_service.edge.synthesize"
     )
     tts_speed = tts_event["output_summary"]["generation_speed"]
     assert tts_speed["generation_seconds"] >= 0
@@ -329,7 +328,7 @@ def test_voice_output_uses_npc_id_from_payload_for_voice_profile_and_log(tmp_pat
     record = json.loads((tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()[0])
 
     assert output["tts"]["voice_profile_id"] == "session_1:officer_miller"
-    assert output["tts"]["voice_id"] == "am_michael"
+    assert output["tts"]["voice_id"] == "en-US-GuyNeural"
     assert record["metadata"]["npc_context"]["npc_id"] == "officer_miller"
 
 
@@ -385,7 +384,7 @@ def test_voice_output_logs_dialogue_source_trace_for_next_line_generation(tmp_pa
     assert trace["used_inputs"]["player_text"]["used_for"] == "dialogue_evidence_preview"
     assert trace["used_inputs"]["developer_b_feedback"]["used_for"] == "recast_candidate_and_feedback_note"
     assert trace["used_inputs"]["branch"]["next_node_id"] == "IMM_004_ADDRESS"
-    assert trace["used_inputs"]["voice_profile"]["voice_id"] == "am_michael"
+    assert trace["used_inputs"]["voice_profile"]["voice_id"] == "en-US-GuyNeural"
     assert trace["output_decision"]["npc_text_source"] == "developer_b_recast_candidate"
     assert trace["output_decision"]["tts_text_source"] == "tts_text_polisher_service"
 
@@ -505,136 +504,6 @@ def test_voice_output_can_switch_to_edge_tts_provider_with_wav_output(
     assert edge_event["output_summary"]["provider"] == "edge"
     assert edge_event["output_summary"]["conversion_seconds"] == 0.05
 
-
-def test_voice_output_can_switch_to_chatterbox_tts_provider_with_emotion_parameters(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    def fake_chatterbox_synthesize(self: object, request: TTSProviderRequest, output_path) -> dict:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with wave.open(str(output_path), "wb") as wav:
-            wav.setnchannels(1)
-            wav.setsampwidth(2)
-            wav.setframerate(request.sample_rate)
-            wav.writeframes(b"\x00\x00" * request.sample_rate)
-        return {
-            "provider": "chatterbox",
-            "voice_id": request.provider_options["voice"],
-            "audio_path": str(output_path),
-            "audio_url": None,
-            "sample_rate": request.sample_rate,
-            "format": request.output_format,
-            "audio_seconds": 1.0,
-            "generation_seconds": 0.75,
-            "real_time_factor": 0.75,
-            "status": "ok",
-            "provider_options": {
-                "audio_prompt_path": request.provider_options["audio_prompt_path"],
-                "exaggeration": request.provider_options["exaggeration"],
-                "cfg_weight": request.provider_options["cfg_weight"],
-                "temperature": request.provider_options["temperature"],
-                "device": request.provider_options["device"],
-            },
-        }
-
-    monkeypatch.setenv("MURPHY_TTS_PROVIDER", "chatterbox")
-    monkeypatch.setenv("MURPHY_CHATTERBOX_VOICE_ID", "officer_miller_ref")
-    monkeypatch.setenv("MURPHY_CHATTERBOX_REFERENCE_AUDIO", "backend/app/assets/voices/officer_miller_ref.wav")
-    monkeypatch.setenv("MURPHY_CHATTERBOX_EXAGGERATION", "0.85")
-    monkeypatch.setenv("MURPHY_CHATTERBOX_CFG_WEIGHT", "0.30")
-    monkeypatch.setenv("MURPHY_CHATTERBOX_TEMPERATURE", "0.60")
-    monkeypatch.setenv("MURPHY_CHATTERBOX_DEVICE", "cuda")
-    monkeypatch.setattr(
-        "backend.app.services.service_a.tts_provider_service.ChatterboxTTSProvider.synthesize",
-        fake_chatterbox_synthesize,
-    )
-
-    output = build_voice_output_from_level_design(
-        {
-            "chapter_id": "CH0_IMMIGRATION",
-            "turn_id": "turn_chatterbox_001",
-            "node_id": "IMM_002_PURPOSE",
-            "npc": {"npc_id": "officer_miller", "emotion": "suspicious"},
-            "player": {"utterance": "I'm here for tourism.", "language_level": "beginner"},
-            "evaluation": {"branch_type": "success", "target_slot": "visit_purpose"},
-        },
-        runtime_root=tmp_path / "runtime",
-        request_id="req_chatterbox_1",
-        session_id="session_chatterbox_1",
-        use_llm_dialogue=False,
-        use_real_tts=True,
-        audio_url_base="/runtime/audio",
-        agent_run_root=tmp_path,
-    )
-
-    assert output["tts"]["provider"] == "chatterbox"
-    assert output["tts"]["voice_id"] == "officer_miller_ref"
-    assert output["tts"]["audio_path"].endswith(".wav")
-    assert "\\chatterbox\\" in output["tts"]["audio_path"] or "/chatterbox/" in output["tts"]["audio_path"]
-    assert output["tts"]["audio_url"].startswith("/runtime/audio/chatterbox/")
-    assert output["tts"]["provider_options"]["exaggeration"] == 0.85
-    assert output["tts"]["provider_options"]["cfg_weight"] == 0.3
-
-    run = json.loads((tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()[0])
-    build_event = next(
-        event
-        for event in run["events"]
-        if event.get("tool_name") == "tts_service.build_chatterbox_provider_request"
-    )
-    assert build_event["output_summary"]["provider"] == "chatterbox"
-    assert build_event["output_summary"]["exaggeration"] == 0.85
-    assert build_event["output_summary"]["cfg_weight"] == 0.3
-    chatterbox_event = next(
-        event
-        for event in run["events"]
-        if event.get("tool_name") == "tts_provider_service.chatterbox.synthesize"
-    )
-    assert chatterbox_event["output_summary"]["provider"] == "chatterbox"
-
-
-def test_chatterbox_provider_does_not_pass_language_id_to_base_generate(tmp_path, monkeypatch) -> None:
-    class FakeChatterboxModel:
-        sr = 24000
-
-        def generate(self, text: str, **kwargs):
-            assert text == "Answer directly."
-            assert "language_id" not in kwargs
-            return [0.0] * self.sr
-
-    monkeypatch.setattr(
-        "backend.app.services.service_a.tts_provider_service._load_chatterbox_model",
-        lambda device: FakeChatterboxModel(),
-    )
-
-    request = TTSProviderRequest(
-        provider="chatterbox",
-        text="Answer directly.",
-        speaker_id="officer_miller",
-        voice_profile_id="session:officer_miller",
-        language="en",
-        emotion="warning_official",
-        tone="formal_warning",
-        intensity=0.85,
-        speaking_rate=1.0,
-        pitch=0.0,
-        sample_rate=24000,
-        output_format="wav",
-        provider_options={
-            "voice": "officer_miller_ref",
-            "audio_prompt_path": "",
-            "exaggeration": 0.85,
-            "cfg_weight": 0.3,
-            "temperature": 0.6,
-            "device": "cpu",
-            "language_id": "en",
-        },
-    )
-
-    metadata = ChatterboxTTSProvider().synthesize(request, tmp_path / "chatterbox.wav")
-
-    assert metadata["provider"] == "chatterbox"
-    assert metadata["provider_options"]["language_id"] == "en"
-    assert metadata["audio_seconds"] == 1.0
 
 
 def test_voice_output_can_switch_to_elevenlabs_tts_provider_with_voice_settings(

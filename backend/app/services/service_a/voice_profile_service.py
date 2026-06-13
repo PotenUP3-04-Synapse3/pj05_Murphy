@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-import hashlib
 
 from backend.app.services.service_a.npc_roster_service import resolve_npc_profile
 
@@ -14,23 +13,26 @@ class VoiceProfile:
     voice_id: str         # 엔진이 음성 출력 시 사용할 고유 voice id
 
 
+_NPC_EDGE_VOICES: dict[str, str] = {
+    "officer_miller": "en-US-GuyNeural",
+    "flight_seatmate_arabella": "en-US-AvaNeural",
+    "flight_seatmate_novak": "en-US-BrianNeural",
+    "officer_hale": "en-US-GuyNeural",
+    "officer_harris": "en-US-SoniaNeural",
+    "officer_dan": "en-US-GuyNeural",
+    "desk_clerk_brielle": "en-US-AvaNeural",
+}
+
+
 def resolve_voice_profile(user_id: str, npc_id: str) -> VoiceProfile:
     """동일 유저(User)와 NPC 조합의 경우 항상 일관된(Deterministic) voice profile 결과를 결정 및 유지하도록 반환합니다."""
     safe_user_id = user_id or "user_unknown"
     npc_profile = resolve_npc_profile(npc_id)
     
-    # 동일한 유저가 특정 NPC와 계속 대화 시 목소리가 임의로 바뀌지 않도록 SHA-256 해시 키(Hash Key)를 기준으로 고유 목소리 가중치를 추출합니다.
-    digest = hashlib.sha256(f"{safe_user_id}:{npc_profile.npc_id}".encode("utf-8")).hexdigest()[:12]
     return VoiceProfile(
         user_id=safe_user_id,
         npc_id=npc_profile.npc_id,
         voice_profile_id=f"{safe_user_id}:{npc_profile.npc_id}",
-        provider="kokoro",
-        voice_id=_select_voice(digest, npc_profile.kokoro_voices),
+        provider="edge",
+        voice_id=_NPC_EDGE_VOICES.get(npc_profile.npc_id, "en-US-GuyNeural"),
     )
-
-
-def _select_voice(digest: str, voices: tuple[str, ...]) -> str:
-    """해시 키에서 16진수 일부분을 파싱하여 배정 가능한 음성 목록에서 인덱스(Index) 모듈러 연산으로 고정 음색을 안전하게 선정합니다."""
-    index = int(digest[:4], 16) % len(voices)
-    return voices[index]

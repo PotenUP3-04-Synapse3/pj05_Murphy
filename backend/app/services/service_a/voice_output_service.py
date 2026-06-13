@@ -24,18 +24,16 @@ from backend.app.services.service_a.developer_a_input_service import (
 )
 from backend.app.services.service_a.npc_dialogue_agent_run_store import NPCDialogueAgentRunStore
 from backend.app.services.service_a.npc_roster_service import resolve_npc_profile
-from backend.app.services.service_a.tts_provider_service import ChatterboxTTSProvider
-from backend.app.services.service_a.tts_provider_service import EdgeTTSProvider
-from backend.app.services.service_a.tts_provider_service import ElevenLabsTTSProvider
-from backend.app.services.service_a.tts_provider_service import FakeKokoroProvider
-from backend.app.services.service_a.tts_provider_service import RealKokoroProvider
+from backend.app.services.service_a.tts_provider_service import (
+    EdgeTTSProvider,
+    ElevenLabsTTSProvider,
+    FakeTTSProvider,
+)
 from backend.app.services.service_a.tts_service import (
     TTSAudio,
     TTSRequest,
-    build_chatterbox_provider_request,
     build_edge_provider_request,
     build_elevenlabs_provider_request,
-    build_kokoro_provider_request,
     synthesize_speech,
 )
 from backend.app.services.service_a.voice_profile_service import resolve_voice_profile
@@ -160,7 +158,7 @@ def build_voice_output_from_level_design(
             text=str(dialogue.get("tts_text") or dialogue["npc_text"]),
             speaker_id=npc_profile.npc_id,
             voice_profile_id=voice_profile.voice_profile_id,
-            kokoro_voice=voice_profile.voice_id,
+            voice_id=voice_profile.voice_id,
             tone=str(dialogue["tone"]),
             english_level=str(normalized["english_level"]),
             dialogue=dialogue,
@@ -173,15 +171,9 @@ def build_voice_output_from_level_design(
             output_summary={
                 "provider": tts_request.provider,
                 "voice": tts_request.provider_options.get("voice"),
-                "lang_code": tts_request.provider_options.get("lang_code"),
                 "rate": tts_request.provider_options.get("rate"),
                 "volume": tts_request.provider_options.get("volume"),
                 "pitch": tts_request.provider_options.get("pitch"),
-                "audio_prompt_path": tts_request.provider_options.get("audio_prompt_path"),
-                "exaggeration": tts_request.provider_options.get("exaggeration"),
-                "cfg_weight": tts_request.provider_options.get("cfg_weight"),
-                "temperature": tts_request.provider_options.get("temperature"),
-                "device": tts_request.provider_options.get("device"),
                 "model_id": tts_request.provider_options.get("model_id"),
                 "api_output_format": tts_request.provider_options.get("api_output_format"),
                 "stability": tts_request.provider_options.get("stability"),
@@ -194,7 +186,7 @@ def build_voice_output_from_level_design(
             },
         )
         # 5. 지정된 프로바이더(Provider)를 사용하여 음향 데이터 WAV 생성을 처리합니다.
-        tts = _build_kokoro_audio(
+        tts = _build_tts_audio(
             tts_request=tts_request,
             runtime_root=root,
             use_real_tts=use_real_tts,
@@ -256,8 +248,8 @@ def build_voice_output_from_level_design(
     except Exception as exc:
         # 오류 발생 시 시스템 중단을 막기 위해 기본 텍스트 대사 및 오디오 폴백(Fallback) 개체를 신속히 구성해 제공합니다.
         fallback_tts = build_audio_fallback(
-            provider="kokoro",
-            voice_id="am_michael",
+            provider="edge",
+            voice_id="en-US-GuyNeural",
             reason=type(exc).__name__,
         )
         agent_run_middleware.record_event(
@@ -295,7 +287,7 @@ def build_voice_output_from_level_design(
         }
 
 
-def _build_kokoro_audio(
+def _build_tts_audio(
     tts_request: Any,
     runtime_root: Path,
     use_real_tts: bool,
@@ -303,7 +295,7 @@ def _build_kokoro_audio(
     node_id: str | None = None,
     target_slot: str | None = None,
     branch_type: str | None = None,
-    provider_name: str = "kokoro",
+    provider_name: str = "edge",
 ) -> dict[str, Any]:
     """선택된 TTS 엔진을 사용하여 실제로 오디오 음원 파일을 합성하고, 캐시 검사 및 품질 분석 메타데이터를 취합하여 반환합니다."""
     voice = str(tts_request.provider_options["voice"])
@@ -365,7 +357,7 @@ def _build_provider_request(
     text: str,
     speaker_id: str,
     voice_profile_id: str,
-    kokoro_voice: str,
+    voice_id: str,
     tone: str,
     english_level: str,
     dialogue: dict[str, Any],
@@ -408,95 +400,45 @@ def _build_provider_request(
             use_speaker_boost=_env_bool("MURPHY_ELEVENLABS_USE_SPEAKER_BOOST", True),
         )
 
-    if provider_name == "chatterbox":
-        return build_chatterbox_provider_request(
-            text=text,
-            speaker_id=speaker_id,
-            voice_profile_id=voice_profile_id,
-            voice_id=_env_value("MURPHY_CHATTERBOX_VOICE_ID", "officer_miller_ref"),
-            tone=tone,
-            english_level=english_level,
-            audio_prompt_path=_env_value(
-                "MURPHY_CHATTERBOX_REFERENCE_AUDIO",
-                "backend/app/assets/voices/officer_miller_ref.wav",
-            ),
-            exaggeration=_env_float(
-                "MURPHY_CHATTERBOX_EXAGGERATION",
-                _chatterbox_exaggeration_for_tone(tone),
-            ),
-            cfg_weight=_env_float("MURPHY_CHATTERBOX_CFG_WEIGHT", _chatterbox_cfg_weight_for_tone(tone)),
-            temperature=_env_float("MURPHY_CHATTERBOX_TEMPERATURE", 0.6),
-            device=_env_value("MURPHY_CHATTERBOX_DEVICE", "auto"),
-            language_id=_env_value("MURPHY_CHATTERBOX_LANGUAGE_ID", "en"),
-            output_format=_env_value("MURPHY_CHATTERBOX_OUTPUT_FORMAT", "wav"),
-        )
-
-    if provider_name == "edge":
-        return build_edge_provider_request(
-            text=text,
-            speaker_id=speaker_id,
-            voice_profile_id=voice_profile_id,
-            edge_voice=_env_value("MURPHY_EDGE_TTS_VOICE", "en-US-GuyNeural"),
-            tone=tone,
-            english_level=english_level,
-            rate=_env_value("MURPHY_EDGE_TTS_RATE", "-5%"),
-            volume=_env_value("MURPHY_EDGE_TTS_VOLUME", "+0%"),
-            pitch=_env_value("MURPHY_EDGE_TTS_PITCH", "-2Hz"),
-            output_format=_env_value("MURPHY_EDGE_TTS_OUTPUT_FORMAT", "wav"),
-        )
-
-    return build_kokoro_provider_request(
+    # Edge TTS를 기본 및 명시 프로바이더로 구동합니다.
+    return build_edge_provider_request(
         text=text,
         speaker_id=speaker_id,
         voice_profile_id=voice_profile_id,
-        kokoro_voice=kokoro_voice,
+        edge_voice=_env_value("MURPHY_EDGE_TTS_VOICE", voice_id or "en-US-GuyNeural"),
         tone=tone,
         english_level=english_level,
-        emotion=str(
-            dialogue.get("generation_profile", {})
-            .get("npc_emotion", {})
-            .get("emotion", "calm_official")
-        ),
-        emotion_intensity=float(
-            dialogue.get("generation_profile", {})
-            .get("npc_emotion", {})
-            .get("intensity", 0.35)
-        ),
+        rate=_env_value("MURPHY_EDGE_TTS_RATE", "-5%"),
+        volume=_env_value("MURPHY_EDGE_TTS_VOLUME", "+0%"),
+        pitch=_env_value("MURPHY_EDGE_TTS_PITCH", "-2Hz"),
+        output_format=_env_value("MURPHY_EDGE_TTS_OUTPUT_FORMAT", "wav"),
     )
 
 
 def _resolve_tts_provider(provider_name: str, use_real_tts: bool) -> Any:
     """합성 옵션을 분기 해석하여 실제 AI 인스턴스 또는 모의(Mock)용 프로바이더 인스턴스를 빌드해 제공합니다."""
     if not use_real_tts:
-        return FakeKokoroProvider()
+        return FakeTTSProvider()
     if provider_name == "elevenlabs":
         return ElevenLabsTTSProvider()
-    if provider_name == "chatterbox":
-        return ChatterboxTTSProvider()
-    if provider_name == "edge":
-        return EdgeTTSProvider()
-    return RealKokoroProvider()
+    return EdgeTTSProvider()
 
 
 def _selected_tts_provider(*, use_real_tts: bool) -> str:
     """환경 변수 및 설정을 기반으로 활성화할 타겟 TTS 프로바이더 이름을 판별합니다."""
     if not use_real_tts:
-        return "kokoro"
-    provider = _env_value("MURPHY_TTS_PROVIDER", "kokoro").lower()
-    return provider if provider in {"kokoro", "edge", "chatterbox", "elevenlabs"} else "kokoro"
+        return "edge"
+    provider = _env_value("MURPHY_TTS_PROVIDER", "edge").lower()
+    return provider if provider in {"edge", "elevenlabs"} else "edge"
 
 
 def _model_version(*, provider_name: str, use_real_tts: bool) -> str:
     """캐시 키 식별을 위한 타겟 TTS의 릴리즈 가중치 모델 및 라이브러리 버전을 문자열로 매핑합니다."""
     if not use_real_tts:
-        return "fake-kokoro-v1"
+        return "fake-tts-v1"
     if provider_name == "elevenlabs":
         return f"elevenlabs-{_env_value('MURPHY_ELEVENLABS_MODEL_ID', 'eleven_flash_v2_5')}"
-    if provider_name == "chatterbox":
-        return "chatterbox-tts"
-    if provider_name == "edge":
-        return "edge-tts-7.2.8"
-    return "kokoro-0.9.4"
+    return "edge-tts-7.2.8"
 
 
 def _provider_cache_model_version(*, provider_name: str, use_real_tts: bool, tts_request: Any) -> str:
@@ -521,11 +463,7 @@ def _tts_provider_tool_name(provider_name: str) -> str:
     """AgentRun 로그 타임라인 기록 시 식별을 위한 하위 툴 클래스의 메서드 지표 이름을 문자열로 매핑합니다."""
     if provider_name == "elevenlabs":
         return "tts_provider_service.elevenlabs.synthesize"
-    if provider_name == "chatterbox":
-        return "tts_provider_service.chatterbox.synthesize"
-    if provider_name == "edge":
-        return "tts_provider_service.edge.synthesize"
-    return "tts_provider_service.KokoroProvider.synthesize"
+    return "tts_provider_service.edge.synthesize"
 
 
 def _env_value(key: str, default: str) -> str:
@@ -587,30 +525,6 @@ def _elevenlabs_speed_for_tone(tone: str) -> float:
     if tone == "formal_firm":
         return 0.84
     return 0.86
-
-
-def _chatterbox_exaggeration_for_tone(tone: str) -> float:
-    """Chatterbox 연산 시 감정의 극대화 스케일 값을 리턴합니다."""
-    if tone == "formal_warning":
-        return 0.9
-    if tone == "formal_stern":
-        return 0.8
-    if tone == "formal_firm":
-        return 0.7
-    if tone == "formal_supportive":
-        return 0.5
-    return 0.45
-
-
-def _chatterbox_cfg_weight_for_tone(tone: str) -> float:
-    """Chatterbox CFG 가중치를 매핑합니다."""
-    if tone == "formal_warning":
-        return 0.25
-    if tone == "formal_stern":
-        return 0.3
-    if tone == "formal_firm":
-        return 0.35
-    return 0.45
 
 
 def _read_env_file(path: Path) -> dict[str, str]:

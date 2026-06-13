@@ -65,37 +65,6 @@ def _duration_ms(tone: str) -> int:
     return 2000
 
 
-def build_kokoro_provider_request(
-    text: str,
-    speaker_id: str,
-    voice_profile_id: str,
-    kokoro_voice: str,
-    tone: str,
-    english_level: str,
-    emotion: str | None = None,
-    emotion_intensity: float | None = None,
-) -> TTSProviderRequest:
-    """온디바이스 Kokoro 음성 엔진에 인가할 규격화된 TTSProviderRequest 인스턴스(Instance)를 생성합니다."""
-    # 화자 톤 및 영어 등급에 맞춰 속도(Speed)를 보정합니다.
-    speed = _kokoro_speed(tone=tone, english_level=english_level)
-    tts_emotion = emotion or _emotion_for_tone(tone)
-    return TTSProviderRequest(
-        provider="kokoro",
-        text=text,
-        speaker_id=speaker_id,
-        voice_profile_id=voice_profile_id,
-        language="en",
-        emotion=tts_emotion,
-        tone=tone,
-        intensity=emotion_intensity if emotion_intensity is not None else _intensity_for_emotion(tts_emotion),
-        speaking_rate=speed,
-        pitch=0.0,
-        sample_rate=24000,
-        output_format="wav",
-        provider_options={"voice": kokoro_voice, "lang_code": "a"},
-    )
-
-
 def build_edge_provider_request(
     text: str,
     speaker_id: str,
@@ -109,7 +78,7 @@ def build_edge_provider_request(
     output_format: str = "wav",
 ) -> TTSProviderRequest:
     """Microsoft Edge 웹 서비스용 합성 규칙 및 부가 파라미터(volume, pitch 등)가 조립된 TTSProviderRequest 객체를 리턴합니다."""
-    speed = _kokoro_speed(tone=tone, english_level=english_level)
+    speed = _calculate_speaking_rate(tone=tone, english_level=english_level)
     return TTSProviderRequest(
         provider="edge",
         text=text,
@@ -130,49 +99,6 @@ def build_edge_provider_request(
             "volume": volume,
             "pitch": pitch,
             "edge_output_format": "audio-24khz-48kbitrate-mono-mp3",
-        },
-    )
-
-
-def build_chatterbox_provider_request(
-    text: str,
-    speaker_id: str,
-    voice_profile_id: str,
-    voice_id: str,
-    tone: str,
-    english_level: str,
-    audio_prompt_path: str,
-    exaggeration: float,
-    cfg_weight: float,
-    temperature: float,
-    device: str,
-    language_id: str = "en",
-    output_format: str = "wav",
-) -> TTSProviderRequest:
-    """로컬 딥러닝 Chatterbox 모델용 전용 매개변수(exaggeration, cfg_weight, device)를 패킹한 요청을 생성합니다."""
-    tts_emotion = _emotion_for_tone(tone)
-    return TTSProviderRequest(
-        provider="chatterbox",
-        text=text,
-        speaker_id=speaker_id,
-        voice_profile_id=voice_profile_id,
-        language=language_id,
-        emotion=tts_emotion,
-        tone=tone,
-        intensity=exaggeration,
-        speaking_rate=_kokoro_speed(tone=tone, english_level=english_level),
-        pitch=0.0,
-        sample_rate=24000,
-        output_format=output_format,
-        # 학습 모델 구동용 세부 사양을 딕셔너리로 패킹합니다.
-        provider_options={
-            "voice": voice_id,
-            "audio_prompt_path": audio_prompt_path,
-            "exaggeration": exaggeration,
-            "cfg_weight": cfg_weight,
-            "temperature": temperature,
-            "device": device,
-            "language_id": language_id,
         },
     )
 
@@ -229,7 +155,7 @@ def build_elevenlabs_provider_request(
     )
 
 
-def _kokoro_speed(tone: str, english_level: str) -> float:
+def _calculate_speaking_rate(tone: str, english_level: str) -> float:
     """화자 상태 및 플레이어 수준을 판단하여 자연스러운 발화 재생 속도 비율을 조절합니다. (초보자일 경우 속도를 느리게 조절)"""
     if tone == "formal_warning":
         return 0.84
