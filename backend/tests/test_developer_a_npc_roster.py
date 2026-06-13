@@ -6,35 +6,35 @@ from backend.app.services.service_a.tts_service import TTSRequest, synthesize_sp
 from backend.app.services.service_a.voice_profile_service import resolve_voice_profile
 
 
-def test_resolve_known_npc_profile_for_officer_miller() -> None:
-    profile = resolve_npc_profile("OFFICER_MILLER")
+def test_resolve_known_npc_profile_for_officer_hale() -> None:
+    profile = resolve_npc_profile("OFFICER_HALE")
 
     assert profile == NPCProfile(
-        npc_id="officer_miller",
-        display_name="Officer Miller",
+        npc_id="hale",
+        display_name="Officer Hale",
         role="immigration_officer",
         default_animation="move",
-        fallback_text="Okay. Please continue.",
-        mock_voice_id="officer_miller_mock_baritone",
-        persona_instruction="concise, official, calm, and dry immigration officer.",
-        elevenlabs_voice_id=None,
+        fallback_text="State the purpose of your visit clearly.",
+        mock_voice_id="hale_mock",
+        persona_instruction="stern, direct, and authoritative immigration officer.",
+        elevenlabs_voice_id="dXtC3XhB9GtPusIpNtQx",
     )
 
 
-def test_resolve_unknown_npc_profile_falls_back_to_officer_miller() -> None:
+def test_resolve_unknown_npc_profile_falls_back_to_default_hale() -> None:
     profile = resolve_npc_profile("UNKNOWN_NPC")
 
-    assert profile.npc_id == "officer_miller"
-    assert profile.display_name == "Officer Miller"
-    assert profile.mock_voice_id == "officer_miller_mock_baritone"
+    assert profile.npc_id == "hale"
+    assert profile.display_name == "Officer Hale"
+    assert profile.mock_voice_id == "hale_mock"
 
 
 def test_resolve_voice_profile_uses_normalized_npc_id_and_roster_voice() -> None:
-    profile = resolve_voice_profile(user_id="session_1", npc_id="OFFICER_MILLER")
+    profile = resolve_voice_profile(user_id="session_1", npc_id="OFFICER_HALE")
 
     assert profile.user_id == "session_1"
-    assert profile.npc_id == "officer_miller"
-    assert profile.voice_profile_id == "session_1:officer_miller"
+    assert profile.npc_id == "hale"
+    assert profile.voice_profile_id == "session_1:hale"
     assert profile.provider == "edge"
     assert profile.voice_id == "en-US-GuyNeural"
 
@@ -42,8 +42,8 @@ def test_resolve_voice_profile_uses_normalized_npc_id_and_roster_voice() -> None
 def test_resolve_voice_profile_unknown_npc_uses_default_roster_profile() -> None:
     profile = resolve_voice_profile(user_id="session_1", npc_id="UNKNOWN_NPC")
 
-    assert profile.npc_id == "officer_miller"
-    assert profile.voice_profile_id == "session_1:officer_miller"
+    assert profile.npc_id == "hale"
+    assert profile.voice_profile_id == "session_1:hale"
     assert profile.voice_id == "en-US-GuyNeural"
 
 
@@ -51,9 +51,9 @@ def test_mock_tts_uses_roster_mock_voice_for_known_speaker() -> None:
     audio = synthesize_speech(
         TTSRequest(
             text="Passport, please.",
-            speaker="Officer Miller",
+            speaker="Officer Hale",
             tone="formal_neutral",
         )
     )
 
-    assert audio.voice_id == "officer_miller_mock_baritone"
+    assert audio.voice_id == "hale_mock"

@@ -27,7 +27,7 @@ def test_build_npc_dialogue_evidence_summary_uses_short_traceable_snippet() -> N
         "chapter_id": "chapter_0_immigration",
         "turn_id": "turn_003",
         "node_id": "IMM_003_DURATION",
-        "npc": {"npc_id": "officer_miller", "emotion": "neutral"},
+        "npc": {"npc_id": "miller", "emotion": "neutral"},
         "player": {"utterance": "I will stay five days", "language_level": "beginner"},
         "evaluation": {"branch_type": "success", "target_slot": "stay_address"},
     }
@@ -198,7 +198,7 @@ def test_format_agent_run_markdown_makes_readable_timeline() -> None:
 def test_build_npc_dialogue_artifact_links_to_agent_run() -> None:
     artifact = build_npc_dialogue_artifact(
         agent_run_id="run_1",
-        npc_id="officer_miller",
+        npc_id="miller",
         npc_text="Where will you be staying?",
         tts_text="Where will you be staying?",
         feedback_kr="좋습니다.",
@@ -243,7 +243,7 @@ def test_voice_output_writes_only_unified_agent_run_records(tmp_path) -> None:
         "chapter_id": "chapter_0_immigration",
         "turn_id": "turn_003",
         "node_id": "IMM_003_DURATION",
-        "npc": {"npc_id": "officer_miller", "emotion": "neutral"},
+        "npc": {"npc_id": "miller", "emotion": "neutral"},
         "player": {"utterance": "I will stay five days", "language_level": "beginner"},
         "evaluation": {"branch_type": "success", "target_slot": "stay_address"},
     }
@@ -310,7 +310,7 @@ def test_voice_output_uses_npc_id_from_payload_for_voice_profile_and_log(tmp_pat
         "chapter_id": "chapter_0_immigration",
         "turn_id": "turn_003",
         "node_id": "IMM_003_DURATION",
-        "npc": {"npc_id": "OFFICER_MILLER", "npc_role": "immigration_officer"},
+        "npc": {"npc_id": "MILLER", "npc_role": "immigration_officer"},
         "player": {"utterance": "I will stay five days", "language_level": "beginner"},
         "evaluation": {"branch_type": "success", "target_slot": "stay_address"},
     }
@@ -327,9 +327,9 @@ def test_voice_output_uses_npc_id_from_payload_for_voice_profile_and_log(tmp_pat
 
     record = json.loads((tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()[0])
 
-    assert output["tts"]["voice_profile_id"] == "session_1:officer_miller"
+    assert output["tts"]["voice_profile_id"] == "session_1:hale"
     assert output["tts"]["voice_id"] == "en-US-GuyNeural"
-    assert record["metadata"]["npc_context"]["npc_id"] == "officer_miller"
+    assert record["metadata"]["npc_context"]["npc_id"] == "hale"
 
 
 def test_voice_output_logs_dialogue_source_trace_for_next_line_generation(tmp_path) -> None:
@@ -337,7 +337,7 @@ def test_voice_output_logs_dialogue_source_trace_for_next_line_generation(tmp_pa
         "chapter_id": "chapter_0_immigration",
         "turn_id": "turn_003",
         "node_id": "IMM_003_DURATION",
-        "npc": {"npc_id": "OFFICER_MILLER", "npc_role": "immigration_officer"},
+        "npc": {"npc_id": "MILLER", "npc_role": "immigration_officer"},
         "player_text": "I will stay five days",
         "node_context": {
             "npc_question": "How long will you stay?",
@@ -375,7 +375,7 @@ def test_voice_output_logs_dialogue_source_trace_for_next_line_generation(tmp_pa
     record = json.loads((tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()[0])
     trace = record["metadata"]["dialogue_source_trace"]
 
-    assert trace["npc_profile"]["npc_id"] == "officer_miller"
+    assert trace["npc_profile"]["npc_id"] == "hale"
     assert trace["used_inputs"]["node_context"] == {
         "used_for": "next_question_and_goal",
         "node_id": "IMM_003_DURATION",
@@ -414,7 +414,7 @@ def test_voice_output_logs_llm_dialogue_as_output_source(tmp_path, monkeypatch) 
         "chapter_id": "chapter_0_immigration",
         "turn_id": "turn_003",
         "node_id": "IMM_002_PURPOSE",
-        "npc": {"npc_id": "officer_miller"},
+        "npc": {"npc_id": "miller"},
         "player_text": "I am Korean.",
         "node_context": {"recommended_expression": "I'm here for tourism."},
         "evaluation_summary": {"feedback_note": "Purpose was unclear.", "task_success": 0, "clarity": 1},
@@ -478,7 +478,7 @@ def test_voice_output_can_switch_to_edge_tts_provider_with_wav_output(
             "chapter_id": "CH0_IMMIGRATION",
             "turn_id": "turn_edge_001",
             "node_id": "IMM_002_PURPOSE",
-            "npc": {"npc_id": "officer_miller", "emotion": "neutral"},
+            "npc": {"npc_id": "miller", "emotion": "neutral"},
             "player": {"utterance": "I'm here for tourism.", "language_level": "beginner"},
             "evaluation": {"branch_type": "success", "target_slot": "visit_purpose"},
         },
@@ -541,7 +541,7 @@ def test_voice_output_can_switch_to_elevenlabs_tts_provider_with_voice_settings(
 
     monkeypatch.setenv("MURPHY_TTS_PROVIDER", "elevenlabs")
     monkeypatch.setenv("MURPHY_ELEVENLABS_API_KEY", "test_key")
-    monkeypatch.setenv("MURPHY_ELEVENLABS_VOICE_ID", "voice_officer_miller")
+    monkeypatch.setenv("MURPHY_ELEVENLABS_VOICE_ID", "voice_miller")
     monkeypatch.setenv("MURPHY_ELEVENLABS_MODEL_ID", "eleven_flash_v2_5")
     monkeypatch.setenv("MURPHY_ELEVENLABS_SPEED", "0.80")
     monkeypatch.setattr(
@@ -554,7 +554,7 @@ def test_voice_output_can_switch_to_elevenlabs_tts_provider_with_voice_settings(
             "chapter_id": "CH0_IMMIGRATION",
             "turn_id": "turn_elevenlabs_001",
             "node_id": "IMM_002_PURPOSE",
-            "npc": {"npc_id": "officer_miller", "emotion": "suspicious"},
+            "npc": {"npc_id": "miller", "emotion": "suspicious"},
             "player": {"utterance": "I'm here for tourism.", "language_level": "beginner"},
             "evaluation": {"branch_type": "success", "target_slot": "visit_purpose"},
         },
@@ -568,7 +568,7 @@ def test_voice_output_can_switch_to_elevenlabs_tts_provider_with_voice_settings(
     )
 
     assert output["tts"]["provider"] == "elevenlabs"
-    assert output["tts"]["voice_id"] == "voice_officer_miller"
+    assert output["tts"]["voice_id"] == "voice_miller"
     assert output["tts"]["audio_path"].endswith(".wav")
     assert "\\elevenlabs\\" in output["tts"]["audio_path"] or "/elevenlabs/" in output["tts"]["audio_path"]
     assert output["tts"]["audio_url"].startswith("/runtime/audio/elevenlabs/")
@@ -631,8 +631,8 @@ def test_elevenlabs_provider_uses_api_key_without_returning_secret(tmp_path, mon
     request = TTSProviderRequest(
         provider="elevenlabs",
         text="How long will you be staying?",
-        speaker_id="officer_miller",
-        voice_profile_id="session:officer_miller",
+        speaker_id="miller",
+        voice_profile_id="session:miller",
         language="en",
         emotion="firm_official",
         tone="formal_firm",

@@ -1,5 +1,33 @@
 # Handoff
 
+## 2026-06-13 Developer C Refactor: Remove Deprecated Miller NPC, Update Default NPC to Hale & Apply TTS Slimming Test Updates
+
+Developer C는 기획상 더 이상 사용되지 않는 레거시 입국심사관 NPC인 `miller`를 완전히 제거하고, 실제 챕터 0의 메인 입국심사관 NPC인 `hale`을 기본(Default) NPC로 변경하여 기획과의 정합성을 일치시켰습니다. 또한, Developer A의 로컬 온디바이스 TTS 제거(TTS Slimming) 계획에 따른 Developer C 소유의 통합 테스트 실패 지점을 해결했습니다.
+
+구현 및 수정 내용:
+- **로스터 정리**: `npc_roster_service.py`에서 폐기된 `miller` 캐릭터 정보를 삭제하고, `_DEFAULT_NPC_ID`를 `"hale"`로 수정했습니다.
+- **하위 호환(Fallback) 기능 구현**: `_normalize_npc_id` 정규화 함수에 레거시 매핑 로직을 보강하여, 이전 규격인 `"miller"` 혹은 `"officer_miller"`를 참조해 통신을 시도해도 자동으로 `"hale"` 프로필로 변환하여 리턴하도록 처리했습니다.
+- **음성 매핑 정리**: `voice_profile_service.py`에서 `miller` 음성 설정을 삭제했습니다.
+- **유닛 및 통합 테스트 일괄 갱신**: `test_developer_a_npc_roster.py`, `test_developer_a_agent_run_logging.py`, `test_developer_a_npc_dialogue.py`, `test_developer_a_npc_emotion_escalation.py`, `test_developer_c_langgraph_orchestrator.py`, `test_final_result_payload.py`, `test_preprototype_flow.py`, `test_unified_agent_run_log.py` 내의 모든 `officer_miller` 혹은 `OFFICER_MILLER` 참조를 신규 디폴트인 `miller` ➡️ `hale` 및 `MILLER` ➡️ `hale`로 갱신하여 정합성을 맞췄습니다.
+- **TTS Slimming 통합 테스트 실패 해결**: `test_preprototype_flow.py`, `test_demo_ai_respond_page.py`, `test_final_result_payload.py` 내의 `audio_url` 경로에서 이전 Kokoro 경로인 `/runtime/audio/kokoro/` 대신 신규 Edge TTS 경로인 `/runtime/audio/edge/`를 검증/모킹하도록 수정하여, 통합 테스트 실패를 완전히 해소했습니다.
+
+검증 결과:
+- `uv run pytest`: PASS, 231개 전체 테스트 중 Kokoro 로컬 환경 의존 테스트 1개를 제외한 230개 케이스 성공 통과 (TTS Slimming 변경 사항 및 Miller NPC 제거 작업 검증 완료).
+
+수정된 파일 목록:
+- `backend/app/services/service_a/npc_roster_service.py`
+- `backend/app/services/service_a/voice_profile_service.py`
+- `backend/tests/test_developer_a_npc_roster.py`
+- `backend/tests/test_developer_a_agent_run_logging.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/test_developer_a_npc_emotion_escalation.py`
+- `backend/tests/test_developer_c_langgraph_orchestrator.py`
+- `backend/tests/test_final_result_payload.py`
+- `backend/tests/test_preprototype_flow.py`
+- `backend/tests/test_demo_ai_respond_page.py`
+- `backend/tests/test_unified_agent_run_log.py`
+- `docs/contracts/change_requests.md`
+
 ## 2026-06-13 Developer A TTS Slimming Refactor Implementation & Testing Complete
 
 Developer A는 Chatterbox, Kokoro 등 사용하지 않는 로컬 온디바이스 TTS 엔진 및 무거운 PyTorch(`torch`, `torchaudio`) 의존성 제거와 `edge-tts`로의 단일화 리팩토링 작업을 완수하고 관련 테스트 코드 수정을 완료했습니다.

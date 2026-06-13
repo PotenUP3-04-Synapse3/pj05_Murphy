@@ -79,14 +79,14 @@ def test_synthesize_speech_returns_deterministic_mock_audio_metadata() -> None:
     audio = synthesize_speech(
         TTSRequest(
             text="Travel. Okay. How long will you stay?",
-            speaker="Officer Miller",
+            speaker="Officer Hale",
             tone="formal_neutral",
         )
     )
 
     assert audio.provider == "mock"
     assert audio.audio_url is None
-    assert audio.voice_id == "officer_miller_mock_baritone"
+    assert audio.voice_id == "hale_mock"
     assert audio.duration_ms == 2400
 
 
@@ -152,7 +152,7 @@ def test_level_design_dialogue_uses_npc_roster_profile(monkeypatch) -> None:
 def test_level_design_dialogue_ignores_developer_b_progression_control_fields() -> None:
     result = generate_npc_dialogue_from_level_design(
         {
-            "npc": {"npc_id": "officer_miller"},
+            "npc": {"npc_id": "miller"},
             "node_id": "IMM_002_PURPOSE",
             "player_text": "I am here for tourism.",
             "node_context": {"recommended_expression": "I'm here for tourism."},
@@ -240,7 +240,7 @@ def test_level_design_llm_dialogue_uses_rule_fields_when_llm_omits_optional_sche
 
     result = generate_npc_dialogue_from_level_design(
         {
-            "npc": {"npc_id": "officer_miller"},
+            "npc": {"npc_id": "miller"},
             "node_id": "IMM_002_PURPOSE",
             "player_text": "I am here for tourism.",
             "node_context": {"recommended_expression": "I'm here for tourism."},
@@ -283,7 +283,7 @@ def test_level_design_llm_dialogue_calls_llm_even_without_candidate_text() -> No
 
     result = generate_npc_dialogue_from_level_design(
         {
-            "npc": {"npc_id": "officer_miller"},
+            "npc": {"npc_id": "miller"},
             "node_id": "IMM_002_PURPOSE",
             "player_text": "uncle",
             "node_context": {
@@ -327,7 +327,7 @@ def test_level_design_llm_dialogue_rejects_non_english_npc_text() -> None:
 
     result = generate_npc_dialogue_from_level_design(
         {
-            "npc": {"npc_id": "officer_miller"},
+            "npc": {"npc_id": "miller"},
             "node_id": "IMM_002_PURPOSE",
             "player_text": "I am Korean.",
             "node_context": {"recommended_expression": "I'm here for tourism."},
@@ -350,7 +350,7 @@ def test_level_design_llm_dialogue_rejects_non_english_npc_text() -> None:
 def test_level_design_dialogue_does_not_convert_none_candidate_to_text() -> None:
     result = generate_npc_dialogue_from_level_design(
         {
-            "npc": {"npc_id": "officer_miller"},
+            "npc": {"npc_id": "miller"},
             "node_id": "IMM_002_PURPOSE",
             "player_text": "I'm here for tourism.",
             "node_context": {

@@ -1133,3 +1133,34 @@ This change will resolve failing assertions in Developer C's integration tests a
 ### Temporary Workaround
 
 Developer A can temporarily comment out or bypass these assertions during local development of Service A services, but the repository main branch tests will remain broken until Developer C applies these updates to the test assertions.
+
+## Change Request - 2026-06-13 - Remove Deprecated Miller NPC and Update Default NPC to Hale
+
+### Requested By
+
+Developer C / Sean Han
+
+### Affected Owner
+
+Developer A / kimyonghee
+
+### Reason
+
+1. 기획 사양(스토리보드)에서 제외된 레거시 캐릭터인 `miller`를 완전히 삭제하여 기술적 부채를 청산합니다.
+2. 실제 챕터 0의 메인 입국심사관 NPC인 `hale`을 기본(Default) NPC로 설정하여 기획 정합성을 높입니다.
+3. 이에 따른 전체 소스코드와 유닛 테스트 코드의 종속성을 해소하여 일관된 에이전트 동작을 보장합니다.
+
+### Proposed Contract Change
+
+1. [npc_roster_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/npc_roster_service.py)에서 `miller` 객체를 삭제하고 `_DEFAULT_NPC_ID`를 `"hale"`로 수정합니다.
+2. `_normalize_npc_id` 정규화 함수에 레거시 하위 호환 매핑 로직을 추가하여, 외부(Unreal) 또는 테스트에서 구 규격인 `"miller"`나 `"officer_miller"`를 참조해 통신을 시도해도 자동으로 `"hale"` 프로필로 변환 및 리턴하도록 조치합니다.
+3. [voice_profile_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/voice_profile_service.py)에서 `miller` 음성 설정을 지웁니다.
+4. 백엔드 및 전체 유닛 테스트 코드에서 `miller`를 기용한 Assertion 및 Mock 설정을 `hale`로 통일 및 갱신합니다.
+
+### Compatibility Impact
+
+레거시 `officer_miller` 혹은 `miller` 데이터가 전달되더라도 백엔드에서 자체적으로 `hale`로 안전하게 리다이렉트 처리(하위 호환)하기 때문에, 언리얼 엔진의 통신이나 외부 API 연동 흐름이 깨지지 않습니다.
+
+### Temporary Workaround
+
+해당 없음 (전면 리팩터링 적용 완료).

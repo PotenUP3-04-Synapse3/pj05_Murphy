@@ -50,16 +50,16 @@ def test_repeated_blocking_escalates_to_warning_tone() -> None:
 def test_edge_request_slows_down_as_officer_gets_stricter() -> None:
     firm = build_edge_provider_request(
         text="I need a clear answer.",
-        speaker_id="officer_miller",
-        voice_profile_id="session_1:officer_miller",
+        speaker_id="miller",
+        voice_profile_id="session_1:miller",
         edge_voice="en-US-GuyNeural",
         tone="formal_firm",
         english_level="beginner",
     )
     warning = build_edge_provider_request(
         text="Answer directly.",
-        speaker_id="officer_miller",
-        voice_profile_id="session_1:officer_miller",
+        speaker_id="miller",
+        voice_profile_id="session_1:miller",
         edge_voice="en-US-GuyNeural",
         tone="formal_warning",
         english_level="beginner",

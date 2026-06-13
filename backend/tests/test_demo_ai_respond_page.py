@@ -401,7 +401,7 @@ def test_latest_agent_run_endpoint_returns_compact_node_summaries(tmp_path, monk
                                 "input_summary": {"branch_type": "success"},
                                 "output_summary": {
                                     "text_preview": "How long will you stay?",
-                                    "audio_url": "/runtime/audio/kokoro/demo.wav",
+                                    "audio_url": "/runtime/audio/edge/demo.wav",
                                 },
                             },
                             {

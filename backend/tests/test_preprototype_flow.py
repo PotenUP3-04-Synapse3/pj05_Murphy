@@ -100,7 +100,7 @@ def _turn_payload() -> dict:
             "turn_index": 2,
         },
         "npc": {
-            "npc_id": "OFFICER_MILLER",
+            "npc_id": "miller",
             "npc_role": "immigration_officer",
             "last_npc_message": "What is the purpose of your visit?",
         },
@@ -200,7 +200,7 @@ def test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response() -> N
     assert response.current_node_id == "IMM_002_PURPOSE"
     assert response.next_node_id == "IMM_003_DURATION"
     assert response.next_action == "ADVANCE"
-    assert response.npc.speaker == "Officer Miller"
+    assert response.npc.speaker == "Officer Hale"
     assert "tourism" in response.npc.text.lower()
     assert response.npc.text.startswith("All right.")
     assert response.npc.emotion == "Nomal"
@@ -779,7 +779,7 @@ def test_dev_a_adapter_forwards_npc_context_to_voice_builder() -> None:
     )
 
     assert builder_payloads[0]["npc"] == {
-        "npc_id": "OFFICER_MILLER",
+        "npc_id": "miller",
         "npc_role": "immigration_officer",
         "last_npc_message": "What is the purpose of your visit?",
         "emotion": dev_b_output.npc_emotion,
@@ -837,7 +837,7 @@ def test_api_accepts_multipart_turn_json_and_sample_wav() -> None:
     assert body["stt"]["player_text"] == "I'm here for tourism."
     assert body["next_node_id"] == "IMM_003_DURATION"
     assert "how long" in body["npc"]["text"].lower()
-    assert body["npc"]["audio_url"].startswith("/runtime/audio/kokoro/")
+    assert body["npc"]["audio_url"].startswith("/runtime/audio/edge/")
 
     audio_response = client.get(body["npc"]["audio_url"])
     assert audio_response.status_code == 200

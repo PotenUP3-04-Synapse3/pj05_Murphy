@@ -151,7 +151,7 @@ def _preprototype_request(transcript: str = "I'm here for tourism.") -> PreProto
                     "turn_index": 2,
                 },
                 "npc": {
-                    "npc_id": "OFFICER_MILLER",
+                    "npc_id": "miller",
                     "npc_role": "immigration_officer",
                     "last_npc_message": "What is the purpose of your visit?",
                 },
