@@ -14,13 +14,12 @@ class VoiceProfile:
 
 
 _NPC_EDGE_VOICES: dict[str, str] = {
-    "officer_miller": "en-US-GuyNeural",
-    "flight_seatmate_arabella": "en-US-AvaNeural",
-    "flight_seatmate_novak": "en-US-BrianNeural",
-    "officer_hale": "en-US-GuyNeural",
-    "officer_harris": "en-US-SoniaNeural",
-    "officer_dan": "en-US-GuyNeural",
-    "desk_clerk_brielle": "en-US-AvaNeural",
+    "arabella": "en-US-AvaNeural",
+    "novak": "en-US-BrianNeural",
+    "hale": "en-US-GuyNeural",
+    "harris": "en-US-SoniaNeural",
+    "dan": "en-US-GuyNeural",
+    "brielle": "en-US-AvaNeural",
 }
 
 

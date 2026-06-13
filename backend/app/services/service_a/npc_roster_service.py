@@ -15,22 +15,12 @@ class NPCProfile:
 
 
 # 기본값으로 지정할 NPC 식별 아이디입니다.
-_DEFAULT_NPC_ID = "officer_miller"
+_DEFAULT_NPC_ID = "hale"
 
 # 게임 내 캐릭터 정보들을 등록하여 보관하는 데이터베이스 역할의 딕셔너리(Dictionary) 인스턴스입니다.
 _NPC_ROSTER: dict[str, NPCProfile] = {
-    "officer_miller": NPCProfile(
-        npc_id="officer_miller",
-        display_name="Officer Miller",
-        role="immigration_officer",
-        default_animation="move",
-        fallback_text="Okay. Please continue.",
-        mock_voice_id="officer_miller_mock_baritone",
-        persona_instruction="concise, official, calm, and dry immigration officer.",
-        elevenlabs_voice_id=None,
-    ),
-    "flight_seatmate_arabella": NPCProfile(
-        npc_id="flight_seatmate_arabella",
+    "arabella": NPCProfile(
+        npc_id="arabella",
         display_name="Arabella",
         role="seatmate",
         default_animation="move",
@@ -39,8 +29,8 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         persona_instruction="very friendly, warm, patient, socially easygoing, and welcoming passenger.",
         elevenlabs_voice_id="Z3R5wn05IrDiVCyEkUrK",
     ),
-    "flight_seatmate_novak": NPCProfile(
-        npc_id="flight_seatmate_novak",
+    "novak": NPCProfile(
+        npc_id="novak",
         display_name="Novak",
         role="seatmate",
         default_animation="move",
@@ -49,8 +39,8 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         persona_instruction="polite, slightly quiet, but friendly and helpful passenger.",
         elevenlabs_voice_id="3TStB8f3X3To0Uj5R7RK",
     ),
-    "officer_hale": NPCProfile(
-        npc_id="officer_hale",
+    "hale": NPCProfile(
+        npc_id="hale",
         display_name="Officer Hale",
         role="immigration_officer",
         default_animation="move",
@@ -59,8 +49,8 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         persona_instruction="stern, direct, and authoritative immigration officer.",
         elevenlabs_voice_id="dXtC3XhB9GtPusIpNtQx",
     ),
-    "officer_harris": NPCProfile(
-        npc_id="officer_harris",
+    "harris": NPCProfile(
+        npc_id="harris",
         display_name="Officer Harris",
         role="immigration_officer",
         default_animation="move",
@@ -69,8 +59,8 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         persona_instruction="professional, meticulous, yet supportive immigration officer.",
         elevenlabs_voice_id="u0REnIJvUgcGQYW2Ux8K",
     ),
-    "officer_dan": NPCProfile(
-        npc_id="officer_dan",
+    "dan": NPCProfile(
+        npc_id="dan",
         display_name="Officer Dan",
         role="security_officer",
         default_animation="move",
@@ -79,8 +69,8 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         persona_instruction="firm, alert, and strict security officer.",
         elevenlabs_voice_id="1cuDPO8sIMatoOE4Z2Zv",
     ),
-    "desk_clerk_brielle": NPCProfile(
-        npc_id="desk_clerk_brielle",
+    "brielle": NPCProfile(
+        npc_id="brielle",
         display_name="Brielle",
         role="baggage_agent",
         default_animation="move",
@@ -110,7 +100,22 @@ def resolve_npc_profile_by_display_name(display_name: str | None) -> NPCProfile 
 
 
 def _normalize_npc_id(npc_id: str | None) -> str:
-    """입력받은 NPC ID 문자열에 존재할 수 있는 빈칸과 대소문자를 정규화합니다."""
+    """입력받은 NPC ID 문자열에 존재할 수 있는 빈칸과 대소문자를 정규화합니다.
+    레거시 ID 접두사(officer_, flight_seatmate_, desk_clerk_)가 있으면 제거하여 하위 호환성을 제공합니다.
+    폐기된 NPC인 'miller'가 전달되는 경우, 기본 캐릭터이자 실제 입국심사관인 'hale'로 자동 전환합니다.
+    """
     if not npc_id:
         return _DEFAULT_NPC_ID
-    return npc_id.strip().lower()
+    cleaned = npc_id.strip().lower()
+    
+    if cleaned.startswith("officer_"):
+        cleaned = cleaned.replace("officer_", "")
+    elif cleaned.startswith("flight_seatmate_"):
+        cleaned = cleaned.replace("flight_seatmate_", "")
+    elif cleaned.startswith("desk_clerk_"):
+        cleaned = cleaned.replace("desk_clerk_", "")
+        
+    if cleaned == "miller":
+        return "hale"
+        
+    return cleaned

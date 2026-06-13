@@ -34,7 +34,7 @@ def _turn_payload() -> dict[str, Any]:
             "turn_index": 8,
         },
         "npc": {
-            "npc_id": "OFFICER_MILLER",
+            "npc_id": "miller",
             "npc_role": "immigration_officer",
             "last_npc_message": "All right, you're cleared to enter. Enjoy your stay.",
         },
@@ -236,11 +236,11 @@ def test_response_builder_includes_dev_b_final_result_for_unreal_report() -> Non
         dev_b_output=_dev_b_output(final_result=_final_result()),
         dev_a_output=DevADialogueOutput(
             contract_version="dev_a_dialogue.v1",
-            speaker="Officer Miller",
+            speaker="Officer Hale",
             text="All right, you're cleared to enter. Enjoy your stay.",
             tone="formal_neutral",
             animation="officer_check_passport",
-            audio_url="/runtime/audio/kokoro/final.wav",
+            audio_url="/runtime/audio/edge/final.wav",
         ),
         logging_summary=RecordedErrorSummary(
             recorded=False,
