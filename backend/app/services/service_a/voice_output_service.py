@@ -172,6 +172,7 @@ def build_voice_output_from_level_design(
             tone=str(dialogue["tone"]),
             english_level=str(normalized["english_level"]),
             dialogue=dialogue,
+            player_text=str(normalized.get("player_text", "")),
         )
         agent_run_middleware.record_event(
             evidence_metadata,
@@ -371,6 +372,7 @@ def _build_provider_request(
     tone: str,
     english_level: str,
     dialogue: dict[str, Any],
+    player_text: str = "",
 ) -> Any:
     """설정된 TTS 엔진 명세에 대응되는 개별 파라미터 구조체(Request Object)를 분기 빌드합니다."""
     if provider_name == "elevenlabs":
@@ -394,7 +396,7 @@ def _build_provider_request(
             text=text,
             speaker_id=speaker_id,
             voice_profile_id=voice_profile_id,
-            voice_id=_env_value("MURPHY_ELEVENLABS_VOICE_ID", "CwhRBWXzGAHq8TQ4Fs17"),
+            voice_id=_env_value("MURPHY_ELEVENLABS_VOICE_ID", voice_id or "CwhRBWXzGAHq8TQ4Fs17"),
             tone=tone,
             english_level=english_level,
             api_key=_env_value("MURPHY_ELEVENLABS_API_KEY", _env_value("ELEVENLABS_API_KEY", "")),
@@ -408,6 +410,7 @@ def _build_provider_request(
             base_url=_env_value("MURPHY_ELEVENLABS_BASE_URL", "https://api.elevenlabs.io/v1"),
             timeout_seconds=_env_float("MURPHY_ELEVENLABS_TIMEOUT_SECONDS", 60.0),
             use_speaker_boost=_env_bool("MURPHY_ELEVENLABS_USE_SPEAKER_BOOST", True),
+            previous_text=player_text if player_text.strip() else None,
         )
 
     # Edge TTS를 기본 및 명시 프로바이더로 구동합니다.

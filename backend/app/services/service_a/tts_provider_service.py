@@ -180,23 +180,49 @@ class ElevenLabsTTSProvider:
         api_output_format = str(request.provider_options.get("api_output_format", "mp3_44100_128"))
         media_path = output_path if request.output_format == "mp3" else output_path.with_suffix(".elevenlabs.mp3")
 
+        # JSON 요청 바디 조립
+        request_body: dict[str, Any] = {
+            "text": request.text,
+            "model_id": model_id,
+            "voice_settings": {
+                # stability (안정도, 0.0 ~ 1.0):
+                # - 낮을수록(0.3~0.5) 감정이 풍부하고 역동적인 발화가 연출됩니다. (분노, 패닉, 공포 등에 권장)
+                # - 높을수록(0.6 이상) 목소리가 차분하고 일관성 있게 유지되나, 너무 높으면 기계음처럼 단조로워질 수 있습니다.
+                "stability": float(request.provider_options.get("stability", 0.52)),
+                
+                # similarity_boost (클론 음성 유사도 가중치, 0.0 ~ 1.0):
+                # - 높을수록 원본 성우 목소리의 고유한 억양, 액센트, 기교가 더 정교하게 재현됩니다.
+                # - 낮을수록 일반적이고 평범한 음성으로 융합되지만, 너무 높이면 노이즈나 발음 깨짐이 발생할 수 있습니다.
+                "similarity_boost": float(request.provider_options.get("similarity_boost", 0.82)),
+                
+                # style (스타일 과장성/유사성, 0.0 ~ 1.0):
+                # - 높을수록 모델이 원본 목소리의 스타일과 감정 표현을 더 적극적이고 과장되게 모사합니다.
+                # - 너무 높이면 오디오 품질이 손상되거나 연출이 지나치게 인위적일 수 있습니다. (기본값: 0.42)
+                "style": float(request.provider_options.get("style", 0.42)),
+                
+                # speed (말하기 속도 조절, 0.7 ~ 1.2):
+                # - 배율 기반이며, 1.0이 성우 본래의 표준 속도입니다.
+                # - 플레이어의 영어 수준(Bronze/Silver/Gold)에 따라 느리게(0.8) 혹은 빠르게(1.0~1.1) 동적으로 주입됩니다.
+                "speed": float(request.provider_options.get("speed", request.speaking_rate)),
+                
+                # use_speaker_boost (화자 증폭, Boolean):
+                # - ElevenLabs에서 원본 클론 화자의 목소리를 더 선명하고 뚜렷하게 강조하여 백그라운드 잡음을 줄여줍니다.
+                "use_speaker_boost": bool(request.provider_options.get("use_speaker_boost", True)),
+            },
+        }
+
+        # previous_text 파라미터가 유효하게 존재할 경우 요청 바디에 주입 (문맥 인지 감정 전이 증대)
+        previous_text = request.provider_options.get("previous_text")
+        if previous_text and str(previous_text).strip():
+            request_body["previous_text"] = str(previous_text).strip()
+
         # HTTP 클라이언트를 실행하여 ElevenLabs API에 음성 합성을 원격 요청(Remote HTTP Post Request)합니다.
         with httpx.Client(timeout=float(request.provider_options.get("timeout_seconds", 60.0))) as client:
             response = client.post(
                 f"{base_url}/text-to-speech/{voice_id}",
                 params={"output_format": api_output_format},
                 headers={"xi-api-key": api_key, "Content-Type": "application/json"},
-                json={
-                    "text": request.text,
-                    "model_id": model_id,
-                    "voice_settings": {
-                        "stability": float(request.provider_options.get("stability", 0.52)),         # 음성 합성 안정성
-                        "similarity_boost": float(request.provider_options.get("similarity_boost", 0.82)),  # 원본 유사도 가중치
-                        "style": float(request.provider_options.get("style", 0.42)),                 # 스타일 연출 수치
-                        "speed": float(request.provider_options.get("speed", request.speaking_rate)),  # 말하기 속도 조절
-                        "use_speaker_boost": bool(request.provider_options.get("use_speaker_boost", True)),
-                    },
-                },
+                json=request_body,
             )
             response.raise_for_status()
             # 네트워크 응답으로부터 반환받은 미디어 데이터 바이너리를 디스크 파일에 임시 저장합니다.

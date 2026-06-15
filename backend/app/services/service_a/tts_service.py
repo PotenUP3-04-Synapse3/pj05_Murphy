@@ -121,6 +121,7 @@ def build_elevenlabs_provider_request(
     base_url: str = "https://api.elevenlabs.io/v1",
     timeout_seconds: float = 60.0,
     use_speaker_boost: bool = True,
+    previous_text: str | None = None,
 ) -> TTSProviderRequest:
     """ElevenLabs REST API 규격에 명시된 인증 토큰, 모델 고유 코드 및 세부 목소리 제어 지표를 묶어 요청을 조립합니다."""
     tts_emotion = _emotion_for_tone(tone)
@@ -151,6 +152,7 @@ def build_elevenlabs_provider_request(
             "timeout_seconds": timeout_seconds,
             "use_speaker_boost": use_speaker_boost,
             "english_level": english_level,
+            "previous_text": previous_text,
         },
     )
 
