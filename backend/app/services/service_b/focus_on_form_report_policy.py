@@ -10,11 +10,35 @@ PRIORITY_RANK = {"low": 1, "medium": 2, "high": 3}
 
 
 class FocusOnFormReportPolicy:
+    """
+    학습자가 게임 중 취약했던 문법이나 영어 표현(Focus-on-Form)에 대한 맞춤형 교정 리포트를 생성하는 정책 클래스입니다.
+    
+    초보자 가이드: 플레이어가 게임을 플레이하는 동안 기록된 오류(error_capture) 데이터를 수집하고 분류합니다. 
+    가장 자주 틀렸거나 심각도가 높은 표현 문제(priority 순)를 추려내어, 
+    어느 상황(node_id)에서 어떤 오답(original_utterances)을 냈고 어떻게 고쳐야 하는지(suggested_expressions) 
+    개별 학습 카드 형식으로 리포트를 가공해 줍니다.
+    """
     def __init__(self, card_path: Path | None = None, runtime_root: Path | None = None) -> None:
+        """
+        교정 카드 정보가 담긴 JSON 경로와 세션 로그의 저장 경로를 설정하여 정책 객체를 초기화합니다.
+        
+        Args:
+            card_path: Focus-on-Form 카드 정보가 저장된 JSON 파일 경로 (기본값: focus_on_form_cards.json)
+            runtime_root: 읽어올 세션 로그 파일들이 저장된 디렉터리 경로
+        """
         self.card_path = card_path or DEFAULT_CARD_PATH
         self.runtime_root = runtime_root or Path("backend/runtime/openkb/dev_b")
 
     def build_report(self, records: list[dict[str, Any]]) -> dict[str, Any]:
+        """
+        주어진 대화 턴 레코드 목록을 분석하여 최종 Focus-on-Form 리포트 데이터를 생성합니다.
+        
+        Args:
+            records: 이번 플레이 세션의 턴별 로그 레코드 리스트
+            
+        Returns:
+            학습 카드 리스트와 다음 추천 연습 문구가 담긴 리포트 딕셔너리
+        """
         cards = self._load_cards()
         grouped = self._group_records(records, cards)
         if not grouped:
@@ -49,6 +73,15 @@ class FocusOnFormReportPolicy:
         }
 
     def build_session_report(self, session_id: str) -> dict[str, Any]:
+        """
+        세션 ID를 입력받아 저장된 세션 로그 파일을 조회하고, Focus-on-Form 성적표를 빌드합니다.
+        
+        Args:
+            session_id: 분석할 게임 세션 ID
+            
+        Returns:
+            빌드된 학습 피드백 리포트 딕셔너리
+        """
         jsonl_path = self.runtime_root / f"{session_id}.jsonl"
         if not jsonl_path.exists():
             return self.build_report([])
@@ -70,6 +103,9 @@ class FocusOnFormReportPolicy:
         records: list[dict[str, Any]],
         cards: dict[str, dict[str, Any]],
     ) -> dict[str, dict[str, Any]]:
+        """
+        입력된 대화 레코드들을 순회하며, 교정 대상 형태(focus_on_form_targets)별로 데이터를 그룹핑합니다.
+        """
         grouped: dict[str, dict[str, Any]] = {}
         for record in records:
             targets = self._focus_targets(record)
@@ -87,6 +123,9 @@ class FocusOnFormReportPolicy:
         card: dict[str, Any] | None,
         record: dict[str, Any],
     ) -> dict[str, Any]:
+        """
+        특정 교정 대상 형태에 대한 리포트 카드 템플릿(딕셔너리)을 신규 생성합니다.
+        """
         fallback_example = self._fallback_example(record)
         return {
             "focus_on_form_target": target,
@@ -106,6 +145,9 @@ class FocusOnFormReportPolicy:
         }
 
     def _focus_targets(self, record: dict[str, Any]) -> list[str]:
+        """
+        레코드에서 리포트에 포함할 형태 초점(Focus on Form) 교정 대상 키워드 목록을 수집합니다.
+        """
         seed = record.get("out_game_feedback_seed")
         if isinstance(seed, dict):
             if seed.get("include_in_final_report") is False:
@@ -119,6 +161,9 @@ class FocusOnFormReportPolicy:
         return []
 
     def _append_record_examples(self, item: dict[str, Any], record: dict[str, Any], target: str) -> None:
+        """
+        현재 턴 레코드에서 플레이어 오답과 추천 표현 예시를 찾아와 리포트 카드의 예시 목록에 추가합니다.
+        """
         matched_examples = self._examples_from_error_items(record, target)
         if matched_examples:
             for original, suggested in matched_examples:
@@ -130,6 +175,9 @@ class FocusOnFormReportPolicy:
         self._append_unique(item["suggested_expressions"], self._fallback_example(record))
 
     def _examples_from_error_items(self, record: dict[str, Any], target: str) -> list[tuple[str, str]]:
+        """
+        턴 에러 감지 결과(Error Capture)에서 해당 타겟에 매칭되는 오답 및 추천 수정본의 쌍들을 리스트로 찾아 반환합니다.
+        """
         error_capture = record.get("error_capture")
         if not isinstance(error_capture, dict):
             return []
@@ -149,6 +197,9 @@ class FocusOnFormReportPolicy:
         return examples
 
     def _fallback_example(self, record: dict[str, Any]) -> str:
+        """
+        모범 추천 표현을 찾지 못했을 때 사용할 기본 폴백용 문구를 추출하여 반환합니다.
+        """
         report_item = record.get("report_item")
         if isinstance(report_item, dict):
             example = report_item.get("example_answer")
@@ -157,6 +208,9 @@ class FocusOnFormReportPolicy:
         return "I'm here for tourism."
 
     def _record_priority(self, record: dict[str, Any]) -> str:
+        """
+        해당 레코드의 리포트 반영 우선순위 수준(low, medium, high)을 확인합니다.
+        """
         seed = record.get("out_game_feedback_seed")
         if isinstance(seed, dict):
             priority = seed.get("report_priority")
@@ -165,9 +219,15 @@ class FocusOnFormReportPolicy:
         return "low"
 
     def _higher_priority(self, left: str, right: str) -> str:
+        """
+        두 우선순위 등급 중에서 가중치가 더 높은 쪽의 등급명을 반환합니다.
+        """
         return left if PRIORITY_RANK.get(left, 1) >= PRIORITY_RANK.get(right, 1) else right
 
     def _load_cards(self) -> dict[str, dict[str, Any]]:
+        """
+        Focus-on-Form 카드 사전 데이터베이스 파일(cards.json)을 읽어 딕셔너리로 불러옵니다.
+        """
         if not self.card_path.exists():
             return {}
         payload = json.loads(self.card_path.read_text(encoding="utf-8"))
@@ -177,11 +237,17 @@ class FocusOnFormReportPolicy:
         return {str(key): value for key, value in cards.items() if isinstance(value, dict)}
 
     def _append_unique(self, values: list[str], value: str) -> None:
+        """
+        리스트에 중복되지 않고 값이 비어있지 않은 문자열 요소만 추가합니다.
+        """
         if value and value not in values:
             values.append(value)
 
 
 def _unique_strings(values: list[Any]) -> list[str]:
+    """
+    제공된 리스트에서 중복을 없애고 유효한 문자열들만 고유 리스트로 조립하여 반환합니다.
+    """
     unique: list[str] = []
     for value in values:
         text = str(value).strip()

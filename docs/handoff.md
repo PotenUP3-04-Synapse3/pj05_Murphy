@@ -1,5 +1,62 @@
 # Handoff
 
+## 2026-06-15 Developer C Result Out-Game Feedback Exposure
+
+Developer C completed the pending C-owned response-surface work requested by
+Developer B for Focus-on-Form out-game feedback.
+
+Changed:
+
+- Added optional `out_game_feedback` to `UnrealResultResponse`.
+- Added `DevBPolicyClient.out_game_feedback_for_session(session_id)`, which
+  calls B-owned `FocusOnFormReportPolicy.build_session_report(session_id)`.
+- Updated `GET /api/game/ai/result/{session_id}` to return both B
+  `final_result` and B `out_game_feedback` learning metadata.
+- Documented the additive field in C schema and adapter contracts.
+- Marked the relevant change request as implemented.
+
+Authority boundary:
+
+- `out_game_feedback` is final result UI learning-card metadata only.
+- It must not affect branch, verdict, next node, state delta, or numeric score
+  authority.
+
+Verification:
+
+- RED:
+  `uv run pytest backend/tests/test_final_result_payload.py::test_result_endpoint_returns_unreal_result_payload -q`
+  failed with `KeyError: 'out_game_feedback'` before implementation.
+- GREEN:
+  `uv run pytest backend/tests/test_final_result_payload.py::test_result_endpoint_returns_unreal_result_payload -q`
+  passed, 1 passed, 1 warning.
+- Focused regression:
+  `uv run pytest backend/tests/test_final_result_payload.py backend/tests/dev_b/test_focus_on_form_report_policy.py -q`
+  passed, 13 passed, 1 warning.
+- Changed-file lint:
+  `uv run ruff check backend/app/api/ai_respond.py backend/app/integrations/dev_b_level_hint_client.py backend/app/schemas/game_turn.py backend/tests/test_final_result_payload.py`
+  passed.
+- `uv run mypy .` passed, no issues in 108 source files.
+
+Current whole-repo verification caveat after the latest pulled A/B work:
+
+- `uv run pytest` currently fails 2 pre-existing integration assertions in
+  `backend/tests/test_preprototype_flow.py` where the C-owned tests still
+  expect A to return next-question seed text, while the pulled A/C adapter path
+  now returns `"Okay."`.
+- `uv run ruff check .` currently fails on A-owned
+  `backend/app/agents/agent_a/npc_dialogue_agent.py` because
+  `polish_tts_text` is imported but unused.
+- Developer C did not edit A-owned implementation files for these caveats.
+
+## 2026-06-15 Developer B Docstring Update: Add Comprehensive Korean Docstrings to B-owned Core Components and Helper Functions
+
+Developer B는 코드의 가독성 및 신규 진입 개발자의 진입 장벽을 낮추기 위해, Developer B 도메인 영역에 해당하는 모든 핵심 모듈 및 클래스, 메서드뿐만 아니라 **모든 내부 헬퍼 메서드 및 모듈 레벨 private 함수들**까지 한글 초보자용 docstring/주석을 추가했습니다.
+
+구현 및 수정 내용:
+- **에이전트 및 그래프 헬퍼 보강**: `backend/app/agents/agent_b` 폴더 내의 `__init__.py`, `english_level_hint_agent.py`, `feedback_hint_llm_client.py`, `policy_graph.py` 에 속한 모든 클래스, 주 메서드, 내부 헬퍼 함수에 한글 docstring 추가.
+- **서비스 및 판정 정책 보강**: `backend/app/services/service_b` 폴더 내의 모든 모듈(`__init__.py`, `developer_b_agent_run_logger.py`, `feedback_hint_generator.py`, `final_result_score_policy.py`, `flight_smalltalk_diagnostic_policy.py`, `focus_on_form_report_policy.py`, `level_adaptation_controller.py`, `openkb_feedback_writer.py`, `scenario_state_machine.py`, `tier_difficulty_controller.py`)에 정의된 클래스 및 private/public 메서드 전원에 한글 docstring 및 동작 안내 주석 추가.
+- **교차 검증 완료**: `uv run pytest`로 231개 전체 테스트 성공 통과를 확인하였고, `uv run ruff check .` 및 `uv run mypy .`를 에러 없이 완료했습니다.
+
 ## 2026-06-15 Developer A Refactor: Migrate Agent A to LangChain 1.0+ and LCEL
 
 Developer A는 Agent A 영역의 NPC 대사 생성 에이전트 및 서비스들을 LangChain 1.0+ 규격과 LCEL(LangChain Expression Language, 랭체인 표현 언어)에 맞게 전면 리팩토링(Refactoring) 및 현대화하여 프레임워크 표준에 정렬했습니다.
@@ -44,6 +101,224 @@ Developer A는 프로젝트 가상 환경 내 `langchain` 라이브러리가 제
 
 - `backend/app/middleware/middleware_a/npc_dialogue_agent_run_middleware.py`
 - `backend/tests/test_developer_a_npc_dialogue.py`
+
+## 2026-06-15 Developer C LLM Understanding Smoke and Unreal Realtime STT Alignment Prompt
+
+Developer C verified the Alpha Understanding path in real LLM mode and added a
+copy-paste Codex prompt for the Unreal AI communication owner to align with the
+current realtime STT WebSocket contract.
+
+LLM smoke:
+
+- Settings read from the local environment used
+  `MURPHY_UNDERSTANDING_MODE=llm`, provider `openai`, configured model
+  `gpt-5.4-mini`, and fallback mode `none`.
+- Direct `UnderstandingAgent` smoke tests returned `trace_mode = "llm"` and
+  `fallback_used = false`, so these were not rule-mode results.
+- Covered Alpha nodes:
+  `FLIGHT_A_001_SEATMATE_SMALLTALK`,
+  `FLIGHT_B_002_COMPANION_OR_VISIT`,
+  `BAG_002_PROVIDE_CLAIM_TAG`,
+  `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM`, and
+  `BAG_007_CUSTOMS_CLEARANCE`.
+- The baggage customs item case extracted
+  `customs_item_explanation = "medicine"`,
+  `item_identity = "red ginseng medicine"`, and
+  `item_purpose = "for my health"` with no missing slots.
+- The `FLIGHT_B_002_COMPANION_OR_VISIT` required slot is
+  `travel_companion`; the smoke extracted `travel_companion = "friend"` with no
+  missing slots. An earlier manual expected-slot label of
+  `companion_or_visit` was only a smoke-script expectation typo.
+- Token usage was reported by the LLM client per case. Estimated cost remained
+  `0.0` because local pricing configuration for the configured model is not
+  populated.
+
+Realtime STT alignment prompt:
+
+- Added
+  `docs/contracts/unreal_realtime_stt_alignment_codex_prompt.md`.
+- The prompt states that `WebSocket /api/game/ai/stt/stream` is additive and
+  does not replace `POST /api/game/ai/respond`.
+- Unreal should send `session_start`, then base64 PCM `audio_chunk` events with
+  `provider = "elevenlabs_relay"`, and set `commit = true` on the final real
+  audio chunk.
+- Partial transcript events are subtitle UI only and must not call
+  Understanding, Developer B, Developer A, or TTS.
+- Final transcript events are committed candidates. Unreal then combines the
+  final transcript with the full `dev_c_unreal_turn.v1` JSON and calls
+  `POST /api/game/ai/respond`, currently through the JSON `audio.transcript`
+  shortcut.
+- The current implemented relay is
+  `Unreal -> Developer C WebSocket -> ElevenLabs WSS -> Developer C -> Unreal`;
+  ElevenLabs API keys stay server-side.
+
+## 2026-06-15 Developer C Alpha Baggage Random Item Follow-up
+
+Developer C implemented the next C-owned Alpha baggage follow-up: random
+customs-item context can now travel through the C turn contracts, BAG customs
+nodes use customs-officer A-facing NPC context, and deterministic Understanding
+fallback recognizes common Alpha Flight/Baggage slot values.
+
+Changed:
+
+- Added `RandomCustomsItemContext` and optional
+  `game_state.random_customs_item` to the Unreal turn schema.
+- Forwarded `random_customs_item` through `DevBPolicyInput` and
+  `DevADialogueInput`.
+- Added `random_customs_item` to the Developer A level-design payload so A can
+  generate BAG_006 dialogue about the same item Unreal revealed.
+- Normalized A-facing BAG NPC context in the C adapter:
+  `BAG_001` through `BAG_004` use `BAGGAGE_STAFF /
+  baggage_service_staff`; `BAG_005` through `BAG_007` use
+  `CUSTOMS_OFFICER / customs_officer`.
+- Extended deterministic Understanding fallback with slot/value keyword
+  coverage for Alpha Flight small talk and Baggage/customs-hold slots. This is
+  a rule/mock safety net; the LLM path still uses generic current-node
+  `slot_evidence`.
+- Added regression tests for natural Alpha fallback phrases and BAG_006 random
+  customs-item pass-through.
+
+Verification:
+
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_rule_mode_recognizes_alpha_flight_and_baggage_slot_values backend/tests/test_preprototype_flow.py::test_orchestrator_passes_random_customs_item_and_routes_customs_npc_to_developer_a -q`:
+  PASS, 2 passed, 1 warning.
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_preprototype_flow.py backend/tests/test_final_result_payload.py backend/tests/test_developer_c_langgraph_orchestrator.py -q`:
+  PASS, 47 passed, 1 warning.
+- `uv run pytest`: PASS, 240 passed, 1 warning.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 106 source files.
+
+## 2026-06-15 Developer C Beginner Docstring Pass
+
+Developer C added beginner-friendly docstrings to current C-owned non-test
+Python source files and recorded the ongoing convention in `AGENTS.md`.
+
+Scope:
+
+- Included Developer C app entrypoint, API, schemas, `agent_c`, `service_c`,
+  C middleware, C graph/tools, A/B integration adapters, and the current
+  realtime STT smoke script.
+- Excluded test files, Developer A implementation paths, Developer B
+  implementation paths, generated runtime files, and non-Python data files.
+
+Rule going forward:
+
+- When Developer C creates or substantially edits non-test Python source, add
+  beginner-friendly docstrings that explain the file or callable's role in the
+  backend flow and its ownership/authority boundary.
+
+## 2026-06-15 Developer C Alpha Speaker Mismatch Diagnostics
+
+Developer C completed the next C-owned item from the consolidated Alpha
+follow-up: diagnostics when the requested NPC context and Developer A returned
+speaker clearly do not match.
+
+Changed:
+
+- `DevADialogueOutput` now carries additive `diagnostics`.
+- `DevANpcDialogueClient` emits `npc_speaker_mismatch` when A's speaker shares
+  no useful identity token with the requested `npc_id`.
+- `ResponseBuilder` copies Developer A diagnostics into
+  `UnrealResponse.debug.diagnostics`.
+- C AgentRun summaries now include Developer A diagnostics in the
+  `dev_a_client.generate_dialogue` output summary.
+- Updated C schema and adapter contracts to document that diagnostics are
+  non-blocking warnings and not branch authority.
+
+Verification:
+
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_dev_a_adapter_reports_speaker_mismatch_diagnostic backend/tests/test_final_result_payload.py::test_response_builder_carries_dev_a_diagnostics_into_debug_payload -q`:
+  PASS, 2 passed, 1 warning.
+
+## 2026-06-15 Developer C Alpha A-Adapter Non-Immigration Seed Follow-up
+
+Developer C updated the C-owned Developer A dialogue adapter so the A-facing
+level-design payload now forwards Developer B's optional `dialogue_seed`
+metadata. This lets Developer A consume Alpha role and generation metadata for
+Flight and Baggage chapters without C changing Developer A implementation files
+or Developer B branch authority.
+
+Ownership check:
+
+- `backend/app/integrations/dev_a_npc_dialogue_client.py` is explicitly listed
+  under Developer C owned files in `AGENTS.md`, even though its name references
+  Developer A. It is the C-owned integration adapter that calls Developer A's
+  contract boundary.
+- No current Alpha A-adapter follow-up changes modify Developer A
+  implementation paths such as `backend/app/agents/agent_a/`,
+  `backend/app/services/service_a/`, `backend/app/tools/tool_a/`,
+  `backend/app/middleware/middleware_a/`, or
+  `backend/app/prompts/npc_dialogue_prompt.md`.
+
+Changed:
+
+- `backend/app/integrations/dev_a_npc_dialogue_client.py` now includes
+  `dialogue_seed` in the payload passed to Developer A's voice output builder.
+- `backend/tests/test_preprototype_flow.py` adds regression coverage for
+  `FLIGHT_A_001_SEATMATE_SMALLTALK -> FLIGHT_A_002_TRAVEL_PURPOSE` and
+  `BAG_001_REPORT_MISSING_AT_DESK -> BAG_002_PROVIDE_CLAIM_TAG` so the A-facing
+  payload preserves `npc_id`, `npc_role`, `chapter_id`, next-question seed text,
+  and `dialogue_seed` metadata.
+- `docs/contracts/developer_c_adapter_contracts.md` documents the forwarded
+  `dialogue_seed` field and current Edge audio path naming.
+- `pyproject.toml` excludes `backend/runtime/generated` from pytest and mypy
+  discovery so generated runtime artifacts do not break full-suite verification.
+
+Verification:
+
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata -q`:
+  PASS, 2 passed, 1 warning.
+
+## 2026-06-15 Developer C Realtime STT Smoke Commit Follow-up
+
+Developer C fixed the solo ElevenLabs realtime STT smoke path after live smoke
+testing showed partial transcripts arrived, but committed provider finals could
+be missed before the local fallback ran.
+
+Ownership check:
+
+- Backend relay, settings, and tests are Developer C owned.
+- `scripts/smoke_elevenlabs_realtime_stt_relay.py` is a Developer C realtime
+  STT smoke utility by responsibility, but `scripts/` is not yet explicitly
+  listed in `AGENTS.md`. Developer C recorded a contract clarification request
+  so future agents do not treat this path as ambiguous.
+
+Root cause:
+
+- `scripts/smoke_elevenlabs_realtime_stt_relay.py` committed a separate
+  silence-only sentinel chunk instead of committing the final real audio chunk.
+- The backend relay reused the short partial-drain timeout for committed final
+  transcripts, so ElevenLabs could emit useful partials but miss the final
+  before fallback.
+
+Changed:
+
+- `scripts/smoke_elevenlabs_realtime_stt_relay.py` now builds audio chunk
+  events with `commit = true` on the final real WAV chunk.
+- Added `scripts/__init__.py` so tests and mypy resolve the smoke script under
+  one module name.
+- `backend/app/services/service_c/elevenlabs_realtime_stt_relay.py` now uses a
+  separate commit-final drain timeout and stops draining as soon as a final
+  transcript is received.
+- Added `ELEVENLABS_REALTIME_COMMIT_TIMEOUT_S`, default `3.0`, to
+  `backend/app/services/service_c/settings_service.py` and `.env.example`.
+- Updated C-owned schema and adapter contracts to document final-real-chunk
+  commit semantics and the commit timeout.
+- Added regression tests for the smoke script chunk builder and the longer
+  commit-final wait.
+
+Verification:
+
+- `uv run pytest backend/tests/test_elevenlabs_realtime_stt_relay.py backend/tests/test_realtime_stt_websocket.py backend/tests/test_settings_service.py backend/tests/test_smoke_elevenlabs_realtime_stt_relay_script.py -q`:
+  PASS, 17 passed, 1 warning.
+- Live smoke with `backend/runtime/generated/stt_smoke_tour_16k_mono.wav`:
+  PASS. The backend returned `final_transcript` from `provider =
+  "elevenlabs_relay"` with text `I'm here for tour- tourism.` and
+  `target_endpoint = "POST /api/game/ai/respond"`.
+- Debug AgentRun append: PASS. The realtime STT record ended with
+  `status = "success"`, `final_provider = "elevenlabs_relay"`, token counts
+  set to zero, estimated cost from configured per-minute rate, and audio
+  metadata for 14 chunks / 107520 bytes.
 
 ## 2026-06-13 Developer C Refactor: Remove Deprecated Miller NPC, Update Default NPC to Hale & Apply TTS Slimming Test Updates
 
@@ -266,6 +541,40 @@ Verification for this update:
 - `uv run ruff check .`: PASS.
 - `uv run mypy .`: PASS, no issues in 101 source files.
 - `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
+
+## 2026-06-15 Developer C StructuredTool Wrapper Update
+
+Developer C wrapped every C-owned LangGraph `*_tool()` step in
+LangChain-compatible `StructuredTool` objects while preserving the existing
+linear `StateGraph` turn flow and A/B adapter boundaries.
+
+Implemented:
+
+- Added `DeveloperCStructuredToolInput` in
+  `backend/app/tools/tool_c/developer_c_graph_tools.py` so each C graph tool
+  accepts the current turn `state` through a standard LangChain tool schema.
+- Exposed node-name keyed `structured_tools` on `DeveloperCGraphTools`.
+- Added `invoke_structured_tool()` and changed each node function in
+  `backend/app/graphs/graph.py` to execute via `StructuredTool.invoke(...)`.
+- Added `as_tool_node_tools()` to return the ordered tool list for a future
+  LangGraph `ToolNode` or subgraph migration. The current C graph still uses
+  explicit state nodes because the C turn state is richer than a chat
+  message/tool-call loop.
+- Updated AgentRun runtime metadata so Developer C records now include
+  `tool_style = "langchain_structured_tools"` and the
+  `structured_tool_names` list.
+- Added regression coverage in
+  `backend/tests/test_developer_c_langgraph_orchestrator.py` proving the tools
+  are real `StructuredTool` instances and that graph execution passes through
+  `invoke_structured_tool()`.
+
+Verification for this update:
+
+- `uv run pytest`: PASS, 238 passed, 1 warning.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 106 source files.
+- `uv run python -c "from langgraph.prebuilt import ToolNode; from backend.app.tools.tool_c.developer_c_graph_tools import DeveloperCGraphTools; tools = DeveloperCGraphTools(); node = ToolNode(tools.as_tool_node_tools()); print(type(node).__name__, len(tools.as_tool_node_tools()))"`:
+  PASS, printed `ToolNode 11`.
 
 ## 2026-06-12 Developer C Alpha 3E Follow-up
 

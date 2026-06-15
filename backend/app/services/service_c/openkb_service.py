@@ -1,3 +1,12 @@
+"""Load scenario node context for Developer C.
+
+Beginner guide:
+OpenKB is the local knowledge source for scenario nodes.  Given a chapter id
+and node id, this service reads `scenario_nodes.json`, validates the requested
+node, and converts raw JSON into the `NodeContext` schema used by
+Understanding, Developer B, and response validation.
+"""
+
 from __future__ import annotations
 
 import json

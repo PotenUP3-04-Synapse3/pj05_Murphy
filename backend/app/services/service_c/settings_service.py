@@ -1,3 +1,12 @@
+"""Load Developer C runtime settings from environment variables.
+
+Beginner guide:
+`AppSettings` is the central place for local `.env` and process environment
+configuration.  Services receive this object instead of reading environment
+variables directly, which makes tests easier and keeps secrets such as API keys
+out of logs and public payloads.
+"""
+
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -37,6 +46,7 @@ class AppSettings(BaseSettings):
     elevenlabs_realtime_audio_format: str = "pcm_16000"
     elevenlabs_realtime_commit_strategy: Literal["manual", "vad"] = "manual"
     elevenlabs_realtime_receive_timeout_s: float = 0.2
+    elevenlabs_realtime_commit_timeout_s: float = 3.0
     elevenlabs_realtime_estimated_cost_per_minute_usd: float = 0.0
     murphy_stt_debug_log_mode: Literal["off", "debug"] = "off"
 

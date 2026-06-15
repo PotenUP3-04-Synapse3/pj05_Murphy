@@ -1,3 +1,12 @@
+"""Capture raw Unreal multipart requests for local debugging.
+
+Beginner guide:
+When debug capture is enabled, this service writes the incoming turn JSON,
+audio WAV, and metadata to a generated runtime folder.  It is intentionally
+separate from the normal orchestrator so request capture can be turned on for
+diagnosis without changing gameplay behavior.
+"""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

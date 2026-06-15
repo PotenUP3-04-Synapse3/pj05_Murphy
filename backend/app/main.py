@@ -1,3 +1,12 @@
+"""Create the Developer C FastAPI application.
+
+Beginner guide:
+This file is the web server entry point.  FastAPI reads the `app` object,
+mounts runtime audio files under `/runtime/audio`, and connects the game AI
+routes from `backend.app.api.ai_respond`.  The small page routes at the bottom
+only serve local demo HTML files; the real gameplay API lives in the router.
+"""
+
 from pathlib import Path
 
 from fastapi import FastAPI

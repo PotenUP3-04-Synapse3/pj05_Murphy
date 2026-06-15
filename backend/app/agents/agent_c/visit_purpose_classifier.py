@@ -1,3 +1,12 @@
+"""Classify simple visit-purpose answers without calling an LLM.
+
+Beginner guide:
+The Understanding Agent sometimes needs a deterministic fallback.  This file
+maps common English words such as "tourism", "business", or "uncle" to the
+slot values Developer B expects.  It is deliberately small and rule-based so
+tests can pass without API keys.
+"""
+
 from __future__ import annotations
 
 VISIT_PURPOSE_KEYWORDS: dict[str, tuple[str, ...]] = {
