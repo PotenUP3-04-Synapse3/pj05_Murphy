@@ -39,16 +39,33 @@ from backend.app.services.service_b.tier_difficulty_controller import TierDiffic
 
 
 class OpenKBPolicyWriter(Protocol):
+    """
+    OpenKB 데이터베이스에 Developer B의 평가 결과 및 피드백 로그를 기록하기 위한 쓰기 어댑터의 공통 규격(Protocol)입니다.
+    """
     def write_policy_output(
         self,
         payload: DevBPolicyInput,
         output: DevBPolicyOutput,
-    ) -> OpenKBWriteResult: ...
+    ) -> OpenKBWriteResult:
+        """
+        주어진 입력 데이터와 도출된 정책 출력 결과를 바탕으로 OpenKB에 레코드를 기록합니다.
+        """
+        ...
 
-    def failure_result(self, error: Exception) -> OpenKBWriteResult: ...
+    def failure_result(self, error: Exception) -> OpenKBWriteResult:
+        """
+        기록 과정 중 에러가 발생했을 때, 에러 정보를 담은 OpenKBWriteResult 객체를 반환합니다.
+        """
+        ...
 
 
 class _EnglishLevelHintPolicyCore:
+    """
+    절차적 코드 실행 방식으로 구현된 영어 레벨 판정 및 시나리오 진행 핵심 정책 로직 클래스입니다.
+    
+    초보자 가이드: 이 클래스는 상태 그래프(LangGraph)가 도입되기 전에 사용되던 절차적(Procedural) 파이프라인의 원본 로직을 갖고 있습니다.
+    현재는 디버깅 혹은 상태 그래프 비사용 모드에서 연계 동작의 참조용으로 유지되거나 상속되어 사용됩니다.
+    """
     def __init__(
         self,
         *,
@@ -60,6 +77,9 @@ class _EnglishLevelHintPolicyCore:
         agent_run_root: Path | None = None,
         agent_run_logger: DeveloperBAgentRunLogger | None = None,
     ) -> None:
+        """
+        의존성 컴포넌트들을 주입받아 핵심 정책 로직 클래스를 초기화합니다.
+        """
         self.state_machine = state_machine or ScenarioStateMachine()
         self.level_controller = level_controller or LevelAdaptationController()
         self.tier_controller = tier_controller or TierDifficultyController()
@@ -68,6 +88,15 @@ class _EnglishLevelHintPolicyCore:
         self.agent_run_logger = agent_run_logger or DeveloperBAgentRunLogger(agent_run_root)
 
     def evaluate_turn(self, payload: DevBPolicyInput) -> DevBPolicyOutput:
+        """
+        단일 대화 턴(Turn)을 평가하여 시나리오 상의 판단, 힌트 필요 여부, 피드백 가이드라인 및 성적 결과를 도출합니다.
+        
+        Args:
+            payload: 학습자 입력(텍스트), 시나리오 상태, 사용자 프로필 등을 포함하는 DevBPolicyInput 데이터 객체
+            
+        Returns:
+            레벨 판정, 피드백 텍스트, 분기 판단 등이 종합된 DevBPolicyOutput 데이터 객체
+        """
         agent_run = self.agent_run_logger.start_run(payload)
         input_summary = _policy_input_summary(payload)
         self.agent_run_logger.record_event(
@@ -293,6 +322,10 @@ class _EnglishLevelHintPolicyCore:
         decision: ScenarioDecision,
         has_form_issue: bool,
     ) -> Evaluation:
+        """
+        이해도 결과(Intent/Slot 매칭 정보)와 문법적 어색함 유무(Form Issue)를 종합해 
+        학습자의 대화 턴을 채점 및 다각도 평가(Scores)하고 Evaluation 객체를 반환합니다.
+        """
         score_task_success = 3 if decision.verdict == "SUCCESS" else 0
         if decision.verdict == "PARTIAL":
             score_task_success = 2
@@ -333,6 +366,10 @@ class _EnglishLevelHintPolicyCore:
         decision: ScenarioDecision,
         feedback_strategy: FeedbackStrategy,
     ) -> InGameFeedback:
+        """
+        인게임 화면에 실시간으로 표시될 피드백 데이터를 정의합니다.
+        대화 흐름의 합격 여부에 맞춰 재진술(Recast), 명료화 요구(Clarification), 힌트(Scaffolding) 등의 후보를 선택합니다.
+        """
         is_success = decision.branch_type in {"success", "final"}
         is_warning = decision.branch_type in {"warning", "bad_end"}
         focus = self.level_controller.feedback_focus(payload)
@@ -366,6 +403,10 @@ class _EnglishLevelHintPolicyCore:
         decision: ScenarioDecision,
         has_form_issue: bool,
     ) -> ErrorCapture:
+        """
+        발생한 언어적 오류(문법 결함, 오답, 리스크 표현 등)의 세부 정보를 감지하고 
+        오류 마크다운 텍스트와 개별 에러 아이템들을 포함한 ErrorCapture 데이터를 구성합니다.
+        """
         should_record = has_form_issue or decision.verdict in {"FAIL", "UNCLEAR", "CRITICAL_FAIL"}
         if not should_record:
             return ErrorCapture(
@@ -431,6 +472,10 @@ class _EnglishLevelHintPolicyCore:
         decision: ScenarioDecision,
         has_form_issue: bool,
     ) -> OutGameFeedbackSeed:
+        """
+        게임 종료 후 분석 리포트(Focus-on-Form 카드)를 생성할 때 활용할 
+        태그(focus_on_form_targets) 및 리포트 중요도 가이드를 정의하여 씨앗(Seed) 데이터로 빌드합니다.
+        """
         if payload.current_node_id.startswith("FLIGHT_"):
             return OutGameFeedbackSeed(
                 include_in_final_report=True,
@@ -471,6 +516,10 @@ class _EnglishLevelHintPolicyCore:
         payload: DevBPolicyInput,
         output: DevBPolicyOutput,
     ) -> ReportSeedSummary:
+        """
+        이번 턴의 평가 성적, 강점, 오류 분석 및 교정 사례 등을 요약하여 
+        최종 리포트 작성을 위한 ReportSeedSummary 객체를 구성합니다.
+        """
         category_scores = ReportSeedCategoryScores(
             task_success=_score_candidate(output.evaluation.scores.task_success),
             clarity=_score_candidate(output.evaluation.scores.clarity),
@@ -531,29 +580,32 @@ class _EnglishLevelHintPolicyCore:
         payload: DevBPolicyInput,
         output: DevBPolicyOutput,
     ) -> list[ReportSeedStrength]:
+        """
+        플레이어가 이번 대화에서 잘했던 강점 항목(예: 필요한 정보 제공 등)을 최대 3개까지 선정하여 리스트로 반환합니다.
+        """
         strengths: list[ReportSeedStrength] = []
         if output.evaluation.verdict in {"SUCCESS", "PARTIAL"}:
             strengths.append(
                 ReportSeedStrength(
-                    title="Core answer understood",
-                    evidence=output.report_item.summary,
-                    ui_priority=1,
+                     title="Core answer understood",
+                     evidence=output.report_item.summary,
+                     ui_priority=1,
                 )
             )
         if output.evaluation.filled_slots:
             strengths.append(
                 ReportSeedStrength(
-                    title="Required information provided",
-                    evidence=", ".join(sorted(output.evaluation.filled_slots)),
-                    ui_priority=len(strengths) + 1,
+                     title="Required information provided",
+                     evidence=", ".join(sorted(output.evaluation.filled_slots)),
+                     ui_priority=len(strengths) + 1,
                 )
             )
         if not strengths:
             strengths.append(
                 ReportSeedStrength(
-                    title="Retry target identified",
-                    evidence=payload.node_context.npc_question_goal,
-                    ui_priority=1,
+                     title="Retry target identified",
+                     evidence=payload.node_context.npc_question_goal,
+                     ui_priority=1,
                 )
             )
         return strengths[:3]
@@ -563,6 +615,9 @@ class _EnglishLevelHintPolicyCore:
         payload: DevBPolicyInput,
         output: DevBPolicyOutput,
     ) -> list[ReportSeedCriticalBreakdown]:
+        """
+        발생한 형태적 결함이나 오류(Error Capture)들을 리포트에 기술할 수 있는 상세 오류 항목으로 변환하여 반환합니다.
+        """
         breakdowns: list[ReportSeedCriticalBreakdown] = []
         for index, item in enumerate(output.error_capture.error_items[:3], start=1):
             issue_type = _report_issue_type(item.error_type)
@@ -583,6 +638,9 @@ class _EnglishLevelHintPolicyCore:
         payload: DevBPolicyInput,
         output: DevBPolicyOutput,
     ) -> list[ReportSeedCorrectedExample]:
+        """
+        학습자가 낸 오답 문장과 교정된 올바른 표현 예시를 짝지어 리포트용 추천 리스트로 구성합니다.
+        """
         examples: list[ReportSeedCorrectedExample] = []
         for item in output.error_capture.error_items[:3]:
             examples.append(
@@ -599,6 +657,9 @@ class _EnglishLevelHintPolicyCore:
         self,
         output: DevBPolicyOutput,
     ) -> Literal["passed", "conditional_pass", "failed"]:
+        """
+        이번 턴의 평가 상태를 바탕으로 최종 통과 여부 후보군('passed', 'conditional_pass', 'failed') 중 하나를 매핑합니다.
+        """
         if output.evaluation.verdict == "CRITICAL_FAIL" or output.branch.branch_type == "bad_end":
             return "failed"
         if output.evaluation.verdict == "SUCCESS":
@@ -610,6 +671,10 @@ class _EnglishLevelHintPolicyCore:
         payload: DevBPolicyInput,
         output: DevBPolicyOutput,
     ) -> DialogueSeed:
+        """
+        NPC Dialogue Agent가 다음 발화를 생성하거나 가이드를 잡을 때 필요한 
+        대화 연동용 씨앗(DialogueSeed) 메타데이터 객체를 구성합니다.
+        """
         return DialogueSeed(
             scene=payload.scene_id,
             npc_role=self._npc_role(payload),
@@ -643,6 +708,9 @@ class _EnglishLevelHintPolicyCore:
         )
 
     def _npc_role(self, payload: DevBPolicyInput) -> str:
+        """
+        노드 ID 접두사를 확인하여 현재 질문을 하는 심 심사관이나 직원 NPC의 역할군 명칭을 구합니다.
+        """
         if payload.current_node_id.startswith("FLIGHT_"):
             return "seatmate_passenger"
         if payload.current_node_id.startswith("BAG_"):
@@ -650,6 +718,9 @@ class _EnglishLevelHintPolicyCore:
         return "immigration_officer"
 
     def _opening_intent(self, payload: DevBPolicyInput) -> str:
+        """
+        다음 질문 대화를 이어갈 때 NPC가 먼저 열어야 할 의도(Intent)를 반환합니다.
+        """
         if payload.node_context.required_slots:
             return f"ask_{payload.node_context.required_slots[0]}"
         if payload.node_context.required_intents:
@@ -661,6 +732,9 @@ class _EnglishLevelHintPolicyCore:
         payload: DevBPolicyInput,
         output: DevBPolicyOutput,
     ) -> list[str]:
+        """
+        다음 대화 턴에서 플레이어가 취할 수 있는 허용된 후속 대화 의도(Intent) 목록을 제공합니다.
+        """
         intents = [f"ask_{slot}" for slot in payload.node_context.required_slots]
         if output.branch.branch_type in {"success", "final"}:
             intents.extend(["advance_to_next_prompt", "offer_reassurance"])
@@ -677,6 +751,9 @@ class _EnglishLevelHintPolicyCore:
         payload: DevBPolicyInput,
         decision: ScenarioDecision,
     ) -> DialogueDirective:
+        """
+        NPC가 대답할 때 어떤 어조와 목적을 따라야 하는지 지침을 담은 DialogueDirective 객체를 빌드합니다.
+        """
         target_slot = payload.node_context.required_slots[0] if payload.node_context.required_slots else None
         if decision.branch_type in {"success", "final"}:
             purpose = "continue_to_next_question"
@@ -829,6 +906,12 @@ class _EnglishLevelHintPolicyCore:
 
 
 class EnglishLevelHintAgent:
+    """
+    Developer B의 주 진입점(Entry Point) 에이전트 클래스입니다.
+    
+    초보자 가이드: Developer C의 오케스트레이터가 이 클래스의 `evaluate_turn` 메서드를 호출하여 플레이어의 발화에 대한
+    영어 학습 수준 평가 및 다음 시나리오 분기 판단 결과를 받아갑니다. 이 클래스는 내부적으로 LangGraph 기반 워크플로우를 이용해 작동합니다.
+    """
     def __init__(
         self,
         *,
@@ -840,6 +923,9 @@ class EnglishLevelHintAgent:
         agent_run_root: Path | None = None,
         agent_run_logger: DeveloperBAgentRunLogger | None = None,
     ) -> None:
+        """
+        필요한 하위 서비스 컴포넌트들과 LangGraph 도구들을 준비하여 에이전트를 초기화합니다.
+        """
         from backend.app.agents.agent_b.policy_graph import build_developer_b_policy_graph
         from backend.app.tools.tool_b.developer_b_policy_graph_tools import DeveloperBPolicyGraphTools
 
@@ -862,6 +948,15 @@ class EnglishLevelHintAgent:
         self.agent_run_logger = self.graph_tools.agent_run_logger
 
     def evaluate_turn(self, payload: DevBPolicyInput) -> DevBPolicyOutput:
+        """
+        LangGraph 기반 정책 워크플로우를 구동하여, 플레이어의 영어 대화 턴을 분석하고 적절한 힌트와 피드백을 계산합니다.
+        
+        Args:
+            payload: 학습자의 이번 턴 발화 텍스트, 이해 결과(Understanding), 플레이어 정보 등이 담긴 객체
+            
+        Returns:
+            최종 레벨 판정, 피드백 가이드, 힌트 내용 및 다음 분기 노드가 포함된 DevBPolicyOutput 객체
+        """
         from backend.app.agents.agent_b.policy_graph import build_initial_developer_b_policy_state
 
         state = build_initial_developer_b_policy_state(payload=payload, tools=self.graph_tools)
@@ -878,6 +973,9 @@ class EnglishLevelHintAgent:
 
 
 def _policy_input_summary(payload: DevBPolicyInput) -> dict[str, Any]:
+    """
+    입력 payload에서 로깅과 분석에 필요한 주요 필드(세션 ID, 턴 수, 노드 ID, 플레이어 발화 요약 등)를 추출하여 요약본 사전을 만듭니다.
+    """
     return {
         "request_id": payload.request_id,
         "session_id": payload.session_id,
@@ -892,16 +990,25 @@ def _policy_input_summary(payload: DevBPolicyInput) -> dict[str, Any]:
 
 
 def _score_candidate(score: int) -> int:
+    """
+    0~3점 척도의 루브릭 점수를 0~100점 척도 범위로 환산하여 정수로 반환합니다.
+    """
     return max(0, min(100, round(score / 3 * 100)))
 
 
 def _average_score_candidate(scores: list[int]) -> int:
+    """
+    100점 환산 점수들의 리스트를 받아 평균값을 계산하여 정수로 반환합니다.
+    """
     if not scores:
         return 0
     return round(sum(scores) / len(scores))
 
 
 def _unique_non_empty(values: Iterable[str | None]) -> list[str]:
+    """
+    문자열 리스트에서 공백과 None을 제외한 고유한(중복 없는) 값들만 추려내어 리스트로 반환합니다.
+    """
     unique_values: list[str] = []
     seen: set[str] = set()
     for value in values:
@@ -918,6 +1025,9 @@ def _unique_non_empty(values: Iterable[str | None]) -> list[str]:
 def _report_issue_type(
     error_type: str,
 ) -> Literal["grammar", "clarity", "vocabulary", "task", "politeness", "problem_solving"]:
+    """
+    에러 수집기(Error Capture)의 오류 유형명을 리포트 성적표용 표준 오류 카테고리 명칭으로 매핑합니다.
+    """
     if error_type == "grammar":
         return "grammar"
     if error_type == "vocabulary":
@@ -938,6 +1048,9 @@ def _report_issue_type(
 def _why_issue_matters(
     issue_type: Literal["grammar", "clarity", "vocabulary", "task", "politeness", "problem_solving"],
 ) -> str:
+    """
+    특정 유형의 영어 학습 오류가 실제 공항 입국심사나 비즈니스 여행 상황에서 왜 문제가 되는지 설명 텍스트를 제공합니다.
+    """
     if issue_type == "task":
         return "The required travel detail may be missing or hard to verify."
     if issue_type == "problem_solving":
@@ -948,6 +1061,9 @@ def _why_issue_matters(
 
 
 def _decision_summary(decision: ScenarioDecision) -> dict[str, Any]:
+    """
+    상태 머신이 결정한 핵심 결정 지표(판정 결과, 분기 타입, 수치 변화 델타 등)를 로그용 요약 사전으로 반환합니다.
+    """
     return {
         "verdict": decision.verdict,
         "branch_type": decision.branch_type,
@@ -961,6 +1077,9 @@ def _decision_summary(decision: ScenarioDecision) -> dict[str, Any]:
 
 
 def _feedback_generation_summary(feedback_generation: Any) -> dict[str, Any]:
+    """
+    LLM 혹은 룰 기반으로 생성된 피드백의 실행 모델 정보 및 토큰 소모량 등의 메타데이터를 추출해 사전으로 반환합니다.
+    """
     trace = feedback_generation.trace
     summary = {
         "mode": trace.mode,
@@ -974,6 +1093,9 @@ def _feedback_generation_summary(feedback_generation: Any) -> dict[str, Any]:
 
 
 def _openkb_write_summary(openkb_write: OpenKBWriteResult) -> dict[str, Any]:
+    """
+    오픈 지식베이스(OpenKB)에 로그 및 레코드를 기록한 결과를 요약하여 로그용 사전으로 반환합니다.
+    """
     return {
         "attempted": openkb_write.attempted,
         "succeeded": openkb_write.succeeded,
@@ -986,6 +1108,9 @@ def _openkb_write_summary(openkb_write: OpenKBWriteResult) -> dict[str, Any]:
 
 
 def _policy_output_summary(output: DevBPolicyOutput) -> dict[str, Any]:
+    """
+    최종 정책 연산의 출력 결과물(합격 여부, 힌트 필요성, 게임 상태 변동 수치 등)을 간결하게 요약하여 사전으로 반환합니다.
+    """
     return {
         "verdict": output.evaluation.verdict,
         "branch_type": output.branch.branch_type,
@@ -1002,16 +1127,25 @@ def _policy_output_summary(output: DevBPolicyOutput) -> dict[str, Any]:
 
 
 def _feedback_fallback_used(output: DevBPolicyOutput) -> bool:
+    """
+    피드백 생성 단계에서 LLM 오류 등으로 인해 규칙 기반의 대체(Fallback) 모드가 구동되었는지 여부를 판별합니다.
+    """
     return bool(output.feedback_generation and output.feedback_generation.mode == "fallback")
 
 
 def _model_name(output: DevBPolicyOutput) -> str:
+    """
+    피드백 생성에 실질적으로 사용된 기계학습 모델명(또는 규칙 기반 여부)을 반환합니다.
+    """
     if output.feedback_generation and output.feedback_generation.model:
         return output.feedback_generation.model
     return "rule_based"
 
 
 def _preview(text: str, limit: int = 120) -> str:
+    """
+    텍스트 줄바꿈을 공백으로 단일화하고, 지정된 글자 수를 초과할 경우 말줄임표(...)를 붙여 요약 뷰를 만듭니다.
+    """
     compact = " ".join(text.split())
     if len(compact) <= limit:
         return compact
@@ -1019,6 +1153,9 @@ def _preview(text: str, limit: int = 120) -> str:
 
 
 def _validate_b_policy_output(payload: DevBPolicyInput, output: DevBPolicyOutput) -> None:
+    """
+    출력 결과(output)가 데이터 계약 및 비즈니스 규칙(노드 일치, 힌트 값 누락 검사, 루브릭 범위 등)을 만족하는지 엄격히 검증합니다.
+    """
     if output.node_id != payload.current_node_id:
         raise ValueError("DevBPolicyOutput.node_id must match input current_node_id")
     if output.branch.next_node_id not in payload.node_context.allowed_next_nodes:
@@ -1047,6 +1184,9 @@ def _validate_b_policy_output(payload: DevBPolicyInput, output: DevBPolicyOutput
 
 
 def _immigration_focus_target(node_id: str) -> str | None:
+    """
+    입국심사 및 수하물 신고 단계 노드 ID에 매칭되는 형태 초점(Focus on Form) 교정 타겟 주제명을 반환합니다.
+    """
     return {
         "IMM_002_PURPOSE": "purpose_statement",
         "IMM_003_DURATION": "duration_statement",

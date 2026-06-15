@@ -1,4 +1,11 @@
-"""Developer B owned state machine and level adaptation services."""
+"""
+Developer B가 소유한 상태 머신 및 레벨 적응(Level Adaptation) 관련 핵심 서비스 패키지입니다.
+
+초보자 가이드: 이 패키지는 시나리오의 진행 방향을 판단하는 상태 머신(ScenarioStateMachine), 
+영어 피드백을 동적으로 생성하는 생성기(FeedbackHintGenerator), 
+그리고 사용자의 발화 난이도 및 평가를 수행하는 다양한 비즈니스 로직 서비스를 제공합니다.
+의존성 복잡도를 피하기 위해 지연 임포트(Lazy Import) 방식을 채택하고 있습니다.
+"""
 
 from __future__ import annotations
 
