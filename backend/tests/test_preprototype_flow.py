@@ -611,7 +611,7 @@ def test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings() -> None:
             "animation": "officer_check_passport",
             "feedback_kr": "Good.",
             "tts": {
-                "audio_url": "/runtime/audio/kokoro/real-demo.wav",
+                "audio_url": "/runtime/audio/edge/real-demo.wav",
             },
         }
 
@@ -656,7 +656,7 @@ def test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings() -> None:
         )
     )
 
-    assert output.audio_url == "/runtime/audio/kokoro/real-demo.wav"
+    assert output.audio_url == "/runtime/audio/edge/real-demo.wav"
     assert builder_calls[0]["use_real_tts"] is True
     assert builder_calls[0]["use_llm_dialogue"] is True
 
@@ -675,7 +675,7 @@ def test_dev_a_adapter_uses_next_question_seed_without_generic_recast_in_llm_mod
             "tone": "formal_neutral",
             "animation": "officer_check_passport",
             "feedback_kr": "Good.",
-            "tts": {"audio_url": "/runtime/audio/kokoro/test.wav"},
+            "tts": {"audio_url": "/runtime/audio/edge/test.wav"},
         }
 
     request = _preprototype_request(transcript="I'm here to visit my uncle.")
@@ -739,7 +739,7 @@ def test_dev_a_adapter_forwards_npc_context_to_voice_builder() -> None:
             "animation": "officer_check_passport",
             "feedback_kr": "Good.",
             "tts": {
-                "audio_url": "/runtime/audio/kokoro/test.wav",
+                "audio_url": "/runtime/audio/edge/test.wav",
             },
         }
 
