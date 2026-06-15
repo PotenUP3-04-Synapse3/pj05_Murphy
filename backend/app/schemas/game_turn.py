@@ -15,6 +15,16 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+SttRuntimeUsed = Literal[
+    "local",
+    "api",
+    "unreal_bridge",
+    "stt_provider_websocket",
+    "elevenlabs_relay",
+    "local_batch_fallback",
+    "mock",
+]
+
 
 class SessionContext(BaseModel):
     session_id: str
@@ -132,6 +142,7 @@ class UnrealTurnRequest(BaseModel):
 class MockAudioInput(BaseModel):
     mock_wav_path: str | None = None
     transcript: str | None = None
+    transcript_provider: SttRuntimeUsed | None = None
     file_name: str | None = None
     content_type: str | None = None
     audio_bytes: bytes | None = None
@@ -155,7 +166,7 @@ class NormalizedInput(BaseModel):
     stt_model: Literal["whisper-large-v3-turbo"]
     stt_primary_runtime: Literal["local"]
     stt_fallback_runtime: Literal["api"]
-    stt_runtime_used: Literal["local", "api"]
+    stt_runtime_used: SttRuntimeUsed
 
 
 class HintPolicy(BaseModel):
@@ -722,7 +733,7 @@ class SttResponse(BaseModel):
     model: str
     primary_runtime: Literal["local"]
     fallback_runtime: Literal["api"]
-    runtime_used: Literal["local", "api"]
+    runtime_used: SttRuntimeUsed
     player_text: str
     confidence: float | None
     language_detected: str | None

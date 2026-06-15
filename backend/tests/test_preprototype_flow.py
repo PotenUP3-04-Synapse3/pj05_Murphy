@@ -1074,6 +1074,27 @@ def test_api_accepts_mock_unreal_turn_json() -> None:
     assert body["debug"]["stt_model"] == "whisper-large-v3-turbo"
 
 
+def test_api_reports_realtime_transcript_provider_as_stt_runtime() -> None:
+    client = TestClient(app)
+    payload = {
+        "turn": _turn_payload(),
+        "audio": {
+            "transcript": "I'm here for tourism.",
+            "transcript_provider": "elevenlabs_relay",
+            "file_name": "realtime-final-transcript.txt",
+            "content_type": "text/plain",
+        },
+    }
+
+    response = client.post("/api/game/ai/respond", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stt"]["player_text"] == "I'm here for tourism."
+    assert body["stt"]["runtime_used"] == "elevenlabs_relay"
+    assert body["debug"]["timing_ms"]["stt_ms"] == 0
+
+
 def test_api_accepts_multipart_turn_json_and_sample_wav() -> None:
     client = TestClient(app)
 

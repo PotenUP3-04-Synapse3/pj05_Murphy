@@ -1,5 +1,58 @@
 # Handoff
 
+## 2026-06-15 Respond Dialog Flight NPC Roster Alignment and STT Metadata Check
+
+Corrected during `/respond-dialog` realtime testing:
+
+- The AI-only `/respond-dialog` flight preset was using the synthetic Unreal
+  integration ID `SEATMATE_A_01`.
+- Developer A's current roster uses canonical IDs such as `arabella`, `novak`,
+  `hale`, `harris`, `dan`, and `brielle`.
+- Updated the flight preset to send `npc_id = "arabella"` and display speaker
+  `Arabella`, matching Developer A's seatmate roster for the airplane cabin
+  test.
+- Removed the temporary Developer A change request because no A-side roster
+  change is required for this AI-only backend test.
+
+Also fixed a Developer C metadata issue:
+
+- The realtime subtitle WebSocket can receive ElevenLabs relay final
+  transcripts and now submits `audio.transcript_provider` to
+  `POST /api/game/ai/respond`.
+- `WhisperLargeV3TurboSttService.transcribe_wav()` still bypasses batch STT
+  when `audio.transcript` already exists, but now reports the provider runtime
+  such as `elevenlabs_relay` instead of the default `local` label.
+- Legacy mock transcripts without `transcript_provider` still report `local`
+  for backward compatibility.
+
+Verification:
+
+- RED check: the focused `/respond-dialog` page test failed while the HTML still
+  contained `SEATMATE_A_01`.
+- RED check: focused STT provider tests failed with `runtime_used = local`
+  before the fix.
+- `uv run pytest backend/tests/test_stt_service.py::test_stt_service_reports_realtime_transcript_provider_without_batch_stt backend/tests/test_preprototype_flow.py::test_api_reports_realtime_transcript_provider_as_stt_runtime backend/tests/test_demo_ai_respond_page.py::test_respond_dialog_page_is_served_without_changing_original_demo -q`:
+  PASS, 3 passed, 1 existing `audioop` deprecation warning.
+- `uv run pytest backend/tests/test_stt_service.py
+  backend/tests/test_preprototype_flow.py
+  backend/tests/test_demo_ai_respond_page.py -q`: PASS, 41 passed, 1 existing
+  `audioop` deprecation warning.
+- `uv run pytest`: PASS, 238 passed, 1 existing `audioop` deprecation warning.
+- `uv run ruff check backend/app/schemas/game_turn.py
+  backend/app/services/service_c/stt_service.py backend/tests/test_stt_service.py
+  backend/tests/test_preprototype_flow.py
+  backend/tests/test_demo_ai_respond_page.py`: PASS.
+- `uv run mypy .`: PASS, no issues in 108 source files.
+- `uv run ruff check .`: FAIL only on A-owned
+  `backend/app/agents/agent_a/npc_dialogue_agent.py:24` for unused import
+  `polish_tts_text`; Developer C did not edit the A-owned file.
+- `uv run pytest backend/tests/test_demo_ai_respond_page.py -q`: PASS, 8
+  passed, 1 existing `audioop` deprecation warning.
+- `git diff --check -- demo/respond-dialog/index.html
+  backend/tests/test_demo_ai_respond_page.py docs/handoff.md
+  docs/contracts/change_requests.md`: PASS with Git's normal CRLF
+  working-copy warnings only.
+
 ## 2026-06-15 Developer C Test Cleanup for Developer A Legacy Removal
 
 Developer C cleaned C-owned tests that were keeping Developer A legacy/shim
