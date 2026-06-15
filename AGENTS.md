@@ -293,3 +293,12 @@ After meaningful changes, update:
 
 Keep handoff entries concrete: changed files, commands run, known issues, and
 the next recommended step.
+
+Developer C docstring rule:
+
+- For Developer C-owned non-test Python source files, add beginner-friendly
+  docstrings when creating or substantially editing code.
+- At minimum, each C-owned source file should explain what the file does, where
+  it sits in the backend flow, and what authority it does or does not have.
+- Prefer clear module/class/function docstrings over dense inline comments.
+  Tests are exempt unless a test helper is unusually hard to understand.

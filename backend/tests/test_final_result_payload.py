@@ -255,6 +255,44 @@ def test_response_builder_includes_dev_b_final_result_for_unreal_report() -> Non
     assert response.report.final_result.final_recommendation == "PASS"
 
 
+def test_response_builder_carries_dev_a_diagnostics_into_debug_payload() -> None:
+    response = ResponseBuilder().build_unreal_response(
+        request=_request(),
+        normalized_input=_normalized_input(),
+        understanding=_understanding(),
+        dev_b_output=_dev_b_output(final_result=_final_result()),
+        dev_a_output=DevADialogueOutput(
+            contract_version="dev_a_dialogue.v1",
+            speaker="Officer Miller",
+            text="All right, you're cleared to enter. Enjoy your stay.",
+            tone="formal_neutral",
+            animation="officer_check_passport",
+            audio_url="/runtime/audio/edge/final.wav",
+            diagnostics=[
+                {
+                    "code": "npc_speaker_mismatch",
+                    "severity": "warning",
+                    "message": "Developer A returned a speaker that does not match the requested NPC context.",
+                }
+            ],
+        ),
+        logging_summary=RecordedErrorSummary(
+            recorded=False,
+            storage_format="markdown",
+            error_log_markdown_path=None,
+            recorded_error_count=0,
+        ),
+    )
+
+    assert response.debug.diagnostics == [
+        {
+            "code": "npc_speaker_mismatch",
+            "severity": "warning",
+            "message": "Developer A returned a speaker that does not match the requested NPC context.",
+        }
+    ]
+
+
 def test_validator_rejects_inconsistent_final_result_overall_score() -> None:
     policy_output = _dev_b_output(final_result=_final_result())
     assert policy_output.final_result is not None
@@ -292,6 +330,31 @@ def test_result_endpoint_returns_unreal_result_payload(monkeypatch: pytest.Monke
             assert session_id == "session_final_result"
             return FinalResult.model_validate(_final_result())
 
+        def out_game_feedback_for_session(self, session_id: str) -> dict[str, Any]:
+            assert session_id == "session_final_result"
+            return {
+                "report_mode": "focus_on_form",
+                "overall_summary_kr": "이번 플레이에서 목적 설명 표현을 복습하면 좋습니다.",
+                "focus_on_form_items": [
+                    {
+                        "focus_on_form_target": "purpose_statement",
+                        "title_kr": "방문 목적 말하기",
+                        "rule_summary_kr": "목적을 짧고 명확하게 말합니다.",
+                        "original_utterances": ["Tour."],
+                        "suggested_expressions": ["I'm here for tourism."],
+                        "practice_prompt_kr": "입국 목적을 한 문장으로 말해보세요.",
+                        "answer_example": "I'm here for tourism.",
+                        "priority": "high",
+                        "source_node_ids": ["IMM_002_PURPOSE"],
+                    }
+                ],
+                "personalized_next_step": {
+                    "target": "purpose_statement",
+                    "practice_prompt_kr": "입국 목적을 다시 말해보세요.",
+                    "answer_example": "I'm here for tourism.",
+                },
+            }
+
     monkeypatch.setattr(ai_respond, "DevBPolicyClient", FakeDevBPolicyClient)
     client = TestClient(app)
 
@@ -302,3 +365,5 @@ def test_result_endpoint_returns_unreal_result_payload(monkeypatch: pytest.Monke
     assert body["contract_version"] == "dev_c_unreal_result.v1"
     assert body["session_id"] == "session_final_result"
     assert body["final_result"]["final_score_100"] == 87
+    assert body["out_game_feedback"]["report_mode"] == "focus_on_form"
+    assert body["out_game_feedback"]["focus_on_form_items"][0]["focus_on_form_target"] == "purpose_statement"

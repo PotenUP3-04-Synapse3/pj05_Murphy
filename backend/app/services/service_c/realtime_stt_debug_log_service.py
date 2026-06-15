@@ -1,3 +1,12 @@
+"""Write debug AgentRun records for realtime STT WebSocket sessions.
+
+Beginner guide:
+Realtime STT is not a normal turn by itself, so it needs its own lightweight
+debug logger.  This class records session start, audio chunk metadata, emitted
+subtitle events, final provider, token counts fixed at zero, and an estimated
+cost based on audio duration.  It never stores API keys.
+"""
+
 from __future__ import annotations
 
 import base64

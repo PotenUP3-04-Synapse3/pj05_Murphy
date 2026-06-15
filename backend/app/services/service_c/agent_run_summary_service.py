@@ -1,3 +1,12 @@
+"""Read compact summaries from unified AgentRun logs.
+
+Beginner guide:
+The backend writes detailed JSONL logs for each agent run.  The demo/debug API
+does not need to return the entire raw log, so this service reads the file,
+selects the latest or session-level records, and trims long nested values into
+small summaries that are easier to inspect.
+"""
+
 from __future__ import annotations
 
 import json

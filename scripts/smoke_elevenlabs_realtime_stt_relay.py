@@ -1,3 +1,13 @@
+"""Smoke-test the Developer C ElevenLabs realtime STT relay.
+
+Beginner guide:
+Run this script while the FastAPI backend is running locally.  It opens the
+Developer C `/api/game/ai/stt/stream` WebSocket, sends a 16 kHz mono PCM WAV as
+base64 audio chunks, prints subtitle events from the backend, and marks the
+last real audio chunk with `commit = true` so ElevenLabs can return a committed
+final transcript.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -32,44 +42,16 @@ async def main() -> None:
         )
         print(await websocket.recv())
 
-        sequence = 1
-        for chunk in _read_pcm16_chunks(args.wav, args.chunk_ms):
-            await websocket.send(
-                json.dumps(
-                    {
-                        "contract_version": "dev_c_realtime_stt.v1",
-                        "event_type": "audio_chunk",
-                        "request_id": args.request_id,
-                        "session_id": args.session_id,
-                        "turn_index": args.turn_index,
-                        "sequence": sequence,
-                        "provider": "elevenlabs_relay",
-                        "audio_base64": base64.b64encode(chunk).decode("ascii"),
-                        "commit": False,
-                        "sample_rate_hz": 16000,
-                    }
-                )
-            )
-            await _drain_available_events(websocket, args.receive_timeout_s)
-            sequence += 1
-
-        await websocket.send(
-            json.dumps(
-                {
-                    "contract_version": "dev_c_realtime_stt.v1",
-                    "event_type": "audio_chunk",
-                    "request_id": args.request_id,
-                    "session_id": args.session_id,
-                    "turn_index": args.turn_index,
-                    "sequence": sequence,
-                    "provider": "elevenlabs_relay",
-                    "audio_base64": base64.b64encode(b"\x00" * 640).decode("ascii"),
-                    "commit": True,
-                    "sample_rate_hz": 16000,
-                }
-            )
+        audio_events = _build_audio_chunk_events(
+            chunks=_read_pcm16_chunks(args.wav, args.chunk_ms),
+            request_id=args.request_id,
+            session_id=args.session_id,
+            turn_index=args.turn_index,
         )
-        await _drain_available_events(websocket, args.final_wait_s)
+        for event in audio_events:
+            await websocket.send(json.dumps(event))
+            timeout_s = args.final_wait_s if event["commit"] else args.receive_timeout_s
+            await _drain_available_events(websocket, timeout_s)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -100,6 +82,38 @@ def _read_pcm16_chunks(path: Path, chunk_ms: int) -> list[bytes]:
             chunks.append(chunk)
 
         return chunks
+
+
+def _build_audio_chunk_events(
+    *,
+    chunks: list[bytes],
+    request_id: str,
+    session_id: str,
+    turn_index: int,
+) -> list[dict[str, Any]]:
+    if not chunks:
+        raise ValueError("Expected at least one PCM audio chunk.")
+
+    events: list[dict[str, Any]] = []
+    for sequence, chunk in enumerate(chunks, start=1):
+        # ElevenLabs realtime STT commits the audio carried by this event, so the
+        # final event must contain real audio rather than a silence sentinel.
+        events.append(
+            {
+                "contract_version": "dev_c_realtime_stt.v1",
+                "event_type": "audio_chunk",
+                "request_id": request_id,
+                "session_id": session_id,
+                "turn_index": turn_index,
+                "sequence": sequence,
+                "provider": "elevenlabs_relay",
+                "audio_base64": base64.b64encode(chunk).decode("ascii"),
+                "commit": sequence == len(chunks),
+                "sample_rate_hz": 16000,
+            }
+        )
+
+    return events
 
 
 async def _drain_available_events(websocket: Any, timeout_s: float) -> None:

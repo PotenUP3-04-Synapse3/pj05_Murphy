@@ -1,3 +1,12 @@
+"""Build Developer C error-capture summaries.
+
+Beginner guide:
+Developer B decides whether an English-learning error should be recorded.
+Developer C turns that decision into a small storage summary for the final
+Unreal response.  The current implementation is deterministic and returns the
+path where a markdown error log would live.
+"""
+
 from backend.app.schemas.game_turn import ErrorCapture, RecordedErrorSummary
 
 

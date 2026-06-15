@@ -1,3 +1,12 @@
+"""Public Developer C orchestrator facade.
+
+Beginner guide:
+Other code calls `Orchestrator.run_turn()` when it wants one complete AI turn.
+The class keeps backward-compatible attributes for tests and debugging, but the
+actual runtime order is delegated to the compiled LangGraph and C graph tools.
+This lets C own the flow without importing A/B implementation internals.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

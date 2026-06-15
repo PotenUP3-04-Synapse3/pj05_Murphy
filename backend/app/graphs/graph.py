@@ -1,3 +1,14 @@
+"""Define the LangGraph workflow for one Developer C turn.
+
+Beginner guide:
+LangGraph is used here as an explicit checklist for the backend turn order.
+Each graph node delegates to `DeveloperCGraphTools`, which contains the real
+service calls.  The graph itself stays linear on purpose: STT -> OpenKB ->
+Understanding -> Developer B -> Developer A -> response validation.  Developer
+B still owns branch decisions; this graph only moves C-owned state from step to
+step.
+"""
+
 from __future__ import annotations
 
 from time import perf_counter
@@ -110,47 +121,47 @@ def build_developer_c_graph() -> Any:
 
 
 def _start_agent_run(state: DeveloperCTurnState) -> dict[str, Any]:
-    return state["tools"].start_agent_run_tool(state)
+    return state["tools"].invoke_structured_tool("start_agent_run", state)
 
 
 def _transcribe_audio(state: DeveloperCTurnState) -> dict[str, Any]:
-    return state["tools"].transcribe_audio_tool(state)
+    return state["tools"].invoke_structured_tool("transcribe_audio", state)
 
 
 def _load_node_context(state: DeveloperCTurnState) -> dict[str, Any]:
-    return state["tools"].load_node_context_tool(state)
+    return state["tools"].invoke_structured_tool("load_node_context", state)
 
 
 def _understand_player_text(state: DeveloperCTurnState) -> dict[str, Any]:
-    return state["tools"].understand_player_text_tool(state)
+    return state["tools"].invoke_structured_tool("understand_player_text", state)
 
 
 def _evaluate_dev_b_policy(state: DeveloperCTurnState) -> dict[str, Any]:
-    return state["tools"].evaluate_dev_b_policy_tool(state)
+    return state["tools"].invoke_structured_tool("evaluate_dev_b_policy", state)
 
 
 def _validate_dev_b_policy(state: DeveloperCTurnState) -> dict[str, Any]:
-    return state["tools"].validate_dev_b_policy_tool(state)
+    return state["tools"].invoke_structured_tool("validate_dev_b_policy", state)
 
 
 def _record_error_capture(state: DeveloperCTurnState) -> dict[str, Any]:
-    return state["tools"].record_error_capture_tool(state)
+    return state["tools"].invoke_structured_tool("record_error_capture", state)
 
 
 def _generate_dev_a_dialogue(state: DeveloperCTurnState) -> dict[str, Any]:
-    return state["tools"].generate_dev_a_dialogue_tool(state)
+    return state["tools"].invoke_structured_tool("generate_dev_a_dialogue", state)
 
 
 def _build_unreal_response(state: DeveloperCTurnState) -> dict[str, Any]:
-    return state["tools"].build_unreal_response_tool(state)
+    return state["tools"].invoke_structured_tool("build_unreal_response", state)
 
 
 def _validate_unreal_response(state: DeveloperCTurnState) -> dict[str, Any]:
-    return state["tools"].validate_unreal_response_tool(state)
+    return state["tools"].invoke_structured_tool("validate_unreal_response", state)
 
 
 def _finish_agent_run(state: DeveloperCTurnState) -> dict[str, Any]:
-    return state["tools"].finish_agent_run_tool(state)
+    return state["tools"].invoke_structured_tool("finish_agent_run", state)
 
 
 def _empty_timing_ms() -> dict[str, int]:

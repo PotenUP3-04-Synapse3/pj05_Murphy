@@ -33,6 +33,22 @@ class FakeProviderConnection:
         self.closed = True
 
 
+class DelayedProviderConnection(FakeProviderConnection):
+    def __init__(self, incoming: list[tuple[dict[str, Any], float]]) -> None:
+        self.incoming_with_delay = list(incoming)
+        super().__init__(incoming=[])
+
+    async def recv(self) -> str:
+        if self.incoming_with_delay:
+            payload, delay_s = self.incoming_with_delay.pop(0)
+            if delay_s > 0:
+                await asyncio.sleep(delay_s)
+            return json.dumps(payload)
+
+        await asyncio.sleep(10)
+        return "{}"
+
+
 class FakeProviderConnector:
     def __init__(self, connection: FakeProviderConnection) -> None:
         self.connection = connection
@@ -186,6 +202,32 @@ def test_elevenlabs_relay_sends_audio_chunk_and_maps_partial_and_committed_trans
     assert events[1].subtitle.text == "I will stay for five days."
     assert events[1].committed is True
     assert events[1].target_endpoint == "POST /api/game/ai/respond"
+
+
+def test_elevenlabs_relay_waits_longer_for_committed_final_than_partial_drain() -> None:
+    connection = DelayedProviderConnection(
+        incoming=[
+            ({"message_type": "session_started", "session_id": "provider_session_001"}, 0),
+            ({"message_type": "committed_transcript", "text": "I'm here for tourism."}, 0.02),
+        ]
+    )
+    relay = ElevenLabsRealtimeSttRelay(
+        settings=AppSettings(
+            elevenlabs_api_key="xi-secret-test",
+            elevenlabs_realtime_receive_timeout_s=0.001,
+            elevenlabs_realtime_commit_timeout_s=0.1,
+        ),
+        websocket_connect=FakeProviderConnector(connection),
+        local_batch_fallback=FakeLocalBatchSttFallback("Local fallback should not be used."),
+    )
+    asyncio.run(relay.start(_session_start_event()))
+
+    events = asyncio.run(relay.send_audio_chunk(_audio_chunk_event()))
+
+    assert events[-1].event_type == "final_transcript"
+    assert events[-1].provider == "elevenlabs_relay"
+    assert events[-1].subtitle is not None
+    assert events[-1].subtitle.text == "I'm here for tourism."
 
 
 def test_elevenlabs_relay_sends_previous_text_only_on_first_audio_chunk_when_present() -> None:

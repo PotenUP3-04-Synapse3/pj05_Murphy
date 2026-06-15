@@ -1,3 +1,14 @@
+"""Expose Developer C HTTP and WebSocket endpoints for Unreal and demos.
+
+Beginner guide:
+This module is the public door into the backend.  `POST /respond` receives one
+player turn, normalizes multipart or JSON input, and passes it to the C
+orchestrator.  `WebSocket /stt/stream` is separate: it streams subtitle-like STT
+events for Unreal while the player is speaking.  Partial STT events are only UI
+previews; committed final text is the only text that should later enter the
+normal `/respond` turn flow.
+"""
+
 import json
 from pathlib import Path
 from typing import Any, Literal, Sequence
@@ -251,10 +262,12 @@ def _chapter_id_for_demo_node(node_id: str) -> str:
 
 @router.get("/result/{session_id}", response_model=UnrealResultResponse)
 def result(session_id: str) -> UnrealResultResponse:
+    dev_b_client = DevBPolicyClient()
     response = UnrealResultResponse(
         contract_version="dev_c_unreal_result.v1",
         session_id=session_id,
-        final_result=DevBPolicyClient().final_result_for_session(session_id),
+        final_result=dev_b_client.final_result_for_session(session_id),
+        out_game_feedback=dev_b_client.out_game_feedback_for_session(session_id),
     )
     Validator().validate_unreal_result_response(response)
     return response

@@ -57,6 +57,7 @@ through `backend/app/services/service_c/settings_service.py`:
 | `ELEVENLABS_REALTIME_AUDIO_FORMAT` | `pcm_16000` | Audio format sent to ElevenLabs |
 | `ELEVENLABS_REALTIME_COMMIT_STRATEGY` | `manual` | ElevenLabs commit strategy, `manual` or `vad` |
 | `ELEVENLABS_REALTIME_RECEIVE_TIMEOUT_S` | `0.2` | Short drain timeout for provider events after each audio chunk |
+| `ELEVENLABS_REALTIME_COMMIT_TIMEOUT_S` | `3.0` | Longer drain timeout while waiting for a committed provider final transcript |
 | `ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD` | `0` | Optional local estimate used only for realtime STT debug cost logs |
 | `MURPHY_STT_DEBUG_LOG_MODE` | `off` | `debug` appends realtime STT AgentRun records to unified C logs |
 
@@ -213,6 +214,11 @@ Rules:
   `transcript`.
 - `audio_chunk` events must include non-empty `audio_base64` and use
   `provider = "elevenlabs_relay"`.
+- In manual commit mode, Unreal and smoke-test clients should set
+  `commit = true` on the final real audio chunk for the utterance. Do not send
+  a separate silence-only sentinel chunk as the commit message.
+- Developer C waits up to `ELEVENLABS_REALTIME_COMMIT_TIMEOUT_S` for the
+  committed provider final before using the local batch fallback.
 - ElevenLabs realtime relay uses `xi-api-key` only from the C backend
   environment. Unreal must not receive or send the API key.
 - The existing local Whisper STT runtime is retained as a batch fallback for
@@ -293,7 +299,8 @@ Canonical `turn` payload:
     "completed_intents": [
       "submit_passport"
     ],
-    "current_objective": "State the visit purpose"
+    "current_objective": "State the visit purpose",
+    "random_customs_item": null
   },
   "previous_node_results": [
     {
@@ -333,6 +340,39 @@ Canonical `turn` payload:
 | `previous_node_results` | no | Used for final decision and reports |
 | `client_allowed_next_nodes` | no | Extra client-side branch guard |
 | `client_context` | no | Debug and compatibility metadata |
+
+### Alpha Random Customs Item Context
+
+`game_state.random_customs_item` is optional and additive. Unreal can include it
+when the baggage/customs sequence reveals a random item in the suitcase. The
+object is not branch authority; Developer C preserves it so Understanding,
+Developer B, and Developer A can talk about the same item.
+
+Example:
+
+```json
+{
+  "item_id": "medicine_red_ginseng_extract",
+  "item_name": "red ginseng extract",
+  "item_category": "medicine",
+  "item_description": "Small bottles of Korean red ginseng extract.",
+  "visit_location": "Queens",
+  "declared": false,
+  "source": "unreal_csv"
+}
+```
+
+Fields:
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `item_id` | no | Stable local id from Unreal or a CSV table |
+| `item_name` | yes | Player-facing item name |
+| `item_category` | no | Broad category such as `medicine`, `food`, or `souvenir` |
+| `item_description` | no | Short description for A-facing dialogue context |
+| `visit_location` | no | Optional location context tied to the random setup |
+| `declared` | no | Whether the player declared the item before inspection |
+| `source` | no | Debug/source tag such as `unreal_csv` |
 
 ### Alpha Interaction Context
 
@@ -790,7 +830,7 @@ Developer C returns only validated, Unreal-safe data.
     "emotion": "Nomal",
     "tone": "formal_neutral",
     "animation": "officer_check_passport",
-    "audio_url": "/runtime/audio/kokoro/IMM_002_PURPOSE_stay_duration_success_am_michael_abcd1234.wav"
+    "audio_url": "/runtime/audio/edge/IMM_002_PURPOSE_stay_duration_success_am_michael_abcd1234.wav"
   },
   "ui": {
     "show_hint": false,
@@ -861,7 +901,8 @@ Developer C returns only validated, Unreal-safe data.
       "developer_a_ms": 1310,
       "response_build_ms": 1,
       "validation_ms": 1
-    }
+    },
+    "diagnostics": []
   }
 }
 ```
@@ -897,10 +938,18 @@ Rules:
 - `debug` may be omitted in production.
 - `debug.timing_ms` is diagnostic latency metadata and must not drive gameplay
   branch decisions.
+- `debug.diagnostics` is an additive C-owned warning list for integration
+  issues such as an A-returned speaker that does not match the requested NPC
+  context. Diagnostics are not branch authority and must not override
+  Developer B policy.
 - Developer C may redact, omit, or transform internal fields before returning
   to Unreal.
 - On final-branch responses, `report.final_result` may include Developer B's
   validated final score payload. Developer C does not calculate the score.
+- On the dedicated result endpoint, `out_game_feedback` may include Developer
+  B's Focus-on-Form learning-card payload. Developer C treats this object as
+  additive learning metadata only; it must not affect branch, verdict, score,
+  next node, or state delta authority.
 
 Dedicated result UI endpoint:
 
@@ -936,6 +985,28 @@ Response envelope:
       "main_improvement": "Keep answers concise and polite.",
       "focus_on_form_targets": [],
       "included_node_count": 6
+    }
+  },
+  "out_game_feedback": {
+    "report_mode": "focus_on_form",
+    "overall_summary_kr": "이번 플레이에서 반복된 영어 표현 이슈를 복습해 보세요.",
+    "focus_on_form_items": [
+      {
+        "focus_on_form_target": "purpose_statement",
+        "title_kr": "방문 목적 말하기",
+        "rule_summary_kr": "입국 목적은 짧고 명확한 문장으로 말합니다.",
+        "original_utterances": ["Tour."],
+        "suggested_expressions": ["I'm here for tourism."],
+        "practice_prompt_kr": "입국 목적을 한 문장으로 말해보세요.",
+        "answer_example": "I'm here for tourism.",
+        "priority": "high",
+        "source_node_ids": ["IMM_002_PURPOSE"]
+      }
+    ],
+    "personalized_next_step": {
+      "target": "purpose_statement",
+      "practice_prompt_kr": "입국 목적을 다시 말해보세요.",
+      "answer_example": "I'm here for tourism."
     }
   }
 }
@@ -977,6 +1048,8 @@ Developer C validator must enforce at least these rules:
     baggage claim, not an Alpha final-result trigger.
 20. Developer C may expose `final_result` inside `/respond` on final branches
     and through `GET /api/game/ai/result/{session_id}`.
-21. Realtime STT WebSocket events must use `dev_c_realtime_stt.v1`, start with
+21. Developer C may expose B-owned `out_game_feedback` through
+    `GET /api/game/ai/result/{session_id}` as learning metadata only.
+22. Realtime STT WebSocket events must use `dev_c_realtime_stt.v1`, start with
     `session_start`, keep monotonically increasing `sequence`, and never route
     partial transcript events into Developer B, Developer A, or TTS.

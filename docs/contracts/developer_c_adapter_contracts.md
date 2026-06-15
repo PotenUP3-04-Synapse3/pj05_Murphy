@@ -261,6 +261,11 @@ Rules:
 - `audio_chunk` events are base64 PCM chunks. The current smoke-test path
   expects 16 kHz mono 16-bit PCM wav chunks and sends
   `audio_format=pcm_16000`.
+- In manual commit mode, set `commit = true` on the final real audio chunk for
+  the utterance. Do not end the turn by sending a separate silence-only commit
+  chunk.
+- Developer C waits up to `ELEVENLABS_REALTIME_COMMIT_TIMEOUT_S` for a
+  committed provider final before falling back to local batch STT.
 - Partial transcripts are UI-only subtitle previews and must not call Developer
   B or Developer A.
 - Only committed final transcripts may enter the normal C orchestrator path.
@@ -539,20 +544,26 @@ Implemented pre-prototype final score bridge:
 
 ```text
 DevBPolicyClient.final_result_for_session(session_id) -> FinalResult
+DevBPolicyClient.out_game_feedback_for_session(session_id) -> dict
 ```
 
 Rules:
 
 - Developer B owns `FinalResultScorePolicy` and the numeric scoring policy.
+- Developer B owns `FocusOnFormReportPolicy` and the out-game Focus-on-Form
+  learning-card payload shape.
 - Developer C may read B-owned runtime records through the Developer B adapter
   and may not mutate records under `backend/runtime/openkb/dev_b/`.
 - Final-branch `evaluate_turn(...)` may attach `DevBPolicyOutput.final_result`
   only for the Alpha final scoreboard node `ALPHA_999_FINAL_SCOREBOARD`.
   `IMM_007_FINAL_DECISION` is treated as an immigration-to-baggage transition.
 - `GET /api/game/ai/result/{session_id}` returns
-  `dev_c_unreal_result.v1` with the validated B `final_result`.
+  `dev_c_unreal_result.v1` with the validated B `final_result` and optional
+  B-owned `out_game_feedback` learning metadata.
 - `/api/game/ai/respond` includes the same object under
   `report.final_result` when B returns it on a final branch.
+- `out_game_feedback` is not branch, verdict, next-node, state-delta, or score
+  authority. Unreal should render it as final learning-card UI only.
 
 Developer B owns:
 
@@ -644,6 +655,21 @@ Input:
       "next_action": "ADVANCE",
       "next_node_id": "IMM_003_DURATION"
     },
+    "dialogue_seed": {
+      "scene": "JFK_IMMIGRATION_HALL",
+      "npc_role": "immigration_officer",
+      "surface_goal": "ask_visit_purpose",
+      "hidden_assessment_goal": "estimate_user_travel_speaking_level",
+      "opening_intent": "ask_visit_purpose",
+      "assessment_targets": ["state_visit_purpose", "visit_purpose"],
+      "required_slots": ["visit_purpose"],
+      "max_turns": 4,
+      "difficulty_profile": "auto",
+      "feedback_focus": ["visit_purpose"],
+      "tone_guidance": "neutral",
+      "allowed_followup_intents": ["advance_to_next_prompt"],
+      "stop_condition": "required_slots_filled_or_retry_policy_triggered"
+    },
     "dialogue_directive": {
       "purpose": "continue_to_next_question",
       "tone_hint": "neutral",
@@ -664,7 +690,8 @@ Output:
   "tone": "formal_neutral",
   "animation": "officer_check_passport",
   "feedback_kr": "Good. A natural sentence is: I'm here for tourism.",
-  "audio_url": "/runtime/audio/kokoro/IMM_002_PURPOSE_stay_duration_success_am_michael_abcd1234.wav"
+  "audio_url": "/runtime/audio/edge/IMM_002_PURPOSE_stay_duration_success_en-US-GuyNeural_abcd1234.wav",
+  "diagnostics": []
 }
 ```
 
@@ -679,7 +706,23 @@ Rules:
   Developer C passes additive `transition` metadata to the A-facing payload so
   Developer A can choose closing dialogue tone. Developer A may ignore this
   field, but must not treat it as branch authority.
-- Developer C calls Developer A's voice output service with fake Kokoro by
+- Developer C passes Developer B's optional `dialogue_seed` through the
+  A-facing level-design payload so Developer A can generate Alpha
+  non-immigration dialogue from role, surface-goal, assessment, and stop
+  condition metadata instead of B-authored final NPC wording.
+- Developer C passes optional `game_state.random_customs_item` through the
+  A-facing level-design payload as `random_customs_item`. This lets Developer A
+  generate BAG_006 customs-item dialogue about the same item Unreal revealed.
+- Developer C normalizes BAG A-facing NPC context by phase before calling
+  Developer A: `BAG_001` through `BAG_004` use `BAGGAGE_STAFF /
+  baggage_service_staff`, while `BAG_005` through `BAG_007` use
+  `CUSTOMS_OFFICER / customs_officer`.
+- Developer C adds a non-blocking `npc_speaker_mismatch` diagnostic when the
+  speaker returned by Developer A shares no useful identity token with the
+  A-facing `npc_id`. The diagnostic is copied into Unreal `debug.diagnostics`
+  and AgentRun summaries; it does not rewrite A dialogue or change B branch
+  policy.
+- Developer C calls Developer A's voice output service with fake Edge by
   default for deterministic tests.
 - `MURPHY_TTS_MODE=real` makes the C adapter pass `use_real_tts=True` to
   Developer A's voice output service.

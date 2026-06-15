@@ -1,3 +1,14 @@
+"""Turn player text into Developer C semantic understanding.
+
+Beginner guide:
+This is not the scenario branch decider.  It reads the player's transcript and
+the current scenario node, then returns semantic evidence such as intent,
+filled slots, missing slots, risk tags, and confidence.  Developer B still owns
+the actual pass/fail/next-node policy.  When LLM mode is enabled, this agent
+tries the LLM first, filters unsafe fields, repairs obvious slots with rules,
+and falls back to deterministic rules when the LLM is unavailable.
+"""
+
 import logging
 from pydantic import ValidationError as PydanticValidationError
 import re
@@ -33,6 +44,78 @@ FORBIDDEN_UNDERSTANDING_LLM_KEYS = {
     "tts_text",
     "commands",
     "unreal_commands",
+}
+
+ALPHA_SLOT_VALUE_KEYWORDS: dict[str, dict[str, tuple[str, ...]]] = {
+    "polite_response": {
+        "offered_help": ("of course", "sure", "here you are", "take it", "use this pen"),
+        "declined_politely": ("sorry", "i need it", "after me"),
+        "short_acknowledgement": ("okay", "yes", "no problem"),
+    },
+    "travel_purpose": {
+        "tourism": ("tourism", "vacation", "holiday", "travel", "trip", "sightseeing"),
+        "business": ("business", "work", "conference", "meeting"),
+        "family_visit": ("family", "uncle", "aunt", "parents", "cousin"),
+        "friend_visit": ("friend", "friends"),
+        "study": ("study", "school", "university", "academy"),
+        "transit": ("transit", "transfer", "layover"),
+    },
+    "stay_plan": {
+        "five_days": ("five days", "5 days"),
+        "one_week": ("one week", "1 week"),
+        "two_weeks": ("two weeks", "2 weeks"),
+        "short_trip": ("short trip", "few days", "several days"),
+        "until_date": ("until monday", "until tuesday", "until wednesday", "until thursday", "until friday"),
+    },
+    "interaction_repair": {
+        "confirmed": ("yes", "that's right", "correct", "first time"),
+        "asked_clarification": ("sorry", "what do you mean", "can you repeat"),
+        "asked_back": ("how about you", "what about you"),
+        "rephrased_answer": ("i mean", "let me say"),
+    },
+    "smalltalk_closing": {
+        "polite_closing": ("nice talking", "good talking", "see you"),
+        "thanks": ("thank", "thanks"),
+        "ready": ("ready", "i'm ready"),
+        "nervous_but_ready": ("nervous", "worried", "but ready"),
+    },
+    "missing_bag_statement": {
+        "bag_not_arrived": ("bag didn't arrive", "bag did not arrive", "didn't come out", "not come out"),
+        "suitcase_missing": ("missing suitcase", "lost suitcase", "can't find my suitcase", "cannot find my suitcase"),
+        "need_staff_help": ("need help", "help me", "can you help"),
+    },
+    "claim_tag_status": {
+        "has_claim_tag": ("claim tag", "bag tag", "baggage tag", "tag right here", "have the tag"),
+        "has_ticket": ("ticket", "baggage ticket"),
+        "has_boarding_pass": ("boarding pass",),
+    },
+    "carousel_search_confirmation": {
+        "searched_carefully": ("checked carefully", "searched carefully", "looked carefully"),
+        "waited_until_stopped": ("waited", "until it stopped", "carousel stopped"),
+        "checked_twice": ("checked twice", "looked twice"),
+    },
+    "customs_hold_redirect_acknowledgement": {
+        "will_go_to_customs_hold": ("i'll go", "i will go", "go back", "go there"),
+        "understands_redirect": ("okay", "i understand", "got it"),
+        "asks_where_to_go": ("where", "which way", "where should i go"),
+    },
+    "customs_hold_acknowledgement": {
+        "will_unlock_and_check": ("open it", "unlock", "check the contents", "check inside"),
+        "understands_inspection": ("inspection", "i understand", "okay"),
+        "confirms_owner": ("my bag", "my suitcase", "it is mine", "it's mine"),
+    },
+    "customs_item_explanation": {
+        "personal_item": ("personal item", "for me", "my item", "for myself"),
+        "souvenir": ("souvenir", "memory", "keepsake"),
+        "gift": ("gift", "present"),
+        "medicine": ("medicine", "medication", "health", "red ginseng", "pill", "vitamin"),
+        "food_for_personal_use": ("food", "snack", "personal use", "eat"),
+    },
+    "customs_clearance_acknowledgement": {
+        "acknowledged_clearance": ("thank", "thanks", "okay", "i understand"),
+        "will_exit_airport": ("exit", "leave the airport", "go out"),
+        "will_take_suitcase": ("take my suitcase", "take it", "take my bag"),
+    },
 }
 
 
@@ -288,6 +371,10 @@ def _extract_generic_required_slot(
     if not allowed_values:
         return None
 
+    matched_allowed_value = _match_alpha_allowed_slot_value(player_text, slot_name, allowed_values)
+    if matched_allowed_value is not None:
+        return slot_name, matched_allowed_value
+
     matched_evidence = _matched_generic_evidence_text(player_text, node_context)
     if matched_evidence is None:
         return None
@@ -298,6 +385,30 @@ def _extract_generic_required_slot(
             return slot_name, allowed_value
 
     return slot_name, allowed_values[0]
+
+
+def _match_alpha_allowed_slot_value(
+    player_text: str,
+    slot_name: str,
+    allowed_values: list[str],
+) -> str | None:
+    """Match common Alpha fallback phrases to allowed slot values.
+
+    Beginner guide:
+    The LLM path can fill any current-node slot through `slot_evidence`, but
+    local rule/mock mode still needs a small deterministic safety net.  This
+    helper is keyed by slot name and allowed value, not by scenario node id, so
+    adding another node that reuses the same slot can reuse the same fallback.
+    """
+
+    normalized_text = _normalize_for_keyword_match(player_text)
+    slot_value_keywords = ALPHA_SLOT_VALUE_KEYWORDS.get(slot_name, {})
+    for allowed_value in allowed_values:
+        for keyword in slot_value_keywords.get(allowed_value, ()):
+            if _normalize_for_keyword_match(keyword) in normalized_text:
+                return allowed_value
+
+    return None
 
 
 def _matched_generic_evidence_text(

@@ -32,6 +32,7 @@ def _clear_runtime_env(monkeypatch) -> None:
         "ELEVENLABS_REALTIME_AUDIO_FORMAT",
         "ELEVENLABS_REALTIME_COMMIT_STRATEGY",
         "ELEVENLABS_REALTIME_RECEIVE_TIMEOUT_S",
+        "ELEVENLABS_REALTIME_COMMIT_TIMEOUT_S",
         "ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD",
         "MURPHY_STT_DEBUG_LOG_MODE",
     ]:
@@ -68,6 +69,7 @@ def test_app_settings_reads_values_from_env_file(tmp_path, monkeypatch) -> None:
                 "ELEVENLABS_REALTIME_AUDIO_FORMAT=pcm_16000",
                 "ELEVENLABS_REALTIME_COMMIT_STRATEGY=manual",
                 "ELEVENLABS_REALTIME_RECEIVE_TIMEOUT_S=0.25",
+                "ELEVENLABS_REALTIME_COMMIT_TIMEOUT_S=3.5",
                 "ELEVENLABS_REALTIME_ESTIMATED_COST_PER_MINUTE_USD=0.004",
                 "MURPHY_STT_DEBUG_LOG_MODE=debug",
             ]
@@ -101,6 +103,7 @@ def test_app_settings_reads_values_from_env_file(tmp_path, monkeypatch) -> None:
     assert settings.elevenlabs_realtime_audio_format == "pcm_16000"
     assert settings.elevenlabs_realtime_commit_strategy == "manual"
     assert settings.elevenlabs_realtime_receive_timeout_s == 0.25
+    assert settings.elevenlabs_realtime_commit_timeout_s == 3.5
     assert settings.elevenlabs_realtime_estimated_cost_per_minute_usd == 0.004
     assert settings.murphy_stt_debug_log_mode == "debug"
 

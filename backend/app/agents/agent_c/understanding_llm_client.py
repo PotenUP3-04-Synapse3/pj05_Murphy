@@ -1,3 +1,14 @@
+"""Call LLM providers for the Developer C Understanding Agent.
+
+Beginner guide:
+The rest of the backend should not know provider-specific HTTP details.  This
+file hides those details behind a small `UnderstandingLLMClient` protocol.
+There is a primary OpenAI Responses client, an OpenAI-compatible chat client for
+the academy fallback server, and a wrapper that tries primary first and fallback
+second.  All clients return plain dictionaries that are later validated by the
+Understanding Agent schema.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

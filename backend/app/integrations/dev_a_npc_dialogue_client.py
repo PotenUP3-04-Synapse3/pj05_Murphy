@@ -1,10 +1,19 @@
+"""Developer C adapter for calling Developer A dialogue and TTS logic.
+
+Beginner guide:
+This file is C-owned even though it calls Developer A.  It translates C/B turn
+state into the level-design payload that A's voice output service expects, then
+wraps A's result back into the `DevADialogueOutput` contract.  C does not create
+A's NPC voice logic here; it only adapts inputs and validates the boundary.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from backend.app.schemas.game_turn import DevADialogueInput, DevADialogueOutput
+from backend.app.schemas.game_turn import DevADialogueInput, DevADialogueOutput, NpcContext
 from backend.app.services.service_a.voice_output_service import build_voice_output_from_level_design
 from backend.app.services.service_c.openkb_service import OpenKBService
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
@@ -41,7 +50,8 @@ class DevANpcDialogueClient:
         self.voice_output_builder = voice_output_builder
 
     def generate_dialogue(self, payload: DevADialogueInput) -> DevADialogueOutput:
-        level_design_payload = self._build_level_design_payload(payload)
+        expected_npc = _a_facing_npc_context(payload)
+        level_design_payload = self._build_level_design_payload(payload, expected_npc)
         result = self.voice_output_builder(
             level_design_payload,
             runtime_root=self.runtime_root,
@@ -53,9 +63,10 @@ class DevANpcDialogueClient:
             audio_url_base=self.audio_url_base,
         )
 
+        speaker = str(result.get("speaker", "Officer Miller"))
         return DevADialogueOutput(
             contract_version="dev_a_dialogue.v1",
-            speaker=str(result.get("speaker", "Officer Miller")),
+            speaker=speaker,
             text=_normalize_dialogue_text(
                 str(result.get("npc_text") or result.get("text") or "Okay. Please continue.")
             ),
@@ -63,9 +74,14 @@ class DevANpcDialogueClient:
             animation=str(result.get("animation", "officer_check_passport")),
             feedback_kr=_optional_string(result.get("feedback_kr")),
             audio_url=_extract_audio_url(result),
+            diagnostics=_speaker_mismatch_diagnostics(expected_npc, speaker),
         )
 
-    def _build_level_design_payload(self, payload: DevADialogueInput) -> dict[str, Any]:
+    def _build_level_design_payload(
+        self,
+        payload: DevADialogueInput,
+        expected_npc: NpcContext,
+    ) -> dict[str, Any]:
         policy = payload.developer_b_policy
         evaluation = policy.evaluation
         feedback = policy.in_game_feedback.model_dump()
@@ -84,7 +100,7 @@ class DevANpcDialogueClient:
         if policy.branch.branch_type in {"success", "final"}:
             dialogue_directive["do_not_generate_npc_text"] = False
 
-        npc = payload.npc.model_dump()
+        npc = expected_npc.model_dump()
         npc["emotion"] = policy.npc_emotion
 
         return {
@@ -94,6 +110,10 @@ class DevANpcDialogueClient:
             "node_context": node_context,
             "understanding": payload.understanding.model_dump(),
             "transition": payload.transition.model_dump() if payload.transition is not None else None,
+            "random_customs_item": (
+                payload.random_customs_item.model_dump() if payload.random_customs_item is not None else None
+            ),
+            "dialogue_seed": policy.dialogue_seed.model_dump() if policy.dialogue_seed is not None else None,
             "evaluation_summary": {
                 "feedback_note": evaluation.feedback_note or "",
                 "main_feedback_tag": evaluation.feedback_tags[0] if evaluation.feedback_tags else "",
@@ -177,3 +197,87 @@ def _optional_string(value: Any) -> str | None:
         return None
     text = str(value)
     return text if text else None
+
+
+def _a_facing_npc_context(payload: DevADialogueInput) -> NpcContext:
+    """Return the NPC identity Developer A should see for this Alpha node.
+
+    Beginner guide:
+    Unreal can sometimes carry the previous NPC while the scenario moves from
+    the baggage service desk to the customs hold.  Developer C does not edit A's
+    dialogue logic here; it only normalizes the C-to-A boundary so BAG_001-004
+    are service-staff turns and BAG_005-007 are customs-officer turns.
+    """
+
+    node_id = payload.node_context.node_id
+    if _is_baggage_service_node(node_id):
+        return NpcContext(
+            npc_id="BAGGAGE_STAFF",
+            npc_role="baggage_service_staff",
+            last_npc_message=payload.npc.last_npc_message,
+        )
+    if _is_customs_hold_node(node_id):
+        return NpcContext(
+            npc_id="CUSTOMS_OFFICER",
+            npc_role="customs_officer",
+            last_npc_message=payload.npc.last_npc_message,
+        )
+    return payload.npc
+
+
+def _is_baggage_service_node(node_id: str) -> bool:
+    """Return whether a BAG node belongs to the service-desk staff phase."""
+
+    return node_id.startswith(("BAG_001", "BAG_002", "BAG_003", "BAG_004"))
+
+
+def _is_customs_hold_node(node_id: str) -> bool:
+    """Return whether a BAG node belongs to the customs-officer hold phase."""
+
+    return node_id.startswith(("BAG_005", "BAG_006", "BAG_007"))
+
+
+def _speaker_mismatch_diagnostics(expected_npc: NpcContext, actual_speaker: str) -> list[dict[str, str]]:
+    """Return a warning when A's speaker looks different from the requested NPC.
+
+    Beginner guide:
+    Developer C does not rewrite Developer A's dialogue here.  It only compares
+    the A-facing NPC identity with the speaker name A returned.  When
+    the names share no useful identity token, C adds a diagnostic so logs and
+    debug payloads can reveal likely routing mistakes.
+    """
+
+    expected_npc_id = expected_npc.npc_id
+    expected_tokens = _identity_tokens(expected_npc_id)
+    actual_tokens = _identity_tokens(actual_speaker)
+    if expected_tokens and expected_tokens.intersection(actual_tokens):
+        return []
+
+    return [
+        {
+            "code": "npc_speaker_mismatch",
+            "severity": "warning",
+            "message": "Developer A returned a speaker that does not match the requested NPC context.",
+            "expected_npc_id": expected_npc_id,
+            "expected_npc_role": expected_npc.npc_role,
+            "actual_speaker": actual_speaker,
+        }
+    ]
+
+
+def _identity_tokens(value: str) -> set[str]:
+    """Extract comparison tokens from NPC ids or speaker names.
+
+    Beginner guide:
+    Names come in different forms, such as `BAGGAGE_STAFF`, `Officer Hale`, or
+    `customs-officer`.  This helper lowercases them, splits separators, removes
+    generic words, and keeps the meaningful pieces for a loose mismatch check.
+    """
+
+    generic_tokens = {"a", "the", "npc", "officer", "staff", "agent", "service"}
+    normalized = value.lower().replace("_", " ").replace("-", " ")
+    return {
+        token
+        for token in normalized.split()
+        if len(token) >= 3 and not token.isdigit() and token not in generic_tokens
+    }

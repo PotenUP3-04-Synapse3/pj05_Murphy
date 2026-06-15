@@ -3,6 +3,49 @@
 Cross-owner change requests are listed below. Status lines describe the current
 repository state as of the latest handoff entry.
 
+## Change Request - 2026-06-15 - Clarify Ownership for Developer C STT Smoke Scripts
+
+### Requested By
+
+Developer C / Sean Han
+
+### Affected Owner
+
+Shared repository guide / Developer C
+
+### Reason
+
+`AGENTS.md` explicitly lists Developer C ownership for STT pipeline,
+orchestration, tests, contracts, handoff docs, and the A/B integration
+adapters. It does not currently list `scripts/`, even though
+`scripts/smoke_elevenlabs_realtime_stt_relay.py` is a Developer C realtime STT
+smoke utility created for local validation of the C-owned WebSocket relay.
+
+This can confuse future agents because the script is not Developer A or
+Developer B implementation code, but it is also not explicitly listed in the
+Developer C owned paths.
+
+### Proposed Contract Change
+
+Add a narrow Developer C ownership entry to `AGENTS.md` for:
+
+- `scripts/smoke_elevenlabs_realtime_stt_relay.py`
+
+The ownership should be limited to Developer C realtime STT smoke/testing
+utilities and must not grant Developer C blanket ownership over all future
+repository scripts.
+
+### Compatibility Impact
+
+No runtime behavior change. This only clarifies editing ownership for future
+maintenance.
+
+### Temporary Workaround
+
+Treat `scripts/smoke_elevenlabs_realtime_stt_relay.py` as a C-owned realtime
+STT smoke utility when the task is specifically about Developer C STT relay
+testing. For unrelated scripts, keep the current unknown/shared-file caution.
+
 ## Change Request - 2026-06-03 - Developer A NPC Dialogue/TTS Implementation
 
 ### Requested By
@@ -288,6 +331,14 @@ Additive optional field only. Existing clients may ignore it.
 Developer B keeps the report builder as a directly tested B-owned service.
 Developer C can continue returning the existing final result payload until the
 response surface is ready.
+
+### Developer C Update - 2026-06-15
+
+Implemented. `GET /api/game/ai/result/{session_id}` now returns additive
+`out_game_feedback` learning metadata from B-owned
+`FocusOnFormReportPolicy.build_session_report(session_id)` through the C-owned
+`DevBPolicyClient` adapter. The field is optional response metadata and does
+not affect branch, verdict, next node, state delta, or numeric score authority.
 
 ## Change Request - 2026-06-09 - Support Alpha Scene Flow Beyond Immigration
 
@@ -950,6 +1001,21 @@ BAG_999_COMPLETE`.
   `transition.unreal_event = SHOW_ALPHA_SCOREBOARD`.
 - Pass through Unreal-provided random item context to
   `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM` when available.
+
+Developer C update, 2026-06-15:
+
+- Implemented A-adapter `dialogue_seed` forwarding for non-immigration Alpha
+  nodes.
+- Implemented non-blocking `npc_speaker_mismatch` diagnostics.
+- Added `game_state.random_customs_item` pass-through into Developer B input
+  and Developer A payloads.
+- Added BAG phase-based A-facing NPC context normalization:
+  `BAG_001` through `BAG_004` route as baggage service staff, while `BAG_005`
+  through `BAG_007` route as customs officer.
+- Added deterministic Understanding fallback coverage for common Alpha
+  Flight/Baggage slot values, including `customs_item_explanation`.
+- Remaining C follow-up after this update: broader Alpha phrase coverage and
+  any future Unreal-driven player-initiated/free-talk routing contract.
 
 ### Unreal Required Follow-up
 

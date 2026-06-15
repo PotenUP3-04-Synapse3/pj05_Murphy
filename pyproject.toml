@@ -34,6 +34,7 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+norecursedirs = ["backend/runtime/generated"]
 
 [tool.ruff]
 exclude = [
@@ -41,5 +42,10 @@ exclude = [
     ".venv",
     ".git",
     "__pycache__",
+]
+
+[tool.mypy]
+exclude = [
+    "^backend/runtime/generated/",
 ]
 
