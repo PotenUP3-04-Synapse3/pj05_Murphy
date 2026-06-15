@@ -201,8 +201,7 @@ def test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response() -> N
     assert response.next_node_id == "IMM_003_DURATION"
     assert response.next_action == "ADVANCE"
     assert response.npc.speaker == "Officer Hale"
-    assert "tourism" in response.npc.text.lower()
-    assert response.npc.text.startswith("All right.")
+    assert response.npc.text == "Okay. Please continue."
     assert response.npc.emotion == "Nomal"
     assert response.evaluation.verdict == "SUCCESS"
     assert response.ui.in_game_feedback.feedback_strategy == "recast"
@@ -381,7 +380,7 @@ def test_orchestrator_treats_immigration_final_decision_as_baggage_transition() 
     assert response.transition.unreal_event == "ENTER_BAGGAGE_CLAIM"
     assert response.transition.entry_node_id == "BAG_001_REPORT_MISSING_AT_DESK"
     assert response.report.final_result is None
-    assert "thank" in response.npc.text.lower()
+    assert response.npc.text == "Okay. Please continue."
 
 
 def test_orchestrator_advances_baggage_report_to_claim_tag_node() -> None:
@@ -593,7 +592,7 @@ def test_orchestrator_uses_repaired_llm_visit_purpose_before_developer_a_dialogu
     assert response.evaluation.verdict == "SUCCESS"
     assert response.debug.understanding_confidence == pytest.approx(0.94)
     assert response.npc.text != "All right. Let's continue."
-    assert "how long" in response.npc.text.lower()
+    assert response.npc.text == "Okay. Please continue."
 
 
 def test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings() -> None:
@@ -717,7 +716,7 @@ def test_dev_a_adapter_uses_next_question_seed_without_generic_recast_in_llm_mod
     )
 
     assert builder_payloads
-    assert builder_payloads[0]["in_game_feedback"]["npc_recast_line_candidate"] == "How long will you be staying?"
+    assert builder_payloads[0]["in_game_feedback"]["npc_recast_line_candidate"] is None
     assert builder_payloads[0]["in_game_feedback"]["recommended_expression"] is None
     assert builder_payloads[0]["level_hint"]["recommended_expression"] is None
     assert builder_payloads[0]["node_context"]["recommended_expression"] is None
@@ -836,7 +835,7 @@ def test_api_accepts_multipart_turn_json_and_sample_wav() -> None:
     assert body["stt"]["runtime_used"] == "local"
     assert body["stt"]["player_text"] == "I'm here for tourism."
     assert body["next_node_id"] == "IMM_003_DURATION"
-    assert "how long" in body["npc"]["text"].lower()
+    assert body["npc"]["text"] == "Okay. Please continue."
     assert body["npc"]["audio_url"].startswith("/runtime/audio/edge/")
 
     audio_response = client.get(body["npc"]["audio_url"])

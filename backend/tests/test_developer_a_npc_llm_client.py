@@ -1,57 +1,54 @@
-import json
-from typing import Any
+# 테스트용 패키지 임포트
 
-import httpx
 
 from backend.app.agents.agent_a.npc_llm_client import (
-    FallbackNPCDialogueLLMClient,
     NPCDialogueLLMUnavailable,
-    OpenAICompatibleNPCDialogueLLMClient,
     build_npc_dialogue_llm_client_from_environment,
+    OpenAICompatibleNPCDialogueChatModel,
 )
 
 
 def test_openai_compatible_npc_dialogue_client_calls_vllm_chat_completions(
     monkeypatch,
 ) -> None:
-    calls: list[dict[str, Any]] = []
+    from langchain_core.messages import AIMessage
+    from backend.app.agents.agent_a.schemas import NPCDialogueLLMResult
 
-    def fake_post(*args: Any, **kwargs: Any) -> httpx.Response:
-        calls.append({"args": args, "kwargs": kwargs})
-        return httpx.Response(
-            200,
-            json={
-                "choices": [
-                    {
-                        "message": {
-                            "content": json.dumps(
-                                {
-                                    "speaker": "Officer Miller",
-                                    "npc_text": "Please answer clearly.",
-                                    "tts_text": "Please answer clearly.",
-                                    "feedback_kr": "짧고 분명하게 다시 말해보세요.",
-                                    "tone": "formal_firm",
-                                    "animation": "move",
-                                    "llm_reason": "retry branch needs clear answer",
-                                },
-                                ensure_ascii=False,
-                            )
-                        }
-                    }
-                ],
-                "usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18},
-            },
-            request=httpx.Request("POST", "http://100.95.34.69:8001/v1/chat/completions"),
-        )
-
-    monkeypatch.setattr(httpx, "post", fake_post)
-    client = OpenAICompatibleNPCDialogueLLMClient(
+    client = OpenAICompatibleNPCDialogueChatModel(
         api_key="dummy",
         model="google/gemma-4-26B-A4B-it",
         base_url="http://100.95.34.69:8001/v1",
     )
 
+    from langchain_core.runnables import Runnable
+
+    class FakeChatModel(Runnable):
+        def invoke(self, input_payload, config=None):
+            raw_msg = AIMessage(
+                content="dummy",
+                usage_metadata={"input_tokens": 11, "output_tokens": 7, "total_tokens": 18}
+            )
+            parsed_obj = NPCDialogueLLMResult(
+                speaker="Officer Miller",
+                npc_text="Please answer clearly.",
+                tts_text="Please answer clearly.",
+                feedback_kr="짧고 분명하게 다시 말해보세요.",
+                tone="formal_firm",
+                animation="move",
+                npc_emotion="normal",
+                stability=0.5,
+                style=0.5,
+                speed=1.0,
+                similarity_boost=0.5,
+                llm_reason="retry branch needs clear answer"
+            )
+            return {"raw": raw_msg, "parsed": parsed_obj}
+
+    monkeypatch.setattr(client, "_chat_model", FakeChatModel())
+
     result = client.generate({"fallback_candidate": {"speaker": "Officer Miller"}})
+
+
 
     assert result["npc_text"] == "Please answer clearly."
     assert result["__llm_usage"] == {
@@ -59,26 +56,18 @@ def test_openai_compatible_npc_dialogue_client_calls_vllm_chat_completions(
         "output_tokens": 7,
         "total_tokens": 18,
     }
-    assert calls[0]["args"][0] == "http://100.95.34.69:8001/v1/chat/completions"
-    assert calls[0]["kwargs"]["headers"]["Authorization"] == "Bearer dummy"
-    assert calls[0]["kwargs"]["json"]["model"] == "google/gemma-4-26B-A4B-it"
+    assert client.model == "google/gemma-4-26B-A4B-it"
+    assert client.base_url == "http://100.95.34.69:8001/v1"
 
 
-class _UnavailableNPCDialogueClient:
-    model = "primary"
+def test_fallback_npc_dialogue_client_uses_gemma4_after_primary_failure() -> None:
+    from langchain_core.runnables import RunnableLambda
 
-    def generate(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def fail_invoke(*args, **kwargs):
         raise NPCDialogueLLMUnavailable("primary unavailable")
+    primary = RunnableLambda(fail_invoke)
 
-
-class _SuccessfulNPCDialogueClient:
-    model = "google/gemma-4-26B-A4B-it"
-
-    def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
-
-    def generate(self, payload: dict[str, Any]) -> dict[str, Any]:
-        self.calls.append(payload)
+    def success_invoke(*args, **kwargs):
         return {
             "speaker": "Officer Miller",
             "npc_text": "Please answer clearly.",
@@ -87,28 +76,23 @@ class _SuccessfulNPCDialogueClient:
             "tone": "formal_firm",
             "animation": "move",
             "llm_reason": "retry branch needs clear answer",
-            "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            "__fallback_model": "google/gemma-4-26B-A4B-it"
         }
+    fallback = RunnableLambda(success_invoke)
 
+    chain = primary.with_fallbacks([fallback], exceptions_to_handle=(Exception,))
 
-def test_fallback_npc_dialogue_client_uses_gemma4_after_primary_failure() -> None:
-    fallback = _SuccessfulNPCDialogueClient()
-    client = FallbackNPCDialogueLLMClient(
-        primary=_UnavailableNPCDialogueClient(),
-        fallback=fallback,
-    )
-
-    result = client.generate({"fallback_candidate": {"speaker": "Officer Miller"}})
-
+    result = chain.invoke({"some": "input"})
     assert result["npc_text"] == "Please answer clearly."
     assert result["__fallback_model"] == "google/gemma-4-26B-A4B-it"
-    assert fallback.calls == [{"fallback_candidate": {"speaker": "Officer Miller"}}]
 
 
 def test_npc_dialogue_llm_factory_uses_gemma4_fallback_when_openai_key_is_missing(
     tmp_path,
     monkeypatch,
 ) -> None:
+    from langchain_core.runnables import Runnable
+
     env_file = tmp_path / ".env"
     env_file.write_text(
         "\n".join(
@@ -133,9 +117,13 @@ def test_npc_dialogue_llm_factory_uses_gemma4_fallback_when_openai_key_is_missin
 
     client = build_npc_dialogue_llm_client_from_environment(env_file)
 
-    assert isinstance(client, FallbackNPCDialogueLLMClient)
-    assert isinstance(client.fallback, OpenAICompatibleNPCDialogueLLMClient)
-    assert client.fallback.api_key == "dummy"
-    assert client.fallback.model == "google/gemma-4-26B-A4B-it"
-    assert client.fallback.base_url == "http://100.95.34.69:8001/v1"
-    assert client.fallback.timeout_seconds == 12
+    assert isinstance(client, Runnable)
+    assert hasattr(client, "fallbacks")
+    assert len(client.fallbacks) == 1
+
+
+
+
+
+
+

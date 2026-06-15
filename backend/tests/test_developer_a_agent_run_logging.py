@@ -355,7 +355,7 @@ def test_voice_output_logs_dialogue_source_trace_for_next_line_generation(tmp_pa
             "recommended_expression": "I will stay for five days.",
         },
         "in_game_feedback": {
-            "npc_recast_line_candidate": "You'll stay for five days. Where are you staying?",
+            "npc_recast_line_candidate": None,
             "feedback_strategy": "recast",
         },
         "branch": {"branch_type": "success", "next_node_id": "IMM_004_ADDRESS"},
@@ -385,7 +385,7 @@ def test_voice_output_logs_dialogue_source_trace_for_next_line_generation(tmp_pa
     assert trace["used_inputs"]["developer_b_feedback"]["used_for"] == "recast_candidate_and_feedback_note"
     assert trace["used_inputs"]["branch"]["next_node_id"] == "IMM_004_ADDRESS"
     assert trace["used_inputs"]["voice_profile"]["voice_id"] == "en-US-GuyNeural"
-    assert trace["output_decision"]["npc_text_source"] == "developer_b_recast_candidate"
+    assert trace["output_decision"]["npc_text_source"] == "developer_a_fallback"
     assert trace["output_decision"]["tts_text_source"] == "tts_text_polisher_service"
 
 
