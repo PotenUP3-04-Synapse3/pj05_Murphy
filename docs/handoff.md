@@ -1,5 +1,14 @@
 # Handoff
 
+## 2026-06-15 Developer B Docstring Update: Add Comprehensive Korean Docstrings to B-owned Core Components and Helper Functions
+
+Developer B는 코드의 가독성 및 신규 진입 개발자의 진입 장벽을 낮추기 위해, Developer B 도메인 영역에 해당하는 모든 핵심 모듈 및 클래스, 메서드뿐만 아니라 **모든 내부 헬퍼 메서드 및 모듈 레벨 private 함수들**까지 한글 초보자용 docstring/주석을 추가했습니다.
+
+구현 및 수정 내용:
+- **에이전트 및 그래프 헬퍼 보강**: `backend/app/agents/agent_b` 폴더 내의 `__init__.py`, `english_level_hint_agent.py`, `feedback_hint_llm_client.py`, `policy_graph.py` 에 속한 모든 클래스, 주 메서드, 내부 헬퍼 함수에 한글 docstring 추가.
+- **서비스 및 판정 정책 보강**: `backend/app/services/service_b` 폴더 내의 모든 모듈(`__init__.py`, `developer_b_agent_run_logger.py`, `feedback_hint_generator.py`, `final_result_score_policy.py`, `flight_smalltalk_diagnostic_policy.py`, `focus_on_form_report_policy.py`, `level_adaptation_controller.py`, `openkb_feedback_writer.py`, `scenario_state_machine.py`, `tier_difficulty_controller.py`)에 정의된 클래스 및 private/public 메서드 전원에 한글 docstring 및 동작 안내 주석 추가.
+- **교차 검증 완료**: `uv run pytest`로 231개 전체 테스트 성공 통과를 확인하였고, `uv run ruff check .` 및 `uv run mypy .`를 에러 없이 완료했습니다.
+
 ## 2026-06-15 Developer A Refactor: Migrate Agent A to LangChain 1.0+ and LCEL
 
 Developer A는 Agent A 영역의 NPC 대사 생성 에이전트 및 서비스들을 LangChain 1.0+ 규격과 LCEL(LangChain Expression Language, 랭체인 표현 언어)에 맞게 전면 리팩토링(Refactoring) 및 현대화하여 프레임워크 표준에 정렬했습니다.
