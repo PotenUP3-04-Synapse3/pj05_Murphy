@@ -64,6 +64,12 @@ class _LLMFeedbackPayload(BaseModel):
 
 @dataclass(frozen=True)
 class FeedbackHintGeneration:
+    """
+    LLM 또는 규칙 기반 정책을 통해 최종 생성된 힌트와 피드백 정보를 담고 있는 데이터 클래스입니다.
+    
+    초보자 가이드: 이 클래스는 한글 힌트(hint_kr), 학습자용 피드백 노트(feedback_note), 
+    평가 요약 및 개선 방향, 세부 루브릭 점수 등 화면에 표시되거나 리포트에 저장될 피드백 결과들을 묶어주는 바구니 역할을 합니다.
+    """
     hint_kr: str | None
     feedback_note: str
     report_summary: str
@@ -76,6 +82,12 @@ class FeedbackHintGeneration:
 
 
 class FeedbackHintGenerator:
+    """
+    학습자를 위한 영어 힌트와 피드백 문구를 생성하는 관리 클래스입니다.
+    
+    초보자 가이드: 설정에 따라 LLM(OpenAI)을 사용하여 유연하고 자연스러운 영어 피드백을 생성하거나, 
+    인터넷 연결이 없거나 비용을 절약하기 위해 규칙 기반(Rule-based)의 템플릿 피드백으로 대체(Fallback)할 수 있습니다.
+    """
     def __init__(
         self,
         *,
@@ -83,6 +95,14 @@ class FeedbackHintGenerator:
         llm_client: FeedbackHintLLMClient | None = None,
         env_path: Path | None = None,
     ) -> None:
+        """
+        피드백 생성 방식을 설정하고 필요한 클라이언트를 주입받아 초기화합니다.
+        
+        Args:
+            mode: 피드백 생성 모드 ('llm' 또는 'rule', 지정하지 않으면 .env에서 읽음)
+            llm_client: 사용할 LLM 클라이언트 인스턴스 (선택 사항)
+            env_path: 설정 값을 읽어올 .env 파일의 경로
+        """
         self.mode = self._normalize_mode(mode or self._mode_from_environment(env_path))
         self.llm_client = llm_client
         self.env_path = env_path
@@ -96,6 +116,19 @@ class FeedbackHintGenerator:
         tier_result: TierDifficultyResult,
         focus_on_form_explanation_kr: str,
     ) -> FeedbackHintGeneration:
+        """
+        설정된 모드(LLM 혹은 Rule)에 맞춰 최적의 영어 학습 피드백을 생성합니다.
+        
+        Args:
+            payload: 학습자의 이번 턴 발화 텍스트, 이해 결과 등이 담긴 입력 데이터
+            decision: 상태 머신이 판정한 시나리오 분기 결과 (합격/불합격 등)
+            base_output: 1차적으로 계산된 기본 정책 출력 데이터
+            tier_result: 학습자 등급 및 루브릭 결과 데이터
+            focus_on_form_explanation_kr: 문법 형태 초점 한국어 해설 문구
+            
+        Returns:
+            최종 한글 힌트, 피드백, 모범 예문 등이 구성된 FeedbackHintGeneration 인스턴스
+        """
         if self.mode == "rule":
             return self._fallback_generation(
                 base_output=base_output,
@@ -158,6 +191,10 @@ class FeedbackHintGenerator:
         mode: Literal["rule", "fallback"],
         reason: str | None,
     ) -> FeedbackHintGeneration:
+        """
+        LLM 호출이 실패했거나 Rule 모드일 때, 안전하게 준비된 템플릿(규칙 기반) 데이터를 활용하여 
+        기본 피드백을 생성하는 대체(Fallback) 메서드입니다.
+        """
         return FeedbackHintGeneration(
             hint_kr=base_output.level_hint.hint_kr if base_output.level_hint.needs_hint else None,
             feedback_note=base_output.evaluation.feedback_note or "The answer was evaluated by rule-based policy.",
@@ -176,6 +213,9 @@ class FeedbackHintGenerator:
         )
 
     def _llm_usage(self, raw_usage: object) -> dict[str, int] | None:
+        """
+        API 응답에서 토큰 사용량 데이터를 정형화된 사전 형식으로 추출합니다.
+        """
         if not isinstance(raw_usage, dict):
             return None
         usage: dict[str, int] = {}
@@ -194,6 +234,9 @@ class FeedbackHintGenerator:
         tier_result: TierDifficultyResult,
         focus_on_form_explanation_kr: str,
     ) -> dict[str, Any]:
+        """
+        OpenAI 피드백 LLM API를 호출할 때 전달할 입력 JSON 페이로드를 생성합니다.
+        """
         return {
             "contract_version": payload.contract_version,
             "node_id": payload.current_node_id,
@@ -240,6 +283,9 @@ class FeedbackHintGenerator:
         }
 
     def _rubric_scores_from_llm(self, validated: _LLMFeedbackPayload) -> RubricScores | None:
+        """
+        LLM이 생성한 각 루브릭 영역 점수를 취합하여 종합 합계가 검증된 RubricScores 객체로 변환합니다.
+        """
         if validated.rubric_scores is None:
             return None
         values = validated.rubric_scores
@@ -265,15 +311,24 @@ class FeedbackHintGenerator:
             return None
 
     def _mode_from_environment(self, env_path: Path | None) -> str:
+        """
+        환경 변수 또는 .env 설정 파일에서 피드백 생성 모드 설정을 읽어옵니다.
+        """
         values = self._read_env_file(env_path or Path(".env"))
         return os.getenv("DEV_B_FEEDBACK_LLM_MODE") or values.get("DEV_B_FEEDBACK_LLM_MODE", "rule")
 
     def _normalize_mode(self, mode: str) -> FeedbackMode:
+        """
+        모드 문자열을 'llm' 또는 'rule'의 유효한 값으로 정규화합니다.
+        """
         if mode == "llm":
             return "llm"
         return "rule"
 
     def _read_env_file(self, path: Path) -> dict[str, str]:
+        """
+        .env 설정 파일을 읽어와 키-값 사전으로 변환하는 헬퍼 메서드입니다.
+        """
         if not path.exists():
             return {}
         values: dict[str, str] = {}
