@@ -68,3 +68,28 @@ def test_stt_service_falls_back_to_api_when_local_runtime_fails() -> None:
     assert normalized_input.stt_runtime_used == "api"
     assert local_runtime.calls == 1
     assert api_fallback.calls == 1
+
+
+def test_stt_service_reports_realtime_transcript_provider_without_batch_stt() -> None:
+    local_runtime = FakeSttRuntime("Local transcript should not be used.")
+    api_fallback = FakeSttRuntime("API transcript should not be used.")
+    service = WhisperLargeV3TurboSttService(
+        local_runtime=local_runtime,
+        api_fallback=api_fallback,
+        mode="local",
+    )
+
+    normalized_input = service.transcribe_wav(
+        MockAudioInput(
+            transcript="Realtime final transcript.",
+            transcript_provider="elevenlabs_relay",
+            file_name="realtime-final-transcript.txt",
+            content_type="text/plain",
+        ),
+        _audio_metadata(),
+    )
+
+    assert normalized_input.player_text == "Realtime final transcript."
+    assert normalized_input.stt_runtime_used == "elevenlabs_relay"
+    assert local_runtime.calls == 0
+    assert api_fallback.calls == 0

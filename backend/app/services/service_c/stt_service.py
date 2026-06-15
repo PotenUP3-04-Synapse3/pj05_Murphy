@@ -17,11 +17,10 @@ from typing import Any, Literal, Protocol
 
 import httpx
 
-from backend.app.schemas.game_turn import AudioMetadata, InputSource, MockAudioInput, NormalizedInput
+from backend.app.schemas.game_turn import AudioMetadata, InputSource, MockAudioInput, NormalizedInput, SttRuntimeUsed
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
 
 SttMode = Literal["local", "mock"]
-SttRuntimeUsed = Literal["local", "api"]
 
 
 class SttRuntimeError(RuntimeError):
@@ -174,6 +173,12 @@ class WhisperLargeV3TurboSttService:
         transcript = audio.transcript
         runtime_used: SttRuntimeUsed = self.primary_runtime
         stt_confidence: float | None = 0.87
+        if transcript is not None:
+            runtime_used = _runtime_used_for_existing_transcript(
+                transcript_provider=audio.transcript_provider,
+                default_runtime=self.primary_runtime,
+            )
+
         if transcript is None and audio.audio_bytes is not None:
             if self.mode == "mock":
                 transcript = self._transcribe_uploaded_wav(audio)
@@ -219,6 +224,24 @@ def _require_uploaded_wav(audio: MockAudioInput) -> bytes:
         raise ValueError("Uploaded audio must be a RIFF wav file.")
 
     return audio.audio_bytes
+
+
+def _runtime_used_for_existing_transcript(
+    *,
+    transcript_provider: SttRuntimeUsed | None,
+    default_runtime: SttRuntimeUsed,
+) -> SttRuntimeUsed:
+    """Return the runtime label for transcript text that arrived precomputed.
+
+    Beginner guide:
+    Realtime STT uses a WebSocket before the normal `/respond` turn.  When that
+    WebSocket has already produced final text, this service should not claim
+    local Whisper produced it.  The provider label is therefore copied into
+    `runtime_used`.  Older tests and mock calls do not send a provider, so they
+    keep the historical default runtime.
+    """
+
+    return transcript_provider or default_runtime
 
 
 def _safe_audio_suffix(file_name: str | None) -> str:

@@ -752,9 +752,12 @@ Unreal follow-up:
 
 ## Change Request - 2026-06-12 - Align Developer A/C NPC Routing for Alpha Non-Immigration Nodes
 
-Status: Requested after integrated `/respond-dialog` testing. Developer B data
-is ready; Developer A and Developer C follow-up is required for natural Flight
-and Baggage testing.
+Status: Superseded for AI-only `/respond-dialog` testing on 2026-06-15.
+Developer C now aligns the local test preset to Developer A's canonical roster
+IDs instead of asking Developer A to support synthetic test IDs such as
+`SEATMATE_A_01`. A future Unreal-facing ID mapping can be negotiated as a
+separate contract if Unreal must keep synthetic NPC IDs. Developer B data is
+ready, and no Developer B implementation change is required.
 
 ### Requested By
 
@@ -804,6 +807,10 @@ Developer C follow-up:
   the A seed is the next seatmate line, not an Officer Miller fallback.
 
 Developer A follow-up:
+
+Superseded for the AI-only `/respond-dialog` preset. The local backend tester
+should send Developer A roster IDs such as `arabella`, `novak`, `hale`,
+`harris`, `dan`, and `brielle`.
 
 - Add roster profiles for the Alpha non-immigration NPCs used by B scenario
   nodes:
