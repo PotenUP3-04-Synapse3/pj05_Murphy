@@ -897,6 +897,81 @@ def test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata() -> None:
     assert payload["dialogue_seed"]["max_turns"] == 4
 
 
+def test_dev_a_adapter_reports_speaker_mismatch_diagnostic() -> None:
+    def mismatched_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        return {
+            "speaker": "Officer Miller",
+            "npc_text": str(payload["in_game_feedback"]["npc_recast_line_candidate"] or "Okay."),
+            "tone": "friendly_neutral",
+            "animation": "dialogue_idle",
+            "feedback_kr": "Good.",
+            "tts": {
+                "audio_url": "/runtime/audio/edge/test.wav",
+            },
+        }
+
+    request = _chapter_boundary_request(
+        request_id="req_alpha_speaker_mismatch_0001",
+        chapter_id="CH0_04_BAGGAGE_CLAIM",
+        current_node_id="BAG_001_REPORT_MISSING_AT_DESK",
+        npc_id="BAGGAGE_STAFF",
+        npc_role="baggage_service_staff",
+        last_npc_message="Hi. How can I help you?",
+        transcript="My suitcase didn't arrive. I need help.",
+        allowed_next_nodes=["BAG_002_PROVIDE_CLAIM_TAG"],
+    )
+    orchestrator = Orchestrator()
+    node_context = orchestrator.openkb_service.get_node_context(
+        request.turn.session.chapter_id,
+        request.turn.session.current_node_id,
+    )
+    normalized_input = orchestrator.stt_service.transcribe_wav(request.audio, request.turn.audio)
+    understanding = orchestrator.understanding_agent.analyze_player_text(
+        normalized_input.player_text,
+        node_context,
+    )
+    dev_b_output = orchestrator.dev_b_client.evaluate_turn(
+        orchestrator.build_dev_b_policy_input(
+            request,
+            normalized_input=normalized_input,
+            node_context=node_context,
+            understanding=understanding,
+        )
+    )
+    client = DevANpcDialogueClient(
+        settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+        voice_output_builder=mismatched_voice_output_builder,
+    )
+
+    output = client.generate_dialogue(
+        DevADialogueInput(
+            contract_version="dev_a_dialogue.v1",
+            request_id=request.turn.request_id,
+            session_id=request.turn.session.session_id,
+            current_node_id=request.turn.session.current_node_id,
+            player_text=normalized_input.player_text,
+            npc=request.turn.npc,
+            node_context=node_context,
+            understanding=understanding,
+            developer_b_policy=dev_b_output,
+        )
+    )
+
+    assert output.diagnostics == [
+        {
+            "code": "npc_speaker_mismatch",
+            "severity": "warning",
+            "message": "Developer A returned a speaker that does not match the requested NPC context.",
+            "expected_npc_id": "BAGGAGE_STAFF",
+            "expected_npc_role": "baggage_service_staff",
+            "actual_speaker": "Officer Miller",
+        }
+    ]
+
+
 def test_api_accepts_mock_unreal_turn_json() -> None:
     client = TestClient(app)
     payload = {

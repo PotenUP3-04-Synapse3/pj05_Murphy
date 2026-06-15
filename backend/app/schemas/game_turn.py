@@ -547,6 +547,7 @@ class DevADialogueOutput(BaseModel):
     animation: str
     feedback_kr: str | None = None
     audio_url: str | None = None
+    diagnostics: list[dict[str, str]] = Field(default_factory=list)
 
 
 class RecordedErrorSummary(BaseModel):
@@ -691,6 +692,7 @@ class DebugInfo(BaseModel):
     understanding_confidence: float
     contract_versions: list[str]
     timing_ms: TurnTimingMs = Field(default_factory=TurnTimingMs)
+    diagnostics: list[dict[str, str]] = Field(default_factory=list)
 
 
 class SttResponse(BaseModel):

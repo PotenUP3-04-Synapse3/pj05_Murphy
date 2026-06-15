@@ -708,6 +708,7 @@ def _dev_a_output_summary(dev_a_output: DevADialogueOutput) -> dict[str, Any]:
         "animation": dev_a_output.animation,
         "has_feedback_kr": dev_a_output.feedback_kr is not None,
         "audio_url": dev_a_output.audio_url,
+        "diagnostics": dev_a_output.diagnostics,
     }
 
 

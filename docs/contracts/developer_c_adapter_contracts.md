@@ -684,7 +684,8 @@ Output:
   "tone": "formal_neutral",
   "animation": "officer_check_passport",
   "feedback_kr": "Good. A natural sentence is: I'm here for tourism.",
-  "audio_url": "/runtime/audio/edge/IMM_002_PURPOSE_stay_duration_success_en-US-GuyNeural_abcd1234.wav"
+  "audio_url": "/runtime/audio/edge/IMM_002_PURPOSE_stay_duration_success_en-US-GuyNeural_abcd1234.wav",
+  "diagnostics": []
 }
 ```
 
@@ -703,6 +704,11 @@ Rules:
   A-facing level-design payload so Developer A can generate Alpha
   non-immigration dialogue from role, surface-goal, assessment, and stop
   condition metadata instead of B-authored final NPC wording.
+- Developer C adds a non-blocking `npc_speaker_mismatch` diagnostic when the
+  speaker returned by Developer A shares no useful identity token with the
+  requested `npc_id`. The diagnostic is copied into Unreal `debug.diagnostics`
+  and AgentRun summaries; it does not rewrite A dialogue or change B branch
+  policy.
 - Developer C calls Developer A's voice output service with fake Edge by
   default for deterministic tests.
 - `MURPHY_TTS_MODE=real` makes the C adapter pass `use_real_tts=True` to

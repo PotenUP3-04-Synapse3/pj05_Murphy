@@ -867,7 +867,8 @@ Developer C returns only validated, Unreal-safe data.
       "developer_a_ms": 1310,
       "response_build_ms": 1,
       "validation_ms": 1
-    }
+    },
+    "diagnostics": []
   }
 }
 ```
@@ -903,6 +904,10 @@ Rules:
 - `debug` may be omitted in production.
 - `debug.timing_ms` is diagnostic latency metadata and must not drive gameplay
   branch decisions.
+- `debug.diagnostics` is an additive C-owned warning list for integration
+  issues such as an A-returned speaker that does not match the requested NPC
+  context. Diagnostics are not branch authority and must not override
+  Developer B policy.
 - Developer C may redact, omit, or transform internal fields before returning
   to Unreal.
 - On final-branch responses, `report.final_result` may include Developer B's

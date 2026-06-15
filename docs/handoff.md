@@ -19,6 +19,29 @@ Rule going forward:
   beginner-friendly docstrings that explain the file or callable's role in the
   backend flow and its ownership/authority boundary.
 
+## 2026-06-15 Developer C Alpha Speaker Mismatch Diagnostics
+
+Developer C completed the next C-owned item from the consolidated Alpha
+follow-up: diagnostics when the requested NPC context and Developer A returned
+speaker clearly do not match.
+
+Changed:
+
+- `DevADialogueOutput` now carries additive `diagnostics`.
+- `DevANpcDialogueClient` emits `npc_speaker_mismatch` when A's speaker shares
+  no useful identity token with the requested `npc_id`.
+- `ResponseBuilder` copies Developer A diagnostics into
+  `UnrealResponse.debug.diagnostics`.
+- C AgentRun summaries now include Developer A diagnostics in the
+  `dev_a_client.generate_dialogue` output summary.
+- Updated C schema and adapter contracts to document that diagnostics are
+  non-blocking warnings and not branch authority.
+
+Verification:
+
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_dev_a_adapter_reports_speaker_mismatch_diagnostic backend/tests/test_final_result_payload.py::test_response_builder_carries_dev_a_diagnostics_into_debug_payload -q`:
+  PASS, 2 passed, 1 warning.
+
 ## 2026-06-15 Developer C Alpha A-Adapter Non-Immigration Seed Follow-up
 
 Developer C updated the C-owned Developer A dialogue adapter so the A-facing

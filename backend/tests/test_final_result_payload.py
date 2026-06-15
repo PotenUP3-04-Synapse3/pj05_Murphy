@@ -255,6 +255,44 @@ def test_response_builder_includes_dev_b_final_result_for_unreal_report() -> Non
     assert response.report.final_result.final_recommendation == "PASS"
 
 
+def test_response_builder_carries_dev_a_diagnostics_into_debug_payload() -> None:
+    response = ResponseBuilder().build_unreal_response(
+        request=_request(),
+        normalized_input=_normalized_input(),
+        understanding=_understanding(),
+        dev_b_output=_dev_b_output(final_result=_final_result()),
+        dev_a_output=DevADialogueOutput(
+            contract_version="dev_a_dialogue.v1",
+            speaker="Officer Miller",
+            text="All right, you're cleared to enter. Enjoy your stay.",
+            tone="formal_neutral",
+            animation="officer_check_passport",
+            audio_url="/runtime/audio/edge/final.wav",
+            diagnostics=[
+                {
+                    "code": "npc_speaker_mismatch",
+                    "severity": "warning",
+                    "message": "Developer A returned a speaker that does not match the requested NPC context.",
+                }
+            ],
+        ),
+        logging_summary=RecordedErrorSummary(
+            recorded=False,
+            storage_format="markdown",
+            error_log_markdown_path=None,
+            recorded_error_count=0,
+        ),
+    )
+
+    assert response.debug.diagnostics == [
+        {
+            "code": "npc_speaker_mismatch",
+            "severity": "warning",
+            "message": "Developer A returned a speaker that does not match the requested NPC context.",
+        }
+    ]
+
+
 def test_validator_rejects_inconsistent_final_result_overall_score() -> None:
     policy_output = _dev_b_output(final_result=_final_result())
     assert policy_output.final_result is not None

@@ -62,9 +62,10 @@ class DevANpcDialogueClient:
             audio_url_base=self.audio_url_base,
         )
 
+        speaker = str(result.get("speaker", "Officer Miller"))
         return DevADialogueOutput(
             contract_version="dev_a_dialogue.v1",
-            speaker=str(result.get("speaker", "Officer Miller")),
+            speaker=speaker,
             text=_normalize_dialogue_text(
                 str(result.get("npc_text") or result.get("text") or "Okay. Please continue.")
             ),
@@ -72,6 +73,7 @@ class DevANpcDialogueClient:
             animation=str(result.get("animation", "officer_check_passport")),
             feedback_kr=_optional_string(result.get("feedback_kr")),
             audio_url=_extract_audio_url(result),
+            diagnostics=_speaker_mismatch_diagnostics(payload, speaker),
         )
 
     def _build_level_design_payload(self, payload: DevADialogueInput) -> dict[str, Any]:
@@ -191,3 +193,49 @@ def _optional_string(value: Any) -> str | None:
         return None
     text = str(value)
     return text if text else None
+
+
+def _speaker_mismatch_diagnostics(payload: DevADialogueInput, actual_speaker: str) -> list[dict[str, str]]:
+    """Return a warning when A's speaker looks different from the requested NPC.
+
+    Beginner guide:
+    Developer C does not rewrite Developer A's dialogue here.  It only compares
+    the NPC identity Unreal/C requested with the speaker name A returned.  When
+    the names share no useful identity token, C adds a diagnostic so logs and
+    debug payloads can reveal likely routing mistakes.
+    """
+
+    expected_npc_id = payload.npc.npc_id
+    expected_tokens = _identity_tokens(expected_npc_id)
+    actual_tokens = _identity_tokens(actual_speaker)
+    if expected_tokens and expected_tokens.intersection(actual_tokens):
+        return []
+
+    return [
+        {
+            "code": "npc_speaker_mismatch",
+            "severity": "warning",
+            "message": "Developer A returned a speaker that does not match the requested NPC context.",
+            "expected_npc_id": expected_npc_id,
+            "expected_npc_role": payload.npc.npc_role,
+            "actual_speaker": actual_speaker,
+        }
+    ]
+
+
+def _identity_tokens(value: str) -> set[str]:
+    """Extract comparison tokens from NPC ids or speaker names.
+
+    Beginner guide:
+    Names come in different forms, such as `BAGGAGE_STAFF`, `Officer Hale`, or
+    `customs-officer`.  This helper lowercases them, splits separators, removes
+    generic words, and keeps the meaningful pieces for a loose mismatch check.
+    """
+
+    generic_tokens = {"a", "the", "npc", "officer", "staff", "agent", "service"}
+    normalized = value.lower().replace("_", " ").replace("-", " ")
+    return {
+        token
+        for token in normalized.split()
+        if len(token) >= 3 and not token.isdigit() and token not in generic_tokens
+    }

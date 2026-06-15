@@ -110,6 +110,7 @@ class ResponseBuilder:
                     "dev_c_unreal_response.v1",
                 ],
                 timing_ms=timing_ms or TurnTimingMs(),
+                diagnostics=dev_a_output.diagnostics,
             ),
         )
 
