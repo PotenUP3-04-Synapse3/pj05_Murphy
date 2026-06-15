@@ -35,7 +35,7 @@ def test_generate_success_response_uses_officer_miller_style_and_feedback() -> N
     result = generate_npc_dialogue(payload)
 
     assert result == NPCDialogueResult(
-        speaker="Officer Miller",
+        speaker="Hale",
         text="Travel. Okay. How long will you stay?",
         tone="formal_neutral",
         animation="move",
@@ -68,7 +68,7 @@ def test_generate_retry_response_stays_brief_formal_and_kind() -> None:
 
     result = generate_npc_dialogue(payload)
 
-    assert result.speaker == "Officer Miller"
+    assert result.speaker == "Hale"
     assert result.text == "I need a clear answer. Where will you stay?"
     assert result.tone == "formal_firm"
     assert result.animation == "move"

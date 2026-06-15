@@ -1,5 +1,38 @@
 # Handoff
 
+## 2026-06-15 Developer A Refactor: Migrate Agent A to LangChain 1.0+ and LCEL
+
+Developer A는 Agent A 영역의 NPC 대사 생성 에이전트 및 서비스들을 LangChain 1.0+ 규격과 LCEL(LangChain Expression Language, 랭체인 표현 언어)에 맞게 전면 리팩토링(Refactoring) 및 현대화하여 프레임워크 표준에 정렬했습니다.
+
+구현 및 수정 내용:
+- **Pydantic 스키마 정의**: [schemas.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/schemas.py)를 새로 정의하여 LLM 호출 결과를 안정적으로 유효성 검증(Validation) 및 구조화(Structuring)할 수 있는 `NPCDialogueLLMResult` 데이터 모델을 신설했습니다.
+- **LCEL 체인(Chain) 도입 및 ChatModel 정형화**: [npc_llm_client.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_llm_client.py)의 자작 HTTP ChatModel 클래스 구조를 제거하고, LangChain 1.0+의 `ChatOpenAI.with_structured_output` 및 `.with_fallbacks`를 조립한 표준 선언형 LCEL 체인 생성을 적용했습니다.
+- **상태 기계(StateGraph) config 정렬**: [npc_dialogue_agent.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py) 내의 에이전트 상태 변경(State transition) 노드 함수에서 callbacks 키 전달을 제거하고, `RunnableConfig` (config)를 직접 인수로 받아 콜백 및 로거가 안전하게 하위 체인에 흐르도록 정형화했습니다.
+- **기록기(Recorder) 분리 및 미들웨어 Shim화**: [agent_run_recorder.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/agent_run_recorder.py)를 신설해 이벤트 기록(Event recording)과 JSONL/Markdown 작성을 분리 이관했습니다. 기존의 [npc_dialogue_agent_run_middleware.py](file:///C:/5th_project/pj05_Murphy/backend/app/middleware/middleware_a/npc_dialogue_agent_run_middleware.py)는 경고(warnings)를 남기며 신규 `NPCDialogueAgentRunRecorder`를 대리 대리하는 Deprecated Shim 클래스로 대체하여 이전 C-side 연동 부의 호환성을 보존했습니다.
+- **서비스 및 테스트 갱신**: [voice_output_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/voice_output_service.py)에서 지연 임포트(Lazy Import) 방식을 제거하고 신규 `NPCDialogueAgentRunRecorder` 인스턴스를 직접 사용하게 하였습니다. [test_developer_a_npc_llm_client.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_developer_a_npc_llm_client.py)는 1.0+ 표준 invoke 모킹 테스트 및 구조화된 Mock 데이터 검증 로직으로 업데이트했습니다.
+
+수정된 파일 목록:
+- `backend/app/agents/agent_a/schemas.py` (신설)
+- `backend/app/agents/agent_a/npc_llm_client.py`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/services/service_a/agent_run_recorder.py` (신설)
+- `backend/app/services/service_a/voice_output_service.py`
+- `backend/app/middleware/middleware_a/npc_dialogue_agent_run_middleware.py`
+- `backend/tests/test_developer_a_npc_llm_client.py`
+
+## 2026-06-15 Developer A & C Refactor: Standardize AgentMiddleware and Align Test Assertions
+
+Developer A는 프로젝트 가상 환경 내 `langchain` 라이브러리가 제공하는 표준 에이전트 미들웨어 프레임워크 규격에 맞게 대사 생성 추적 미들웨어를 정식 리팩터링하였습니다. 추가로, NPC 리플레이스먼트 완료 후 누락되었던 테스트 코드 내 구형 NPC 단언문을 최신 사양으로 수정했습니다.
+
+구현 및 수정 내용:
+- **AgentMiddleware 표준화 리팩터링**: `NPCDialogueAgentRunMiddleware`가 `langchain.agents.middleware.AgentMiddleware`를 상속(Inheritance)하도록 수정하고, `@hook_config(can_jump_to=["end"])` 데코레이터를 적용한 `before_model` 및 `after_model` 표준 훅(Hook) 메서드를 선언하여 프레임워크 표준 동작을 만족시켰습니다. 기존 서비스와의 하위 호환성을 위해 수동 `start_run`, `record_event` 메서드들은 그대로 보존했습니다.
+- **테스트 코드 단언문 갱신**: `test_developer_a_npc_dialogue.py` 내의 결정적 대사 생성 검증 단언문 중 이전 구형 NPC 명칭(`"Officer Miller"`)을 바라보던 구절을 신규 기본 NPC 명칭인 `"Hale"`로 갱신하여 테스트 실패를 해결했습니다.
+- **타입 및 린트 안정화**: `mypy .` 및 `ruff check .`를 실행하여 린트 미사용 임포트 정리 및 정적 분석 경고들을 해소했습니다.
+
+수정된 파일 목록:
+- `backend/app/middleware/middleware_a/npc_dialogue_agent_run_middleware.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+
 ## 2026-06-13 Developer C Refactor: Remove Deprecated Miller NPC, Update Default NPC to Hale & Apply TTS Slimming Test Updates
 
 Developer C는 기획상 더 이상 사용되지 않는 레거시 입국심사관 NPC인 `miller`를 완전히 제거하고, 실제 챕터 0의 메인 입국심사관 NPC인 `hale`을 기본(Default) NPC로 변경하여 기획과의 정합성을 일치시켰습니다. 또한, Developer A의 로컬 온디바이스 TTS 제거(TTS Slimming) 계획에 따른 Developer C 소유의 통합 테스트 실패 지점을 해결했습니다.
