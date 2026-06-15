@@ -150,30 +150,41 @@ def _retry_feedback(recommended_expression: str) -> str:
 
 # LangGraph 에이전트의 내부 공유 상태(Shared State) 명세를 정의하는 TypedDict 클래스입니다.
 class NPCDialogueState(TypedDict):
+    # payload: 개발자 C의 어댑터로부터 넘겨받은 원본 입력 데이터(Raw Input Payload)입니다.
     payload: dict[str, Any]
+    # normalized: 레벨 디자인 규격에 맞게 정규화(Normalization)를 마친 페이로드 데이터입니다.
     normalized: dict[str, Any]
+    # npc_profile: 현재 매칭된 NPC의 인게임 설정 프로필(Roster Profile)입니다.
     npc_profile: NPCProfile
+    # profile: 플레이어의 언어적 메타데이터(English Level, Clarity 등)를 취합한 프로필 객체입니다.
     profile: Any
+    # emotion_state: 플레이어 통계를 바탕으로 추론된 NPC의 실시간 감정 상태(Emotion State)입니다.
     emotion_state: Any
+    # policy: 대사 어조 및 추가 조립 규칙을 지시하는 대화 생성 정책(Dialogue Policy)입니다.
     policy: Any
+    # result: 생성 완료된 최종 대사 및 부가 정보(TTS 파라미터를 포함한 결과)를 담은 딕셔너리입니다.
     result: NotRequired[dict[str, Any]]
+    # use_llm: 대사 생성 시 LLM을 호출할지 여부를 나타내는 플래그(Flag)입니다.
     use_llm: bool
+    # llm_client: 실제 API 호출을 수행하는 LLM 클라이언트 인스턴스(Client Instance)입니다.
     llm_client: Any
+    # error: LLM 호출 등 처리 중 발생한 예외 상황의 에러 종류 문자열입니다.
     error: NotRequired[str]
 
 
 def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
     """입력 데이터 파싱, 프로필 로드, 감정 추론 및 기본 룰 기반 결과를 빌드하여 상태를 초기화하는 노드입니다."""
+    # [1단계] 공유 상태(State)에서 원본 페이로드 데이터를 추출합니다.
     payload = state["payload"]
-    # 1. 원본 페이로드(Payload)를 정규화(Normalize)합니다.
+    # [2단계] 원본 페이로드(Payload)를 정규화(Normalize)합니다.
     normalized = normalize_level_design_payload(payload)
-    # 2. 페이로드 정보에 매칭되는 NPC의 프로필(Profile)을 조회합니다.
+    # [3단계] 페이로드 정보에 매칭되는 NPC의 프로필(Profile)을 조회합니다.
     npc_profile = resolve_npc_profile(_npc_id_from_payload(payload))
-    # 3. 플레이어의 언어 실력 및 응답 통계를 바탕으로 플레이어 프로필을 빌드합니다.
+    # [4단계] 플레이어의 언어 실력 및 응답 통계를 바탕으로 플레이어 프로필을 빌드합니다.
     profile = build_player_language_profile(normalized)
-    # 4. 플레이어의 성공/재시도 통계 등을 통해 NPC의 현재 감정 상태(Emotion State)를 추론합니다.
+    # [5단계] 플레이어의 성공/재시도 통계 등을 통해 NPC의 현재 감정 상태(Emotion State)를 추론합니다.
     emotion_state = infer_npc_emotion_state(normalized)
-    # 5. 플레이어 프로필과 감정 상태를 연동하여 대사 생성 정책(Dialogue Policy)을 정의합니다.
+    # [6단계] 플레이어 프로필과 감정 상태를 연동하여 대사 생성 정책(Dialogue Policy)을 정의합니다.
     policy = build_dialogue_policy(normalized, profile, emotion_state)
     
     candidate_text = str(normalized.get("candidate_text", "")).strip()
@@ -189,11 +200,13 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
             f"Detected value: '{candidate_text}'"
         )
     
+    # [7단계] 안전한 룰 기반 기본 응답(Fallback Result)을 1차적으로 빌드합니다.
     result = _apply_npc_profile(build_text_fallback(normalized), npc_profile)
         
-    # 생성 이력 추적용 메타데이터(Metadata)를 결과 사전(Dictionary)에 병합합니다.
+    # [8단계] 생성 이력 추적용 메타데이터(Metadata)를 결과 사전(Dictionary)에 병합합니다.
     result = _with_generation_metadata(result, profile, emotion_state, policy)
     
+    # [9단계] 갱신된 변수들을 가진 딕셔너리를 반환하여 상태를 업데이트합니다.
     return {
         "normalized": normalized,
         "npc_profile": npc_profile,
@@ -214,6 +227,7 @@ def route_after_init(state: NPCDialogueState) -> str:
 
 def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig | None = None) -> dict[str, Any]:
     """LangChain 및 LLM 클라이언트를 사용하여 감정 톤과 일레븐랩스 파라미터를 실시간으로 동적 튜닝하여 대사를 생성하는 노드입니다."""
+    # [1단계] 상태(State)에서 필요한 캐싱 데이터와 클라이언트를 추출합니다.
     payload = state["payload"]
     normalized = state["normalized"]
     fallback_result = state["result"]
@@ -221,6 +235,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     npc_profile = state["npc_profile"]
     callbacks = state.get("callbacks")
 
+    # [2단계] 콜백 핸들러 구성 및 RunnableConfig 설정을 초기화합니다.
     run_config = config or RunnableConfig()
     if callbacks and not run_config.get("callbacks"):
         from langchain_core.callbacks import BaseCallbackHandler
@@ -228,6 +243,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         run_config["callbacks"] = cast(list[BaseCallbackHandler], callbacks)
 
     try:
+        # [3단계] 최종 LLM 클라이언트를 준비합니다.
         client: Any = llm_client or build_npc_dialogue_llm_client_from_environment()
         llm_payload = {
             "level_design_payload": payload,
@@ -244,6 +260,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "generation_profile": fallback_result["generation_profile"],
         }
 
+        # [4단계] 랭체인 1.0+ 규격에 부합하도록 invoke 또는 generate 호출을 수행합니다.
         if hasattr(client, "invoke"):
             llm_result = client.invoke(llm_payload, config=run_config)
         else:
@@ -254,20 +271,22 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             else:
                 llm_result = client.generate(llm_payload)
     except (NPCDialogueLLMUnavailable, httpx.HTTPError, json.JSONDecodeError, KeyError, ValueError) as exc:
+        # 에러 발생 시 상태 전이를 예외 처리 폴백 노드로 분기하기 위해 error를 세팅하여 반환합니다.
         return {"error": type(exc).__name__}
 
 
+    # [5단계] 출력 토큰 사용량 정보 및 원본 영어 텍스트를 확보합니다.
     llm_usage = llm_result.get("__llm_usage", {})
     npc_text = str(llm_result.get("npc_text") or "").strip()
     tts_text = str(llm_result.get("tts_text") or "").strip()
     
-    # 생성된 대사가 안전한 영문 아스키(ASCII) 텍스트인지 검사합니다.
+    # [6단계] 생성된 대사가 안전한 영문 아스키(ASCII) 텍스트인지 검사합니다.
     if not _is_safe_english_dialogue_text(npc_text) or not _is_safe_english_dialogue_text(tts_text):
         return {"error": "invalid_llm_dialogue_language"}
 
     seed_fallback = _dict_value(fallback_result.get("fallback"))
     
-    # LLM이 직접 생성한 4대 파라미터와 최종 npc_emotion을 결과 딕셔너리에 바인딩합니다.
+    # [7단계] LLM이 직접 생성한 4대 파라미터와 최종 npc_emotion을 결과 딕셔너리에 바인딩합니다.
     merged = {
         **fallback_result,
         "speaker": npc_profile.display_name,
