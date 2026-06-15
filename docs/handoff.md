@@ -1,5 +1,55 @@
 # Handoff
 
+## 2026-06-15 Developer C LLM Understanding Smoke and Unreal Realtime STT Alignment Prompt
+
+Developer C verified the Alpha Understanding path in real LLM mode and added a
+copy-paste Codex prompt for the Unreal AI communication owner to align with the
+current realtime STT WebSocket contract.
+
+LLM smoke:
+
+- Settings read from the local environment used
+  `MURPHY_UNDERSTANDING_MODE=llm`, provider `openai`, configured model
+  `gpt-5.4-mini`, and fallback mode `none`.
+- Direct `UnderstandingAgent` smoke tests returned `trace_mode = "llm"` and
+  `fallback_used = false`, so these were not rule-mode results.
+- Covered Alpha nodes:
+  `FLIGHT_A_001_SEATMATE_SMALLTALK`,
+  `FLIGHT_B_002_COMPANION_OR_VISIT`,
+  `BAG_002_PROVIDE_CLAIM_TAG`,
+  `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM`, and
+  `BAG_007_CUSTOMS_CLEARANCE`.
+- The baggage customs item case extracted
+  `customs_item_explanation = "medicine"`,
+  `item_identity = "red ginseng medicine"`, and
+  `item_purpose = "for my health"` with no missing slots.
+- The `FLIGHT_B_002_COMPANION_OR_VISIT` required slot is
+  `travel_companion`; the smoke extracted `travel_companion = "friend"` with no
+  missing slots. An earlier manual expected-slot label of
+  `companion_or_visit` was only a smoke-script expectation typo.
+- Token usage was reported by the LLM client per case. Estimated cost remained
+  `0.0` because local pricing configuration for the configured model is not
+  populated.
+
+Realtime STT alignment prompt:
+
+- Added
+  `docs/contracts/unreal_realtime_stt_alignment_codex_prompt.md`.
+- The prompt states that `WebSocket /api/game/ai/stt/stream` is additive and
+  does not replace `POST /api/game/ai/respond`.
+- Unreal should send `session_start`, then base64 PCM `audio_chunk` events with
+  `provider = "elevenlabs_relay"`, and set `commit = true` on the final real
+  audio chunk.
+- Partial transcript events are subtitle UI only and must not call
+  Understanding, Developer B, Developer A, or TTS.
+- Final transcript events are committed candidates. Unreal then combines the
+  final transcript with the full `dev_c_unreal_turn.v1` JSON and calls
+  `POST /api/game/ai/respond`, currently through the JSON `audio.transcript`
+  shortcut.
+- The current implemented relay is
+  `Unreal -> Developer C WebSocket -> ElevenLabs WSS -> Developer C -> Unreal`;
+  ElevenLabs API keys stay server-side.
+
 ## 2026-06-15 Developer C Alpha Baggage Random Item Follow-up
 
 Developer C implemented the next C-owned Alpha baggage follow-up: random
