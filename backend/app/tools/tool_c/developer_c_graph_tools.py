@@ -1,3 +1,13 @@
+"""Implement the concrete tool calls used by the Developer C LangGraph.
+
+Beginner guide:
+The graph file names the steps, but this file performs the work for each step.
+It calls STT, OpenKB, Understanding, Developer B, Developer A, validators, and
+AgentRun logging in a controlled order.  Keeping these actions here makes the
+graph easy to read and keeps C orchestration logic away from A/B implementation
+files.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

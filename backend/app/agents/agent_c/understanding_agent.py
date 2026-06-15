@@ -1,3 +1,14 @@
+"""Turn player text into Developer C semantic understanding.
+
+Beginner guide:
+This is not the scenario branch decider.  It reads the player's transcript and
+the current scenario node, then returns semantic evidence such as intent,
+filled slots, missing slots, risk tags, and confidence.  Developer B still owns
+the actual pass/fail/next-node policy.  When LLM mode is enabled, this agent
+tries the LLM first, filters unsafe fields, repairs obvious slots with rules,
+and falls back to deterministic rules when the LLM is unavailable.
+"""
+
 import logging
 from pydantic import ValidationError as PydanticValidationError
 import re

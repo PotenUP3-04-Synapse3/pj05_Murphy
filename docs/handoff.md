@@ -1,5 +1,114 @@
 # Handoff
 
+## 2026-06-15 Developer C Beginner Docstring Pass
+
+Developer C added beginner-friendly docstrings to current C-owned non-test
+Python source files and recorded the ongoing convention in `AGENTS.md`.
+
+Scope:
+
+- Included Developer C app entrypoint, API, schemas, `agent_c`, `service_c`,
+  C middleware, C graph/tools, A/B integration adapters, and the current
+  realtime STT smoke script.
+- Excluded test files, Developer A implementation paths, Developer B
+  implementation paths, generated runtime files, and non-Python data files.
+
+Rule going forward:
+
+- When Developer C creates or substantially edits non-test Python source, add
+  beginner-friendly docstrings that explain the file or callable's role in the
+  backend flow and its ownership/authority boundary.
+
+## 2026-06-15 Developer C Alpha A-Adapter Non-Immigration Seed Follow-up
+
+Developer C updated the C-owned Developer A dialogue adapter so the A-facing
+level-design payload now forwards Developer B's optional `dialogue_seed`
+metadata. This lets Developer A consume Alpha role and generation metadata for
+Flight and Baggage chapters without C changing Developer A implementation files
+or Developer B branch authority.
+
+Ownership check:
+
+- `backend/app/integrations/dev_a_npc_dialogue_client.py` is explicitly listed
+  under Developer C owned files in `AGENTS.md`, even though its name references
+  Developer A. It is the C-owned integration adapter that calls Developer A's
+  contract boundary.
+- No current Alpha A-adapter follow-up changes modify Developer A
+  implementation paths such as `backend/app/agents/agent_a/`,
+  `backend/app/services/service_a/`, `backend/app/tools/tool_a/`,
+  `backend/app/middleware/middleware_a/`, or
+  `backend/app/prompts/npc_dialogue_prompt.md`.
+
+Changed:
+
+- `backend/app/integrations/dev_a_npc_dialogue_client.py` now includes
+  `dialogue_seed` in the payload passed to Developer A's voice output builder.
+- `backend/tests/test_preprototype_flow.py` adds regression coverage for
+  `FLIGHT_A_001_SEATMATE_SMALLTALK -> FLIGHT_A_002_TRAVEL_PURPOSE` and
+  `BAG_001_REPORT_MISSING_AT_DESK -> BAG_002_PROVIDE_CLAIM_TAG` so the A-facing
+  payload preserves `npc_id`, `npc_role`, `chapter_id`, next-question seed text,
+  and `dialogue_seed` metadata.
+- `docs/contracts/developer_c_adapter_contracts.md` documents the forwarded
+  `dialogue_seed` field and current Edge audio path naming.
+- `pyproject.toml` excludes `backend/runtime/generated` from pytest and mypy
+  discovery so generated runtime artifacts do not break full-suite verification.
+
+Verification:
+
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata -q`:
+  PASS, 2 passed, 1 warning.
+
+## 2026-06-15 Developer C Realtime STT Smoke Commit Follow-up
+
+Developer C fixed the solo ElevenLabs realtime STT smoke path after live smoke
+testing showed partial transcripts arrived, but committed provider finals could
+be missed before the local fallback ran.
+
+Ownership check:
+
+- Backend relay, settings, and tests are Developer C owned.
+- `scripts/smoke_elevenlabs_realtime_stt_relay.py` is a Developer C realtime
+  STT smoke utility by responsibility, but `scripts/` is not yet explicitly
+  listed in `AGENTS.md`. Developer C recorded a contract clarification request
+  so future agents do not treat this path as ambiguous.
+
+Root cause:
+
+- `scripts/smoke_elevenlabs_realtime_stt_relay.py` committed a separate
+  silence-only sentinel chunk instead of committing the final real audio chunk.
+- The backend relay reused the short partial-drain timeout for committed final
+  transcripts, so ElevenLabs could emit useful partials but miss the final
+  before fallback.
+
+Changed:
+
+- `scripts/smoke_elevenlabs_realtime_stt_relay.py` now builds audio chunk
+  events with `commit = true` on the final real WAV chunk.
+- Added `scripts/__init__.py` so tests and mypy resolve the smoke script under
+  one module name.
+- `backend/app/services/service_c/elevenlabs_realtime_stt_relay.py` now uses a
+  separate commit-final drain timeout and stops draining as soon as a final
+  transcript is received.
+- Added `ELEVENLABS_REALTIME_COMMIT_TIMEOUT_S`, default `3.0`, to
+  `backend/app/services/service_c/settings_service.py` and `.env.example`.
+- Updated C-owned schema and adapter contracts to document final-real-chunk
+  commit semantics and the commit timeout.
+- Added regression tests for the smoke script chunk builder and the longer
+  commit-final wait.
+
+Verification:
+
+- `uv run pytest backend/tests/test_elevenlabs_realtime_stt_relay.py backend/tests/test_realtime_stt_websocket.py backend/tests/test_settings_service.py backend/tests/test_smoke_elevenlabs_realtime_stt_relay_script.py -q`:
+  PASS, 17 passed, 1 warning.
+- Live smoke with `backend/runtime/generated/stt_smoke_tour_16k_mono.wav`:
+  PASS. The backend returned `final_transcript` from `provider =
+  "elevenlabs_relay"` with text `I'm here for tour- tourism.` and
+  `target_endpoint = "POST /api/game/ai/respond"`.
+- Debug AgentRun append: PASS. The realtime STT record ended with
+  `status = "success"`, `final_provider = "elevenlabs_relay"`, token counts
+  set to zero, estimated cost from configured per-minute rate, and audio
+  metadata for 14 chunks / 107520 bytes.
+
 ## 2026-06-13 Developer C Refactor: Remove Deprecated Miller NPC, Update Default NPC to Hale & Apply TTS Slimming Test Updates
 
 Developer C는 기획상 더 이상 사용되지 않는 레거시 입국심사관 NPC인 `miller`를 완전히 제거하고, 실제 챕터 0의 메인 입국심사관 NPC인 `hale`을 기본(Default) NPC로 변경하여 기획과의 정합성을 일치시켰습니다. 또한, Developer A의 로컬 온디바이스 TTS 제거(TTS Slimming) 계획에 따른 Developer C 소유의 통합 테스트 실패 지점을 해결했습니다.

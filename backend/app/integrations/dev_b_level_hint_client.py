@@ -1,3 +1,12 @@
+"""Developer C adapter for calling Developer B policy logic.
+
+Beginner guide:
+Developer B owns level, hint, score, and branch policy.  Developer C calls B
+through this adapter so the orchestrator can stay stable even if B changes its
+internal implementation.  The adapter also attaches the final Alpha scoreboard
+result when the current node is the approved final-result trigger.
+"""
+
 from pathlib import Path
 
 from backend.app.agents.agent_b import EnglishLevelHintAgent

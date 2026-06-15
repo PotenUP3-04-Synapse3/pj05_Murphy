@@ -1,3 +1,12 @@
+"""Create unified AgentRun log records for Developer C orchestration.
+
+Beginner guide:
+An AgentRun is a structured timeline of what happened during one backend turn.
+This middleware does not decide gameplay.  It only builds a record, appends
+events as C services run, and finally writes JSONL/Markdown through the shared
+log store.
+"""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

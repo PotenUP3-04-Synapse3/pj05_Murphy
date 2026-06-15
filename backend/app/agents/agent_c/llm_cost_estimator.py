@@ -1,3 +1,11 @@
+"""Estimate token usage cost for Developer C LLM calls.
+
+Beginner guide:
+OpenAI-style APIs return token counts, not a finished bill.  This helper turns
+those counts into a small diagnostic cost estimate for AgentRun logs.  Gameplay
+must never branch on this value; it is only for debugging and budget awareness.
+"""
+
 from __future__ import annotations
 
 from typing import Any

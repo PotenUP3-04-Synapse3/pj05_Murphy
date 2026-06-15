@@ -1,3 +1,12 @@
+"""Developer C adapter for calling Developer A dialogue and TTS logic.
+
+Beginner guide:
+This file is C-owned even though it calls Developer A.  It translates C/B turn
+state into the level-design payload that A's voice output service expects, then
+wraps A's result back into the `DevADialogueOutput` contract.  C does not create
+A's NPC voice logic here; it only adapts inputs and validates the boundary.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -98,6 +107,7 @@ class DevANpcDialogueClient:
             "node_context": node_context,
             "understanding": payload.understanding.model_dump(),
             "transition": payload.transition.model_dump() if payload.transition is not None else None,
+            "dialogue_seed": policy.dialogue_seed.model_dump() if policy.dialogue_seed is not None else None,
             "evaluation_summary": {
                 "feedback_note": evaluation.feedback_note or "",
                 "main_feedback_tag": evaluation.feedback_tags[0] if evaluation.feedback_tags else "",

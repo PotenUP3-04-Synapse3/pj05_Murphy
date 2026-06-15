@@ -1,3 +1,14 @@
+"""Expose Developer C HTTP and WebSocket endpoints for Unreal and demos.
+
+Beginner guide:
+This module is the public door into the backend.  `POST /respond` receives one
+player turn, normalizes multipart or JSON input, and passes it to the C
+orchestrator.  `WebSocket /stt/stream` is separate: it streams subtitle-like STT
+events for Unreal while the player is speaking.  Partial STT events are only UI
+previews; committed final text is the only text that should later enter the
+normal `/respond` turn flow.
+"""
+
 import json
 from pathlib import Path
 from typing import Any, Literal, Sequence

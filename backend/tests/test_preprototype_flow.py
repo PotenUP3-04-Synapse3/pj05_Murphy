@@ -11,6 +11,7 @@ from backend.app.integrations.dev_a_npc_dialogue_client import DevANpcDialogueCl
 from backend.app.main import app
 from backend.app.schemas.game_turn import (
     DevADialogueInput,
+    DevADialogueOutput,
     MockAudioInput,
     PrePrototypeRequest,
     UnderstandingOutput,
@@ -784,6 +785,116 @@ def test_dev_a_adapter_forwards_npc_context_to_voice_builder() -> None:
         "last_npc_message": "What is the purpose of your visit?",
         "emotion": dev_b_output.npc_emotion,
     }
+
+
+def _dev_a_payload_for_request(request: PrePrototypeRequest) -> tuple[DevADialogueOutput, dict[str, Any]]:
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": str(payload["npc"]["npc_id"]),
+            "npc_text": str(payload["in_game_feedback"]["npc_recast_line_candidate"] or "Okay."),
+            "tone": "friendly_neutral",
+            "animation": "dialogue_idle",
+            "feedback_kr": "Good.",
+            "tts": {
+                "audio_url": "/runtime/audio/edge/test.wav",
+            },
+        }
+
+    orchestrator = Orchestrator()
+    node_context = orchestrator.openkb_service.get_node_context(
+        request.turn.session.chapter_id,
+        request.turn.session.current_node_id,
+    )
+    normalized_input = orchestrator.stt_service.transcribe_wav(request.audio, request.turn.audio)
+    understanding = orchestrator.understanding_agent.analyze_player_text(
+        normalized_input.player_text,
+        node_context,
+    )
+    dev_b_output = orchestrator.dev_b_client.evaluate_turn(
+        orchestrator.build_dev_b_policy_input(
+            request,
+            normalized_input=normalized_input,
+            node_context=node_context,
+            understanding=understanding,
+        )
+    )
+    client = DevANpcDialogueClient(
+        settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+        voice_output_builder=fake_voice_output_builder,
+    )
+
+    output = client.generate_dialogue(
+        DevADialogueInput(
+            contract_version="dev_a_dialogue.v1",
+            request_id=request.turn.request_id,
+            session_id=request.turn.session.session_id,
+            current_node_id=request.turn.session.current_node_id,
+            player_text=normalized_input.player_text,
+            npc=request.turn.npc,
+            node_context=node_context,
+            understanding=understanding,
+            developer_b_policy=dev_b_output,
+        )
+    )
+
+    assert builder_payloads
+    return output, builder_payloads[0]
+
+
+def test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata() -> None:
+    output, payload = _dev_a_payload_for_request(
+        _chapter_boundary_request(
+            request_id="req_alpha_flight_seed_0001",
+            chapter_id="CH0_01_FLIGHT_SMALLTALK",
+            current_node_id="FLIGHT_A_001_SEATMATE_SMALLTALK",
+            npc_id="SEATMATE_A_01",
+            npc_role="seatmate",
+            last_npc_message="Could I borrow your pen for this arrival form?",
+            transcript="Sure, here you are.",
+            allowed_next_nodes=["FLIGHT_A_002_TRAVEL_PURPOSE"],
+        )
+    )
+
+    assert output.speaker == "SEATMATE_A_01"
+    assert output.text == "Are you visiting New York for a trip?"
+    assert payload["npc"]["npc_id"] == "SEATMATE_A_01"
+    assert payload["npc"]["npc_role"] == "seatmate"
+    assert payload["node_context"]["chapter_id"] == "CH0_01_FLIGHT_SMALLTALK"
+    assert payload["in_game_feedback"]["npc_recast_line_candidate"] == "Are you visiting New York for a trip?"
+    assert payload["dialogue_seed"]["npc_role"] == "seatmate_passenger"
+    assert payload["dialogue_seed"]["surface_goal"] == "respond_to_polite_request"
+    assert payload["dialogue_seed"]["max_turns"] == 5
+
+
+def test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata() -> None:
+    output, payload = _dev_a_payload_for_request(
+        _chapter_boundary_request(
+            request_id="req_alpha_bag_seed_0001",
+            chapter_id="CH0_04_BAGGAGE_CLAIM",
+            current_node_id="BAG_001_REPORT_MISSING_AT_DESK",
+            npc_id="BAGGAGE_STAFF",
+            npc_role="baggage_service_staff",
+            last_npc_message="Hi. How can I help you?",
+            transcript="My suitcase didn't arrive. I need help.",
+            allowed_next_nodes=["BAG_002_PROVIDE_CLAIM_TAG"],
+        )
+    )
+
+    assert output.speaker == "BAGGAGE_STAFF"
+    assert output.text == "Do you have your baggage claim tag or ticket?"
+    assert payload["npc"]["npc_id"] == "BAGGAGE_STAFF"
+    assert payload["npc"]["npc_role"] == "baggage_service_staff"
+    assert payload["node_context"]["chapter_id"] == "CH0_04_BAGGAGE_CLAIM"
+    assert payload["in_game_feedback"]["npc_recast_line_candidate"] == "Do you have your baggage claim tag or ticket?"
+    assert payload["dialogue_seed"]["npc_role"] == "baggage_service_agent"
+    assert payload["dialogue_seed"]["surface_goal"] == "report_missing_bag_at_service_desk"
+    assert payload["dialogue_seed"]["max_turns"] == 4
 
 
 def test_api_accepts_mock_unreal_turn_json() -> None:

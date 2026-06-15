@@ -1,3 +1,13 @@
+"""Assemble the final Unreal-safe response payload.
+
+Beginner guide:
+Earlier services produce separate pieces: STT text, Understanding evidence,
+Developer B policy, Developer A dialogue/TTS, and logging summaries.  This
+builder copies only the fields Unreal is allowed to see into the
+`UnrealResponse` schema.  It does not create branch decisions; it uses the
+validated Developer B result.
+"""
+
 from backend.app.schemas.game_turn import (
     DebugInfo,
     DevADialogueOutput,

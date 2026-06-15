@@ -5,3 +5,4 @@ graph may call A/B adapters, but it must not reach into A/B-owned tool folders
 or implementation internals.
 """
 
+"""Developer C internal tool wrappers."""

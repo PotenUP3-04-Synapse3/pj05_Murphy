@@ -1,3 +1,12 @@
+"""Validate cross-team contracts before Developer C returns data to Unreal.
+
+Beginner guide:
+Developer C trusts Developer A and B only through agreed contracts.  This file
+contains rule-based checks that make sure B's branch output is allowed, A's
+dialogue output becomes a safe Unreal response, realtime STT events follow the
+WebSocket protocol, and final score payloads stay inside valid ranges.
+"""
+
 from backend.app.schemas.game_turn import (
     DevBPolicyOutput,
     FinalResult,

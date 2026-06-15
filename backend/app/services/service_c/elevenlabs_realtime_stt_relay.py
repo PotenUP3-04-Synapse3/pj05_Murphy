@@ -1,3 +1,13 @@
+"""Relay Unreal audio chunks to ElevenLabs realtime STT.
+
+Beginner guide:
+Unreal connects to Developer C, not directly to ElevenLabs.  This class opens
+the server-side ElevenLabs WebSocket using the backend API key, forwards base64
+PCM chunks, converts provider messages into Developer C subtitle events, and
+uses local batch STT as a final-transcript fallback when a committed provider
+final is missing.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -102,7 +112,13 @@ class ElevenLabsRealtimeSttRelay:
                 ]
             raise ElevenLabsRealtimeRelayError(f"ElevenLabs realtime STT audio send failed: {exc}") from exc
 
-        events = await self._drain_provider_events(event)
+        events = await self._drain_provider_events(
+            event,
+            timeout_s=self.settings.elevenlabs_realtime_commit_timeout_s
+            if event.commit
+            else self.settings.elevenlabs_realtime_receive_timeout_s,
+            stop_after_final=event.commit,
+        )
         if event.commit and not _has_final_transcript(events):
             events.append(self._local_batch_fallback_or_error_event(event, reason="provider_final_transcript_missing"))
 
@@ -193,16 +209,19 @@ class ElevenLabsRealtimeSttRelay:
         context_event: RealtimeTranscriptClientEvent,
         *,
         max_events: int | None = None,
+        timeout_s: float | None = None,
+        stop_after_final: bool = False,
     ) -> list[RealtimeTranscriptServerEvent]:
         if self.connection is None:
             return []
 
         events: list[RealtimeTranscriptServerEvent] = []
+        event_timeout_s = timeout_s or self.settings.elevenlabs_realtime_receive_timeout_s
         while max_events is None or len(events) < max_events:
             try:
                 raw_payload = await asyncio.wait_for(
                     self.connection.recv(),
-                    timeout=self.settings.elevenlabs_realtime_receive_timeout_s,
+                    timeout=event_timeout_s,
                 )
             except TimeoutError:
                 break
@@ -226,7 +245,10 @@ class ElevenLabsRealtimeSttRelay:
                 )
                 continue
 
-            events.append(_provider_payload_to_event(context_event, provider_payload))
+            event = _provider_payload_to_event(context_event, provider_payload)
+            events.append(event)
+            if stop_after_final and event.event_type == "final_transcript":
+                break
 
         return events
 

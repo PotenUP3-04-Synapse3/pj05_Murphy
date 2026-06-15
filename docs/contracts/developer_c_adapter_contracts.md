@@ -261,6 +261,11 @@ Rules:
 - `audio_chunk` events are base64 PCM chunks. The current smoke-test path
   expects 16 kHz mono 16-bit PCM wav chunks and sends
   `audio_format=pcm_16000`.
+- In manual commit mode, set `commit = true` on the final real audio chunk for
+  the utterance. Do not end the turn by sending a separate silence-only commit
+  chunk.
+- Developer C waits up to `ELEVENLABS_REALTIME_COMMIT_TIMEOUT_S` for a
+  committed provider final before falling back to local batch STT.
 - Partial transcripts are UI-only subtitle previews and must not call Developer
   B or Developer A.
 - Only committed final transcripts may enter the normal C orchestrator path.
@@ -644,6 +649,21 @@ Input:
       "next_action": "ADVANCE",
       "next_node_id": "IMM_003_DURATION"
     },
+    "dialogue_seed": {
+      "scene": "JFK_IMMIGRATION_HALL",
+      "npc_role": "immigration_officer",
+      "surface_goal": "ask_visit_purpose",
+      "hidden_assessment_goal": "estimate_user_travel_speaking_level",
+      "opening_intent": "ask_visit_purpose",
+      "assessment_targets": ["state_visit_purpose", "visit_purpose"],
+      "required_slots": ["visit_purpose"],
+      "max_turns": 4,
+      "difficulty_profile": "auto",
+      "feedback_focus": ["visit_purpose"],
+      "tone_guidance": "neutral",
+      "allowed_followup_intents": ["advance_to_next_prompt"],
+      "stop_condition": "required_slots_filled_or_retry_policy_triggered"
+    },
     "dialogue_directive": {
       "purpose": "continue_to_next_question",
       "tone_hint": "neutral",
@@ -664,7 +684,7 @@ Output:
   "tone": "formal_neutral",
   "animation": "officer_check_passport",
   "feedback_kr": "Good. A natural sentence is: I'm here for tourism.",
-  "audio_url": "/runtime/audio/kokoro/IMM_002_PURPOSE_stay_duration_success_am_michael_abcd1234.wav"
+  "audio_url": "/runtime/audio/edge/IMM_002_PURPOSE_stay_duration_success_en-US-GuyNeural_abcd1234.wav"
 }
 ```
 
@@ -679,7 +699,11 @@ Rules:
   Developer C passes additive `transition` metadata to the A-facing payload so
   Developer A can choose closing dialogue tone. Developer A may ignore this
   field, but must not treat it as branch authority.
-- Developer C calls Developer A's voice output service with fake Kokoro by
+- Developer C passes Developer B's optional `dialogue_seed` through the
+  A-facing level-design payload so Developer A can generate Alpha
+  non-immigration dialogue from role, surface-goal, assessment, and stop
+  condition metadata instead of B-authored final NPC wording.
+- Developer C calls Developer A's voice output service with fake Edge by
   default for deterministic tests.
 - `MURPHY_TTS_MODE=real` makes the C adapter pass `use_real_tts=True` to
   Developer A's voice output service.

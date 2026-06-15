@@ -3,6 +3,49 @@
 Cross-owner change requests are listed below. Status lines describe the current
 repository state as of the latest handoff entry.
 
+## Change Request - 2026-06-15 - Clarify Ownership for Developer C STT Smoke Scripts
+
+### Requested By
+
+Developer C / Sean Han
+
+### Affected Owner
+
+Shared repository guide / Developer C
+
+### Reason
+
+`AGENTS.md` explicitly lists Developer C ownership for STT pipeline,
+orchestration, tests, contracts, handoff docs, and the A/B integration
+adapters. It does not currently list `scripts/`, even though
+`scripts/smoke_elevenlabs_realtime_stt_relay.py` is a Developer C realtime STT
+smoke utility created for local validation of the C-owned WebSocket relay.
+
+This can confuse future agents because the script is not Developer A or
+Developer B implementation code, but it is also not explicitly listed in the
+Developer C owned paths.
+
+### Proposed Contract Change
+
+Add a narrow Developer C ownership entry to `AGENTS.md` for:
+
+- `scripts/smoke_elevenlabs_realtime_stt_relay.py`
+
+The ownership should be limited to Developer C realtime STT smoke/testing
+utilities and must not grant Developer C blanket ownership over all future
+repository scripts.
+
+### Compatibility Impact
+
+No runtime behavior change. This only clarifies editing ownership for future
+maintenance.
+
+### Temporary Workaround
+
+Treat `scripts/smoke_elevenlabs_realtime_stt_relay.py` as a C-owned realtime
+STT smoke utility when the task is specifically about Developer C STT relay
+testing. For unrelated scripts, keep the current unknown/shared-file caution.
+
 ## Change Request - 2026-06-03 - Developer A NPC Dialogue/TTS Implementation
 
 ### Requested By

@@ -1,3 +1,13 @@
+"""Normalize player WAV audio into text for Developer C.
+
+Beginner guide:
+This service is the STT boundary for normal `/respond` turns.  In tests it can
+use a deterministic mock transcript.  In real local mode it tries local Whisper
+first and falls back to the OpenAI transcription API only when needed.  The
+output is always a `NormalizedInput` object so later C/B/A steps do not need to
+know which STT runtime produced the text.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

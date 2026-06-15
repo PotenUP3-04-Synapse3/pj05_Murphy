@@ -1,3 +1,14 @@
+"""Pydantic contracts shared by Developer C runtime components.
+
+Beginner guide:
+Most backend functions pass typed objects instead of loose dictionaries.  This
+file defines those objects: Unreal request/response shapes, STT events,
+Understanding output, Developer A/B adapter payloads, flow metadata, and result
+screen payloads.  Think of it as the project's schema dictionary.  Business
+logic should live in services and agents, while this file describes the data
+they are allowed to exchange.
+"""
+
 from __future__ import annotations
 
 from typing import Literal

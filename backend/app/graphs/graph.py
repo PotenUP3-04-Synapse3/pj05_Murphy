@@ -1,3 +1,14 @@
+"""Define the LangGraph workflow for one Developer C turn.
+
+Beginner guide:
+LangGraph is used here as an explicit checklist for the backend turn order.
+Each graph node delegates to `DeveloperCGraphTools`, which contains the real
+service calls.  The graph itself stays linear on purpose: STT -> OpenKB ->
+Understanding -> Developer B -> Developer A -> response validation.  Developer
+B still owns branch decisions; this graph only moves C-owned state from step to
+step.
+"""
+
 from __future__ import annotations
 
 from time import perf_counter
