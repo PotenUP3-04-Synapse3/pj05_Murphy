@@ -7,8 +7,9 @@ from backend.app.agents.agent_a.npc_dialogue_agent import (
     NPCDialogueResult,
     generate_npc_dialogue_from_level_design,
 )
-from backend.app.middleware.middleware_a.npc_dialogue_agent_run_middleware import (
-    NPCDialogueAgentRunMiddleware,
+from backend.app.agents.agent_a.npc_llm_client import NPCDialogueCallbackHandler
+from backend.app.services.service_a.agent_run_recorder import (
+    NPCDialogueAgentRunRecorder,
 )
 from backend.app.services.service_a.audio_quality_service import (
     analyze_wav_quality,
@@ -80,7 +81,7 @@ def build_voice_output_from_level_design(
     """
     root = runtime_root or Path("backend/runtime")
     run_root = agent_run_root or root / "agent_runs"
-    agent_run_middleware = NPCDialogueAgentRunMiddleware()
+    agent_run_middleware = NPCDialogueAgentRunRecorder()
     # 에이전트 실행 추적이 가능하도록 디버그 근거 요약을 빌드합니다.
     evidence_metadata = build_npc_dialogue_evidence_summary(payload)
     agent_run_middleware.record_event(
@@ -117,7 +118,16 @@ def build_voice_output_from_level_design(
             },
         )
         # 2. 대화 생성 엔진을 구동하여 NPC 텍스트 대사를 생성합니다.
-        dialogue = generate_npc_dialogue_from_level_design(payload, use_llm=use_llm_dialogue)
+        # LangChain 콜백과 기존 미들웨어가 동시에 작동하도록 콜백 핸들러를 생성하여 주입합니다.
+        callback_handler = NPCDialogueCallbackHandler(
+            recorder=agent_run_middleware,
+            metadata=evidence_metadata
+        )
+        dialogue = generate_npc_dialogue_from_level_design(
+            payload,
+            use_llm=use_llm_dialogue,
+            callbacks=[callback_handler],
+        )
         npc_profile = resolve_npc_profile(_npc_id(payload))
         agent_run_middleware.record_event(
             evidence_metadata,
@@ -581,7 +591,7 @@ def _record_agent_run(
     }
 
     # 미들웨어를 사용하여 레코드 조립을 실행합니다.
-    middleware = NPCDialogueAgentRunMiddleware()
+    middleware = NPCDialogueAgentRunRecorder()
     agent_run = middleware.start_run(
         prompt_version=PROMPT_VERSION,
         source_window=_source_window(payload, normalized),
@@ -638,7 +648,7 @@ def _record_failed_agent_run(
         fallback_tts=fallback_tts,
         error=error,
     )
-    middleware = NPCDialogueAgentRunMiddleware()
+    middleware = NPCDialogueAgentRunRecorder()
     agent_run = middleware.start_run(
         prompt_version=PROMPT_VERSION,
         source_window=_source_window(payload, {}),
