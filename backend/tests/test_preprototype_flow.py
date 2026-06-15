@@ -793,10 +793,15 @@ def _dev_a_payload_for_request(request: PrePrototypeRequest) -> tuple[DevADialog
         payload: dict[str, Any],
         **kwargs: Any,
     ) -> dict[str, Any]:
+        surface_goal = str((payload.get("dialogue_seed") or {}).get("surface_goal") or "")
+        generated_text_by_goal = {
+            "respond_to_polite_request": "Are you visiting New York for a trip?",
+            "report_missing_bag_at_service_desk": "Do you have your baggage claim tag or ticket?",
+        }
         builder_payloads.append(payload)
         return {
             "speaker": str(payload["npc"]["npc_id"]),
-            "npc_text": str(payload["in_game_feedback"]["npc_recast_line_candidate"] or "Okay."),
+            "npc_text": generated_text_by_goal.get(surface_goal, "Okay."),
             "tone": "friendly_neutral",
             "animation": "dialogue_idle",
             "feedback_kr": "Good.",
@@ -865,7 +870,7 @@ def test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata() -> None:
     assert payload["npc"]["npc_id"] == "SEATMATE_A_01"
     assert payload["npc"]["npc_role"] == "seatmate"
     assert payload["node_context"]["chapter_id"] == "CH0_01_FLIGHT_SMALLTALK"
-    assert payload["in_game_feedback"]["npc_recast_line_candidate"] == "Are you visiting New York for a trip?"
+    assert payload["in_game_feedback"]["npc_recast_line_candidate"] is None
     assert payload["dialogue_seed"]["npc_role"] == "seatmate_passenger"
     assert payload["dialogue_seed"]["surface_goal"] == "respond_to_polite_request"
     assert payload["dialogue_seed"]["max_turns"] == 5
@@ -890,7 +895,7 @@ def test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata() -> None:
     assert payload["npc"]["npc_id"] == "BAGGAGE_STAFF"
     assert payload["npc"]["npc_role"] == "baggage_service_staff"
     assert payload["node_context"]["chapter_id"] == "CH0_04_BAGGAGE_CLAIM"
-    assert payload["in_game_feedback"]["npc_recast_line_candidate"] == "Do you have your baggage claim tag or ticket?"
+    assert payload["in_game_feedback"]["npc_recast_line_candidate"] is None
     assert payload["dialogue_seed"]["npc_role"] == "baggage_service_agent"
     assert payload["dialogue_seed"]["surface_goal"] == "report_missing_bag_at_service_desk"
     assert payload["dialogue_seed"]["max_turns"] == 4
@@ -903,7 +908,7 @@ def test_dev_a_adapter_reports_speaker_mismatch_diagnostic() -> None:
     ) -> dict[str, Any]:
         return {
             "speaker": "Officer Miller",
-            "npc_text": str(payload["in_game_feedback"]["npc_recast_line_candidate"] or "Okay."),
+            "npc_text": "Okay.",
             "tone": "friendly_neutral",
             "animation": "dialogue_idle",
             "feedback_kr": "Good.",
@@ -981,7 +986,7 @@ def test_orchestrator_passes_random_customs_item_and_routes_customs_npc_to_devel
         builder_payloads.append(payload)
         return {
             "speaker": str(payload["npc"]["npc_id"]),
-            "npc_text": str(payload["in_game_feedback"]["npc_recast_line_candidate"] or "Thank you."),
+            "npc_text": "Thank you.",
             "tone": "formal_neutral",
             "animation": "customs_inspection_idle",
             "feedback_kr": "Good.",
@@ -1067,6 +1072,27 @@ def test_api_accepts_mock_unreal_turn_json() -> None:
     assert body["stt"]["fallback_runtime"] == "api"
     assert body["stt"]["runtime_used"] == "local"
     assert body["debug"]["stt_model"] == "whisper-large-v3-turbo"
+
+
+def test_api_reports_realtime_transcript_provider_as_stt_runtime() -> None:
+    client = TestClient(app)
+    payload = {
+        "turn": _turn_payload(),
+        "audio": {
+            "transcript": "I'm here for tourism.",
+            "transcript_provider": "elevenlabs_relay",
+            "file_name": "realtime-final-transcript.txt",
+            "content_type": "text/plain",
+        },
+    }
+
+    response = client.post("/api/game/ai/respond", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stt"]["player_text"] == "I'm here for tourism."
+    assert body["stt"]["runtime_used"] == "elevenlabs_relay"
+    assert body["debug"]["timing_ms"]["stt_ms"] == 0
 
 
 def test_api_accepts_multipart_turn_json_and_sample_wav() -> None:

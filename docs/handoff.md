@@ -10,6 +10,139 @@ Changed:
 - **Fixed `test_preprototype_flow.py` Assertions**: Updated the two forward test suites (`test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata` and `test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata`) to match the new Developer A client behavior. Assertions were updated to expect `npc_recast_line_candidate is None` and an output text of `"Okay."`.
 - **Entire Test Suite Green**: Executed `uv run pytest backend/tests` to verify that all 240 tests pass successfully.
 
+## 2026-06-15 Developer C Refactor: Fix graph.py Redundant Reassignment and Resolve test_preprototype_flow.py Failures
+
+Developer C resolved the lint warnings in `graph.py` and fixed the pre-prototype flow test failures caused by the recent Developer A refactoring.
+
+Changed:
+
+- **Resolved `graph.py` Lint Warning**: Added an explicit `__all__` list in [graph.py](file:///C:/5th_project/pj05_Murphy/backend/app/graphs/graph.py) to declare `DEVELOPER_C_GRAPH_NODE_NAMES` as a public export. This resolves the Ruff F401 unused import warning while keeping it accessible to external test suites.
+- **Fixed `test_preprototype_flow.py` Assertions**: Updated the two forward test suites (`test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata` and `test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata`) to match the new Developer A client behavior. Assertions were updated to expect `npc_recast_line_candidate is None` and an output text of `"Okay."`.
+- **Entire Test Suite Green**: Executed `uv run pytest backend/tests` to verify that all 240 tests pass successfully.
+
+## 2026-06-15 Respond Dialog Flight NPC Roster Alignment and STT Metadata Check
+
+Corrected during `/respond-dialog` realtime testing:
+
+- The AI-only `/respond-dialog` flight preset was using the synthetic Unreal
+  integration ID `SEATMATE_A_01`.
+- Developer A's current roster uses canonical IDs such as `arabella`, `novak`,
+  `hale`, `harris`, `dan`, and `brielle`.
+- Updated the flight preset to send `npc_id = "arabella"` and display speaker
+  `Arabella`, matching Developer A's seatmate roster for the airplane cabin
+  test.
+- Removed the temporary Developer A change request because no A-side roster
+  change is required for this AI-only backend test.
+
+Also fixed a Developer C metadata issue:
+
+- The realtime subtitle WebSocket can receive ElevenLabs relay final
+  transcripts and now submits `audio.transcript_provider` to
+  `POST /api/game/ai/respond`.
+- `WhisperLargeV3TurboSttService.transcribe_wav()` still bypasses batch STT
+  when `audio.transcript` already exists, but now reports the provider runtime
+  such as `elevenlabs_relay` instead of the default `local` label.
+- Legacy mock transcripts without `transcript_provider` still report `local`
+  for backward compatibility.
+
+Verification:
+
+- RED check: the focused `/respond-dialog` page test failed while the HTML still
+  contained `SEATMATE_A_01`.
+- RED check: focused STT provider tests failed with `runtime_used = local`
+  before the fix.
+- `uv run pytest backend/tests/test_stt_service.py::test_stt_service_reports_realtime_transcript_provider_without_batch_stt backend/tests/test_preprototype_flow.py::test_api_reports_realtime_transcript_provider_as_stt_runtime backend/tests/test_demo_ai_respond_page.py::test_respond_dialog_page_is_served_without_changing_original_demo -q`:
+  PASS, 3 passed, 1 existing `audioop` deprecation warning.
+- `uv run pytest backend/tests/test_stt_service.py
+backend/tests/test_preprototype_flow.py
+backend/tests/test_demo_ai_respond_page.py -q`: PASS, 41 passed, 1 existing
+  `audioop` deprecation warning.
+- `uv run pytest`: PASS, 238 passed, 1 existing `audioop` deprecation warning.
+- `uv run ruff check backend/app/schemas/game_turn.py
+backend/app/services/service_c/stt_service.py backend/tests/test_stt_service.py
+backend/tests/test_preprototype_flow.py
+backend/tests/test_demo_ai_respond_page.py`: PASS.
+- `uv run mypy .`: PASS, no issues in 108 source files.
+- `uv run ruff check .`: FAIL only on A-owned
+  `backend/app/agents/agent_a/npc_dialogue_agent.py:24` for unused import
+  `polish_tts_text`; Developer C did not edit the A-owned file.
+- `uv run pytest backend/tests/test_demo_ai_respond_page.py -q`: PASS, 8
+  passed, 1 existing `audioop` deprecation warning.
+- `git diff --check -- demo/respond-dialog/index.html
+backend/tests/test_demo_ai_respond_page.py docs/handoff.md
+docs/contracts/change_requests.md`: PASS with Git's normal CRLF
+  working-copy warnings only.
+
+## 2026-06-15 Developer C Test Cleanup for Developer A Legacy Removal
+
+Developer C cleaned C-owned tests that were keeping Developer A legacy/shim
+code alive during the Agent A refactor.
+
+Changed:
+
+- Removed direct test dependency on `OpenAICompatibleNPCDialogueChatModel` and
+  the old manual fallback-wrapper style from
+  `backend/tests/test_developer_a_npc_llm_client.py`; the file now only keeps
+  the current factory fallback contract.
+- Removed old `generate_npc_dialogue()` deterministic unit tests from
+  `backend/tests/test_developer_a_npc_dialogue.py`.
+- Updated AgentRun logging tests to use
+  `NPCDialogueAgentRunRecorder` instead of deprecated
+  `NPCDialogueAgentRunMiddleware`.
+- Updated the markdown formatter fixture from the removed Kokoro tool name to
+  the current Edge TTS tool name.
+- Updated `test_preprototype_flow.py` so C-to-A adapter tests no longer expect
+  `in_game_feedback.npc_recast_line_candidate` to carry the next NPC question.
+  The tests now verify `dialogue_seed` metadata as the A-facing generation
+  input and keep `npc_recast_line_candidate` as `None`.
+
+Verification:
+
+- Focused regression:
+  `uv run pytest backend/tests/test_developer_a_npc_llm_client.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_agent_run_logging.py backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_reports_speaker_mismatch_diagnostic backend/tests/test_preprototype_flow.py::test_orchestrator_passes_random_customs_item_and_routes_customs_npc_to_developer_a -q`
+  passed, 29 passed, 1 warning.
+- Full tests:
+  `uv run pytest -q` passed, 236 passed, 1 warning.
+- Changed-file lint:
+  `uv run ruff check backend/tests/test_developer_a_npc_llm_client.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_agent_run_logging.py backend/tests/test_preprototype_flow.py`
+  passed.
+- `uv run mypy .` passed, no issues in 108 source files.
+
+Remaining A-owned implementation cleanup:
+
+- `uv run ruff check .` still reports one A-owned unused import:
+  `backend/app/agents/agent_a/npc_dialogue_agent.py` imports
+  `polish_tts_text` but does not use it. Developer C did not edit that A-owned
+  implementation file.
+
+## 2026-06-15 Developer C Respond Dialog Realtime STT Subtitle Tester
+
+Developer C updated the local C-owned `/respond-dialog` browser tester so a
+solo developer can verify realtime STT subtitles from the existing WebSocket
+path before the final transcript enters the normal `/respond` turn flow.
+
+Changed:
+
+- Added a realtime subtitle panel to `demo/respond-dialog/index.html`.
+- When the browser Record button starts, the page now opens
+  `/api/game/ai/stt/stream` with `provider = "elevenlabs_relay"`.
+- Browser microphone chunks are resampled to 16 kHz PCM16 and sent as
+  `audio_chunk` events.
+- Partial/final transcript server events update the subtitle panel.
+- A committed final transcript is copied into `turn.audio.transcript` and sent
+  through the existing JSON `/api/game/ai/respond` path, avoiding a second local
+  batch STT pass for the same turn.
+- Next-turn state clears `turn.audio.transcript` so later WAV uploads do not
+  accidentally reuse the previous realtime transcript.
+
+Verification:
+
+- RED:
+  `uv run pytest backend/tests/test_demo_ai_respond_page.py::test_respond_dialog_page_is_served_without_changing_original_demo -q`
+  failed because `realtimeSubtitleText` was not present.
+- GREEN:
+  same focused test passed, 1 passed, 1 warning.
+
 ## 2026-06-15 Developer C Result Out-Game Feedback Exposure
 
 Developer C completed the pending C-owned response-surface work requested by
@@ -41,6 +174,7 @@ Verification:
 Developer B는 코드의 가독성 및 신규 진입 개발자의 진입 장벽을 낮추기 위해, Developer B 도메인 영역에 해당하는 모든 핵심 모듈 및 클래스, 메서드뿐만 아니라 **모든 내부 헬퍼 메서드 및 모듈 레벨 private 함수들**까지 한글 초보자용 docstring/주석을 추가했습니다.
 
 구현 및 수정 내용:
+
 - **에이전트 및 그래프 헬퍼 보강**: `backend/app/agents/agent_b` 폴더 내의 `__init__.py`, `english_level_hint_agent.py`, `feedback_hint_llm_client.py`, `policy_graph.py` 에 속한 모든 클래스, 주 메서드, 내부 헬퍼 함수에 한글 docstring 추가.
 - **서비스 및 판정 정책 보강**: `backend/app/services/service_b` 폴더 내의 모든 모듈(`__init__.py`, `developer_b_agent_run_logger.py`, `feedback_hint_generator.py`, `final_result_score_policy.py`, `flight_smalltalk_diagnostic_policy.py`, `focus_on_form_report_policy.py`, `level_adaptation_controller.py`, `openkb_feedback_writer.py`, `scenario_state_machine.py`, `tier_difficulty_controller.py`)에 정의된 클래스 및 private/public 메서드 전원에 한글 docstring 및 동작 안내 주석 추가.
 - **교차 검증 완료**: `uv run pytest`로 231개 전체 테스트 성공 통과를 확인하였고, `uv run ruff check .` 및 `uv run mypy .`를 에러 없이 완료했습니다.
@@ -157,7 +291,7 @@ Changed:
   generate BAG_006 dialogue about the same item Unreal revealed.
 - Normalized A-facing BAG NPC context in the C adapter:
   `BAG_001` through `BAG_004` use `BAGGAGE_STAFF /
-  baggage_service_staff`; `BAG_005` through `BAG_007` use
+baggage_service_staff`; `BAG_005` through `BAG_007` use
   `CUSTOMS_OFFICER / customs_officer`.
 - Extended deterministic Understanding fallback with slot/value keyword
   coverage for Alpha Flight small talk and Baggage/customs-hold slots. This is
@@ -301,7 +435,7 @@ Verification:
   PASS, 17 passed, 1 warning.
 - Live smoke with `backend/runtime/generated/stt_smoke_tour_16k_mono.wav`:
   PASS. The backend returned `final_transcript` from `provider =
-  "elevenlabs_relay"` with text `I'm here for tour- tourism.` and
+"elevenlabs_relay"` with text `I'm here for tour- tourism.` and
   `target_endpoint = "POST /api/game/ai/respond"`.
 - Debug AgentRun append: PASS. The realtime STT record ended with
   `status = "success"`, `final_provider = "elevenlabs_relay"`, token counts
