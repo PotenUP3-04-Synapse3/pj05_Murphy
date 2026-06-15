@@ -138,7 +138,7 @@ def test_level_design_dialogue_uses_npc_roster_profile(monkeypatch) -> None:
             "evaluation_summary": {"task_success": True, "clarity": 0.9},
             "level_hint": {"english_level": "beginner"},
             "in_game_feedback": {
-                "npc_recast_line_candidate": "You'll stay for five days. Where are you staying?"
+                "npc_recast_line_candidate": None
             },
             "branch": {"branch_type": "success"},
         },
@@ -159,7 +159,7 @@ def test_level_design_dialogue_ignores_developer_b_progression_control_fields() 
             "evaluation_summary": {"task_success": True, "clarity": 0.9},
             "level_hint": {"english_level": "beginner"},
             "in_game_feedback": {
-                "npc_recast_line_candidate": "Tourism. How long will you stay?",
+                "npc_recast_line_candidate": None,
                 "blocks_progression": True,
             },
             "dialogue_directive": {"do_not_generate_npc_text": True},
@@ -168,8 +168,8 @@ def test_level_design_dialogue_ignores_developer_b_progression_control_fields() 
         use_llm=False,
     )
 
-    assert result["npc_text"] == "Tourism. How long will you stay?"
-    assert result["fallback"] == {"used": False, "reason": None}
+    assert result["npc_text"] == "Okay. Please continue."
+    assert result["fallback"]["used"] is True
 
 
 def test_level_design_llm_dialogue_keeps_roster_speaker_and_animation(monkeypatch) -> None:
@@ -214,7 +214,7 @@ def test_level_design_llm_dialogue_keeps_roster_speaker_and_animation(monkeypatc
             "node_context": {"recommended_expression": "I will stay for five days."},
             "evaluation_summary": {"task_success": True, "clarity": 0.9},
             "level_hint": {"english_level": "beginner"},
-            "in_game_feedback": {"npc_recast_line_candidate": "You'll stay for five days."},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
             "branch": {"branch_type": "success"},
         },
         use_llm=True,
@@ -246,7 +246,7 @@ def test_level_design_llm_dialogue_uses_rule_fields_when_llm_omits_optional_sche
             "node_context": {"recommended_expression": "I'm here for tourism."},
             "evaluation_summary": {"task_success": True, "clarity": 0.9},
             "level_hint": {"english_level": "beginner"},
-            "in_game_feedback": {"npc_recast_line_candidate": "Tourism. How long will you stay?"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
             "branch": {"branch_type": "success"},
         },
         use_llm=True,
@@ -254,7 +254,7 @@ def test_level_design_llm_dialogue_uses_rule_fields_when_llm_omits_optional_sche
     )
 
     assert result["npc_text"] == "Tourism. How long will you stay?"
-    assert result["tone"] == "formal_supportive"
+    assert result["tone"] == "formal_neutral"
     assert result["feedback_kr"]
     assert result["llm"]["model_name"] == "google/gemma-4-26B-A4B-it"
 
@@ -333,14 +333,14 @@ def test_level_design_llm_dialogue_rejects_non_english_npc_text() -> None:
             "node_context": {"recommended_expression": "I'm here for tourism."},
             "evaluation_summary": {"task_success": 0, "clarity": 1},
             "level_hint": {"english_level": "beginner"},
-            "in_game_feedback": {"npc_recast_line_candidate": "Please answer the question."},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
             "branch": {"branch_type": "clarify"},
         },
         use_llm=True,
         llm_client=NonEnglishLLMClient(),
     )
 
-    assert result["npc_text"] == "Please answer the question."
+    assert result["npc_text"] == "Okay. Please continue."
     assert result["tts_text"].isascii()
     assert result["llm"]["used"] is False
     assert result["llm"]["fallback_used"] is True

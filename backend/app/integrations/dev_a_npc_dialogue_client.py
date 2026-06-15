@@ -74,13 +74,9 @@ class DevANpcDialogueClient:
         branch = policy.branch.model_dump()
         dialogue_directive = policy.dialogue_directive.model_dump() if policy.dialogue_directive else {}
 
-        candidate_text = (
-            self._llm_candidate_text(payload) if self.use_llm_dialogue else self._candidate_text(payload)
-        )
-        if candidate_text:
-            feedback["npc_recast_line_candidate"] = candidate_text
+        # 2026-06-15 리팩토링: B-side NPC Wording 제거 사양에 맞추어 candidate_text는 더 이상 A에 전송하지 않습니다.
+        feedback["npc_recast_line_candidate"] = None
         if self.use_llm_dialogue:
-            feedback["npc_recast_line_candidate"] = candidate_text or None
             feedback["recommended_expression"] = None
             level_hint["recommended_expression"] = None
             node_context["recommended_expression"] = None

@@ -178,34 +178,18 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
     
     candidate_text = str(normalized.get("candidate_text", "")).strip()
     
-    # 개발자 B로부터 전달받은 대사 후보군(Candidate Text)이 없거나 차단된 경우, 안전하게 폴백(Fallback) 대사를 생성합니다.
-    if not candidate_text:
-        result = _apply_npc_profile(build_text_fallback(normalized), npc_profile)
-    else:
-        # 추천 표현 및 피드백 정보를 추출하고 다듬습니다.
-        recommended = str(normalized.get("recommended_expression", "")).strip()
-        feedback_note = str(normalized.get("feedback_note", "")).strip()
-        feedback_kr = _level_design_feedback(feedback_note, recommended)
-        
-        # 생성 정책(Policy)에 따라 대사의 아웃라인을 다듬고 조립합니다.
-        npc_text = _compose_level_design_text(
-            candidate_text=candidate_text,
-            recommended_expression=recommended,
-            policy=policy,
+    # 2026-06-15 리팩토링: 이제 Candidate Text는 사용되지 않는 Deprecated 스펙입니다.
+    # 만약 입력 페이로드에 이 값이 존재한다면 명시적인 오류를 발생시키고 에러 로그를 남깁니다.
+    if candidate_text:
+        import logging
+        logger = logging.getLogger("backend.app.agents.agent_a")
+        logger.error(f"Deprecated 'candidate_text' (npc_recast_line_candidate) detected in payload: {candidate_text}")
+        raise ValueError(
+            f"Error: 'candidate_text' field is deprecated and forbidden in Agent A inputs. "
+            f"Detected value: '{candidate_text}'"
         )
-        # TTS 음성 합성이 좀 더 자연스럽게 발화되도록 텍스트(Text)에 쉼표 및 끊어읽기를 적용합니다.
-        tts_text = polish_tts_text(npc_text, profile, emotion_state, policy)
-
-        result = {
-            "speaker": npc_profile.display_name,
-            "npc_text": npc_text,
-            "text": npc_text,
-            "tts_text": tts_text,
-            "feedback_kr": feedback_kr,
-            "tone": policy.tone,
-            "animation": npc_profile.default_animation,
-            "fallback": {"used": False, "reason": None},
-        }
+    
+    result = _apply_npc_profile(build_text_fallback(normalized), npc_profile)
         
     # 생성 이력 추적용 메타데이터(Metadata)를 결과 사전(Dictionary)에 병합합니다.
     result = _with_generation_metadata(result, profile, emotion_state, policy)
