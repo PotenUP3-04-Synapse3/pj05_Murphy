@@ -332,6 +332,14 @@ Developer B keeps the report builder as a directly tested B-owned service.
 Developer C can continue returning the existing final result payload until the
 response surface is ready.
 
+### Developer C Update - 2026-06-15
+
+Implemented. `GET /api/game/ai/result/{session_id}` now returns additive
+`out_game_feedback` learning metadata from B-owned
+`FocusOnFormReportPolicy.build_session_report(session_id)` through the C-owned
+`DevBPolicyClient` adapter. The field is optional response metadata and does
+not affect branch, verdict, next node, state delta, or numeric score authority.
+
 ## Change Request - 2026-06-09 - Support Alpha Scene Flow Beyond Immigration
 
 Status: Open.

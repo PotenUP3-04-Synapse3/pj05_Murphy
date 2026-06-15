@@ -544,20 +544,26 @@ Implemented pre-prototype final score bridge:
 
 ```text
 DevBPolicyClient.final_result_for_session(session_id) -> FinalResult
+DevBPolicyClient.out_game_feedback_for_session(session_id) -> dict
 ```
 
 Rules:
 
 - Developer B owns `FinalResultScorePolicy` and the numeric scoring policy.
+- Developer B owns `FocusOnFormReportPolicy` and the out-game Focus-on-Form
+  learning-card payload shape.
 - Developer C may read B-owned runtime records through the Developer B adapter
   and may not mutate records under `backend/runtime/openkb/dev_b/`.
 - Final-branch `evaluate_turn(...)` may attach `DevBPolicyOutput.final_result`
   only for the Alpha final scoreboard node `ALPHA_999_FINAL_SCOREBOARD`.
   `IMM_007_FINAL_DECISION` is treated as an immigration-to-baggage transition.
 - `GET /api/game/ai/result/{session_id}` returns
-  `dev_c_unreal_result.v1` with the validated B `final_result`.
+  `dev_c_unreal_result.v1` with the validated B `final_result` and optional
+  B-owned `out_game_feedback` learning metadata.
 - `/api/game/ai/respond` includes the same object under
   `report.final_result` when B returns it on a final branch.
+- `out_game_feedback` is not branch, verdict, next-node, state-delta, or score
+  authority. Unreal should render it as final learning-card UI only.
 
 Developer B owns:
 

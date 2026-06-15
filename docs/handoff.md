@@ -1,5 +1,53 @@
 # Handoff
 
+## 2026-06-15 Developer C Result Out-Game Feedback Exposure
+
+Developer C completed the pending C-owned response-surface work requested by
+Developer B for Focus-on-Form out-game feedback.
+
+Changed:
+
+- Added optional `out_game_feedback` to `UnrealResultResponse`.
+- Added `DevBPolicyClient.out_game_feedback_for_session(session_id)`, which
+  calls B-owned `FocusOnFormReportPolicy.build_session_report(session_id)`.
+- Updated `GET /api/game/ai/result/{session_id}` to return both B
+  `final_result` and B `out_game_feedback` learning metadata.
+- Documented the additive field in C schema and adapter contracts.
+- Marked the relevant change request as implemented.
+
+Authority boundary:
+
+- `out_game_feedback` is final result UI learning-card metadata only.
+- It must not affect branch, verdict, next node, state delta, or numeric score
+  authority.
+
+Verification:
+
+- RED:
+  `uv run pytest backend/tests/test_final_result_payload.py::test_result_endpoint_returns_unreal_result_payload -q`
+  failed with `KeyError: 'out_game_feedback'` before implementation.
+- GREEN:
+  `uv run pytest backend/tests/test_final_result_payload.py::test_result_endpoint_returns_unreal_result_payload -q`
+  passed, 1 passed, 1 warning.
+- Focused regression:
+  `uv run pytest backend/tests/test_final_result_payload.py backend/tests/dev_b/test_focus_on_form_report_policy.py -q`
+  passed, 13 passed, 1 warning.
+- Changed-file lint:
+  `uv run ruff check backend/app/api/ai_respond.py backend/app/integrations/dev_b_level_hint_client.py backend/app/schemas/game_turn.py backend/tests/test_final_result_payload.py`
+  passed.
+- `uv run mypy .` passed, no issues in 108 source files.
+
+Current whole-repo verification caveat after the latest pulled A/B work:
+
+- `uv run pytest` currently fails 2 pre-existing integration assertions in
+  `backend/tests/test_preprototype_flow.py` where the C-owned tests still
+  expect A to return next-question seed text, while the pulled A/C adapter path
+  now returns `"Okay."`.
+- `uv run ruff check .` currently fails on A-owned
+  `backend/app/agents/agent_a/npc_dialogue_agent.py` because
+  `polish_tts_text` is imported but unused.
+- Developer C did not edit A-owned implementation files for these caveats.
+
 ## 2026-06-15 Developer B Docstring Update: Add Comprehensive Korean Docstrings to B-owned Core Components and Helper Functions
 
 Developer B는 코드의 가독성 및 신규 진입 개발자의 진입 장벽을 낮추기 위해, Developer B 도메인 영역에 해당하는 모든 핵심 모듈 및 클래스, 메서드뿐만 아니라 **모든 내부 헬퍼 메서드 및 모듈 레벨 private 함수들**까지 한글 초보자용 docstring/주석을 추가했습니다.

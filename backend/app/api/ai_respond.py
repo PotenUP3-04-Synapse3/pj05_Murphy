@@ -262,10 +262,12 @@ def _chapter_id_for_demo_node(node_id: str) -> str:
 
 @router.get("/result/{session_id}", response_model=UnrealResultResponse)
 def result(session_id: str) -> UnrealResultResponse:
+    dev_b_client = DevBPolicyClient()
     response = UnrealResultResponse(
         contract_version="dev_c_unreal_result.v1",
         session_id=session_id,
-        final_result=DevBPolicyClient().final_result_for_session(session_id),
+        final_result=dev_b_client.final_result_for_session(session_id),
+        out_game_feedback=dev_b_client.out_game_feedback_for_session(session_id),
     )
     Validator().validate_unreal_result_response(response)
     return response

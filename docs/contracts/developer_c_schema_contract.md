@@ -946,6 +946,10 @@ Rules:
   to Unreal.
 - On final-branch responses, `report.final_result` may include Developer B's
   validated final score payload. Developer C does not calculate the score.
+- On the dedicated result endpoint, `out_game_feedback` may include Developer
+  B's Focus-on-Form learning-card payload. Developer C treats this object as
+  additive learning metadata only; it must not affect branch, verdict, score,
+  next node, or state delta authority.
 
 Dedicated result UI endpoint:
 
@@ -981,6 +985,28 @@ Response envelope:
       "main_improvement": "Keep answers concise and polite.",
       "focus_on_form_targets": [],
       "included_node_count": 6
+    }
+  },
+  "out_game_feedback": {
+    "report_mode": "focus_on_form",
+    "overall_summary_kr": "이번 플레이에서 반복된 영어 표현 이슈를 복습해 보세요.",
+    "focus_on_form_items": [
+      {
+        "focus_on_form_target": "purpose_statement",
+        "title_kr": "방문 목적 말하기",
+        "rule_summary_kr": "입국 목적은 짧고 명확한 문장으로 말합니다.",
+        "original_utterances": ["Tour."],
+        "suggested_expressions": ["I'm here for tourism."],
+        "practice_prompt_kr": "입국 목적을 한 문장으로 말해보세요.",
+        "answer_example": "I'm here for tourism.",
+        "priority": "high",
+        "source_node_ids": ["IMM_002_PURPOSE"]
+      }
+    ],
+    "personalized_next_step": {
+      "target": "purpose_statement",
+      "practice_prompt_kr": "입국 목적을 다시 말해보세요.",
+      "answer_example": "I'm here for tourism."
     }
   }
 }
@@ -1022,6 +1048,8 @@ Developer C validator must enforce at least these rules:
     baggage claim, not an Alpha final-result trigger.
 20. Developer C may expose `final_result` inside `/respond` on final branches
     and through `GET /api/game/ai/result/{session_id}`.
-21. Realtime STT WebSocket events must use `dev_c_realtime_stt.v1`, start with
+21. Developer C may expose B-owned `out_game_feedback` through
+    `GET /api/game/ai/result/{session_id}` as learning metadata only.
+22. Realtime STT WebSocket events must use `dev_c_realtime_stt.v1`, start with
     `session_start`, keep monotonically increasing `sequence`, and never route
     partial transcript events into Developer B, Developer A, or TTS.

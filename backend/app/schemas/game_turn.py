@@ -11,7 +11,7 @@ they are allowed to exchange.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -753,3 +753,4 @@ class UnrealResultResponse(BaseModel):
     contract_version: Literal["dev_c_unreal_result.v1"]
     session_id: str
     final_result: FinalResult
+    out_game_feedback: dict[str, Any] | None = None
