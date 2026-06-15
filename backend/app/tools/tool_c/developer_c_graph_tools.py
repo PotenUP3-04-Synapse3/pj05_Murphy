@@ -10,9 +10,13 @@ files.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Mapping
+
+from langchain_core.tools import StructuredTool
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.app.agents.agent_c.understanding_agent import UnderstandingAgent
 from backend.app.integrations.dev_a_npc_dialogue_client import DevANpcDialogueClient
@@ -41,7 +45,7 @@ from backend.app.services.service_c.validator import Validator
 
 
 DEVELOPER_C_GRAPH_NAME = "developer_c_turn_graph"
-DEVELOPER_C_GRAPH_TOOL_STYLE = "developer_c_graph_tools"
+DEVELOPER_C_GRAPH_TOOL_STYLE = "langchain_structured_tools"
 DEVELOPER_C_GRAPH_NODE_NAMES = (
     "start_agent_run",
     "transcribe_audio",
@@ -55,6 +59,40 @@ DEVELOPER_C_GRAPH_NODE_NAMES = (
     "validate_unreal_response",
     "finish_agent_run",
 )
+DEVELOPER_C_STRUCTURED_TOOL_NAMES = tuple(
+    f"developer_c_{node_name}" for node_name in DEVELOPER_C_GRAPH_NODE_NAMES
+)
+DEVELOPER_C_GRAPH_TOOL_METHOD_NAMES = {
+    "start_agent_run": "start_agent_run_tool",
+    "transcribe_audio": "transcribe_audio_tool",
+    "load_node_context": "load_node_context_tool",
+    "understand_player_text": "understand_player_text_tool",
+    "evaluate_dev_b_policy": "evaluate_dev_b_policy_tool",
+    "validate_dev_b_policy": "validate_dev_b_policy_tool",
+    "record_error_capture": "record_error_capture_tool",
+    "generate_dev_a_dialogue": "generate_dev_a_dialogue_tool",
+    "build_unreal_response": "build_unreal_response_tool",
+    "validate_unreal_response": "validate_unreal_response_tool",
+    "finish_agent_run": "finish_agent_run_tool",
+}
+
+
+class DeveloperCStructuredToolInput(BaseModel):
+    """Input model shared by every Developer C LangChain tool wrapper.
+
+    Beginner guide:
+    LangGraph passes a single state dictionary from node to node.  LangChain
+    `StructuredTool` expects a named input schema, so every C graph tool accepts
+    one field named `state`.  The state can contain Pydantic models, services,
+    and plain dictionaries because it is an internal backend object rather than
+    a public JSON payload.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    state: dict[str, Any] = Field(
+        description="Current Developer C LangGraph state for one backend turn."
+    )
 
 
 class DeveloperCGraphTools:
@@ -92,6 +130,84 @@ class DeveloperCGraphTools:
         self.validator = validator or Validator()
         self.agent_run_middleware = agent_run_middleware or DeveloperCAgentRunMiddleware(agent_run_root)
         self.active_agent_run: dict[str, Any] | None = None
+        self.structured_tools: dict[str, StructuredTool] = self._build_structured_tools()
+
+    def _build_structured_tools(self) -> dict[str, StructuredTool]:
+        """Wrap every C graph tool method as a LangChain `StructuredTool`.
+
+        Beginner guide:
+        The existing `*_tool()` methods already contain the real work.  This
+        method does not change their behavior; it creates LangChain-compatible
+        wrappers around them.  That means the current graph can call tools via
+        `.invoke(...)`, and a future LangGraph `ToolNode` can receive the same
+        tool objects without C rewriting the business logic again.
+        """
+
+        return {
+            node_name: StructuredTool.from_function(
+                name=f"developer_c_{node_name}",
+                description=_structured_tool_description(node_name),
+                func=self._make_structured_tool_runner(node_name, method_name),
+                args_schema=DeveloperCStructuredToolInput,
+            )
+            for node_name, method_name in DEVELOPER_C_GRAPH_TOOL_METHOD_NAMES.items()
+        }
+
+    def _make_structured_tool_runner(
+        self,
+        node_name: str,
+        method_name: str,
+    ) -> Callable[[dict[str, Any]], dict[str, Any]]:
+        """Create the callable used inside one `StructuredTool`.
+
+        Beginner guide:
+        LangChain calls this returned function with a validated `state`
+        argument.  The function then forwards that state to the matching
+        Developer C `*_tool()` method.  Keeping this tiny adapter separate makes
+        the graph-tool boundary visible without duplicating any orchestration
+        logic.
+        """
+
+        def run_structured_tool(state: dict[str, Any]) -> dict[str, Any]:
+            result = getattr(self, method_name)(state)
+            if not isinstance(result, dict):
+                raise RuntimeError(f"Developer C structured tool returned a non-dict result: {node_name}")
+            return result
+
+        run_structured_tool.__name__ = f"run_{node_name}_structured_tool"
+        run_structured_tool.__doc__ = _structured_tool_description(node_name)
+        return run_structured_tool
+
+    def invoke_structured_tool(self, node_name: str, state: Mapping[str, Any]) -> dict[str, Any]:
+        """Invoke one C graph step through its LangChain `StructuredTool`.
+
+        Beginner guide:
+        Graph nodes call this method instead of directly calling
+        `start_agent_run_tool()` or `transcribe_audio_tool()`.  The method keeps
+        the graph readable while proving every step can run through LangChain's
+        standard `.invoke(...)` tool API.
+        """
+
+        structured_tool = self.structured_tools.get(node_name)
+        if structured_tool is None:
+            raise RuntimeError(f"Unknown Developer C structured tool: {node_name}")
+
+        result = structured_tool.invoke({"state": dict(state)})
+        if not isinstance(result, dict):
+            raise RuntimeError(f"Developer C structured tool returned a non-dict result: {node_name}")
+        return result
+
+    def as_tool_node_tools(self) -> list[StructuredTool]:
+        """Return C tools in graph order for future LangGraph `ToolNode` use.
+
+        Beginner guide:
+        `ToolNode` accepts a list of LangChain tool objects.  The current C
+        graph uses explicit state nodes because its state is richer than a chat
+        message tool-call loop, but this ordered list keeps the tools ready for
+        a future ToolNode/subgraph migration.
+        """
+
+        return [self.structured_tools[node_name] for node_name in DEVELOPER_C_GRAPH_NODE_NAMES]
 
     def start_agent_run_tool(self, state: Mapping[str, Any]) -> dict[str, Any]:
         """Create the C AgentRun record before the first runtime tool call.
@@ -543,7 +659,17 @@ def _attach_langgraph_runtime_metadata(agent_run: dict[str, Any]) -> None:
         "graph_name": DEVELOPER_C_GRAPH_NAME,
         "tool_style": DEVELOPER_C_GRAPH_TOOL_STYLE,
         "graph_nodes": list(DEVELOPER_C_GRAPH_NODE_NAMES),
+        "structured_tool_names": list(DEVELOPER_C_STRUCTURED_TOOL_NAMES),
     }
+
+
+def _structured_tool_description(node_name: str) -> str:
+    """Return a beginner-readable description for one StructuredTool wrapper."""
+
+    return (
+        "Run the Developer C LangGraph step "
+        f"`{node_name}` with the current backend turn state and return state updates."
+    )
 
 
 def _require_state_value(state: Mapping[str, Any], key: str, expected_type: type[Any]) -> Any:

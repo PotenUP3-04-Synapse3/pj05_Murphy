@@ -23,10 +23,11 @@ safe runtime modes.
 | --- | --- | --- |
 | LG-0 Contract alignment | Done | C graph keeps B branch authority and C validation ownership. |
 | LG-1 State and graph.py | Done | `DeveloperCTurnState` carries request, tool object, intermediate outputs, transition, response, and timing. |
-| LG-2 tool_c graph tools | Done | STT, OpenKB, Understanding, B adapter, validation, logging, A adapter, response build, and final validation run through C tool wrappers. |
+| LG-2 tool_c graph tools | Done | STT, OpenKB, Understanding, B adapter, validation, logging, A adapter, response build, and final validation run through C tool wrappers. Each wrapper is now exposed as a LangChain `StructuredTool`. |
 | LG-3 Orchestrator replacement | Done | The procedural `run_turn()` body was removed; `run_turn()` now invokes LangGraph. |
 | LG-4 Alpha transition alignment | Done | C tests and flow metadata now follow current B transition nodes such as `IMM_999_CLEARED` and `BAG_001_REPORT_MISSING_AT_DESK`. |
-| LG-5 A/B follow-up | Open | A/B may later refactor their own internals into LangGraph without changing C adapter calls. |
+| LG-5 StructuredTool compatibility | Done | `DeveloperCGraphTools` exposes `structured_tools`, invokes nodes through `.invoke(...)`, and provides `as_tool_node_tools()` for future LangGraph `ToolNode` mounting. |
+| LG-6 A/B follow-up | Open | A/B may later refactor their own internals into LangGraph without changing C adapter calls. |
 
 ## Current Graph Nodes
 

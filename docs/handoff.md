@@ -346,6 +346,40 @@ Verification for this update:
 - `uv run mypy .`: PASS, no issues in 101 source files.
 - `git diff --check`: PASS with Git's normal CRLF working-copy warnings only.
 
+## 2026-06-15 Developer C StructuredTool Wrapper Update
+
+Developer C wrapped every C-owned LangGraph `*_tool()` step in
+LangChain-compatible `StructuredTool` objects while preserving the existing
+linear `StateGraph` turn flow and A/B adapter boundaries.
+
+Implemented:
+
+- Added `DeveloperCStructuredToolInput` in
+  `backend/app/tools/tool_c/developer_c_graph_tools.py` so each C graph tool
+  accepts the current turn `state` through a standard LangChain tool schema.
+- Exposed node-name keyed `structured_tools` on `DeveloperCGraphTools`.
+- Added `invoke_structured_tool()` and changed each node function in
+  `backend/app/graphs/graph.py` to execute via `StructuredTool.invoke(...)`.
+- Added `as_tool_node_tools()` to return the ordered tool list for a future
+  LangGraph `ToolNode` or subgraph migration. The current C graph still uses
+  explicit state nodes because the C turn state is richer than a chat
+  message/tool-call loop.
+- Updated AgentRun runtime metadata so Developer C records now include
+  `tool_style = "langchain_structured_tools"` and the
+  `structured_tool_names` list.
+- Added regression coverage in
+  `backend/tests/test_developer_c_langgraph_orchestrator.py` proving the tools
+  are real `StructuredTool` instances and that graph execution passes through
+  `invoke_structured_tool()`.
+
+Verification for this update:
+
+- `uv run pytest`: PASS, 238 passed, 1 warning.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 106 source files.
+- `uv run python -c "from langgraph.prebuilt import ToolNode; from backend.app.tools.tool_c.developer_c_graph_tools import DeveloperCGraphTools; tools = DeveloperCGraphTools(); node = ToolNode(tools.as_tool_node_tools()); print(type(node).__name__, len(tools.as_tool_node_tools()))"`:
+  PASS, printed `ToolNode 11`.
+
 ## 2026-06-12 Developer C Alpha 3E Follow-up
 
 Developer C updated the realtime STT path to match the recommended Alpha

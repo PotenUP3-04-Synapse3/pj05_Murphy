@@ -60,8 +60,52 @@ def test_developer_c_graph_exposes_beginner_readable_state_and_compiled_langgrap
     }
 
 
-def test_orchestrator_runs_turn_through_langgraph_tools_and_records_graph_metadata(tmp_path) -> None:
+def test_developer_c_graph_tools_are_exposed_as_langchain_structured_tools() -> None:
+    from langchain_core.tools import StructuredTool
+
+    from backend.app.graphs.graph import DEVELOPER_C_GRAPH_NODE_NAMES, build_initial_developer_c_state
     from backend.app.tools.tool_c.developer_c_graph_tools import DeveloperCGraphTools
+
+    tools = DeveloperCGraphTools()
+    state = build_initial_developer_c_state(
+        request=_preprototype_request(),
+        tools=tools,
+    )
+
+    assert set(tools.structured_tools) == set(DEVELOPER_C_GRAPH_NODE_NAMES)
+    for node_name in DEVELOPER_C_GRAPH_NODE_NAMES:
+        structured_tool = tools.structured_tools[node_name]
+        assert isinstance(structured_tool, StructuredTool)
+        assert structured_tool.name == f"developer_c_{node_name}"
+    assert [tool.name for tool in tools.as_tool_node_tools()] == [
+        f"developer_c_{node_name}" for node_name in DEVELOPER_C_GRAPH_NODE_NAMES
+    ]
+
+    start_result = tools.invoke_structured_tool("start_agent_run", state)
+
+    assert "agent_run" in start_result
+    assert start_result["agent_run"]["metadata"]["runtime"]["tool_style"] == "langchain_structured_tools"
+
+
+def test_orchestrator_runs_turn_through_structured_tool_wrappers_and_records_graph_metadata(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.app.graphs.graph import DEVELOPER_C_GRAPH_NODE_NAMES
+    from backend.app.tools.tool_c.developer_c_graph_tools import DeveloperCGraphTools
+
+    invoked_node_names: list[str] = []
+    original_invoke = DeveloperCGraphTools.invoke_structured_tool
+
+    def invoke_spy(
+        self: DeveloperCGraphTools,
+        node_name: str,
+        state: dict,
+    ) -> dict:
+        invoked_node_names.append(node_name)
+        return original_invoke(self, node_name, state)
+
+    monkeypatch.setattr(DeveloperCGraphTools, "invoke_structured_tool", invoke_spy)
 
     orchestrator = Orchestrator(agent_run_root=tmp_path)
 
@@ -75,9 +119,10 @@ def test_orchestrator_runs_turn_through_langgraph_tools_and_records_graph_metada
 
     assert isinstance(orchestrator.graph_tools, DeveloperCGraphTools)
     assert response.next_node_id == "IMM_003_DURATION"
+    assert invoked_node_names == list(DEVELOPER_C_GRAPH_NODE_NAMES)
     assert developer_c_record["metadata"]["runtime"]["orchestrator"] == "langgraph"
     assert developer_c_record["metadata"]["runtime"]["graph_name"] == "developer_c_turn_graph"
-    assert developer_c_record["metadata"]["runtime"]["tool_style"] == "developer_c_graph_tools"
+    assert developer_c_record["metadata"]["runtime"]["tool_style"] == "langchain_structured_tools"
     assert developer_c_record["metadata"]["runtime"]["graph_nodes"] == [
         "start_agent_run",
         "transcribe_audio",
@@ -90,6 +135,19 @@ def test_orchestrator_runs_turn_through_langgraph_tools_and_records_graph_metada
         "build_unreal_response",
         "validate_unreal_response",
         "finish_agent_run",
+    ]
+    assert developer_c_record["metadata"]["runtime"]["structured_tool_names"] == [
+        "developer_c_start_agent_run",
+        "developer_c_transcribe_audio",
+        "developer_c_load_node_context",
+        "developer_c_understand_player_text",
+        "developer_c_evaluate_dev_b_policy",
+        "developer_c_validate_dev_b_policy",
+        "developer_c_record_error_capture",
+        "developer_c_generate_dev_a_dialogue",
+        "developer_c_build_unreal_response",
+        "developer_c_validate_unreal_response",
+        "developer_c_finish_agent_run",
     ]
 
 
