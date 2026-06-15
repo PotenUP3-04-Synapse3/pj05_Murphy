@@ -1,78 +1,10 @@
 from backend.app.agents.agent_a.npc_dialogue_agent import (
-    NPCDialogueInput,
     NPCDialogueResult,
-    generate_npc_dialogue,
     generate_npc_dialogue_from_level_design,
 )
 from backend.app.services.service_a.npc_roster_service import NPCProfile
 from backend.app.services.service_a.tts_service import TTSRequest, synthesize_speech
 from backend.app.services.service_a.voice_output_service import build_voice_output
-
-
-def test_generate_success_response_uses_officer_miller_style_and_feedback() -> None:
-    payload = NPCDialogueInput(
-        player_text="Travel. Trouble no.",
-        node_context={
-            "node_id": "IMM_002_PURPOSE",
-            "npc_question": "What is the purpose of your visit?",
-        },
-        understanding={
-            "intent": "visit_purpose_travel",
-            "intent_success": True,
-            "emotion": "nervous_humor",
-            "konglish_detected": True,
-        },
-        level_hint={
-            "english_level": "beginner",
-            "recommended_expression": "I'm here for travel.",
-        },
-        branch={
-            "branch_type": "success",
-            "next_node_id": "IMM_003_DURATION",
-        },
-    )
-
-    result = generate_npc_dialogue(payload)
-
-    assert result == NPCDialogueResult(
-        speaker="Hale",
-        text="Travel. Okay. How long will you stay?",
-        tone="formal_neutral",
-        animation="move",
-        feedback_kr="좋아요. 더 자연스럽게는: I'm here for travel.",
-    )
-
-
-def test_generate_retry_response_stays_brief_formal_and_kind() -> None:
-    payload = NPCDialogueInput(
-        player_text="Me no remember hotel.",
-        node_context={
-            "node_id": "IMM_004_ADDRESS",
-            "npc_question": "Where will you stay in the United States?",
-        },
-        understanding={
-            "intent": "unknown_address",
-            "intent_success": False,
-            "emotion": "panic",
-            "konglish_detected": True,
-        },
-        level_hint={
-            "english_level": "beginner",
-            "recommended_expression": "I will stay at a hotel.",
-        },
-        branch={
-            "branch_type": "retry",
-            "next_node_id": "IMM_004_ADDRESS",
-        },
-    )
-
-    result = generate_npc_dialogue(payload)
-
-    assert result.speaker == "Hale"
-    assert result.text == "I need a clear answer. Where will you stay?"
-    assert result.tone == "formal_firm"
-    assert result.animation == "move"
-    assert result.feedback_kr == "괜찮아요. 짧게 이렇게 말해보세요: I will stay at a hotel."
 
 
 def test_synthesize_speech_returns_deterministic_mock_audio_metadata() -> None:

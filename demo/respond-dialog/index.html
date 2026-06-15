@@ -303,6 +303,41 @@
       overflow-wrap: anywhere;
     }
 
+    .realtime-subtitle-panel {
+      display: grid;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+      padding: 10px;
+    }
+
+    .realtime-subtitle-heading {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .realtime-subtitle-text {
+      min-height: 54px;
+      border-radius: 8px;
+      background: #101828;
+      color: #fff;
+      padding: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .realtime-subtitle-text.final {
+      background: #123f33;
+    }
+
     .metric-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -506,6 +541,14 @@
             <button class="secondary" id="quickUseRecordingButton" type="button" disabled>Send Recording</button>
           </div>
           <div class="recording-meta" id="quickRecordingStatus">No recording</div>
+          <div class="realtime-subtitle-panel">
+            <div class="realtime-subtitle-heading">
+              <span>Realtime STT Subtitles</span>
+              <span id="realtimeSubtitleStatus">Idle</span>
+            </div>
+            <div class="realtime-subtitle-text" id="realtimeSubtitleText">-</div>
+            <div class="recording-meta" id="realtimeFinalTranscript">Final transcript: -</div>
+          </div>
         </div>
         <button class="primary" id="continueButton" type="button">Continue</button>
       </section>
@@ -631,6 +674,9 @@
       quickStopRecordButton: document.getElementById("quickStopRecordButton"),
       quickUseRecordingButton: document.getElementById("quickUseRecordingButton"),
       quickRecordingStatus: document.getElementById("quickRecordingStatus"),
+      realtimeSubtitleStatus: document.getElementById("realtimeSubtitleStatus"),
+      realtimeSubtitleText: document.getElementById("realtimeSubtitleText"),
+      realtimeFinalTranscript: document.getElementById("realtimeFinalTranscript"),
       continueButton: document.getElementById("continueButton"),
       runtimeStatus: document.getElementById("runtimeStatus"),
       runtimeStatusText: document.getElementById("runtimeStatusText"),
@@ -658,6 +704,14 @@
       quickRecordingDurationMs: null,
       quickRecordingSampleRate: null,
       quickRecordingTimer: null,
+      realtimeWs: null,
+      realtimeSession: null,
+      realtimeSequence: 0,
+      realtimePendingSamples: [],
+      realtimePendingSampleCount: 0,
+      realtimeTargetSampleRate: 16000,
+      realtimeFinalTranscript: null,
+      realtimeSubmitting: false,
       selectedChapterId: defaultChapterId
     };
 
@@ -759,6 +813,28 @@
       refs.quickRecordingStatus.textContent = text;
     }
 
+    function setRealtimeSubtitleStatus(text) {
+      refs.realtimeSubtitleStatus.textContent = text;
+    }
+
+    function setRealtimeSubtitle(text, isFinal) {
+      refs.realtimeSubtitleText.textContent = text || "-";
+      refs.realtimeSubtitleText.classList.toggle("final", Boolean(isFinal));
+      if (isFinal) {
+        refs.realtimeFinalTranscript.textContent = "Final transcript: " + (text || "-");
+      }
+    }
+
+    function resetRealtimeSubtitle() {
+      dialogState.realtimeFinalTranscript = null;
+      dialogState.realtimeSequence = 0;
+      dialogState.realtimePendingSamples = [];
+      dialogState.realtimePendingSampleCount = 0;
+      setRealtimeSubtitleStatus("Idle");
+      setRealtimeSubtitle("-", false);
+      refs.realtimeFinalTranscript.textContent = "Final transcript: -";
+    }
+
     function clearTiming() {
       refs.elapsedTotal.textContent = "-";
       refs.httpStatus.textContent = "-";
@@ -829,10 +905,12 @@
         const source = audioContext.createMediaStreamSource(stream);
         const processor = audioContext.createScriptProcessor(4096, 1, 1);
         const chunks = [];
+        await startRealtimeSttSession(audioContext.sampleRate);
 
         processor.onaudioprocess = (event) => {
           const input = event.inputBuffer.getChannelData(0);
           chunks.push(new Float32Array(input));
+          queueRealtimeSamples(input, audioContext.sampleRate);
           event.outputBuffer.getChannelData(0).fill(0);
         };
 
@@ -870,7 +948,7 @@
       setRecordingStatus("Recording " + elapsedSeconds.toFixed(1) + " s");
     }
 
-    function stopQuickRecording() {
+    async function stopQuickRecording() {
       const recording = dialogState.quickRecording;
       if (!recording) {
         return;
@@ -905,10 +983,13 @@
       setRecordingStatus("Recorded " + formatDuration(durationMs) + " as " + fileName);
       setStatus("Ready", "");
       updateRecordingControls();
+      await commitRealtimeSttSession(recording);
     }
 
     function clearQuickRecordingFile() {
       discardActiveRecording();
+      closeRealtimeSttSocket(false);
+      resetRealtimeSubtitle();
       dialogState.quickRecordingFile = null;
       dialogState.quickRecordingDurationMs = null;
       dialogState.quickRecordingSampleRate = null;
@@ -933,11 +1014,279 @@
     }
 
     async function uploadQuickRecording() {
+      if (dialogState.realtimeFinalTranscript) {
+        await submitFinalRealtimeTranscript(refs.quickUseRecordingButton);
+        return;
+      }
       if (!dialogState.quickRecordingFile) {
         setStatus("Record First", "warning");
         return;
       }
       await submitAudio(dialogState.quickRecordingFile, refs.quickUseRecordingButton);
+    }
+
+    function realtimeWebSocketUrl() {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      return protocol + "//" + window.location.host + "/api/game/ai/stt/stream";
+    }
+
+    async function startRealtimeSttSession(sourceSampleRate) {
+      closeRealtimeSttSocket(false);
+      resetRealtimeSubtitle();
+
+      let turn;
+      try {
+        turn = parseTurn();
+      } catch {
+        setRealtimeSubtitleStatus("JSON unavailable");
+        return;
+      }
+
+      turn.request_id = makeRequestId(turn);
+      writeTurn(turn);
+      dialogState.realtimeSession = {
+        requestId: turn.request_id,
+        sessionId: turn.session.session_id,
+        turnIndex: Number(turn.session.turn_index || 0),
+        chapterId: turn.session.chapter_id,
+        sceneId: turn.session.scene_id,
+        currentNodeId: turn.session.current_node_id,
+        languageHint: turn.audio?.language_hint || "en-US",
+        sourceSampleRate
+      };
+
+      if (typeof WebSocket !== "function") {
+        setRealtimeSubtitleStatus("WebSocket unavailable");
+        return;
+      }
+
+      setRealtimeSubtitleStatus("Connecting");
+      await new Promise((resolve) => {
+        const websocket = new WebSocket(realtimeWebSocketUrl());
+        let settled = false;
+        const settle = () => {
+          if (!settled) {
+            settled = true;
+            resolve();
+          }
+        };
+        dialogState.realtimeWs = websocket;
+
+        websocket.addEventListener("open", () => {
+          setRealtimeSubtitleStatus("Streaming");
+          websocket.send(JSON.stringify({
+            "contract_version": "dev_c_realtime_stt.v1",
+            "event_type": "session_start",
+            "request_id": dialogState.realtimeSession.requestId,
+            "session_id": dialogState.realtimeSession.sessionId,
+            "turn_index": dialogState.realtimeSession.turnIndex,
+            "sequence": dialogState.realtimeSequence,
+            "chapter_id": dialogState.realtimeSession.chapterId,
+            "scene_id": dialogState.realtimeSession.sceneId,
+            "current_node_id": dialogState.realtimeSession.currentNodeId,
+            "provider": "elevenlabs_relay",
+            "language_hint": dialogState.realtimeSession.languageHint,
+            "sample_rate_hz": dialogState.realtimeTargetSampleRate
+          }));
+          settle();
+        });
+
+        websocket.addEventListener("message", (message) => {
+          handleRealtimeSttEvent(message).catch((error) => {
+            setRealtimeSubtitleStatus("Submit failed");
+            refs.rawJson.textContent = String(error);
+          });
+        });
+
+        websocket.addEventListener("error", () => {
+          setRealtimeSubtitleStatus("WebSocket error");
+          settle();
+        });
+
+        websocket.addEventListener("close", () => {
+          if (dialogState.realtimeWs === websocket) {
+            dialogState.realtimeWs = null;
+          }
+          settle();
+        });
+      });
+    }
+
+    function queueRealtimeSamples(input, sourceSampleRate) {
+      if (!isRealtimeSttOpen()) {
+        return;
+      }
+
+      const copy = new Float32Array(input);
+      dialogState.realtimePendingSamples.push(copy);
+      dialogState.realtimePendingSampleCount += copy.length;
+
+      const chunkSampleCount = Math.max(1, Math.round(sourceSampleRate * 0.25));
+      while (dialogState.realtimePendingSampleCount >= chunkSampleCount) {
+        const samples = consumeRealtimePendingSamples(chunkSampleCount);
+        sendRealtimeAudioChunk(samples, sourceSampleRate, false);
+      }
+    }
+
+    async function commitRealtimeSttSession(recording) {
+      if (!isRealtimeSttOpen()) {
+        return;
+      }
+
+      const pendingCount = dialogState.realtimePendingSampleCount;
+      let samples = consumeRealtimePendingSamples(pendingCount);
+      if (!samples.length && recording.chunks.length) {
+        samples = recording.chunks[recording.chunks.length - 1];
+      }
+      if (!samples.length) {
+        samples = new Float32Array([0]);
+      }
+
+      sendRealtimeAudioChunk(samples, recording.sampleRate, true);
+      setRealtimeSubtitleStatus("Finalizing");
+    }
+
+    function consumeRealtimePendingSamples(sampleCount) {
+      if (sampleCount <= 0 || !dialogState.realtimePendingSamples.length) {
+        return new Float32Array(0);
+      }
+
+      const count = Math.min(sampleCount, dialogState.realtimePendingSampleCount);
+      const consumed = new Float32Array(count);
+      let consumedOffset = 0;
+
+      while (consumedOffset < count && dialogState.realtimePendingSamples.length) {
+        const chunk = dialogState.realtimePendingSamples[0];
+        const needed = count - consumedOffset;
+        if (chunk.length <= needed) {
+          consumed.set(chunk, consumedOffset);
+          consumedOffset += chunk.length;
+          dialogState.realtimePendingSamples.shift();
+          dialogState.realtimePendingSampleCount -= chunk.length;
+        } else {
+          consumed.set(chunk.subarray(0, needed), consumedOffset);
+          dialogState.realtimePendingSamples[0] = chunk.subarray(needed);
+          consumedOffset += needed;
+          dialogState.realtimePendingSampleCount -= needed;
+        }
+      }
+
+      return consumed;
+    }
+
+    function sendRealtimeAudioChunk(samples, sourceSampleRate, commit) {
+      if (!isRealtimeSttOpen() || !dialogState.realtimeSession || !samples.length) {
+        return;
+      }
+
+      dialogState.realtimeSequence += 1;
+      const pcm16 = encodePcm16(resampleFloat32(samples, sourceSampleRate, dialogState.realtimeTargetSampleRate));
+      dialogState.realtimeWs.send(JSON.stringify({
+        "contract_version": "dev_c_realtime_stt.v1",
+        "event_type": "audio_chunk",
+        "request_id": dialogState.realtimeSession.requestId,
+        "session_id": dialogState.realtimeSession.sessionId,
+        "turn_index": dialogState.realtimeSession.turnIndex,
+        "sequence": dialogState.realtimeSequence,
+        "provider": "elevenlabs_relay",
+        "audio_base64": arrayBufferToBase64(pcm16.buffer),
+        "commit": Boolean(commit),
+        "sample_rate_hz": dialogState.realtimeTargetSampleRate,
+        "previous_text": dialogState.currentNode?.npc_question || ""
+      }));
+    }
+
+    async function handleRealtimeSttEvent(message) {
+      const event = JSON.parse(message.data);
+      if (event.event_type === "session_started") {
+        setRealtimeSubtitleStatus("Streaming");
+        return;
+      }
+
+      if (event.event_type === "partial_transcript" || event.event_type === "final_transcript") {
+        const text = event.subtitle?.text || "";
+        setRealtimeSubtitle(text, event.event_type === "final_transcript");
+        if (event.event_type === "partial_transcript") {
+          setRealtimeSubtitleStatus("Listening");
+          return;
+        }
+
+        dialogState.realtimeFinalTranscript = text;
+        setRealtimeSubtitleStatus(event.provider === "local_batch_fallback" ? "Fallback final" : "Final");
+        closeRealtimeSttSocket(false);
+        if (event.committed && text) {
+          await submitFinalRealtimeTranscript(refs.quickUseRecordingButton);
+        }
+        return;
+      }
+
+      if (event.event_type === "provider_error" || event.event_type === "contract_error") {
+        setRealtimeSubtitleStatus("STT error");
+        setRealtimeSubtitle(event.error_message || "Realtime STT failed.", false);
+        closeRealtimeSttSocket(false);
+      }
+    }
+
+    function isRealtimeSttOpen() {
+      return dialogState.realtimeWs && dialogState.realtimeWs.readyState === WebSocket.OPEN;
+    }
+
+    function closeRealtimeSttSocket(sendCancel) {
+      const websocket = dialogState.realtimeWs;
+      if (!websocket) {
+        return;
+      }
+      if (sendCancel && websocket.readyState === WebSocket.OPEN && dialogState.realtimeSession) {
+        dialogState.realtimeSequence += 1;
+        websocket.send(JSON.stringify({
+          "contract_version": "dev_c_realtime_stt.v1",
+          "event_type": "cancel",
+          "request_id": dialogState.realtimeSession.requestId,
+          "session_id": dialogState.realtimeSession.sessionId,
+          "turn_index": dialogState.realtimeSession.turnIndex,
+          "sequence": dialogState.realtimeSequence,
+          "provider": "elevenlabs_relay"
+        }));
+      }
+      websocket.close();
+      dialogState.realtimeWs = null;
+    }
+
+    function resampleFloat32(samples, sourceSampleRate, targetSampleRate) {
+      if (sourceSampleRate === targetSampleRate) {
+        return samples;
+      }
+      const ratio = sourceSampleRate / targetSampleRate;
+      const outputLength = Math.max(1, Math.round(samples.length / ratio));
+      const output = new Float32Array(outputLength);
+
+      for (let index = 0; index < outputLength; index += 1) {
+        const sourceIndex = index * ratio;
+        const before = Math.floor(sourceIndex);
+        const after = Math.min(before + 1, samples.length - 1);
+        const weight = sourceIndex - before;
+        output[index] = samples[before] * (1 - weight) + samples[after] * weight;
+      }
+
+      return output;
+    }
+
+    function encodePcm16(samples) {
+      const pcm = new Int16Array(samples.length);
+      for (let index = 0; index < samples.length; index += 1) {
+        const sample = Math.max(-1, Math.min(1, samples[index]));
+        pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+      }
+      return pcm;
+    }
+
+    function arrayBufferToBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = "";
+      for (let index = 0; index < bytes.length; index += 1) {
+        binary += String.fromCharCode(bytes[index]);
+      }
+      return window.btoa(binary);
     }
 
     function encodeWavRecording(chunks, sampleRate) {
@@ -1097,6 +1446,7 @@
       turn.session.turn_index = Number(turn.session.turn_index || 0) + 1;
       turn.request_id = makeRequestId(turn);
       turn.npc.last_npc_message = responseBody.npc?.text || turn.npc.last_npc_message;
+      delete turn.audio.transcript;
 
       const action = responseBody.next_action;
       const nextNodeId = responseBody.next_node_id;
@@ -1196,6 +1546,64 @@
       await submitAudio(audio, refs.continueButton);
     }
 
+    async function submitFinalRealtimeTranscript(activeButton) {
+      const finalTranscript = (dialogState.realtimeFinalTranscript || "").trim();
+      if (!finalTranscript || dialogState.realtimeSubmitting) {
+        return;
+      }
+      if (dialogState.terminal) {
+        setStatus("Reset Required", "warning");
+        return;
+      }
+
+      let turn;
+      try {
+        turn = parseTurn();
+      } catch (error) {
+        setStatus("Invalid JSON", "error");
+        refs.rawJson.textContent = String(error);
+        return;
+      }
+
+      dialogState.realtimeSubmitting = true;
+      turn.request_id = dialogState.realtimeSession?.requestId || makeRequestId(turn);
+      turn.audio.mime_type = "audio/wav";
+      turn.audio.channels = 1;
+      turn.audio.sample_rate_hz = dialogState.realtimeTargetSampleRate;
+      turn.audio.duration_ms = dialogState.quickRecordingDurationMs || turn.audio.duration_ms;
+      turn.audio.transcript = finalTranscript;
+      writeTurn(turn);
+
+      setSubmitting(true);
+      setStatus("Running", "running");
+      const started = performance.now();
+      try {
+        const response = await fetch("/api/game/ai/respond", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            turn,
+            audio: {
+              transcript: finalTranscript,
+              file_name: "realtime-final-transcript.txt",
+              content_type: "text/plain"
+            }
+          })
+        });
+        await handleRespondResponse(turn, response, started, activeButton);
+      } catch (error) {
+        refs.elapsedTotal.textContent = "-";
+        refs.httpStatus.textContent = "-";
+        setStatus("Failed", "error");
+        refs.rawJson.textContent = String(error);
+      } finally {
+        dialogState.realtimeSubmitting = false;
+        setSubmitting(false);
+      }
+    }
+
     async function submitAudio(audio, activeButton) {
       if (dialogState.terminal) {
         setStatus("Reset Required", "warning");
@@ -1218,6 +1626,7 @@
         turn.audio.duration_ms = dialogState.quickRecordingDurationMs || turn.audio.duration_ms;
         turn.audio.sample_rate_hz = dialogState.quickRecordingSampleRate || turn.audio.sample_rate_hz;
       }
+      delete turn.audio.transcript;
       writeTurn(turn);
 
       const form = new FormData();
@@ -1232,32 +1641,7 @@
           method: "POST",
           body: form
         });
-        const elapsedMs = performance.now() - started;
-        const text = await response.text();
-        const body = JSON.parse(text);
-        fillTiming(body, elapsedMs, response.status);
-        refs.rawJson.textContent = JSON.stringify(body, null, 2);
-
-        if (!response.ok) {
-          setStatus("Failed", "error");
-          return;
-        }
-
-        appendMessage("user", "You", body.stt?.player_text || "-");
-        appendMessage("npc", body.npc?.speaker || "Officer Miller", body.npc?.text || "-", body.npc?.audio_url);
-        appendDivider(body);
-        rememberSubmittedRequestId(body.request_id || turn.request_id);
-        await updateUsage(body.session_id || turn.session.session_id);
-        await updateNextTurn(turn, body);
-        if (activeButton === refs.continueButton) {
-          refs.quickAudioFile.value = "";
-        }
-        if (activeButton === refs.quickUseRecordingButton) {
-          clearQuickRecordingFile();
-        }
-        if (!dialogState.terminal) {
-          setStatus("Ready", "");
-        }
+        await handleRespondResponse(turn, response, started, activeButton);
       } catch (error) {
         refs.elapsedTotal.textContent = "-";
         refs.httpStatus.textContent = "-";
@@ -1266,6 +1650,40 @@
       } finally {
         setSubmitting(false);
       }
+    }
+
+    async function handleRespondResponse(turn, response, started, activeButton) {
+      const elapsedMs = performance.now() - started;
+      const text = await response.text();
+      const body = JSON.parse(text);
+      fillTiming(body, elapsedMs, response.status);
+      refs.rawJson.textContent = JSON.stringify(body, null, 2);
+
+      if (!response.ok) {
+        setStatus("Failed", "error");
+        return;
+      }
+
+      appendMessage("user", "You", body.stt?.player_text || "-");
+      appendMessage("npc", body.npc?.speaker || "Officer Miller", body.npc?.text || "-", body.npc?.audio_url);
+      appendDivider(body);
+      rememberSubmittedRequestId(body.request_id || turn.request_id);
+      await updateUsage(body.session_id || turn.session.session_id);
+      await updateNextTurn(turn, body);
+      if (activeButton === refs.continueButton) {
+        refs.quickAudioFile.value = "";
+      }
+      if (activeButton === refs.quickUseRecordingButton) {
+        dialogState.quickRecordingFile = null;
+        dialogState.quickRecordingDurationMs = null;
+        dialogState.quickRecordingSampleRate = null;
+        refs.quickAudioFile.value = "";
+        setRecordingStatus("Realtime transcript submitted.");
+      }
+      if (!dialogState.terminal) {
+        setStatus("Ready", "");
+      }
+      updateRecordingControls();
     }
 
     refs.chapterButtons.querySelectorAll("[data-chapter-id]").forEach((button) => {

@@ -42,6 +42,13 @@ def test_respond_dialog_page_is_served_without_changing_original_demo() -> None:
     assert 'id="quickUseRecordingButton"' in response.text
     assert 'id="continueButton"' in response.text
     assert 'id="runningStopwatch"' in response.text
+    assert 'id="realtimeSubtitleText"' in response.text
+    assert "Realtime STT Subtitles" in response.text
+    assert '"/api/game/ai/stt/stream"' in response.text
+    assert '"event_type": "audio_chunk"' in response.text
+    assert 'event.event_type === "final_transcript"' in response.text
+    assert "submitFinalRealtimeTranscript(refs.quickUseRecordingButton)" in response.text
+    assert "turn.audio.transcript = finalTranscript" in response.text
     assert "getUserMedia" in response.text
     assert "submitAudio(audio, refs.continueButton)" in response.text
     assert 'const firstNodeId = "FLIGHT_A_001_SEATMATE_SMALLTALK";' in response.text

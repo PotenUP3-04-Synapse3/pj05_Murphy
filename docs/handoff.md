@@ -1,5 +1,75 @@
 # Handoff
 
+## 2026-06-15 Developer C Test Cleanup for Developer A Legacy Removal
+
+Developer C cleaned C-owned tests that were keeping Developer A legacy/shim
+code alive during the Agent A refactor.
+
+Changed:
+
+- Removed direct test dependency on `OpenAICompatibleNPCDialogueChatModel` and
+  the old manual fallback-wrapper style from
+  `backend/tests/test_developer_a_npc_llm_client.py`; the file now only keeps
+  the current factory fallback contract.
+- Removed old `generate_npc_dialogue()` deterministic unit tests from
+  `backend/tests/test_developer_a_npc_dialogue.py`.
+- Updated AgentRun logging tests to use
+  `NPCDialogueAgentRunRecorder` instead of deprecated
+  `NPCDialogueAgentRunMiddleware`.
+- Updated the markdown formatter fixture from the removed Kokoro tool name to
+  the current Edge TTS tool name.
+- Updated `test_preprototype_flow.py` so C-to-A adapter tests no longer expect
+  `in_game_feedback.npc_recast_line_candidate` to carry the next NPC question.
+  The tests now verify `dialogue_seed` metadata as the A-facing generation
+  input and keep `npc_recast_line_candidate` as `None`.
+
+Verification:
+
+- Focused regression:
+  `uv run pytest backend/tests/test_developer_a_npc_llm_client.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_agent_run_logging.py backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_reports_speaker_mismatch_diagnostic backend/tests/test_preprototype_flow.py::test_orchestrator_passes_random_customs_item_and_routes_customs_npc_to_developer_a -q`
+  passed, 29 passed, 1 warning.
+- Full tests:
+  `uv run pytest -q` passed, 236 passed, 1 warning.
+- Changed-file lint:
+  `uv run ruff check backend/tests/test_developer_a_npc_llm_client.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_agent_run_logging.py backend/tests/test_preprototype_flow.py`
+  passed.
+- `uv run mypy .` passed, no issues in 108 source files.
+
+Remaining A-owned implementation cleanup:
+
+- `uv run ruff check .` still reports one A-owned unused import:
+  `backend/app/agents/agent_a/npc_dialogue_agent.py` imports
+  `polish_tts_text` but does not use it. Developer C did not edit that A-owned
+  implementation file.
+
+## 2026-06-15 Developer C Respond Dialog Realtime STT Subtitle Tester
+
+Developer C updated the local C-owned `/respond-dialog` browser tester so a
+solo developer can verify realtime STT subtitles from the existing WebSocket
+path before the final transcript enters the normal `/respond` turn flow.
+
+Changed:
+
+- Added a realtime subtitle panel to `demo/respond-dialog/index.html`.
+- When the browser Record button starts, the page now opens
+  `/api/game/ai/stt/stream` with `provider = "elevenlabs_relay"`.
+- Browser microphone chunks are resampled to 16 kHz PCM16 and sent as
+  `audio_chunk` events.
+- Partial/final transcript server events update the subtitle panel.
+- A committed final transcript is copied into `turn.audio.transcript` and sent
+  through the existing JSON `/api/game/ai/respond` path, avoiding a second local
+  batch STT pass for the same turn.
+- Next-turn state clears `turn.audio.transcript` so later WAV uploads do not
+  accidentally reuse the previous realtime transcript.
+
+Verification:
+
+- RED:
+  `uv run pytest backend/tests/test_demo_ai_respond_page.py::test_respond_dialog_page_is_served_without_changing_original_demo -q`
+  failed because `realtimeSubtitleText` was not present.
+- GREEN:
+  same focused test passed, 1 passed, 1 warning.
+
 ## 2026-06-15 Developer C Result Out-Game Feedback Exposure
 
 Developer C completed the pending C-owned response-surface work requested by

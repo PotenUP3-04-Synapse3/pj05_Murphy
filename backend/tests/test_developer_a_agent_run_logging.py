@@ -1,8 +1,8 @@
 import json
 import wave
 
-from backend.app.middleware.middleware_a.npc_dialogue_agent_run_middleware import (
-    NPCDialogueAgentRunMiddleware,
+from backend.app.services.service_a.agent_run_recorder import (
+    NPCDialogueAgentRunRecorder,
 )
 from backend.app.services.service_a.npc_dialogue_agent_run_store import (
     NPCDialogueAgentRunStore,
@@ -54,17 +54,17 @@ def test_estimate_openai_cost_usd_for_gpt_4o_mini() -> None:
     assert cost == 0.0003
 
 
-def test_agent_run_middleware_builds_structured_agent_run() -> None:
-    middleware = NPCDialogueAgentRunMiddleware()
+def test_agent_run_recorder_builds_structured_agent_run() -> None:
+    recorder = NPCDialogueAgentRunRecorder()
     metadata = {"source_type": "level_design", "evidence_summary": []}
-    middleware.record_event(
+    recorder.record_event(
         metadata,
         event="agent_start",
         status="started",
         data_loaded={"node_id": "IMM_003_DURATION"},
     )
 
-    run = middleware.start_run(
+    run = recorder.start_run(
         prompt_version="npc_dialogue_prompt_v1",
         source_window={
             "source_type": "level_design_json",
@@ -77,7 +77,7 @@ def test_agent_run_middleware_builds_structured_agent_run() -> None:
         permission_level="runtime_user_session",
         metadata=metadata,
     )
-    completed = middleware.complete_run(
+    completed = recorder.complete_run(
         run,
         input_tokens=100,
         output_tokens=20,
@@ -177,8 +177,8 @@ def test_format_agent_run_markdown_makes_readable_timeline() -> None:
                 {
                     "event": "tool_call",
                     "status": "completed",
-                    "tool_name": "tts_service.build_kokoro_provider_request",
-                    "output_summary": {"voice": "am_michael", "sample_rate": 24000},
+                    "tool_name": "tts_service.build_edge_provider_request",
+                    "output_summary": {"voice": "en-US-GuyNeural", "sample_rate": 24000},
                 },
             ],
             "summary": {
@@ -191,7 +191,7 @@ def test_format_agent_run_markdown_makes_readable_timeline() -> None:
 
     assert "## Agent Run: npc_dialogue_agent / developer_a" in markdown
     assert "| 1 | agent_start | started | -" in markdown
-    assert "tts_service.build_kokoro_provider_request" in markdown
+    assert "tts_service.build_edge_provider_request" in markdown
     assert "- Fallback Used: `True`" in markdown
 
 
