@@ -72,11 +72,32 @@ class ScenarioState(BaseModel):
     completed_intents: list[str] = Field(default_factory=list)
 
 
+class RandomCustomsItemContext(BaseModel):
+    """Optional Alpha baggage item chosen by Unreal or a local CSV table.
+
+    Beginner guide:
+    Alpha baggage can reveal a random "why is this in your suitcase?" item.
+    Unreal still owns the visual reveal, but C needs this small context object
+    so Understanding, Developer B, and Developer A can keep the dialogue about
+    the same item.  Every field is additive and optional except the display
+    name, so older requests can keep omitting the object.
+    """
+
+    item_id: str | None = None
+    item_name: str
+    item_category: str | None = None
+    item_description: str | None = None
+    visit_location: str | None = None
+    declared: bool | None = None
+    source: str | None = None
+
+
 class GameState(BaseModel):
     inventory: list[str] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
     completed_intents: list[str] = Field(default_factory=list)
     current_objective: str
+    random_customs_item: RandomCustomsItemContext | None = None
 
 
 class PreviousNodeResult(BaseModel):
@@ -237,6 +258,7 @@ class DevBPolicyInput(BaseModel):
     scenario_state: ScenarioState
     node_context: NodeContext
     understanding: UnderstandingOutput
+    random_customs_item: RandomCustomsItemContext | None = None
     previous_node_results: list[PreviousNodeResult] = Field(default_factory=list)
     client_allowed_next_nodes: list[str] = Field(default_factory=list)
 
@@ -537,6 +559,7 @@ class DevADialogueInput(BaseModel):
     understanding: UnderstandingOutput
     developer_b_policy: DevBPolicyOutput
     transition: TransitionContext | None = None
+    random_customs_item: RandomCustomsItemContext | None = None
 
 
 class DevADialogueOutput(BaseModel):

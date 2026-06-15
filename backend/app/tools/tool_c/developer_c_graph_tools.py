@@ -443,6 +443,7 @@ class DeveloperCGraphTools:
                 understanding=understanding,
                 developer_b_policy=dev_b_output,
                 transition=transition,
+                random_customs_item=request.turn.game_state.random_customs_item,
             )
         )
         timing_ms["developer_a_ms"] = _elapsed_ms(stage_started)
@@ -643,6 +644,7 @@ class DeveloperCGraphTools:
             scenario_state=scenario_state,
             node_context=node_context,
             understanding=understanding,
+            random_customs_item=request.turn.game_state.random_customs_item,
             previous_node_results=request.turn.previous_node_results,
             client_allowed_next_nodes=request.turn.client_allowed_next_nodes,
         )

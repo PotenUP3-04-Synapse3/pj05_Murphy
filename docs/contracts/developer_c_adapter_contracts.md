@@ -704,9 +704,16 @@ Rules:
   A-facing level-design payload so Developer A can generate Alpha
   non-immigration dialogue from role, surface-goal, assessment, and stop
   condition metadata instead of B-authored final NPC wording.
+- Developer C passes optional `game_state.random_customs_item` through the
+  A-facing level-design payload as `random_customs_item`. This lets Developer A
+  generate BAG_006 customs-item dialogue about the same item Unreal revealed.
+- Developer C normalizes BAG A-facing NPC context by phase before calling
+  Developer A: `BAG_001` through `BAG_004` use `BAGGAGE_STAFF /
+  baggage_service_staff`, while `BAG_005` through `BAG_007` use
+  `CUSTOMS_OFFICER / customs_officer`.
 - Developer C adds a non-blocking `npc_speaker_mismatch` diagnostic when the
   speaker returned by Developer A shares no useful identity token with the
-  requested `npc_id`. The diagnostic is copied into Unreal `debug.diagnostics`
+  A-facing `npc_id`. The diagnostic is copied into Unreal `debug.diagnostics`
   and AgentRun summaries; it does not rewrite A dialogue or change B branch
   policy.
 - Developer C calls Developer A's voice output service with fake Edge by

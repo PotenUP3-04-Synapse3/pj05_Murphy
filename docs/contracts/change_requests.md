@@ -989,6 +989,21 @@ BAG_999_COMPLETE`.
 - Pass through Unreal-provided random item context to
   `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM` when available.
 
+Developer C update, 2026-06-15:
+
+- Implemented A-adapter `dialogue_seed` forwarding for non-immigration Alpha
+  nodes.
+- Implemented non-blocking `npc_speaker_mismatch` diagnostics.
+- Added `game_state.random_customs_item` pass-through into Developer B input
+  and Developer A payloads.
+- Added BAG phase-based A-facing NPC context normalization:
+  `BAG_001` through `BAG_004` route as baggage service staff, while `BAG_005`
+  through `BAG_007` route as customs officer.
+- Added deterministic Understanding fallback coverage for common Alpha
+  Flight/Baggage slot values, including `customs_item_explanation`.
+- Remaining C follow-up after this update: broader Alpha phrase coverage and
+  any future Unreal-driven player-initiated/free-talk routing contract.
+
 ### Unreal Required Follow-up
 
 - Start Alpha from chapter metadata:

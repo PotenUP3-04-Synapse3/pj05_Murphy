@@ -972,6 +972,82 @@ def test_dev_a_adapter_reports_speaker_mismatch_diagnostic() -> None:
     ]
 
 
+def test_orchestrator_passes_random_customs_item_and_routes_customs_npc_to_developer_a() -> None:
+    builder_payloads: list[dict[str, Any]] = []
+
+    def capture_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": str(payload["npc"]["npc_id"]),
+            "npc_text": str(payload["in_game_feedback"]["npc_recast_line_candidate"] or "Thank you."),
+            "tone": "formal_neutral",
+            "animation": "customs_inspection_idle",
+            "feedback_kr": "Good.",
+            "tts": {
+                "audio_url": "/runtime/audio/edge/customs-item.wav",
+            },
+        }
+
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = "req_alpha_random_customs_item_0001"
+    turn_payload["session"]["chapter_id"] = "CH0_04_BAGGAGE_CLAIM"
+    turn_payload["session"]["scene_id"] = "JFK_BAGGAGE_CLAIM"
+    turn_payload["session"]["current_node_id"] = "BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM"
+    turn_payload["session"]["turn_index"] = 16
+    turn_payload["npc"]["npc_id"] = "BAGGAGE_STAFF"
+    turn_payload["npc"]["npc_role"] = "baggage_service_staff"
+    turn_payload["npc"]["last_npc_message"] = "Can you explain what this item is and why it is in your suitcase?"
+    turn_payload["game_state"]["current_objective"] = "Explain the random customs item"
+    turn_payload["game_state"]["random_customs_item"] = {
+        "item_id": "medicine_red_ginseng_extract",
+        "item_name": "red ginseng extract",
+        "item_category": "medicine",
+        "item_description": "Small bottles of Korean red ginseng extract.",
+        "visit_location": "Queens",
+        "declared": False,
+        "source": "unreal_csv",
+    }
+    turn_payload["client_allowed_next_nodes"] = [
+        "BAG_006_CLARIFY_EXPLAIN_RANDOM_CUSTOMS_ITEM",
+        "BAG_006_RETRY_EXPLAIN_RANDOM_CUSTOMS_ITEM",
+        "BAG_007_CUSTOMS_CLEARANCE",
+        "END_BAGGAGE_REPORT_INCOMPLETE",
+    ]
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://alpha/customs_item_red_ginseng.wav",
+            transcript="It's red ginseng medicine for my health.",
+        ),
+    )
+    orchestrator = Orchestrator()
+    orchestrator.dev_a_client = DevANpcDialogueClient(
+        settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+        voice_output_builder=capture_voice_output_builder,
+    )
+
+    response = orchestrator.run_turn(request)
+
+    assert response.next_node_id == "BAG_007_CUSTOMS_CLEARANCE"
+    assert builder_payloads
+    payload = builder_payloads[0]
+    assert payload["npc"]["npc_id"] == "CUSTOMS_OFFICER"
+    assert payload["npc"]["npc_role"] == "customs_officer"
+    assert payload["random_customs_item"] == {
+        "item_id": "medicine_red_ginseng_extract",
+        "item_name": "red ginseng extract",
+        "item_category": "medicine",
+        "item_description": "Small bottles of Korean red ginseng extract.",
+        "visit_location": "Queens",
+        "declared": False,
+        "source": "unreal_csv",
+    }
+    assert payload["understanding"]["extracted_slots"]["customs_item_explanation"] == "medicine"
+
+
 def test_api_accepts_mock_unreal_turn_json() -> None:
     client = TestClient(app)
     payload = {

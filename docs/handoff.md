@@ -1,5 +1,41 @@
 # Handoff
 
+## 2026-06-15 Developer C Alpha Baggage Random Item Follow-up
+
+Developer C implemented the next C-owned Alpha baggage follow-up: random
+customs-item context can now travel through the C turn contracts, BAG customs
+nodes use customs-officer A-facing NPC context, and deterministic Understanding
+fallback recognizes common Alpha Flight/Baggage slot values.
+
+Changed:
+
+- Added `RandomCustomsItemContext` and optional
+  `game_state.random_customs_item` to the Unreal turn schema.
+- Forwarded `random_customs_item` through `DevBPolicyInput` and
+  `DevADialogueInput`.
+- Added `random_customs_item` to the Developer A level-design payload so A can
+  generate BAG_006 dialogue about the same item Unreal revealed.
+- Normalized A-facing BAG NPC context in the C adapter:
+  `BAG_001` through `BAG_004` use `BAGGAGE_STAFF /
+  baggage_service_staff`; `BAG_005` through `BAG_007` use
+  `CUSTOMS_OFFICER / customs_officer`.
+- Extended deterministic Understanding fallback with slot/value keyword
+  coverage for Alpha Flight small talk and Baggage/customs-hold slots. This is
+  a rule/mock safety net; the LLM path still uses generic current-node
+  `slot_evidence`.
+- Added regression tests for natural Alpha fallback phrases and BAG_006 random
+  customs-item pass-through.
+
+Verification:
+
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_rule_mode_recognizes_alpha_flight_and_baggage_slot_values backend/tests/test_preprototype_flow.py::test_orchestrator_passes_random_customs_item_and_routes_customs_npc_to_developer_a -q`:
+  PASS, 2 passed, 1 warning.
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_preprototype_flow.py backend/tests/test_final_result_payload.py backend/tests/test_developer_c_langgraph_orchestrator.py -q`:
+  PASS, 47 passed, 1 warning.
+- `uv run pytest`: PASS, 240 passed, 1 warning.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, no issues in 106 source files.
+
 ## 2026-06-15 Developer C Beginner Docstring Pass
 
 Developer C added beginner-friendly docstrings to current C-owned non-test

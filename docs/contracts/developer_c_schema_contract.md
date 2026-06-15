@@ -299,7 +299,8 @@ Canonical `turn` payload:
     "completed_intents": [
       "submit_passport"
     ],
-    "current_objective": "State the visit purpose"
+    "current_objective": "State the visit purpose",
+    "random_customs_item": null
   },
   "previous_node_results": [
     {
@@ -339,6 +340,39 @@ Canonical `turn` payload:
 | `previous_node_results` | no | Used for final decision and reports |
 | `client_allowed_next_nodes` | no | Extra client-side branch guard |
 | `client_context` | no | Debug and compatibility metadata |
+
+### Alpha Random Customs Item Context
+
+`game_state.random_customs_item` is optional and additive. Unreal can include it
+when the baggage/customs sequence reveals a random item in the suitcase. The
+object is not branch authority; Developer C preserves it so Understanding,
+Developer B, and Developer A can talk about the same item.
+
+Example:
+
+```json
+{
+  "item_id": "medicine_red_ginseng_extract",
+  "item_name": "red ginseng extract",
+  "item_category": "medicine",
+  "item_description": "Small bottles of Korean red ginseng extract.",
+  "visit_location": "Queens",
+  "declared": false,
+  "source": "unreal_csv"
+}
+```
+
+Fields:
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `item_id` | no | Stable local id from Unreal or a CSV table |
+| `item_name` | yes | Player-facing item name |
+| `item_category` | no | Broad category such as `medicine`, `food`, or `souvenir` |
+| `item_description` | no | Short description for A-facing dialogue context |
+| `visit_location` | no | Optional location context tied to the random setup |
+| `declared` | no | Whether the player declared the item before inspection |
+| `source` | no | Debug/source tag such as `unreal_csv` |
 
 ### Alpha Interaction Context
 

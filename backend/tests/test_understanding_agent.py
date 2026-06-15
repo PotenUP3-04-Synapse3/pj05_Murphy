@@ -38,6 +38,10 @@ def _location_node_context():
     return OpenKBService().get_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_004_STAY_LOCATION")
 
 
+def _alpha_node_context(chapter_id: str, node_id: str):
+    return OpenKBService().get_node_context(chapter_id, node_id)
+
+
 def test_understanding_agent_uses_llm_client_in_llm_mode() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {
@@ -335,4 +339,41 @@ def test_understanding_agent_rule_mode_recognizes_stay_duration_values() -> None
         assert output.intent == "state_stay_duration"
         assert output.intent_success is True
         assert output.extracted_slots == {"stay_duration": stay_duration}
+        assert output.missing_slots == []
+
+
+def test_understanding_agent_rule_mode_recognizes_alpha_flight_and_baggage_slot_values() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    cases = [
+        (
+            "CH0_01_FLIGHT_SMALLTALK",
+            "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "Of course, please take it.",
+            "polite_response",
+            "offered_help",
+        ),
+        (
+            "CH0_04_BAGGAGE_CLAIM",
+            "BAG_002_PROVIDE_CLAIM_TAG",
+            "I have the tag right here.",
+            "claim_tag_status",
+            "has_claim_tag",
+        ),
+        (
+            "CH0_04_BAGGAGE_CLAIM",
+            "BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM",
+            "It's red ginseng medicine for my health.",
+            "customs_item_explanation",
+            "medicine",
+        ),
+    ]
+    for chapter_id, node_id, player_text, slot_name, slot_value in cases:
+        output = agent.analyze_player_text(
+            player_text,
+            _alpha_node_context(chapter_id, node_id),
+        )
+
+        assert output.intent_success is True
+        assert output.extracted_slots == {slot_name: slot_value}
         assert output.missing_slots == []
