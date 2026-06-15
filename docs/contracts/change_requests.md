@@ -443,7 +443,12 @@ dialogue support.
 
 ## Change Request - 2026-06-09 - Remove Developer B NPC Wording From A Adapter Payload
 
-Status: Open.
+Status: Resolved (Partially).
+
+Developer A & C update, 2026-06-15:
+- Developer A는 `candidate_text` (어댑터 단의 `npc_recast_line_candidate`가 변환된 값)가 A-side 에이전트(`npc_dialogue_agent.py`)에 유입되는 것을 차단하고, 유입될 경우 명시적으로 `ValueError` 예외를 발생시키도록 유효성 검증을 강화했습니다.
+- Developer C는 `dev_a_npc_dialogue_client.py` 어댑터 단에서 B가 반환한 `npc_recast_line_candidate` 값을 A로 인가할 때 강제로 `None`으로 필터링 처리하여 유입을 차단했습니다.
+- 이에 종속된 모든 관련 테스트(유닛 및 통합 테스트) 단언문들이 갱신 및 정상화되었습니다.
 
 Developer C Alpha 3A update, 2026-06-12: C adopted the base runtime routing
 portion of this request. `ALPHA_999_FINAL_SCOREBOARD` is now the only C adapter
@@ -1222,3 +1227,36 @@ Developer A / kimyonghee
 ### Temporary Workaround
 
 해당 없음 (전면 리팩터링 적용 완료).
+
+## Change Request - 2026-06-15 - Deprecate NPCDialogueAgentRunMiddleware and Transition to NPCDialogueAgentRunRecorder
+
+### Requested By
+
+Developer A / kimyonghee
+
+### Affected Owner
+
+Developer C / Sean Han
+
+### Reason
+
+LangChain 1.0+ 및 LCEL 체인 호출 구조 하에서 기존의 LangChain 0.x 방식 콜백/미들웨어 훅 작동 방식이 표준 규격에 어긋나 타입 경고 및 런타임 오류가 유발될 수 있습니다. 이를 해소하기 위해 상태 기계 및 서비스 내에서 명시적으로 동작하는 `NPCDialogueAgentRunRecorder`를 신설하고, 기존 미들웨어 클래스 `NPCDialogueAgentRunMiddleware`를 Deprecated 처리했습니다.
+
+### Proposed Contract Change
+
+1. Developer C는 향후 A/B/C 통합 레이어 및 오케스트레이터에서 `NPCDialogueAgentRunMiddleware`를 활용하여 callback 형태로 로깅 이벤트를 캡처하는 대신, `NPCDialogueAgentRunRecorder`를 직접 또는 오케스트레이터의 RunnableConfig/Callbacks 설정 내에서 호출하도록 교체할 것을 제안합니다.
+2. 현재의 하위 호환성을 보장하기 위해 `NPCDialogueAgentRunMiddleware`는 Shim 형태로 남겨두어 `warnings.warn` 경고를 출력하며 내부적으로 `NPCDialogueAgentRunRecorder`로 작업을 위임하도록 처리했습니다. 향후 완전한 통합 정리를 위해 호출 부분의 마이그레이션이 필요합니다.
+
+### Compatibility Impact
+
+Shim 클래스가 존재하므로 당장의 통합 테스트 및 실행은 깨지지 않으나, 컴파일/정적 분석 경고(DeprecationWarning)가 콘솔에 찍히게 됩니다.
+
+### Temporary Workaround
+
+현재 구현된 Shim 미들웨어가 자동으로 새 기록기를 대리 호출하므로, 즉각적인 수정은 불필요하지만 중장기적으로 `NPCDialogueAgentRunRecorder` 직접 사용으로의 전환을 권장합니다.
+
+### Current Verification
+
+- `uv sync` 완료.
+- `uv run pytest` 결과 231개 전체 테스트 성공 (Shim 미들웨어가 정상적으로 경고를 출력하며 이벤트를 위임하여 로깅되는 것 확인).
+- `uv run ruff check .` 및 `uv run mypy .` 무오류 통과.

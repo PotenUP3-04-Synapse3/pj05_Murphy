@@ -6,8 +6,8 @@ import httpx
 
 from langgraph.graph import StateGraph, START, END
 
+from langchain_core.runnables import RunnableConfig
 from backend.app.agents.agent_a.npc_llm_client import (
-    NPCDialogueLLMClient,
     NPCDialogueLLMUnavailable,
     build_npc_dialogue_llm_client_from_environment,
 )
@@ -54,7 +54,7 @@ class NPCDialogueInput:
 # NPC 대사 생성의 최종 결과(Result)를 나타내는 데이터 클래스(Data Class)입니다.
 @dataclass(frozen=True)
 class NPCDialogueResult:
-    # 말하는 화자(Speaker)의 이름(예: Officer Miller)입니다.
+    # 말하는 화자(Speaker)의 이름(예: Hale)입니다.
     speaker: str
     # 플레이어에게 보여줄 영어 대사 텍스트(Dialogue Text)입니다.
     text: str
@@ -80,7 +80,7 @@ def generate_npc_dialogue(payload: NPCDialogueInput) -> NPCDialogueResult:
     # 분기 결과가 성공(Success)인 경우의 처리 흐름입니다.
     if branch_type == "success":
         return NPCDialogueResult(
-            speaker="Officer Miller",
+            speaker="Hale",
             text=_success_text(payload),
             tone="formal_neutral",
             animation="move",
@@ -90,7 +90,7 @@ def generate_npc_dialogue(payload: NPCDialogueInput) -> NPCDialogueResult:
     # 분기 결과가 재시도(Retry)인 경우의 처리 흐름입니다.
     if branch_type == "retry":
         return NPCDialogueResult(
-            speaker="Officer Miller",
+            speaker="Hale",
             text=_retry_text(payload),
             tone="formal_firm",
             animation="move",
@@ -99,7 +99,7 @@ def generate_npc_dialogue(payload: NPCDialogueInput) -> NPCDialogueResult:
 
     # 기본값 또는 중립(Neutral) 분기일 경우의 예외적(Fallback) 처리 흐름입니다.
     return NPCDialogueResult(
-        speaker="Officer Miller",
+        speaker="Hale",
         text="Please answer the question clearly.",
         tone="formal_supportive",
         animation="move",
@@ -178,34 +178,18 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
     
     candidate_text = str(normalized.get("candidate_text", "")).strip()
     
-    # 개발자 B로부터 전달받은 대사 후보군(Candidate Text)이 없거나 차단된 경우, 안전하게 폴백(Fallback) 대사를 생성합니다.
-    if not candidate_text:
-        result = _apply_npc_profile(build_text_fallback(normalized), npc_profile)
-    else:
-        # 추천 표현 및 피드백 정보를 추출하고 다듬습니다.
-        recommended = str(normalized.get("recommended_expression", "")).strip()
-        feedback_note = str(normalized.get("feedback_note", "")).strip()
-        feedback_kr = _level_design_feedback(feedback_note, recommended)
-        
-        # 생성 정책(Policy)에 따라 대사의 아웃라인을 다듬고 조립합니다.
-        npc_text = _compose_level_design_text(
-            candidate_text=candidate_text,
-            recommended_expression=recommended,
-            policy=policy,
+    # 2026-06-15 리팩토링: 이제 Candidate Text는 사용되지 않는 Deprecated 스펙입니다.
+    # 만약 입력 페이로드에 이 값이 존재한다면 명시적인 오류를 발생시키고 에러 로그를 남깁니다.
+    if candidate_text:
+        import logging
+        logger = logging.getLogger("backend.app.agents.agent_a")
+        logger.error(f"Deprecated 'candidate_text' (npc_recast_line_candidate) detected in payload: {candidate_text}")
+        raise ValueError(
+            f"Error: 'candidate_text' field is deprecated and forbidden in Agent A inputs. "
+            f"Detected value: '{candidate_text}'"
         )
-        # TTS 음성 합성이 좀 더 자연스럽게 발화되도록 텍스트(Text)에 쉼표 및 끊어읽기를 적용합니다.
-        tts_text = polish_tts_text(npc_text, profile, emotion_state, policy)
-
-        result = {
-            "speaker": npc_profile.display_name,
-            "npc_text": npc_text,
-            "text": npc_text,
-            "tts_text": tts_text,
-            "feedback_kr": feedback_kr,
-            "tone": policy.tone,
-            "animation": npc_profile.default_animation,
-            "fallback": {"used": False, "reason": None},
-        }
+    
+    result = _apply_npc_profile(build_text_fallback(normalized), npc_profile)
         
     # 생성 이력 추적용 메타데이터(Metadata)를 결과 사전(Dictionary)에 병합합니다.
     result = _with_generation_metadata(result, profile, emotion_state, policy)
@@ -228,34 +212,50 @@ def route_after_init(state: NPCDialogueState) -> str:
     return END
 
 
-def node_generate_dialogue_llm(state: NPCDialogueState) -> dict[str, Any]:
+def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig | None = None) -> dict[str, Any]:
     """LangChain 및 LLM 클라이언트를 사용하여 감정 톤과 일레븐랩스 파라미터를 실시간으로 동적 튜닝하여 대사를 생성하는 노드입니다."""
     payload = state["payload"]
     normalized = state["normalized"]
     fallback_result = state["result"]
     llm_client = state.get("llm_client")
     npc_profile = state["npc_profile"]
+    callbacks = state.get("callbacks")
+
+    run_config = config or RunnableConfig()
+    if callbacks and not run_config.get("callbacks"):
+        from langchain_core.callbacks import BaseCallbackHandler
+        run_config = run_config.copy()
+        run_config["callbacks"] = cast(list[BaseCallbackHandler], callbacks)
 
     try:
-        client = llm_client or build_npc_dialogue_llm_client_from_environment()
-        llm_result = client.generate(
-            {
-                "level_design_payload": payload,
-                "normalized": normalized,
-                "persona_instruction": npc_profile.persona_instruction, # Roster에서 매핑된 페르소나 탑재
-                "fallback_candidate": {
-                    "speaker": fallback_result["speaker"],
-                    "npc_text": fallback_result["npc_text"],
-                    "tts_text": fallback_result["tts_text"],
-                    "tone": fallback_result["tone"],
-                    "feedback_kr": fallback_result["feedback_kr"],
-                    "fallback": fallback_result.get("fallback"),
-                },
-                "generation_profile": fallback_result["generation_profile"],
-            }
-        )
+        client: Any = llm_client or build_npc_dialogue_llm_client_from_environment()
+        llm_payload = {
+            "level_design_payload": payload,
+            "normalized": normalized,
+            "persona_instruction": npc_profile.persona_instruction, # Roster에서 매핑된 페르소나 탑재
+            "fallback_candidate": {
+                "speaker": fallback_result["speaker"],
+                "npc_text": fallback_result["npc_text"],
+                "tts_text": fallback_result["tts_text"],
+                "tone": fallback_result["tone"],
+                "feedback_kr": fallback_result["feedback_kr"],
+                "fallback": fallback_result.get("fallback"),
+            },
+            "generation_profile": fallback_result["generation_profile"],
+        }
+
+        if hasattr(client, "invoke"):
+            llm_result = client.invoke(llm_payload, config=run_config)
+        else:
+            import inspect
+            sig = inspect.signature(client.generate)
+            if "callbacks" in sig.parameters:
+                llm_result = client.generate(llm_payload, callbacks=run_config.get("callbacks"))
+            else:
+                llm_result = client.generate(llm_payload)
     except (NPCDialogueLLMUnavailable, httpx.HTTPError, json.JSONDecodeError, KeyError, ValueError) as exc:
         return {"error": type(exc).__name__}
+
 
     llm_usage = llm_result.get("__llm_usage", {})
     npc_text = str(llm_result.get("npc_text") or "").strip()
@@ -355,16 +355,20 @@ def build_npc_dialogue_graph() -> Any:
 def generate_npc_dialogue_from_level_design(
     payload: dict[str, Any],
     use_llm: bool = False,
-    llm_client: NPCDialogueLLMClient | None = None,
+    llm_client: Any = None,
+    callbacks: list[Any] | None = None,
 ) -> dict[str, Any]:
     """레벨 디자인 에이전트(Level Design Agent) JSON 데이터를 기반으로 컴파일된 LangGraph를 동작시켜 최종 대사 및 오디오 설정 사전을 도출합니다."""
     graph = build_npc_dialogue_graph()
     initial_state = {
         "payload": payload,
         "use_llm": use_llm,
-        "llm_client": llm_client
+        "llm_client": llm_client,
     }
-    final_state = graph.invoke(initial_state)
+    config = {}
+    if callbacks:
+        config["callbacks"] = callbacks
+    final_state = graph.invoke(initial_state, config=config)
     return final_state["result"]
 
 
