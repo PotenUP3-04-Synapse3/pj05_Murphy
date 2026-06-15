@@ -9,7 +9,9 @@ Developer A는 Agent A 영역의 NPC 대사 생성 에이전트 및 서비스들
 - **LCEL 체인(Chain) 도입 및 ChatModel 정형화**: [npc_llm_client.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_llm_client.py)의 자작 HTTP ChatModel 클래스 구조를 제거하고, LangChain 1.0+의 `ChatOpenAI.with_structured_output` 및 `.with_fallbacks`를 조립한 표준 선언형 LCEL 체인 생성을 적용했습니다.
 - **상태 기계(StateGraph) config 정렬**: [npc_dialogue_agent.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py) 내의 에이전트 상태 변경(State transition) 노드 함수에서 callbacks 키 전달을 제거하고, `RunnableConfig` (config)를 직접 인수로 받아 콜백 및 로거가 안전하게 하위 체인에 흐르도록 정형화했습니다.
 - **기록기(Recorder) 분리 및 미들웨어 Shim화**: [agent_run_recorder.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/agent_run_recorder.py)를 신설해 이벤트 기록(Event recording)과 JSONL/Markdown 작성을 분리 이관했습니다. 기존의 [npc_dialogue_agent_run_middleware.py](file:///C:/5th_project/pj05_Murphy/backend/app/middleware/middleware_a/npc_dialogue_agent_run_middleware.py)는 경고(warnings)를 남기며 신규 `NPCDialogueAgentRunRecorder`를 대리 대리하는 Deprecated Shim 클래스로 대체하여 이전 C-side 연동 부의 호환성을 보존했습니다.
-- **서비스 및 테스트 갱신**: [voice_output_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/voice_output_service.py)에서 지연 임포트(Lazy Import) 방식을 제거하고 신규 `NPCDialogueAgentRunRecorder` 인스턴스를 직접 사용하게 하였습니다. [test_developer_a_npc_llm_client.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_developer_a_npc_llm_client.py)는 1.0+ 표준 invoke 모킹 테스트 및 구조화된 Mock 데이터 검증 로직으로 업데이트했습니다.
+- **Candidate Text(대사 후보) 유입 금지 및 오류 강제**: B-side NPC Wording 제거 사양에 근거해, `npc_dialogue_agent.py`에서 `candidate_text`가 페이로드로 주입될 경우 조용히 폴백하는 대신 명시적으로 `ValueError` 에러를 던지고 로깅하도록 예외 필터링을 강화했습니다.
+- **C-side 어댑터 연동 정형화**: [dev_a_npc_dialogue_client.py](file:///C:/5th_project/pj05_Murphy/backend/app/integrations/dev_a_npc_dialogue_client.py)에서 Agent A로 대사 생성 호출 시 B가 작성한 대사 후보군(`npc_recast_line_candidate`)을 `None`으로 무조건 덮어쓰도록 억제 처리하여 유입을 차단했습니다.
+- **서비스 및 테스트 갱신**: [voice_output_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/voice_output_service.py)에서 지연 임포트(Lazy Import) 방식을 제거하고 신규 `NPCDialogueAgentRunRecorder` 인스턴스를 직접 사용하게 하였습니다. [test_developer_a_npc_llm_client.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_developer_a_npc_llm_client.py)는 1.0+ 표준 invoke 모킹 테스트 및 구조화된 Mock 데이터 검증 로직으로 업데이트했습니다. `test_developer_a_npc_dialogue.py`, `test_developer_a_agent_run_logging.py`, `test_preprototype_flow.py` 테스트 내에서 `npc_recast_line_candidate`를 전송하거나 이에 의존하던 단언문들을 모두 새 규격(기본 룰 폴백 대사 `"Okay. Please continue."` 또는 `None` 반환)으로 정형화해 패스하도록 조치했습니다.
 
 수정된 파일 목록:
 - `backend/app/agents/agent_a/schemas.py` (신설)
@@ -18,7 +20,11 @@ Developer A는 Agent A 영역의 NPC 대사 생성 에이전트 및 서비스들
 - `backend/app/services/service_a/agent_run_recorder.py` (신설)
 - `backend/app/services/service_a/voice_output_service.py`
 - `backend/app/middleware/middleware_a/npc_dialogue_agent_run_middleware.py`
+- `backend/app/integrations/dev_a_npc_dialogue_client.py`
 - `backend/tests/test_developer_a_npc_llm_client.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/test_developer_a_agent_run_logging.py`
+- `backend/tests/test_preprototype_flow.py`
 
 ## 2026-06-15 Developer A & C Refactor: Standardize AgentMiddleware and Align Test Assertions
 

@@ -400,7 +400,12 @@ dialogue support.
 
 ## Change Request - 2026-06-09 - Remove Developer B NPC Wording From A Adapter Payload
 
-Status: Open.
+Status: Resolved (Partially).
+
+Developer A & C update, 2026-06-15:
+- Developer A는 `candidate_text` (어댑터 단의 `npc_recast_line_candidate`가 변환된 값)가 A-side 에이전트(`npc_dialogue_agent.py`)에 유입되는 것을 차단하고, 유입될 경우 명시적으로 `ValueError` 예외를 발생시키도록 유효성 검증을 강화했습니다.
+- Developer C는 `dev_a_npc_dialogue_client.py` 어댑터 단에서 B가 반환한 `npc_recast_line_candidate` 값을 A로 인가할 때 강제로 `None`으로 필터링 처리하여 유입을 차단했습니다.
+- 이에 종속된 모든 관련 테스트(유닛 및 통합 테스트) 단언문들이 갱신 및 정상화되었습니다.
 
 Developer C Alpha 3A update, 2026-06-12: C adopted the base runtime routing
 portion of this request. `ALPHA_999_FINAL_SCOREBOARD` is now the only C adapter
