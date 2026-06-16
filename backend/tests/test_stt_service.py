@@ -1,4 +1,5 @@
 from backend.app.schemas.game_turn import AudioMetadata, MockAudioInput
+from backend.app.services.service_c.settings_service import AppSettings
 from backend.app.services.service_c.stt_service import WhisperLargeV3TurboSttService
 
 
@@ -77,6 +78,7 @@ def test_stt_service_reports_realtime_transcript_provider_without_batch_stt() ->
         local_runtime=local_runtime,
         api_fallback=api_fallback,
         mode="local",
+        settings=AppSettings(elevenlabs_realtime_stt_model="scribe_v2_realtime"),
     )
 
     normalized_input = service.transcribe_wav(
@@ -90,6 +92,7 @@ def test_stt_service_reports_realtime_transcript_provider_without_batch_stt() ->
     )
 
     assert normalized_input.player_text == "Realtime final transcript."
+    assert normalized_input.stt_model == "scribe_v2_realtime"
     assert normalized_input.stt_runtime_used == "elevenlabs_relay"
     assert local_runtime.calls == 0
     assert api_fallback.calls == 0

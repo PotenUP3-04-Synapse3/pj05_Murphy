@@ -163,7 +163,7 @@ class InputSource(BaseModel):
 class NormalizedInput(BaseModel):
     player_text: str
     input_source: InputSource
-    stt_model: Literal["whisper-large-v3-turbo"]
+    stt_model: str
     stt_primary_runtime: Literal["local"]
     stt_fallback_runtime: Literal["api"]
     stt_runtime_used: SttRuntimeUsed

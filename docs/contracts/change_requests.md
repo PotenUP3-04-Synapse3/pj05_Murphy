@@ -451,7 +451,24 @@ dialogue support.
 
 ## Change Request - 2026-06-09 - Remove Developer B NPC Wording From A Adapter Payload
 
-Status: Resolved (Partially).
+Status: Resolved for the current Developer C-to-A adapter payload.
+
+Developer C boundary update, 2026-06-16:
+- `dev_a_npc_dialogue_client.py` now removes B-authored live-dialogue fields
+  from the A-facing level-design payload instead of passing them as `None`.
+- Removed from A-facing payload: `node_context.npc_question`,
+  `node_context.npc_question_goal`, `node_context.recommended_expression`,
+  `in_game_feedback.npc_recast_line_candidate`,
+  `in_game_feedback.recommended_expression`, `level_hint.recommended_expression`,
+  `dialogue_directive.do_not_generate_npc_text`, A-facing `hint_frequency`, and
+  A-facing `pressure_level`.
+- `dialogue_seed.surface_goal`, `dialogue_seed.allowed_followup_intents`,
+  `required_slots`, `target_slot`, branch metadata, and evaluation summary remain
+  available so Developer A can generate NPC wording without receiving B's model
+  answer or fixed node question.
+- Unreal response UI still receives B's `recommended_expression` through
+  Developer C response assembly where appropriate; this change only affects the
+  internal B-to-A adapter boundary.
 
 Developer A & C update, 2026-06-15:
 - Developer A는 `candidate_text` (어댑터 단의 `npc_recast_line_candidate`가 변환된 값)가 A-side 에이전트(`npc_dialogue_agent.py`)에 유입되는 것을 차단하고, 유입될 경우 명시적으로 `ValueError` 예외를 발생시키도록 유효성 검증을 강화했습니다.

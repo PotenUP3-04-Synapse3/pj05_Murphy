@@ -1,5 +1,10 @@
-from fastapi.testclient import TestClient
 import json
+from typing import Any, cast
+
+import anyio
+from fastapi import WebSocket
+from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 import backend.app.api.ai_respond as ai_respond_api
 from backend.app.main import app
@@ -301,3 +306,58 @@ def test_realtime_stt_websocket_appends_debug_agent_run_log_for_stt_session(tmp_
 
     markdown = (tmp_path / "unified_agent_runs.md").read_text(encoding="utf-8")
     assert "## Agent Run: realtime_stt_relay / developer_c" in markdown
+
+
+def test_realtime_stt_send_events_handles_client_disconnect_without_server_error() -> None:
+    class DisconnectingWebSocket:
+        def __init__(self) -> None:
+            self.sent_payloads: list[dict[str, object]] = []
+
+        async def send_json(self, payload: dict[str, object]) -> None:
+            self.sent_payloads.append(payload)
+            raise WebSocketDisconnect(code=1006)
+
+    disconnecting_websocket = DisconnectingWebSocket()
+    websocket = cast(WebSocket, disconnecting_websocket)
+    events: list[dict[str, Any]] = [
+        {
+            "contract_version": "dev_c_realtime_stt.v1",
+            "event_type": "partial_transcript",
+            "request_id": "req_realtime_0001",
+            "session_id": "session_realtime_001",
+            "turn_index": 3,
+            "sequence": 1,
+            "provider": "elevenlabs_relay",
+        }
+    ]
+
+    result = anyio.run(
+        ai_respond_api._send_realtime_events,
+        websocket,
+        events,
+    )
+
+    assert result is False
+    assert disconnecting_websocket.sent_payloads[0]["event_type"] == "partial_transcript"
+
+
+def test_realtime_stt_stream_handles_client_close_before_first_message() -> None:
+    class ClosedBeforeMessageWebSocket:
+        def __init__(self) -> None:
+            self.accepted = False
+
+        async def accept(self) -> None:
+            self.accepted = True
+
+        async def receive_json(self) -> dict[str, object]:
+            raise RuntimeError('WebSocket is not connected. Need to call "accept" first.')
+
+    closed_websocket = ClosedBeforeMessageWebSocket()
+
+    result = anyio.run(
+        ai_respond_api.realtime_stt_stream,
+        cast(WebSocket, closed_websocket),
+    )
+
+    assert result is None
+    assert closed_websocket.accepted is True
