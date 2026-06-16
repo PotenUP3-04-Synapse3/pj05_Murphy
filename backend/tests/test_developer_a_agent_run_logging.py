@@ -327,7 +327,7 @@ def test_voice_output_uses_npc_id_from_payload_for_voice_profile_and_log(tmp_pat
 
     record = json.loads((tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()[0])
 
-    assert output["tts"]["voice_profile_id"] == "session_1:hale"
+    assert output["tts"]["voice_profile_id"] == "session_1:hale:edge"
     assert output["tts"]["voice_id"] == "en-US-GuyNeural"
     assert record["metadata"]["npc_context"]["npc_id"] == "hale"
 
@@ -541,7 +541,7 @@ def test_voice_output_can_switch_to_elevenlabs_tts_provider_with_voice_settings(
 
     monkeypatch.setenv("MURPHY_TTS_PROVIDER", "elevenlabs")
     monkeypatch.setenv("MURPHY_ELEVENLABS_API_KEY", "test_key")
-    monkeypatch.setenv("MURPHY_ELEVENLABS_VOICE_ID", "voice_miller")
+    monkeypatch.setenv("MURPHY_ELEVENLABS_VOICE_ID_FORCE", "voice_miller")
     monkeypatch.setenv("MURPHY_ELEVENLABS_MODEL_ID", "eleven_flash_v2_5")
     monkeypatch.setenv("MURPHY_ELEVENLABS_SPEED", "0.80")
     monkeypatch.setattr(
