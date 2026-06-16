@@ -1438,3 +1438,78 @@ Developer A 소유 프롬프트/생성 로직 내부 개선이며, A/B/C 간 스
 `/respond-dialog` 테스트 시 "Sure, here is my pen."과 같이 의도에 부합하는
 구체적 영어 답변을 입력하면 보다 자연스러운 NPC 전환 대사를 확인할 수
 있습니다.
+
+## Change Request - 2026-06-16 - 기내 스몰토크 대화형 전환 (Flight Smalltalk Conversational Mode)
+
+Status: Open. Developer B 작업계획서(`docs/workplan-dev-b.md`) 기준. Dev B는
+분기 결정·시드 측을 담당하며, 본 요청은 Dev A·Dev C 후속 작업을 정의한다.
+
+### Requested By
+
+Developer B
+
+### Affected Owner
+
+Developer A and Developer C / Sean Han
+
+### Reason
+
+기내(옆자리 승객) 스몰토크 씬 `FLIGHT_A_001_SEATMATE_SMALLTALK`(및
+`FLIGHT_B_*`, `FLIGHT_C_*`)이 출입국 심사용 채점형 상태 머신
+(`ScenarioStateMachine`)을 재사용해 다음 문제가 있다: (1) 취조처럼 느껴지고,
+(2) 엉뚱한 답에 같은 질문을 반복하며, (3) 꼬리를 무는 자연 대화감이 없고,
+(4) 매 턴 교정("이렇게 말하면 돼")이 노출되며, (5) 스몰토크인데 다음 질문
+진행에만 집중한다.
+
+확정 방향: **재미·라포 우선(절충)** — 표면 대화는 완전 자유, 영어 진단/채점은
+백그라운드에서 조용히 적립한 뒤 씬 종료 후 리포트로만 노출. Dev B는 기내 씬을
+채점형 분기에서 분리(대화형 결정 + 페널티 미적립 + in-game 교정 억제)하지만,
+"기계 느낌" 완전 제거에는 Dev A 대사 생성과 Dev C 슬롯 정책 변경이 함께
+필요하다.
+
+### Proposed Contract Change
+
+Dev A:
+
+- NPC 대사 프롬프트(`backend/app/agents/agent_a/npc_llm_client.py`의
+  `_developer_instructions`)에 **스몰토크 페르소나 모드**를 추가한다 —
+  자기 사연·목적을 지닌 동승객; 매 턴 질문 강제 금지; 반응/자기개방/질문 혼합;
+  topic drift 허용; 대화 중 영어 교정 금지.
+- 기내 씬에서 `missing_followup_question` 검증/매 턴 질문 강제를 **해제**하고
+  (`npc_dialogue_agent.py`), 반응-only 턴을 허용한다.
+- `SURFACE_GOAL_QUESTIONS` 고정 질문 큐
+  (`backend/app/services/service_a/dialogue_policy_service.py`)를 기내 씬에서
+  **비활성화**하고, 플레이어 발화·추출 토픽 기반 맥락 후속을 생성한다. 고정
+  질문은 LLM 실패 시 폴백으로만 사용.
+- `recommended_expression`/교정 표현을 라이브 대사(`npc_text`/`tts_text`)에
+  삽입하지 않는다(피드백은 out-game 리포트로).
+- `branch_reason == "flight_smalltalk_continue"` 신호 시 성공-축하형이 아닌
+  중립 반응을 렌더링한다.
+- (질감, 후속) 대화 메모리: 다룬 화제·NPC가 밝힌 정보를 추적해 재질문 방지 및
+  "아까 ~라 했죠" 콜백.
+
+Dev C:
+
+- 기내 스몰토크에서 슬롯 강제 추출을 완화한다 — 자유 발화를 임의 슬롯 값으로
+  채우지 않는다.
+- **off-topic 가드의 씬 인지화**: 2026-06-16 Understanding off-topic guard는
+  입국심사(IMM_*)에서는 차단을 유지하되, 기내 스몰토크에서는 off-topic을
+  패널티/재질문 유발로 쓰지 않는다(화제 이동 허용). Dev B 기내 분기는 채점
+  신호를 무시하므로 재질문은 발생하지 않으나, understanding 출력이 리포트/적립을
+  왜곡하지 않도록 조정 요청.
+- 어댑터(`backend/app/integrations/dev_a_npc_dialogue_client.py`)가 기내 씬에서
+  `dialogue_seed.surface_goal`/`allowed_followup_intents`를 강제 단일 질문이
+  아니라 주제 힌트로 전달하는지 확인.
+
+### Compatibility Impact
+
+내부 어댑터/프롬프트/생성 정책 변경이며 외부 Unreal 계약은 불변. 입국심사
+(IMM_*)·수하물(BAG_*) 채점 동작은 그대로 유지되어야 한다(회귀 가드).
+`branch_type` enum은 확장하지 않으며, 중립 진행은 `success`+`ADVANCE` 재사용 +
+`branch_reason="flight_smalltalk_continue"` 신호로 표현한다.
+
+### Temporary Workaround
+
+Dev B 기내 분기만 적용해도 기내 씬의 재질문·페널티는 사라진다. Dev A 프롬프트
+변경 전까지는 NPC가 여전히 매 턴 질문형으로 응답할 수 있으나, 진행이 막히거나
+취조형으로 채점되지는 않는다.

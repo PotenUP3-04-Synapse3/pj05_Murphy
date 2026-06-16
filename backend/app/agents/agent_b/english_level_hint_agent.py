@@ -36,6 +36,7 @@ from backend.app.services.service_b.developer_b_agent_run_logger import Develope
 from backend.app.services.service_b.openkb_feedback_writer import OpenKBFeedbackWriter
 from backend.app.services.service_b.scenario_state_machine import ScenarioDecision, ScenarioStateMachine
 from backend.app.services.service_b.tier_difficulty_controller import TierDifficultyController
+from backend.app.services.service_b.flight_smalltalk_diagnostic_policy import FlightSmallTalkDiagnosticPolicy
 
 
 class OpenKBPolicyWriter(Protocol):
@@ -113,12 +114,20 @@ class _EnglishLevelHintPolicyCore:
         )
 
         try:
-            decision = self.state_machine.decide(payload)
+            is_flight_smalltalk = (payload.scene_id == "FLIGHT_A_001_SEATMATE_SMALLTALK" or payload.current_node_id.startswith("FLIGHT_"))
+            if is_flight_smalltalk:
+                diagnostic_policy = FlightSmallTalkDiagnosticPolicy()
+                decision = diagnostic_policy.decide_conversational(payload)
+                tool_name = "flight_smalltalk_diagnostic_policy.decide_conversational"
+            else:
+                decision = self.state_machine.decide(payload)
+                tool_name = "scenario_state_machine.decide"
+
             self.agent_run_logger.record_event(
                 agent_run,
                 event="tool_call",
                 status="completed",
-                tool_name="scenario_state_machine.decide",
+                tool_name=tool_name,
                 input_summary=input_summary,
                 output_summary=_decision_summary(decision),
             )
@@ -370,6 +379,24 @@ class _EnglishLevelHintPolicyCore:
         인게임 화면에 실시간으로 표시될 피드백 데이터를 정의합니다.
         대화 흐름의 합격 여부에 맞춰 재진술(Recast), 명료화 요구(Clarification), 힌트(Scaffolding) 등의 후보를 선택합니다.
         """
+        is_flight_smalltalk = (payload.scene_id == "FLIGHT_A_001_SEATMATE_SMALLTALK" or payload.current_node_id.startswith("FLIGHT_"))
+        if is_flight_smalltalk:
+            return InGameFeedback(
+                show=False,
+                feedback_strategy="none",
+                timing="during_dialogue_turn",
+                priority="low",
+                purpose="maintain_communication",
+                focus="smalltalk_response_clarity",
+                npc_recast_line_candidate=None,
+                clarification_prompt_candidate=None,
+                elicitation_cue_candidate=None,
+                scaffolding_hint=None,
+                recommended_expression=payload.node_context.recommended_expression,
+                display_duration_ms=None,
+                blocks_progression=False,
+            )
+
         is_success = decision.branch_type in {"success", "final"}
         is_warning = decision.branch_type in {"warning", "bad_end"}
         focus = self.level_controller.feedback_focus(payload)
@@ -441,7 +468,7 @@ class _EnglishLevelHintPolicyCore:
             suggested_expression=payload.node_context.recommended_expression,
             severity=severity,
             affected_scores=self._affected_scores(error_type),
-            should_surface_in_game=decision.branch_type in {"clarify", "hint", "warning", "bad_end"},
+            should_surface_in_game=False if (payload.scene_id == "FLIGHT_A_001_SEATMATE_SMALLTALK" or payload.current_node_id.startswith("FLIGHT_")) else (decision.branch_type in {"clarify", "hint", "warning", "bad_end"}),
             should_surface_out_game=True,
         )
 
@@ -735,6 +762,10 @@ class _EnglishLevelHintPolicyCore:
         """
         다음 대화 턴에서 플레이어가 취할 수 있는 허용된 후속 대화 의도(Intent) 목록을 제공합니다.
         """
+        is_flight_smalltalk = (payload.scene_id == "FLIGHT_A_001_SEATMATE_SMALLTALK" or payload.current_node_id.startswith("FLIGHT_"))
+        if is_flight_smalltalk:
+            return ["acknowledge", "self_disclosure", "ask_question", "smalltalk_rapport", "advance_to_next_prompt"]
+
         intents = [f"ask_{slot}" for slot in payload.node_context.required_slots]
         if output.branch.branch_type in {"success", "final"}:
             intents.extend(["advance_to_next_prompt", "offer_reassurance"])
@@ -755,6 +786,15 @@ class _EnglishLevelHintPolicyCore:
         NPC가 대답할 때 어떤 어조와 목적을 따라야 하는지 지침을 담은 DialogueDirective 객체를 빌드합니다.
         """
         target_slot = payload.node_context.required_slots[0] if payload.node_context.required_slots else None
+        is_flight_smalltalk = (payload.scene_id == "FLIGHT_A_001_SEATMATE_SMALLTALK" or payload.current_node_id.startswith("FLIGHT_"))
+        if is_flight_smalltalk:
+            return DialogueDirective(
+                purpose="smalltalk_rapport",
+                tone_hint="neutral_passenger",
+                target_slot=target_slot,
+                do_not_generate_npc_text=False,
+            )
+
         if decision.branch_type in {"success", "final"}:
             purpose = "continue_to_next_question"
             tone_hint = "neutral_official"
