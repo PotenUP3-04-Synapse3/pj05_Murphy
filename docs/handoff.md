@@ -1,5 +1,6 @@
 # Handoff
 
+<<<<<<< HEAD
 ## 2026-06-16 Developer B 욕설 처리 및 Bad Ending 분기 정책 완료 (CR-A2, CR-A4)
 
 Developer B는 플레이어의 비속어 발화 시 챕터 강제 강등 및 배드 엔딩 분기 연동을 위한 작업(CR-A2, CR-A4)을 완료했습니다.
@@ -29,6 +30,96 @@ Developer B는 기내 스몰토크가 "취조처럼" 느껴지고 플레이어�
   - Dev B 소유 작업: `scenario_nodes.json`(노드 정리·역할 반전 교정), 신규 `flight_smalltalk_probes.json`, `flight_smalltalk_diagnostic_policy.py`(적응형 선택·종료), `developer_b_policy_graph_tools.py`(배선·seed emit), `english_level_hint_agent.py`(능력 추정치+신뢰도 노출·in-game 억제).
 - 교차 의존: Dev A/Dev C 변경 요청을 `docs/contracts/change_requests.md`(**Change Request - 2026-06-16 - [CR-B-SMALLTALK] 기내 스몰토크 적응형 진단 전환**)로 발행. 핵심은 Dev A의 **반응-먼저 대사 생성 + coherence guard 신설 + `missing_followup_question` 해제 + 고정 큐 비활성** 과 Dev C의 **슬롯 추출 완화**. 노드 ID(`FLIGHT_A_001_SEATMATE_SMALLTALK`)는 유지하므로 데모(`respond-dialog`)는 무영향.
 - 검증/후속: 본 항목은 계획·계약 문서 작성 단계(코드 미구현). 구현 시 §9 검증 명령(`uv run pytest backend/tests/dev_b/...`, `ruff`, `mypy`) 및 §8 테스트(probe 선택·bounded 종료·steering=0 추종·안전선 회귀·자연스러움 eval) 수행 예정.
+=======
+## 2026-06-16 Developer C Realtime Transcript Multipart Fallback Fix
+
+Developer C investigated the Unreal log where realtime STT subtitles showed the
+player's speech, but the legacy recording path still judged the WAV as too
+short and the backend handled the turn as if it only had fallback/short audio.
+
+Root cause:
+
+- The realtime STT WebSocket path can produce a valid final transcript before
+  the normal `/api/game/ai/respond` call.
+- If Unreal sends the normal `/respond` call as multipart and places that final
+  text inside `turn.audio.transcript`, the previous C multipart parser validated
+  `turn.audio` as plain audio metadata and lost the extra transcript field.
+- After that loss, C saw only the attached WAV bytes. In mock/local batch STT
+  paths this could fall back to the WAV-derived/default transcript instead of
+  the realtime final transcript.
+
+Changed:
+
+- `backend/app/api/ai_respond.py` now copies `turn.audio.transcript` and
+  `turn.audio.transcript_provider` into the internal `MockAudioInput` before
+  validating `UnrealTurnRequest`.
+- When a multipart request carries both a too-short WAV and a realtime final
+  transcript, the transcript wins and batch WAV STT is skipped.
+- Added regression coverage in `backend/tests/test_preprototype_flow.py`.
+
+Unreal alignment note:
+
+- In realtime STT mode, Unreal should treat `final_transcript` as the source of
+  truth for the AI turn. The legacy WAV-duration guard may still be useful for
+  non-realtime uploads, but it should not trigger "too short answer" fallback
+  dialogue once a committed realtime final transcript exists.
+- Recommended payload for multipart compatibility: keep the WAV attachment if
+  needed for capture/debug, but include `turn.audio.transcript` and
+  `turn.audio.transcript_provider="elevenlabs_relay"` in the turn JSON.
+- Recommended payload for pure realtime flow: send JSON with top-level
+  `audio.transcript` and `audio.transcript_provider`, matching the existing
+  `/respond-dialog` demo page.
+
+Verification:
+
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_api_prefers_realtime_transcript_embedded_in_multipart_turn_audio -q`
+  passed after failing before the fix.
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_api_reports_realtime_transcript_provider_as_stt_runtime backend/tests/test_preprototype_flow.py::test_api_accepts_multipart_turn_json_and_sample_wav backend/tests/test_preprototype_flow.py::test_api_prefers_realtime_transcript_embedded_in_multipart_turn_audio backend/tests/test_stt_service.py -q`
+  passed.
+
+## 2026-06-16 Developer C Realtime STT Client Disconnect Handling
+
+Developer C fixed a WebSocket noise/error case seen while testing
+`/api/game/ai/stt/stream`.
+
+Root cause:
+
+- The client closed the WebSocket first, with uvicorn reporting
+  `ConnectionClosedOK` and Starlette raising `WebSocketDisconnect`.
+- The backend then tried to send a realtime STT server event to the already
+  closed socket, so uvicorn logged `Exception in ASGI application` even though
+  the client-side close itself was not an ElevenLabs provider failure.
+- A second close path can happen even earlier: the client opens the WebSocket
+  and closes it before sending the first JSON message. In that case Starlette
+  raises a `RuntimeError` from `receive_json()` with
+  `WebSocket is not connected. Need to call "accept" first.`
+
+Changed:
+
+- `backend/app/api/ai_respond.py` now treats `WebSocketDisconnect` during
+  realtime server-event sends as a normal client disconnect.
+- `_send_realtime_event()` and `_send_realtime_events()` now return `False`
+  when the client has already closed, which prevents the noisy ASGI stack trace
+  and stops sending the rest of the event batch.
+- `realtime_stt_stream()` now also treats Starlette's receive-after-disconnect
+  RuntimeError as a normal client disconnect while still re-raising unrelated
+  RuntimeErrors.
+- Added regression coverage in `backend/tests/test_realtime_stt_websocket.py`.
+
+Verification:
+
+- RED: the new disconnect test failed before the fix with
+  `starlette.websockets.WebSocketDisconnect` escaping from
+  `_send_realtime_event()`.
+- RED: the receive-side disconnect test failed before the fix with
+  `RuntimeError: WebSocket is not connected. Need to call "accept" first.`
+- `uv run pytest backend/tests/test_realtime_stt_websocket.py
+  backend/tests/test_elevenlabs_realtime_stt_relay.py -q`: PASS, 16 passed,
+  1 existing `audioop` deprecation warning.
+- `uv run pytest`: PASS, 261 passed, 1 existing `audioop` deprecation warning.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS.
+>>>>>>> da247ca412a3555d661292366b6e0730e3df7d03
 
 ## 2026-06-16 Developer A Request: Bad Ending End-to-End 연동을 위한 B/C 협조 요청
 
@@ -159,6 +250,33 @@ Developer A는 `docs/workplan-dev-a-npc-voice-routing.md` 작업 계획서에 �
 ### Phase E - 문서 정리 및 환경 명세 최신화:
 - **환경변수 예시 갱신**: `.env.example` 파일에서 옛날 단일 목소리 오버라이드 변수들을 비활성화(Deprecated 주석 처리)하고, 신규 강제 오버라이드 변수인 `*_FORCE` 환경변수 지침을 명시했습니다.
 - **구조 설계도 최신화**: `docs/agent_a_structure.md` 파일 내의 Mermaid 시퀀스(Sequence) 및 전체 아키텍처 다이어그램에서 `resolve_voice_profile(tts_provider)`에 매개변수가 주입되는 설계 흐름을 최신 상태로 반영했습니다.
+
+## 2026-06-16 Developer C Realtime STT Model Metadata Fix
+
+Developer C fixed the AI-to-Unreal STT metadata for the realtime transcript
+path.
+
+Root cause:
+
+- `/respond` correctly copied `audio.transcript_provider = "elevenlabs_relay"`
+  into `stt.runtime_used`, but `WhisperLargeV3TurboSttService` still populated
+  `stt_model` from the fixed local batch model label
+  `whisper-large-v3-turbo`.
+- `NormalizedInput.stt_model` was typed as a literal Whisper-only value, so the
+  contract could not represent ElevenLabs realtime model ids.
+
+Changed:
+
+- `backend/app/schemas/game_turn.py` now allows `NormalizedInput.stt_model` to
+  be any string model label.
+- `backend/app/services/service_c/stt_service.py` now reports
+  `settings.elevenlabs_realtime_stt_model` when `runtime_used` is
+  `elevenlabs_relay`.
+- `backend/tests/test_stt_service.py` and
+  `backend/tests/test_preprototype_flow.py` now assert that realtime transcript
+  turns return `stt.model` and `debug.stt_model` as `scribe_v2_realtime`.
+- Updated Developer C schema/adapter contracts to describe the realtime model
+  label behavior.
 
 ## 2026-06-16 Developer A Implementation: Chapter Boundary, Emotion Enum & Dynamic TTS Parameter Integration (Phase P2 & Phase P3)
 
@@ -3274,3 +3392,45 @@ Known issue / 제외 (Developer B 범위 밖, 변동 없음):
 Next recommended step: Developer C가 Understanding Agent 분류/정규화 정확도
 보강(1차 차단)을 우선 착수. Developer A는 Dialogue Agent 화자 역할/다음 질문
 작문 보강. Developer B 추가 작업 없음.
+
+## 2026-06-16 Developer C B-to-A Payload Boundary Cleanup
+
+Developer B's open handoff/change-request items for B-authored NPC wording were
+applied in the Developer C adapter boundary.
+
+Changed files:
+
+- `backend/app/integrations/dev_a_npc_dialogue_client.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/contracts/change_requests.md`
+- `docs/handoff.md`
+
+Decision:
+
+- Developer A should not receive B-authored model answers or fixed node
+  questions as live NPC-generation input.
+- Removing `recommended_expression` and `npc_question_goal` from the A-facing
+  payload does not block current A generation because A still receives
+  `dialogue_seed.surface_goal`, `dialogue_seed.allowed_followup_intents`,
+  required slot metadata, branch metadata, the NPC identity, and evaluation
+  summary.
+- `recommended_expression` remains available for Unreal UI/out-game feedback
+  through Developer C response assembly; only the internal B-to-A adapter
+  payload is reduced.
+
+Adapter behavior:
+
+- Removed from A-facing `node_context`: `npc_question`, `npc_question_goal`,
+  `recommended_expression`.
+- Removed from A-facing `in_game_feedback`: `npc_recast_line_candidate`,
+  `recommended_expression`.
+- Removed from A-facing `level_hint`: `recommended_expression`.
+- Removed from A-facing `dialogue_directive`: `do_not_generate_npc_text`,
+  `hint_frequency`, `pressure_level`.
+- Kept `dialogue_seed.surface_goal` and `allowed_followup_intents` so A can use
+  them as topic/intent hints rather than receiving B's final wording.
+
+Verification:
+
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_next_question_seed_without_generic_recast_in_llm_mode backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_npc_context_to_voice_builder backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata -q`
+  passed.

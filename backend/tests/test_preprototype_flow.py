@@ -717,10 +717,13 @@ def test_dev_a_adapter_uses_next_question_seed_without_generic_recast_in_llm_mod
     )
 
     assert builder_payloads
-    assert builder_payloads[0]["in_game_feedback"]["npc_recast_line_candidate"] is None
-    assert builder_payloads[0]["in_game_feedback"]["recommended_expression"] is None
-    assert builder_payloads[0]["level_hint"]["recommended_expression"] is None
-    assert builder_payloads[0]["node_context"]["recommended_expression"] is None
+    assert "npc_recast_line_candidate" not in builder_payloads[0]["in_game_feedback"]
+    assert "recommended_expression" not in builder_payloads[0]["in_game_feedback"]
+    assert "recommended_expression" not in builder_payloads[0]["level_hint"]
+    assert "recommended_expression" not in builder_payloads[0]["node_context"]
+    assert "npc_question" not in builder_payloads[0]["node_context"]
+    assert "npc_question_goal" not in builder_payloads[0]["node_context"]
+    assert "do_not_generate_npc_text" not in builder_payloads[0]["dialogue_directive"]
     assert builder_payloads[0]["player_text"] == "I'm here to visit my uncle."
 
 
@@ -784,6 +787,13 @@ def test_dev_a_adapter_forwards_npc_context_to_voice_builder() -> None:
         "last_npc_message": "What is the purpose of your visit?",
         "emotion": dev_b_output.npc_emotion,
     }
+    assert "npc_recast_line_candidate" not in builder_payloads[0]["in_game_feedback"]
+    assert "recommended_expression" not in builder_payloads[0]["in_game_feedback"]
+    assert "recommended_expression" not in builder_payloads[0]["level_hint"]
+    assert "recommended_expression" not in builder_payloads[0]["node_context"]
+    assert "npc_question" not in builder_payloads[0]["node_context"]
+    assert "npc_question_goal" not in builder_payloads[0]["node_context"]
+    assert "do_not_generate_npc_text" not in builder_payloads[0]["dialogue_directive"]
 
 
 def _dev_a_payload_for_request(request: PrePrototypeRequest) -> tuple[DevADialogueOutput, dict[str, Any]]:
@@ -870,7 +880,13 @@ def test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata() -> None:
     assert payload["npc"]["npc_id"] == "SEATMATE_A_01"
     assert payload["npc"]["npc_role"] == "seatmate"
     assert payload["node_context"]["chapter_id"] == "CH0_01_FLIGHT_SMALLTALK"
-    assert payload["in_game_feedback"]["npc_recast_line_candidate"] is None
+    assert "npc_recast_line_candidate" not in payload["in_game_feedback"]
+    assert "recommended_expression" not in payload["in_game_feedback"]
+    assert "recommended_expression" not in payload["level_hint"]
+    assert "recommended_expression" not in payload["node_context"]
+    assert "npc_question" not in payload["node_context"]
+    assert "npc_question_goal" not in payload["node_context"]
+    assert "do_not_generate_npc_text" not in payload["dialogue_directive"]
     assert payload["dialogue_directive"]["purpose"] == "smalltalk_rapport"
     assert payload["dialogue_seed"]["npc_role"] == "seatmate_passenger"
     assert payload["dialogue_seed"]["surface_goal"] == "respond_to_polite_request"
@@ -897,7 +913,13 @@ def test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata() -> None:
     assert payload["npc"]["npc_id"] == "BAGGAGE_STAFF"
     assert payload["npc"]["npc_role"] == "baggage_service_staff"
     assert payload["node_context"]["chapter_id"] == "CH0_04_BAGGAGE_CLAIM"
-    assert payload["in_game_feedback"]["npc_recast_line_candidate"] is None
+    assert "npc_recast_line_candidate" not in payload["in_game_feedback"]
+    assert "recommended_expression" not in payload["in_game_feedback"]
+    assert "recommended_expression" not in payload["level_hint"]
+    assert "recommended_expression" not in payload["node_context"]
+    assert "npc_question" not in payload["node_context"]
+    assert "npc_question_goal" not in payload["node_context"]
+    assert "do_not_generate_npc_text" not in payload["dialogue_directive"]
     assert payload["dialogue_directive"]["purpose"] == "continue_to_next_question"
     assert payload["dialogue_seed"]["npc_role"] == "baggage_service_agent"
     assert payload["dialogue_seed"]["surface_goal"] == "report_missing_bag_at_service_desk"
@@ -1095,7 +1117,9 @@ def test_api_reports_realtime_transcript_provider_as_stt_runtime() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["stt"]["player_text"] == "I'm here for tourism."
+    assert body["stt"]["model"] == "scribe_v2_realtime"
     assert body["stt"]["runtime_used"] == "elevenlabs_relay"
+    assert body["debug"]["stt_model"] == "scribe_v2_realtime"
     assert body["debug"]["timing_ms"]["stt_ms"] == 0
 
 
@@ -1133,6 +1157,36 @@ def test_api_accepts_multipart_turn_json_and_sample_wav() -> None:
     audio_response = client.get(body["npc"]["audio_url"])
     assert audio_response.status_code == 200
     assert audio_response.content.startswith(b"RIFF")
+
+
+def test_api_prefers_realtime_transcript_embedded_in_multipart_turn_audio() -> None:
+    client = TestClient(app)
+    turn_payload = _turn_payload()
+    turn_payload["audio"]["duration_ms"] = 0
+    turn_payload["audio"]["transcript"] = "Hello."
+    turn_payload["audio"]["transcript_provider"] = "elevenlabs_relay"
+
+    response = client.post(
+        "/api/game/ai/respond",
+        files={
+            "turn": (
+                "imm_002_purpose.json",
+                json.dumps(turn_payload),
+                "application/json",
+            ),
+            "audio": (
+                "too-short.wav",
+                b"RIFF....WAVEfmt ",
+                "audio/wav",
+            ),
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stt"]["player_text"] == "Hello."
+    assert body["stt"]["runtime_used"] == "elevenlabs_relay"
+    assert body["stt"]["model"] == "scribe_v2_realtime"
 
 
 def test_api_captures_unreal_multipart_request_when_debug_mode_is_enabled(

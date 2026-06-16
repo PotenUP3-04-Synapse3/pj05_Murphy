@@ -31,6 +31,9 @@ The STT runtime policy is local-first:
 
 - Primary runtime: local `whisper-large-v3-turbo`.
 - Fallback runtime: OpenAI Transcriptions API.
+- When `/respond` consumes a final realtime transcript from
+  `transcript_provider = "elevenlabs_relay"`, `stt_model` reports
+  `ELEVENLABS_REALTIME_STT_MODEL` instead of the local Whisper model.
 - Tests and deterministic demo paths must pass without requiring a local model
   download or API key.
 
@@ -434,7 +437,10 @@ Understanding Agent.
 Rules:
 
 - `input_source.input_type` is always `voice` for the current prototype.
-- The configured STT model name is `whisper-large-v3-turbo`.
+- Local/mock batch turns report `stt_model = "whisper-large-v3-turbo"`.
+- Realtime ElevenLabs turns that enter `/respond` as final transcript text
+  report `stt_model = ELEVENLABS_REALTIME_STT_MODEL`, currently
+  `scribe_v2_realtime` by default.
 - `stt_primary_runtime` is always `local` for the current prototype.
 - `stt_fallback_runtime` is always `api`; it is used only when the local
   runtime is unavailable or fails in a non-test environment.
@@ -920,7 +926,11 @@ Rules:
   Agent and Developer B policy adapter.
 - `stt.primary_runtime` and `stt.fallback_runtime` expose the local-first
   runtime policy for demo/debug visibility.
-- `stt.runtime_used` must be `local` unless the API fallback actually produced
+- `stt.model` names the runtime model that produced the transcript. For
+  `runtime_used = "elevenlabs_relay"`, it must be the configured ElevenLabs
+  realtime model id.
+- `stt.runtime_used` must be `local` unless the API fallback, realtime STT
+  relay, Unreal bridge, or other declared transcript provider actually produced
   the transcript.
 - `state_delta` must come from Developer B output after validation.
 - `interaction` echoes the C-owned request interaction context so Unreal can
