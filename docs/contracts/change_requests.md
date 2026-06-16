@@ -1733,3 +1733,78 @@ Additive node 추가. 기존 분기/노드 무영향. CR-A2 의 `branch.next_nod
 ### Temporary Workaround
 
 Bad ending 노드 미생성 시 A 는 기존 `COMPLETE_CHAPTER` 처리 로직으로 평이한 종결 대사 합성 (게임 종료 사유 미표시).
+
+## Change Request - 2026-06-16 - [CR-B-SMALLTALK] 기내 스몰토크 적응형 진단 전환: Dev A 반응형 대사·coherence guard + Dev C 슬롯 완화
+
+Status: Open. `docs/workplan-dev-b.md`(기내 스몰토크 적응형 진단 전환, C안)의 §4/§10 타 팀 의존 항목.
+
+### Requested By
+
+Developer B
+
+### Affected Owner
+
+Developer A / kimyonghee, Developer C / Sean Han
+
+### Reason
+
+기내 스몰토크 씬(`FLIGHT_A_001_SEATMATE_SMALLTALK`)을 15개 고정 노드(A/B/C × 5턴)에서
+**단일 self-loop 진단 노드 + probe 뱅크 + 적응형 컨트롤러**로 전환한다(C안). Dev B는
+분기/진행/probe 선택/종료를 결정적으로 소유하지만, 다음 두 가지가 남으면 "취조 느낌"과
+역할 반전이 그대로 남는다.
+
+- 증상 1: 플레이어가 펜을 빌려줬는데 NPC가 `"Sure, here you are."`(빌려주는 쪽 대사)로
+  역할 반전 → 원인은 player 관점 `npc_question_goal`이 `surface_goal`로 흘러 NPC를
+  응답자로 오인시킴. Dev B가 진단 노드에서 이 경로를 probe 의도로 대체하지만, Dev A가
+  여전히 `surface_goal` 고정 질문만 읽으면 자연 대화가 안 된다.
+- 증상 2: Dev A가 매 턴 질문을 강제(`missing_followup_question`)해 반응-only 턴이
+  금지되고, 직전 발화를 무시한 맨 질문이 통과된다.
+
+경계: **분기·진행·probe 선택·종료·verdict·다음 노드는 Dev B(규칙 기반).** Dev A는
+선택된 probe 의도를 받아 **표면 대사 wording 과 출력 단계 coherence 검증**만 담당.
+Dev C는 자유 발화를 임의 슬롯으로 채우지 않도록 추출을 완화.
+
+### Proposed Contract Change
+
+**Dev A:**
+
+- 진단 씬(`dialogue_directive.purpose="smalltalk_diagnostic"`)에서:
+  - **반응-먼저-탐색** 구조 강제: NPC 턴 = `[직전 발화 반응] + [연결] + [후속 의도]`.
+    probe를 단독 질문으로 내보내지 않는다.
+  - `missing_followup_question` 에러/매 턴 질문 강제 **해제** → 반응-only 턴 허용.
+  - `SURFACE_GOAL_QUESTIONS` 고정 큐 **비활성** → `surface_goal`(`target_competency`
+    +`topic_tag`) 및 플레이어 발화 기반 맥락 후속 생성. seed_text(probe 뱅크)는 LLM
+    실패 시 폴백으로만.
+  - `recommended_expression`/교정 표현을 **라이브 대사에 삽입 금지**(피드백은 out-game).
+  - **coherence guard 신설**: `npc_dialogue_agent.py:308-322` 의 가드 패턴과 동일하게,
+    플레이어 실질 발화에 대해 (a) 반응 없는 맨 질문, (b) 직전 발화와 비연결(non-sequitur)
+    인 NPC 턴을 reject → 재생성 또는 seed_text 폴백.
+  - `dialogue_directive.length_target` 에 따른 **길이 미러링**(하한/상한 둔).
+  - **대화 메모리**: 다룬 화제·NPC가 밝힌 정보를 추적해 재질문 방지 및 콜백.
+  - `dialogue_directive.topic_switch=True` 신호 시 명시적 전환구("Anyway,", "By the way")
+    를 붙여 화제 전환.
+  - `branch_reason="flight_smalltalk_continue"` 신호 시 성공-축하형이 아닌 중립 반응 렌더.
+- 제거되는 노드를 참조하는 테스트(`FLIGHT_A_005_WRAP_UP`, `FLIGHT_B_002_COMPANION_OR_VISIT`,
+  `FLIGHT_C_004_HOTEL_HOSTEL` — `backend/tests/test_developer_a_npc_dialogue.py`) 를
+  단일 진단 노드 기준으로 갱신.
+
+**Dev C:**
+
+- 스몰토크 씬에서 슬롯 강제 추출/오인식 완화 — 자유 발화를 임의 `required_slot` 값으로
+  채우지 않는다(진단 노드는 필수 슬롯 개념 미적용).
+- 데모 `demo/respond-dialog/index.html` 는 진단 노드 ID(`FLIGHT_A_001_SEATMATE_SMALLTALK`)
+  를 **유지**하므로 변경 불필요. (노드 ID가 바뀌는 경우에만 `firstNodeId` 갱신.)
+
+### Compatibility Impact
+
+- `branch_type` enum 미확장(중립 진행은 `success`+`ADVANCE` 재사용). Agent A `BranchType`,
+  `game_turn.py`, Dev C 어댑터 파급 없음.
+- 노드 제거는 기내 씬 한정 — `IMM_*`/`BAG_*` 채점 분기·테스트 회귀 없음.
+- coherence guard 는 기존 가드와 동일한 에러-폴백 경로라 additive.
+- Dev A 미반영 시: Dev B 컨트롤러는 동작하나 표면 대사가 여전히 고정 질문이라 자연스러움
+  개선이 제한됨(아래 우회).
+
+### Temporary Workaround
+
+Dev A 반영 전까지 진단 씬은 probe `seed_text` 를 폴백 질문으로 노출(현 `FALLBACK_QUESTIONS`
+사다리와 동등한 degraded 모드). 화제 점프가 일부 남지만 진단 진행·종료는 정상 동작.
