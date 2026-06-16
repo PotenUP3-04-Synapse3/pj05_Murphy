@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 import os
+import logging
 
 from backend.app.agents.agent_a.npc_dialogue_agent import (
     NPCDialogueResult,
@@ -41,6 +42,8 @@ from backend.app.services.service_a.voice_profile_service import resolve_voice_p
 from backend.app.tools.tool_a.npc_dialogue_artifact_tool import build_npc_dialogue_artifact
 from backend.app.tools.tool_a.npc_dialogue_cost_tool import estimate_openai_cost_usd
 from backend.app.tools.tool_a.npc_dialogue_evidence_tool import build_npc_dialogue_evidence_summary
+
+logger = logging.getLogger(__name__)
 
 PROMPT_VERSION = "npc_dialogue_prompt_v1"
 
@@ -164,10 +167,14 @@ def build_voice_output_from_level_design(
                 "llm": dialogue.get("llm"),
             },
         )
+        # 4. 사용될 TTS 엔진 종류를 판단하여 해당 엔진에 맞춘 데이터 구조를 인가합니다.
+        tts_provider_name = _selected_tts_provider(use_real_tts=use_real_tts)
+
         # 3. 사용자 및 NPC의 특성을 반영하여 일관된 목소리 프로필(Voice Profile)을 획득합니다.
         voice_profile = resolve_voice_profile(
             user_id=user_id or session_id or str(payload.get("user_id", "")),
             npc_id=npc_profile.npc_id,
+            tts_provider=tts_provider_name,
         )
         agent_run_middleware.record_event(
             evidence_metadata,
@@ -180,8 +187,6 @@ def build_voice_output_from_level_design(
                 "voice_id": voice_profile.voice_id,
             },
         )
-        # 4. 사용될 TTS 엔진 종류를 판단하여 해당 엔진에 맞춘 데이터 구조를 인가합니다.
-        tts_provider_name = _selected_tts_provider(use_real_tts=use_real_tts)
         tts_request = _build_provider_request(
             provider_name=tts_provider_name,
             text=str(dialogue.get("tts_text") or dialogue["npc_text"]),
@@ -423,11 +428,17 @@ def _build_provider_request(
             default_speed = emotion_params[2] if emotion_params else _elevenlabs_speed_for_tone(tone)
             speed_val = _env_float("MURPHY_ELEVENLABS_SPEED", default_speed)
 
+        elevenlabs_voice = _per_npc_voice_or_override(
+            npc_voice=voice_id,
+            force_env_key="MURPHY_ELEVENLABS_VOICE_ID_FORCE",
+            deprecated_env_key="MURPHY_ELEVENLABS_VOICE_ID",
+            fallback="CwhRBWXzGAHq8TQ4Fs17",
+        )
         return build_elevenlabs_provider_request(
             text=text,
             speaker_id=speaker_id,
             voice_profile_id=voice_profile_id,
-            voice_id=_env_value("MURPHY_ELEVENLABS_VOICE_ID", voice_id or "CwhRBWXzGAHq8TQ4Fs17"),
+            voice_id=elevenlabs_voice,
             tone=tone,
             english_level=english_level,
             api_key=_env_value("MURPHY_ELEVENLABS_API_KEY", _env_value("ELEVENLABS_API_KEY", "")),
@@ -445,11 +456,17 @@ def _build_provider_request(
         )
 
     # Edge TTS를 기본 및 명시 프로바이더로 구동합니다.
+    edge_voice_val = _per_npc_voice_or_override(
+        npc_voice=voice_id,
+        force_env_key="MURPHY_EDGE_TTS_VOICE_FORCE",
+        deprecated_env_key="MURPHY_EDGE_TTS_VOICE",
+        fallback="en-US-GuyNeural",
+    )
     return build_edge_provider_request(
         text=text,
         speaker_id=speaker_id,
         voice_profile_id=voice_profile_id,
-        edge_voice=_env_value("MURPHY_EDGE_TTS_VOICE", voice_id or "en-US-GuyNeural"),
+        edge_voice=edge_voice_val,
         tone=tone,
         english_level=english_level,
         rate=_env_value("MURPHY_EDGE_TTS_RATE", "-5%"),
@@ -494,6 +511,7 @@ def _provider_cache_model_version(*, provider_name: str, use_real_tts: bool, tts
     return "|".join(
         [
             model_version,
+            f"voice={options.get('voice')}",
             f"stability={options.get('stability')}",
             f"similarity={options.get('similarity_boost')}",
             f"style={options.get('style')}",
@@ -513,6 +531,39 @@ def _tts_provider_tool_name(provider_name: str) -> str:
 def _env_value(key: str, default: str) -> str:
     """안전하게 OS 환경 변수 또는 로컬 .env 설정 파일에서 환경 설정을 우선순위대로 획득합니다."""
     return os.getenv(key) or _read_env_file(Path(".env")).get(key, default)
+
+
+def _per_npc_voice_or_override(
+    *,
+    npc_voice: str,
+    force_env_key: str,
+    deprecated_env_key: str,
+    fallback: str,
+) -> str:
+    """각 NPC의 개별 목소리 설정을 기본적으로 우선하여 적용합니다.
+    다만 명시적으로 음성을 덮어씌울 강제 오버라이드 환경변수(Force Environment Variable)가 존재한다면 이를 최우선으로 리턴하고,
+    과거 사용되었던 구버전 환경변수(Deprecated Environment Variable)가 탐지될 경우 경고(Warning) 메시지를 출력한 뒤 fallback으로 활용합니다.
+    """
+    # 1단계: 강제 오버라이드 환경변수(Environment Variable) 설정 확인
+    forced = os.getenv(force_env_key) or _read_env_file(Path(".env")).get(force_env_key, "")
+    if forced:
+        return forced
+
+    # 2단계: NPC 캐릭터 본연의 목소리(npc_voice)가 명시되어 있다면 최우선 적용
+    if npc_voice:
+        return npc_voice
+
+    # 3단계: 과거 단일 오버라이드용 환경변수 호환성 보장
+    deprecated_val = os.getenv(deprecated_env_key) or _read_env_file(Path(".env")).get(deprecated_env_key, "")
+    if deprecated_val:
+        logger.warning(
+            f"환경변수(Environment Variable) '{deprecated_env_key}'는 사용이 중단될 예정입니다(Deprecated). "
+            f"앞으로는 각 NPC별 고유 목소리 사양을 준수하거나, 강제 덮어쓰기 변수인 '{force_env_key}'를 사용해주십시오."
+        )
+        return deprecated_val
+
+    # 4단계: 최종 안전망 기본값 반환
+    return fallback
 
 
 def _env_float(key: str, default: float) -> float:
