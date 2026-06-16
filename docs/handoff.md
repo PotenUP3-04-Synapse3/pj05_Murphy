@@ -1,5 +1,46 @@
 # Handoff
 
+## 2026-06-16 Developer C Test and Env Example Cleanup Audit
+
+Developer C audited the current tests after the latest merge for obvious
+legacy-retention cases.
+
+Findings:
+
+- No test file was deleted in this pass. Current tests no longer assert Kokoro
+  or Chatterbox output paths, and no test imports the deprecated
+  `NPCDialogueAgentRunMiddleware` shim.
+- The remaining `generate_npc_dialogue_from_level_design` tests still cover the
+  current Developer A entry point used by `voice_output_service.py`, so they
+  were not removed.
+- The B-side legacy route test checks that old unlabeled Flight node IDs are no
+  longer present in `scenario_nodes.json`; that is an active regression guard,
+  not legacy retention.
+- `test_demo_ai_respond_page.py` still covers the current `/respond-dialog`
+  tester and demo AgentRun summary endpoints. The older `/demo/ai-respond`
+  route is still present in `backend/app/main.py`, so those assertions were left
+  intact rather than silently deleting coverage for a still-mounted route.
+
+Changed:
+
+- Updated `.env.example` so `MURPHY_TTS_PROVIDER=edge`.
+- Removed unused `MURPHY_CHATTERBOX_*` examples from `.env.example`; current
+  runtime code no longer reads these variables after the A-side TTS slimming
+  refactor.
+- Updated the NPC dialogue mode comment so it refers to the selected TTS
+  provider instead of Kokoro.
+
+Verification:
+
+- `rg -n "MURPHY_CHATTERBOX|chatterbox|kokoro|Kokoro|MURPHY_TTS_PROVIDER=kokoro" .env.example backend/tests`:
+  no matches.
+- `uv run pytest`: PASS, 243 passed, 1 existing `audioop` deprecation warning.
+- `uv run mypy .`: PASS, no issues in 108 source files.
+- `uv run ruff check .`: FAIL only in A-owned
+  `backend/app/agents/agent_a/npc_dialogue_agent.py` because
+  `polish_tts_text` is imported but unused. Developer C did not edit that
+  A-owned implementation file.
+
 ## 2026-06-16 Developer C Understanding Off-Topic Guard
 
 Developer C implemented the urgent Understanding Agent guard requested after
