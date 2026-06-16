@@ -1346,3 +1346,58 @@ def _all_keys(value: object) -> set[str]:
             list_keys.update(_all_keys(child))
         return list_keys
     return set()
+
+
+def test_invalid_required_slot_value_does_not_advance(tmp_path: Path) -> None:
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="Um,",
+            intent_success=True,
+            confidence=0.9,
+            extracted_slots={"polite_response": "short acknowledgement / hesitant start"},
+            missing_slots=[],
+            client_allowed_next_nodes=context.allowed_next_nodes,
+        )
+    )
+    assert result.evaluation.verdict == "UNCLEAR"
+    assert result.branch.branch_type == "clarify"
+    assert result.branch.next_action == "REASK"
+
+
+def test_valid_slot_value_still_advances(tmp_path: Path) -> None:
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="Sure, here you are.",
+            intent_success=True,
+            confidence=0.9,
+            extracted_slots={"polite_response": "offered_help"},
+            missing_slots=[],
+            client_allowed_next_nodes=context.allowed_next_nodes,
+        )
+    )
+    assert result.evaluation.verdict == "SUCCESS"
+    assert result.branch.branch_type == "success"
+    assert result.branch.next_action == "ADVANCE"
+
+
+def test_freeform_slot_without_allowed_values_skips_validation(tmp_path: Path) -> None:
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    freeform_context = context.model_copy(update={"allowed_slot_values": {}})
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=freeform_context,
+            player_text="Um,",
+            intent_success=True,
+            confidence=0.9,
+            extracted_slots={"polite_response": "short acknowledgement / hesitant start"},
+            missing_slots=[],
+            client_allowed_next_nodes=context.allowed_next_nodes,
+        )
+    )
+    assert result.evaluation.verdict == "SUCCESS"
+    assert result.branch.branch_type == "success"
+    assert result.branch.next_action == "ADVANCE"
