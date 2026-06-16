@@ -1,5 +1,35 @@
 # Handoff
 
+## 2026-06-16 Developer C Implemented: Incivility Signal and A Adapter Forward
+
+Developer C completed the C-owned portion of Developer A's Bad Ending /
+Profanity Mirror handoff:
+
+- Added additive `IncivilityClassification` and optional
+  `UnderstandingOutput.incivility`.
+- Added `backend/app/services/service_c/incivility_classifier.py` as the
+  deterministic Alpha classifier for tier 0-3 rude/insult/profanity/threat
+  evidence.
+- Attached incivility evidence after both rule and LLM Understanding paths.
+- Forwarded top-level `incivility` from `DevANpcDialogueClient` to Developer A's
+  level-design payload, with a safe tier 0 default for older mocks.
+- Added compact `incivility` summaries to C Understanding traces and unified
+  AgentRun output summaries.
+- Documented the schema/adapter contract and marked CR-A1/CR-A3 with C
+  implementation status. CR-A2 bad-ending branch policy and CR-A4 verbal-abuse
+  scenario nodes remain Developer B-owned.
+
+Verification:
+
+- `uv run pytest` passed: 287 passed, 1 warning.
+- Focused C-owned `uv run ruff check ...` passed for the sprint files.
+- `uv run mypy .` passed.
+- Full `uv run ruff check .` is still blocked by Developer A-owned unused import
+  findings in `backend/app/agents/agent_a/npc_dialogue_agent.py` and
+  `backend/app/services/service_a/tts_text_polisher_service.py`. Developer C did
+  not edit those A-owned implementation files; a change request was added in
+  `docs/contracts/change_requests.md`.
+
 ## 2026-06-16 Developer C Sprint Added: Incivility Signal and A Adapter Forward
 
 Developer C reviewed Developer A's latest Bad Ending / Profanity Mirror handoff

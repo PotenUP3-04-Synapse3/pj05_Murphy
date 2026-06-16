@@ -83,6 +83,39 @@ def test_understanding_agent_uses_llm_client_in_llm_mode() -> None:
     assert agent.last_trace["postprocessing"]["weak_required_slot_evidence"] is True
 
 
+def test_understanding_agent_llm_mode_attaches_rule_incivility_signal() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_visit_purpose",
+            "intent_success": False,
+            "confidence": 0.55,
+            "meaning_summary_kr": "The player did not answer the visit purpose.",
+            "emotion": "angry",
+            "answer_relevance": "off_topic",
+            "ambiguity_type": "off_topic_response",
+            "risk_delta": 0,
+            "risk_reason": "No immigration risk expression was found.",
+            "risk_tags": [],
+            "extracted_slots": {},
+            "missing_slots": ["visit_purpose"],
+            "needs_clarification": True,
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text("f*ck you", _purpose_node_context())
+
+    assert output.incivility is not None
+    assert output.incivility.tier == 3
+    assert output.incivility.category == "profanity"
+    assert output.incivility.source == "rule"
+    assert output.intent_success is False
+    assert agent.last_trace["output_summary"]["incivility"]["tier"] == 3
+
+
 def test_understanding_agent_falls_back_to_rule_mode_when_llm_output_is_forbidden() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {
@@ -370,6 +403,20 @@ def test_understanding_agent_rule_mode_recognizes_allowed_visit_purpose_values()
     assert output.intent_success is True
     assert output.extracted_slots == {"visit_purpose": "family_visit"}
     assert output.missing_slots == []
+
+
+def test_understanding_agent_rule_mode_attaches_incivility_signal_without_branching() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text("fuck you", _purpose_node_context())
+
+    assert output.incivility is not None
+    assert output.incivility.tier == 3
+    assert output.incivility.category == "profanity"
+    assert output.incivility.source == "rule"
+    assert output.intent_success is False
+    assert output.missing_slots == ["visit_purpose"]
+    assert agent.last_trace["output_summary"]["incivility"]["tier"] == 3
 
 
 def test_understanding_agent_rule_mode_recognizes_stay_duration_values() -> None:

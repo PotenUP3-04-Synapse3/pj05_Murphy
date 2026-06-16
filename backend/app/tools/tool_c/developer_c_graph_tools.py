@@ -774,6 +774,24 @@ def _understanding_summary(understanding: UnderstandingOutput) -> dict[str, Any]
         "risk_delta": understanding.risk_delta,
         "missing_slots": understanding.missing_slots,
         "needs_clarification": understanding.needs_clarification,
+        "incivility": _incivility_summary(understanding),
+    }
+
+
+def _incivility_summary(understanding: UnderstandingOutput) -> dict[str, Any]:
+    """Return a compact incivility summary for Developer C AgentRun logs.
+
+    초보자용 설명:
+    전체 욕설 원문을 로그 요약에 길게 복사하지 않고, QA에 필요한 tier/category/source만
+    남깁니다. 실제 `detected_terms`는 Understanding payload 안에 남아 있습니다.
+    """
+
+    if understanding.incivility is None:
+        return {"tier": 0, "category": "none", "source": "none"}
+    return {
+        "tier": understanding.incivility.tier,
+        "category": understanding.incivility.category,
+        "source": understanding.incivility.source,
     }
 
 

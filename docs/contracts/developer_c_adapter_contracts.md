@@ -355,6 +355,8 @@ Runtime modes:
   `GEMMA4_VLLM_MODEL`, and `GEMMA4_VLLM_API_KEY`.
 - `MURPHY_UNDERSTANDING_LLM_MODEL` defaults to `gpt-4o-mini`.
 - `MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS` defaults to `10`.
+- `MURPHY_INCIVILITY_CLASSIFIER_MODE=rule` attaches deterministic C-owned
+  incivility evidence after either rule or LLM semantic analysis.
 
 Output:
 
@@ -382,7 +384,14 @@ Output:
     "visit_purpose": "tourism"
   },
   "missing_slots": [],
-  "needs_clarification": false
+  "needs_clarification": false,
+  "incivility": {
+    "tier": 0,
+    "detected_terms": [],
+    "confidence": 0.0,
+    "category": "none",
+    "source": "rule"
+  }
 }
 ```
 
@@ -415,6 +424,10 @@ Rules:
   family_visit` or `5 days`, C repairs the Understanding output before sending
   it to Developer B. This is recorded in `last_trace.postprocessing` and is not
   counted as LLM fallback.
+- Incivility classification is attached after LLM parsing and deterministic
+  repairs so a missing or weak LLM judgment cannot erase rule-detected severe
+  profanity, insult, or threat evidence. This field remains evidence only;
+  Developer B still owns bad-ending branch policy.
 - Rule fallback recognizes the current `visit_purpose` allowed values:
   `family_visit`, `friend_visit`, `business`, `study`, `transit`, and
   `tourism`.
@@ -633,7 +646,21 @@ Input:
     "intent": "state_visit_purpose",
     "intent_success": true,
     "emotion": "nervous_humor",
-    "answer_relevance": "on_topic"
+    "answer_relevance": "on_topic",
+    "incivility": {
+      "tier": 0,
+      "detected_terms": [],
+      "confidence": 0.0,
+      "category": "none",
+      "source": "rule"
+    }
+  },
+  "incivility": {
+    "tier": 0,
+    "detected_terms": [],
+    "confidence": 0.0,
+    "category": "none",
+    "source": "rule"
   },
   "transition": null,
   "developer_b_policy": {
@@ -717,6 +744,10 @@ Rules:
 - Developer C passes optional `game_state.random_customs_item` through the
   A-facing level-design payload as `random_customs_item`. This lets Developer A
   generate BAG_006 customs-item dialogue about the same item Unreal revealed.
+- Developer C forwards `understanding.incivility` as top-level `incivility` in
+  the A-facing level-design payload. If an older mock Understanding object omits
+  it, C forwards the safe default
+  `{"tier": 0, "detected_terms": [], "confidence": 0.0, "category": "none", "source": "none"}`.
 - Developer C normalizes BAG A-facing NPC context by phase before calling
   Developer A: `BAG_001` through `BAG_004` use `BAGGAGE_STAFF /
   baggage_service_staff`, while `BAG_005` through `BAG_007` use

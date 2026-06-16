@@ -12,6 +12,7 @@ from backend.app.main import app
 from backend.app.schemas.game_turn import (
     DevADialogueInput,
     DevADialogueOutput,
+    IncivilityClassification,
     MockAudioInput,
     PrePrototypeRequest,
     UnderstandingOutput,
@@ -794,6 +795,137 @@ def test_dev_a_adapter_forwards_npc_context_to_voice_builder() -> None:
     assert "npc_question" not in builder_payloads[0]["node_context"]
     assert "npc_question_goal" not in builder_payloads[0]["node_context"]
     assert "do_not_generate_npc_text" not in builder_payloads[0]["dialogue_directive"]
+
+
+def test_dev_a_adapter_forwards_incivility_to_voice_builder() -> None:
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": "Officer Miller",
+            "npc_text": "Watch your language.",
+            "tone": "formal_firm",
+            "animation": "officer_warning",
+            "feedback_kr": "Language warning.",
+            "tts": {
+                "audio_url": "/runtime/audio/edge/test.wav",
+            },
+        }
+
+    request = _preprototype_request()
+    orchestrator = Orchestrator()
+    node_context = orchestrator.openkb_service.get_node_context(
+        request.turn.session.chapter_id,
+        request.turn.session.current_node_id,
+    )
+    normalized_input = orchestrator.stt_service.transcribe_wav(request.audio, request.turn.audio)
+    understanding = _successful_understanding("state_visit_purpose", "visit_purpose", "tourism").model_copy(
+        update={
+            "incivility": IncivilityClassification(
+                tier=3,
+                detected_terms=["fuck"],
+                confidence=0.95,
+                category="profanity",
+                source="rule",
+            )
+        }
+    )
+    dev_b_output = orchestrator.dev_b_client.evaluate_turn(
+        orchestrator.build_dev_b_policy_input(
+            request,
+            normalized_input=normalized_input,
+            node_context=node_context,
+            understanding=understanding,
+        )
+    )
+    client = DevANpcDialogueClient(voice_output_builder=fake_voice_output_builder)
+
+    client.generate_dialogue(
+        DevADialogueInput(
+            contract_version="dev_a_dialogue.v1",
+            request_id=request.turn.request_id,
+            session_id=request.turn.session.session_id,
+            current_node_id=request.turn.session.current_node_id,
+            player_text=normalized_input.player_text,
+            npc=request.turn.npc,
+            node_context=node_context,
+            understanding=understanding,
+            developer_b_policy=dev_b_output,
+        )
+    )
+
+    assert builder_payloads[0]["incivility"] == {
+        "tier": 3,
+        "detected_terms": ["fuck"],
+        "confidence": 0.95,
+        "category": "profanity",
+        "source": "rule",
+    }
+    assert "recommended_expression" not in builder_payloads[0]["level_hint"]
+
+
+def test_dev_a_adapter_defaults_missing_incivility_to_tier_zero() -> None:
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": "Officer Miller",
+            "npc_text": "Okay. Please continue.",
+            "tone": "formal_neutral",
+            "animation": "officer_check_passport",
+            "feedback_kr": "Good.",
+            "tts": {
+                "audio_url": "/runtime/audio/edge/test.wav",
+            },
+        }
+
+    request = _preprototype_request()
+    orchestrator = Orchestrator()
+    node_context = orchestrator.openkb_service.get_node_context(
+        request.turn.session.chapter_id,
+        request.turn.session.current_node_id,
+    )
+    normalized_input = orchestrator.stt_service.transcribe_wav(request.audio, request.turn.audio)
+    understanding = _successful_understanding("state_visit_purpose", "visit_purpose", "tourism")
+    dev_b_output = orchestrator.dev_b_client.evaluate_turn(
+        orchestrator.build_dev_b_policy_input(
+            request,
+            normalized_input=normalized_input,
+            node_context=node_context,
+            understanding=understanding,
+        )
+    )
+    client = DevANpcDialogueClient(voice_output_builder=fake_voice_output_builder)
+
+    client.generate_dialogue(
+        DevADialogueInput(
+            contract_version="dev_a_dialogue.v1",
+            request_id=request.turn.request_id,
+            session_id=request.turn.session.session_id,
+            current_node_id=request.turn.session.current_node_id,
+            player_text=normalized_input.player_text,
+            npc=request.turn.npc,
+            node_context=node_context,
+            understanding=understanding,
+            developer_b_policy=dev_b_output,
+        )
+    )
+
+    assert builder_payloads[0]["incivility"] == {
+        "tier": 0,
+        "detected_terms": [],
+        "confidence": 0.0,
+        "category": "none",
+        "source": "none",
+    }
 
 
 def _dev_a_payload_for_request(request: PrePrototypeRequest) -> tuple[DevADialogueOutput, dict[str, Any]]:

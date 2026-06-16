@@ -3,6 +3,43 @@
 Cross-owner change requests are listed below. Status lines describe the current
 repository state as of the latest handoff entry.
 
+## Change Request - 2026-06-16 - Clean Developer A Ruff Unused Imports
+
+### Requested By
+
+Developer C / Sean Han
+
+### Affected Owner
+
+Developer A
+
+### Reason
+
+After Developer C implemented the incivility signal sprint, full `uv run pytest`
+and `uv run mypy .` pass. Full `uv run ruff check .` is blocked by unused imports
+inside Developer A-owned implementation files:
+
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/services/service_a/tts_text_polisher_service.py`
+
+Additional unused imports are present in Developer A-focused tests, but the
+blocking implementation files are A-owned, so Developer C should not silently
+edit them.
+
+### Proposed Contract Change
+
+Developer A should remove the unused imports reported by ruff, or confirm that
+Developer C may apply a mechanical lint-only cleanup to these specific lines.
+
+### Compatibility Impact
+
+No runtime behavior change is expected. This is lint cleanup only.
+
+### Temporary Workaround
+
+Developer C verified the current C-owned sprint files with a focused ruff
+command and documented that global ruff remains blocked by A-owned lint debt.
+
 ## Change Request - 2026-06-15 - Clarify Ownership for Developer C STT Smoke Scripts
 
 ### Requested By
@@ -1572,6 +1609,11 @@ Dev B 기내 분기만 적용해도 기내 씬의 재질문·페널티는 사라
 
 ## Change Request - 2026-06-16 - [CR-A1] Add `incivility` Signal to Understanding Agent Output
 
+Status update 2026-06-16: Implemented by Developer C. `UnderstandingOutput.incivility`
+is now additive semantic evidence produced by the C-owned rule classifier after
+both rule and LLM Understanding paths. CR-A2 and CR-A4 remain open for Developer
+B before Bad Ending end-to-end can work.
+
 Status: Open. 기존 2026-06-16 통합 CR(`Add incivility_tier to Understanding output + B branch policy`)을 owner 단위로 분해한 정식 요청입니다. CR-A1~A4 4건이 모두 머지되어야 Bad Ending end-to-end 가 동작합니다.
 
 ### Requested By
@@ -1649,6 +1691,10 @@ CR-A4 의 시나리오 노드가 없으면 라우팅 실패. CR-A4 와 동시 �
 정책 머지 전까지 A 는 거친 응답만 하고 분기는 정상 노드로 진행. UX 상 "NPC 가 화는 내지만 게임은 계속 진행" 상태로 시연 가능.
 
 ## Change Request - 2026-06-16 - [CR-A3] Forward `incivility` from C Adapter to A-Facing Payload
+
+Status update 2026-06-16: Implemented by Developer C. `DevANpcDialogueClient`
+now forwards top-level `incivility` to the A-facing level-design payload and
+uses a safe tier 0 default when older mock Understanding objects omit the field.
 
 Status: Open. CR-A1 신호의 A 측 전달 경로 확보.
 

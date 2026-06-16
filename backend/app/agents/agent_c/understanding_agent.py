@@ -23,6 +23,7 @@ from backend.app.agents.agent_c.understanding_llm_client import (
 )
 from backend.app.agents.agent_c.visit_purpose_classifier import classify_visit_purpose
 from backend.app.schemas.game_turn import NodeContext, SlotEvidence, UnderstandingOutput
+from backend.app.services.service_c.incivility_classifier import classify_incivility_rule
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -157,6 +158,7 @@ class UnderstandingAgent:
                     exc,
                 )
                 output = self._analyze_with_rules(player_text, node_context)
+                output = _attach_incivility_classification(output, player_text)
                 self.last_trace = _build_fallback_trace(
                     player_text=player_text,
                     node_context=node_context,
@@ -177,6 +179,7 @@ class UnderstandingAgent:
                 player_text,
                 node_context,
             )
+            output = _attach_incivility_classification(output, player_text)
             postprocessing = _merge_postprocessing(
                 slot_evidence_postprocessing,
                 slot_repair_postprocessing,
@@ -193,6 +196,7 @@ class UnderstandingAgent:
             return output
 
         output = self._analyze_with_rules(player_text, node_context)
+        output = _attach_incivility_classification(output, player_text)
         self.last_trace = _build_rule_trace(output)
         return output
 
@@ -371,6 +375,25 @@ def _reject_forbidden_llm_keys(result: dict[str, object]) -> None:
     if forbidden_keys:
         joined_keys = ", ".join(sorted(forbidden_keys))
         raise UnderstandingLLMUnavailable(f"Understanding LLM returned forbidden keys: {joined_keys}")
+
+
+def _attach_incivility_classification(
+    output: UnderstandingOutput,
+    player_text: str,
+) -> UnderstandingOutput:
+    """Attach deterministic incivility evidence to an Understanding result.
+
+    초보자용 설명:
+    LLM mode에서도 욕설 신호는 마지막에 규칙 기반으로 다시 붙입니다. 이렇게 하면
+    LLM이 `incivility`를 빼먹거나 낮게 판단해도, 강한 욕설/모욕 신호가 A와 B로
+    전달되는 길이 끊기지 않습니다.
+    """
+
+    rule_incivility = classify_incivility_rule(player_text)
+    if output.incivility is not None and output.incivility.tier > rule_incivility.tier:
+        return output
+
+    return output.model_copy(update={"incivility": rule_incivility})
 
 
 def _extract_generic_required_slot(
@@ -931,6 +954,7 @@ def _build_llm_trace(
         "mode": "llm",
         "model_name": model_name,
         "model_usage": model_usage,
+        "output_summary": _understanding_output_summary(output),
         "postprocessing": postprocessing,
         "fallback_used": False,
         "fallback_reason": None,
@@ -965,6 +989,7 @@ def _build_fallback_trace(
     return {
         "mode": "fallback",
         "model_name": model_name,
+        "output_summary": _understanding_output_summary(fallback_output),
         "fallback_used": True,
         "fallback_reason": error_type,
         "tool_calls": [
@@ -1004,6 +1029,19 @@ def _understanding_output_summary(output: UnderstandingOutput) -> dict[str, Any]
         "slot_evidence_slots": [evidence.slot for evidence in output.slot_evidence],
         "missing_slots": output.missing_slots,
         "needs_clarification": output.needs_clarification,
+        "incivility": _incivility_summary(output),
+    }
+
+
+def _incivility_summary(output: UnderstandingOutput) -> dict[str, Any]:
+    """Return a compact QA-safe incivility summary for logs."""
+
+    if output.incivility is None:
+        return {"tier": 0, "category": "none", "source": "none"}
+    return {
+        "tier": output.incivility.tier,
+        "category": output.incivility.category,
+        "source": output.incivility.source,
     }
 
 

@@ -13,7 +13,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from backend.app.schemas.game_turn import DevADialogueInput, DevADialogueOutput, NpcContext
+from backend.app.schemas.game_turn import DevADialogueInput, DevADialogueOutput, NpcContext, UnderstandingOutput
+from backend.app.services.service_c.incivility_classifier import default_incivility_classification
 from backend.app.services.service_a.voice_output_service import build_voice_output_from_level_design
 from backend.app.services.service_c.openkb_service import OpenKBService
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
@@ -132,6 +133,7 @@ class DevANpcDialogueClient:
             "npc": npc,
             "node_context": node_context,
             "understanding": payload.understanding.model_dump(),
+            "incivility": _a_facing_incivility(payload.understanding),
             "transition": payload.transition.model_dump() if payload.transition is not None else None,
             "random_customs_item": (
                 payload.random_customs_item.model_dump() if payload.random_customs_item is not None else None
@@ -254,6 +256,19 @@ def _optional_string(value: Any) -> str | None:
         return None
     text = str(value)
     return text if text else None
+
+
+def _a_facing_incivility(understanding: UnderstandingOutput) -> dict[str, Any]:
+    """Return the top-level incivility object Developer A expects.
+
+    초보자용 설명:
+    최신 C Understanding은 `incivility`를 붙이지만, 오래된 테스트나 임시 mock은
+    아직 이 값을 비울 수 있습니다. A 쪽 payload 모양을 항상 일정하게 만들기 위해
+    값이 없으면 tier 0 기본값을 넣어 보냅니다.
+    """
+
+    incivility = understanding.incivility or default_incivility_classification()
+    return incivility.model_dump()
 
 
 def _a_facing_npc_context(payload: DevADialogueInput) -> NpcContext:

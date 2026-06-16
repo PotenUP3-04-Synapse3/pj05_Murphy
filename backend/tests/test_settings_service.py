@@ -24,6 +24,7 @@ def _clear_runtime_env(monkeypatch) -> None:
         "MURPHY_UNDERSTANDING_LLM_FALLBACK",
         "MURPHY_UNDERSTANDING_LLM_MODEL",
         "MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS",
+        "MURPHY_INCIVILITY_CLASSIFIER_MODE",
         "MURPHY_UNREAL_REQUEST_CAPTURE_MODE",
         "MURPHY_UNREAL_REQUEST_CAPTURE_ROOT",
         "ELEVENLABS_API_KEY",
@@ -61,6 +62,7 @@ def test_app_settings_reads_values_from_env_file(tmp_path, monkeypatch) -> None:
                 "MURPHY_UNDERSTANDING_LLM_FALLBACK=gemma4_vllm",
                 "MURPHY_UNDERSTANDING_LLM_MODEL=gpt-4o-mini",
                 "MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS=10.5",
+                "MURPHY_INCIVILITY_CLASSIFIER_MODE=rule",
                 "MURPHY_UNREAL_REQUEST_CAPTURE_MODE=debug",
                 f"MURPHY_UNREAL_REQUEST_CAPTURE_ROOT={tmp_path / 'captures'}",
                 "ELEVENLABS_API_KEY=xi-test-env-file",
@@ -95,6 +97,7 @@ def test_app_settings_reads_values_from_env_file(tmp_path, monkeypatch) -> None:
     assert settings.murphy_understanding_llm_fallback == "gemma4_vllm"
     assert settings.murphy_understanding_llm_model == "gpt-4o-mini"
     assert settings.murphy_understanding_llm_timeout_seconds == 10.5
+    assert settings.murphy_incivility_classifier_mode == "rule"
     assert settings.murphy_unreal_request_capture_mode == "debug"
     assert settings.murphy_unreal_request_capture_root == tmp_path / "captures"
     assert settings.elevenlabs_api_key == "xi-test-env-file"

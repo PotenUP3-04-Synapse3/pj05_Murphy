@@ -13,6 +13,10 @@ from `player_text` and `node_context` for Developer B to evaluate.
 Do not generate branch decisions, next node ids, verdicts, scores, hints, NPC
 dialogue, TTS text, Unreal commands, or state deltas.
 
+Do not decide bad endings or profanity mirror responses. Developer C attaches a
+separate deterministic `incivility` evidence object after the LLM semantic
+result, and Developer B owns branch/ending policy.
+
 ## Required Intent First
 
 Before filling any slot, decide whether the player text actually satisfies one

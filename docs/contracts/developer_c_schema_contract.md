@@ -54,6 +54,7 @@ through `backend/app/services/service_c/settings_service.py`:
 | `MURPHY_UNDERSTANDING_LLM_FALLBACK` | `none` | `none` or `gemma4_vllm` |
 | `MURPHY_UNDERSTANDING_LLM_MODEL` | `gpt-4o-mini` | Primary Understanding Agent LLM model |
 | `MURPHY_UNDERSTANDING_LLM_TIMEOUT_SECONDS` | `10` | Understanding Agent LLM timeout |
+| `MURPHY_INCIVILITY_CLASSIFIER_MODE` | `rule` | Deterministic C-owned incivility safety signal classifier |
 | `ELEVENLABS_API_KEY` | unset | Server-side key for ElevenLabs realtime STT relay |
 | `ELEVENLABS_REALTIME_STT_ENDPOINT` | `wss://api.elevenlabs.io/v1/speech-to-text/realtime` | ElevenLabs realtime STT WSS endpoint |
 | `ELEVENLABS_REALTIME_STT_MODEL` | `scribe_v2_realtime` | ElevenLabs realtime STT model id |
@@ -565,6 +566,10 @@ Runtime modes:
 - Rule fallback and LLM postprocessing fill `stay_duration` for duration
   answers such as `5 days`, `five days`, `one week`, and `until Friday` when
   the current node requires `stay_duration`.
+- Developer C attaches additive `incivility` evidence after both rule and LLM
+  Understanding paths. This is a semantic safety signal only. Developer C does
+  not turn it into a branch, score, penalty, bad ending, NPC dialogue, or TTS
+  behavior.
 - Alpha 2 uses a generic slot evidence contract. The LLM may propose slot
   evidence for `node_context.required_slots`, `node_context.optional_slots`, and
   `node_context.critical_slots`. Developer C filters that evidence to allowed
@@ -596,7 +601,14 @@ Runtime modes:
     "visit_purpose": "tourism"
   },
   "missing_slots": [],
-  "needs_clarification": false
+  "needs_clarification": false,
+  "incivility": {
+    "tier": 0,
+    "detected_terms": [],
+    "confidence": 0.0,
+    "category": "none",
+    "source": "rule"
+  }
 }
 ```
 
