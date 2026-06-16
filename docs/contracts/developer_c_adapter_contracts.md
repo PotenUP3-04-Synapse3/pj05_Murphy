@@ -187,6 +187,10 @@ Rules:
   public contract model name `whisper-large-v3-turbo`.
 - API fallback calls the OpenAI Transcriptions API with
   `MURPHY_STT_API_MODEL`, defaulting to `whisper-1`.
+- If Unreal first sends microphone audio through the realtime WebSocket and
+  then submits the final transcript to `/respond` with
+  `audio.transcript_provider = "elevenlabs_relay"`, `stt_model` reports the
+  configured ElevenLabs realtime model, default `scribe_v2_realtime`.
 - `MURPHY_STT_MODE=mock` keeps deterministic sample-wav transcription for
   tests and contract demos.
 - Tests must not require local model downloads or real STT provider

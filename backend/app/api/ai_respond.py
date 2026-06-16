@@ -11,7 +11,7 @@ normal `/respond` turn flow.
 
 import json
 from pathlib import Path
-from typing import Any, Literal, Sequence
+from typing import Any, Literal, Sequence, cast
 
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket
 from pydantic import ValidationError as PydanticValidationError
@@ -25,6 +25,7 @@ from backend.app.schemas.game_turn import (
     RealtimeSubtitlePayload,
     RealtimeTranscriptClientEvent,
     RealtimeTranscriptServerEvent,
+    SttRuntimeUsed,
     UnrealResponse,
     UnrealResultResponse,
     UnrealTurnRequest,
@@ -43,6 +44,17 @@ from backend.app.services.service_c.validator import Validator
 
 router = APIRouter(prefix="/api/game/ai", tags=["game-ai"])
 AGENT_RUN_LOG_ROOT = Path("backend/runtime/generated/agent_runs")
+_STT_RUNTIME_USED_VALUES = frozenset(
+    {
+        "local",
+        "api",
+        "unreal_bridge",
+        "stt_provider_websocket",
+        "elevenlabs_relay",
+        "local_batch_fallback",
+        "mock",
+    }
+)
 
 
 @router.post("/respond", response_model=UnrealResponse)
@@ -74,6 +86,10 @@ async def realtime_stt_stream(websocket: WebSocket) -> None:
                 payload = await websocket.receive_json()
             except WebSocketDisconnect:
                 return
+            except RuntimeError as exc:
+                if _is_websocket_receive_after_disconnect(exc):
+                    return
+                raise
 
             try:
                 event = RealtimeTranscriptClientEvent.model_validate(payload)
@@ -260,6 +276,18 @@ def _chapter_id_for_demo_node(node_id: str) -> str:
     return "CH0_03_IMMIGRATION_CHECK"
 
 
+def _is_websocket_receive_after_disconnect(error: RuntimeError) -> bool:
+    """이미 닫힌 WebSocket에서 receive를 시도한 Starlette 오류인지 확인한다.
+
+    Starlette는 클라이언트가 먼저 연결을 닫은 뒤 `receive_json()`이 호출되면
+    `WebSocketDisconnect` 대신 RuntimeError를 던지는 경로가 있다. 이 문구만
+    정상적인 클라이언트 종료로 보고, 다른 RuntimeError는 실제 버그일 수 있어
+    그대로 다시 올린다.
+    """
+
+    return 'WebSocket is not connected. Need to call "accept" first.' in str(error)
+
+
 @router.get("/result/{session_id}", response_model=UnrealResultResponse)
 def result(session_id: str) -> UnrealResultResponse:
     dev_b_client = DevBPolicyClient()
@@ -306,10 +334,10 @@ async def _parse_multipart_request(
 
     return PrePrototypeRequest(
         turn=UnrealTurnRequest.model_validate(turn_payload),
-        audio=MockAudioInput(
-            mock_wav_path=f"samples/{audio_part.filename}",
-            file_name=audio_part.filename,
-            content_type=audio_part.content_type,
+        audio=_multipart_audio_input_from_turn_payload(
+            turn_payload=turn_payload,
+            audio_filename=audio_part.filename,
+            audio_content_type=audio_part.content_type,
             audio_bytes=audio_bytes,
         ),
     )
@@ -325,12 +353,103 @@ async def _read_form_text(part: Any) -> str:
     raise HTTPException(status_code=422, detail="Multipart turn field must be JSON text")
 
 
-async def _send_realtime_event(websocket: WebSocket, event: RealtimeTranscriptServerEvent | dict[str, Any]) -> None:
-    if isinstance(event, RealtimeTranscriptServerEvent):
-        await websocket.send_json(event.model_dump(mode="json", exclude_none=True))
-        return
+def _multipart_audio_input_from_turn_payload(
+    *,
+    turn_payload: dict[str, Any],
+    audio_filename: str | None,
+    audio_content_type: str | None,
+    audio_bytes: bytes,
+) -> MockAudioInput:
+    """multipart 요청에서 실제 STT 입력으로 쓸 오디오 정보를 만듭니다.
 
-    await websocket.send_json(event)
+    초보자용 설명:
+    Unreal의 realtime STT 경로는 이미 WebSocket에서 final transcript를 얻은 뒤에도
+    호환성 때문에 짧은 WAV 파일을 multipart에 함께 보낼 수 있습니다. 이때 정답
+    텍스트는 `turn.audio.transcript`에 들어 있으므로, C backend는 WAV를 다시
+    STT하지 않고 이 값을 `MockAudioInput.transcript`로 옮겨야 합니다.
+    """
+
+    transcript, transcript_provider = _extract_realtime_transcript_from_turn_audio(turn_payload)
+    return MockAudioInput(
+        mock_wav_path=f"samples/{audio_filename}",
+        transcript=transcript,
+        transcript_provider=transcript_provider,
+        file_name=audio_filename,
+        content_type=audio_content_type,
+        audio_bytes=audio_bytes,
+    )
+
+
+def _extract_realtime_transcript_from_turn_audio(
+    turn_payload: dict[str, Any],
+) -> tuple[str | None, SttRuntimeUsed | None]:
+    """`turn.audio`에 섞여 들어온 realtime STT 결과를 안전하게 꺼냅니다.
+
+    초보자용 설명:
+    `UnrealTurnRequest.audio`는 원래 오디오 메타데이터 스키마라서 Pydantic 검증 후에는
+    `transcript` 같은 추가 키가 사라집니다. 그래서 검증 전에 원본 dict에서 필요한
+    값을 읽어 별도의 STT 입력 객체로 복사합니다.
+    """
+
+    audio_payload = turn_payload.get("audio")
+    if not isinstance(audio_payload, dict):
+        return None, None
+
+    transcript = _optional_stripped_text(audio_payload.get("transcript"))
+    if transcript is None:
+        return None, None
+
+    return transcript, _optional_stt_runtime_used(audio_payload.get("transcript_provider"))
+
+
+def _optional_stt_runtime_used(value: Any) -> SttRuntimeUsed | None:
+    """STT provider 문자열을 C 내부에서 쓰는 안전한 runtime 값으로 바꿉니다.
+
+    초보자용 설명:
+    외부 JSON은 문자열이면 무엇이든 보낼 수 있지만, backend 스키마는 정해진 provider만
+    허용합니다. 여기서 한 번 검증하면 잘못된 provider가 조용히 `local`처럼 보이는
+    일을 막고, 타입 검사기에도 "이 값은 허용된 STT runtime"이라고 알려줄 수 있습니다.
+    """
+
+    stripped = _optional_stripped_text(value)
+    if stripped is None:
+        return None
+    if stripped not in _STT_RUNTIME_USED_VALUES:
+        raise HTTPException(status_code=422, detail=f"Unsupported transcript_provider: {stripped}")
+
+    return cast(SttRuntimeUsed, stripped)
+
+
+def _optional_stripped_text(value: Any) -> str | None:
+    """문자열이면 공백을 정리하고, 비어 있으면 `None`으로 바꿉니다."""
+
+    if not isinstance(value, str):
+        return None
+
+    stripped = value.strip()
+    return stripped or None
+
+
+async def _send_realtime_event(websocket: WebSocket, event: RealtimeTranscriptServerEvent | dict[str, Any]) -> bool:
+    """Realtime STT 서버 이벤트 1개를 보내고, 전송 성공 여부를 돌려준다.
+
+    클라이언트가 녹음 중단, 페이지 이동, Unreal PIE 종료 등으로 WebSocket을
+    먼저 닫을 수 있다. 그 경우는 백엔드 장애가 아니라 정상적인 연결 종료로
+    보고, uvicorn 에러 스택이 남지 않도록 `False`로 정리한다.
+    """
+
+    if isinstance(event, RealtimeTranscriptServerEvent):
+        try:
+            await websocket.send_json(event.model_dump(mode="json", exclude_none=True))
+        except WebSocketDisconnect:
+            return False
+        return True
+
+    try:
+        await websocket.send_json(event)
+    except WebSocketDisconnect:
+        return False
+    return True
 
 
 async def _send_realtime_events(
@@ -339,16 +458,26 @@ async def _send_realtime_events(
     *,
     debug_log_session: RealtimeSttDebugLogSession | None = None,
     complete_on_terminal: bool = False,
-) -> None:
+) -> bool:
+    """Realtime STT 이벤트 묶음을 순서대로 보내고 연결 종료를 안전하게 처리한다.
+
+    여러 이벤트를 보내는 도중 클라이언트가 이미 닫혀 있으면 남은 이벤트 전송을
+    중단한다. 호출자는 반환값을 무시해도 되지만, 테스트와 디버깅에서는 `False`
+    를 보고 "클라이언트가 먼저 끊었다"는 사실을 구분할 수 있다.
+    """
+
     for event in events:
         if debug_log_session is not None:
             debug_log_session.record_server_event(event)
-        await _send_realtime_event(websocket, event)
+        if not await _send_realtime_event(websocket, event):
+            return False
 
     if debug_log_session is not None and complete_on_terminal:
         status = _realtime_debug_completion_status(events)
         if status is not None:
             debug_log_session.complete_and_append(status=status)
+
+    return True
 
 
 def _realtime_debug_completion_status(events: Sequence[RealtimeTranscriptServerEvent | dict[str, Any]]) -> str | None:

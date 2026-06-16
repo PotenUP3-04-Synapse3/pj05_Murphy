@@ -21,6 +21,31 @@ from backend.app.services.service_c.settings_service import AppSettings, get_set
 VoiceOutputBuilder = Callable[..., dict[str, Any]]
 
 
+# Developer A는 최종 NPC 대사와 TTS 문장을 직접 생성해야 하므로,
+# B가 만든 정답 예문/질문 문장/분기 제어 정책은 A-facing payload에서 제거합니다.
+_A_BLOCKED_NODE_CONTEXT_FIELDS = frozenset(
+    {
+        "npc_question",
+        "npc_question_goal",
+        "recommended_expression",
+    }
+)
+_A_BLOCKED_IN_GAME_FEEDBACK_FIELDS = frozenset(
+    {
+        "npc_recast_line_candidate",
+        "recommended_expression",
+    }
+)
+_A_BLOCKED_LEVEL_HINT_FIELDS = frozenset({"recommended_expression"})
+_A_BLOCKED_DIALOGUE_DIRECTIVE_FIELDS = frozenset(
+    {
+        "do_not_generate_npc_text",
+        "hint_frequency",
+        "pressure_level",
+    }
+)
+
+
 class DevANpcDialogueClient:
     def __init__(
         self,
@@ -90,15 +115,13 @@ class DevANpcDialogueClient:
         branch = policy.branch.model_dump()
         dialogue_directive = policy.dialogue_directive.model_dump() if policy.dialogue_directive else {}
 
-        # 2026-06-15 리팩토링: B-side NPC Wording 제거 사양에 맞추어 candidate_text는 더 이상 A에 전송하지 않습니다.
-        feedback["npc_recast_line_candidate"] = None
-        if self.use_llm_dialogue:
-            feedback["recommended_expression"] = None
-            level_hint["recommended_expression"] = None
-            node_context["recommended_expression"] = None
-
-        if policy.branch.branch_type in {"success", "final"}:
-            dialogue_directive["do_not_generate_npc_text"] = False
+        # A가 B의 정답 예문이나 고정 질문을 그대로 대사화하지 않도록 경계에서 제거합니다.
+        _sanitize_a_facing_level_design_payload(
+            feedback=feedback,
+            level_hint=level_hint,
+            node_context=node_context,
+            dialogue_directive=dialogue_directive,
+        )
 
         npc = expected_npc.model_dump()
         npc["emotion"] = policy.npc_emotion
@@ -173,6 +196,40 @@ def _second_person_recast(text: str | None) -> str:
     if normalized.startswith("I'm "):
         normalized = "You're " + normalized.removeprefix("I'm ")
     return normalized if normalized.endswith((".", "?", "!")) else f"{normalized}."
+
+
+def _sanitize_a_facing_level_design_payload(
+    *,
+    feedback: dict[str, Any],
+    level_hint: dict[str, Any],
+    node_context: dict[str, Any],
+    dialogue_directive: dict[str, Any],
+) -> None:
+    """Developer A에게 넘기면 안 되는 B-authored 필드를 제거합니다.
+
+    초보자용 설명:
+    Developer B의 결과에는 학습 UI에 보여줄 정답 예문, 시나리오 노드의 고정 질문,
+    분기 정책처럼 유용하지만 "NPC가 그대로 말하면 안 되는" 데이터가 섞여 있습니다.
+    이 함수는 C-to-A 경계에서 그런 값을 키 자체로 삭제해 A가 B 문장을 베끼지 않고
+    `dialogue_seed`와 슬롯 메타데이터를 바탕으로 자기 대사를 생성하게 만듭니다.
+    """
+
+    _remove_keys(feedback, _A_BLOCKED_IN_GAME_FEEDBACK_FIELDS)
+    _remove_keys(level_hint, _A_BLOCKED_LEVEL_HINT_FIELDS)
+    _remove_keys(node_context, _A_BLOCKED_NODE_CONTEXT_FIELDS)
+    _remove_keys(dialogue_directive, _A_BLOCKED_DIALOGUE_DIRECTIVE_FIELDS)
+
+
+def _remove_keys(target: dict[str, Any], keys: frozenset[str]) -> None:
+    """딕셔너리에서 금지된 키를 안전하게 지웁니다.
+
+    초보자용 설명:
+    `pop(key, None)`을 쓰면 키가 없을 때도 오류가 나지 않습니다. 그래서 B의 출력
+    스키마가 조금 달라져도 어댑터는 필요한 필드만 조용히 제거하고 계속 동작합니다.
+    """
+
+    for key in keys:
+        target.pop(key, None)
 
 
 def _normalize_dialogue_text(text: str) -> str:
