@@ -871,7 +871,7 @@ def test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata() -> None:
     assert payload["npc"]["npc_role"] == "seatmate"
     assert payload["node_context"]["chapter_id"] == "CH0_01_FLIGHT_SMALLTALK"
     assert payload["in_game_feedback"]["npc_recast_line_candidate"] is None
-    assert payload["dialogue_directive"]["purpose"] == "continue_to_next_question"
+    assert payload["dialogue_directive"]["purpose"] == "smalltalk_rapport"
     assert payload["dialogue_seed"]["npc_role"] == "seatmate_passenger"
     assert payload["dialogue_seed"]["surface_goal"] == "respond_to_polite_request"
     assert "advance_to_next_prompt" in payload["dialogue_seed"]["allowed_followup_intents"]

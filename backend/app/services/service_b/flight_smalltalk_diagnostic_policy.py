@@ -1,6 +1,7 @@
 from __future__ import annotations
-
 from dataclasses import dataclass
+from backend.app.schemas.game_turn import DevBPolicyInput
+from backend.app.services.service_b.scenario_state_machine import ScenarioDecision, ScenarioStateMachine, NextAction
 
 
 SCENE_ID = "FLIGHT_A_001_SEATMATE_SMALLTALK"
@@ -74,3 +75,50 @@ class FlightSmallTalkDiagnosticPolicy:
         safe_turn_count = max(0, player_turn_count)
         index = min(safe_turn_count, len(FALLBACK_QUESTIONS) - 1)
         return FALLBACK_QUESTIONS[index]
+
+    def decide_conversational(self, payload: DevBPolicyInput) -> ScenarioDecision:
+        """
+        기내 스몰토크용 대화형 분기를 결정합니다. (패널티 미적립, 중립 진행)
+        
+        Args:
+            payload: 학습자 입력(텍스트), 이해 결과, 시나리오 상태 등을 포함하는 DevBPolicyInput 데이터 객체
+            
+        Returns:
+            결정된 분기 방향과 패널티가 0인 수치 증감 데이터가 포함된 ScenarioDecision 객체
+        """
+        state_machine = ScenarioStateMachine()
+
+        # 1. 중대 위험(Critical Risk) 감지 시 기존 입국 심사 안전선 위임
+        risk_total = payload.scenario_state.suspicion + payload.understanding.risk_delta
+        if state_machine._is_critical_risk(payload, risk_total):
+            return state_machine._critical_fail(payload, risk_total)
+
+        # 2. 되묻기 최소화: needs_repeat이거나 confidence < 0.3인 경우 가벼운 clarify
+        if payload.input_source.needs_repeat or payload.understanding.confidence < 0.3:
+            next_node_id = state_machine._checked_next_node(payload.node_context.clarify_next_node, payload)
+            return ScenarioDecision(
+                verdict="UNCLEAR",
+                branch_type="clarify",
+                next_action="REASK",
+                next_node_id=next_node_id,
+                branch_reason="flight_smalltalk_clarify",
+                patience_delta=0,
+                suspicion_delta=0,
+                retry_count_delta=0,
+                hint_count_delta=0,
+            )
+
+        # 3. 그 외 전부 ADVANCE (중립 진행: success + ADVANCE)
+        next_node_id = state_machine._checked_next_node(payload.node_context.success_next_node, payload)
+        next_action: NextAction = "COMPLETE_CHAPTER" if next_node_id in {"FLIGHT_999_COMPLETE", "IMM_999_CLEARED", "BAG_999_COMPLETE"} else "ADVANCE"
+        return ScenarioDecision(
+            verdict="SUCCESS",
+            branch_type="success",
+            next_action=next_action,
+            next_node_id=next_node_id,
+            branch_reason="flight_smalltalk_continue",
+            patience_delta=0,
+            suspicion_delta=0,
+            retry_count_delta=0,
+            hint_count_delta=0,
+        )

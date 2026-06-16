@@ -512,8 +512,9 @@ def test_flight_diagnostic_retry_still_moves_to_next_evidence_node(tmp_path: Pat
         )
     )
 
-    assert result.evaluation.verdict == "FAIL"
-    assert result.branch.branch_type == "retry"
+    assert result.evaluation.verdict == "SUCCESS"
+    assert result.branch.branch_type == "success"
+    assert result.branch.next_action == "ADVANCE"
     assert result.branch.next_node_id == "FLIGHT_A_004_CLARIFY_OR_ASK_BACK"
 
 
@@ -1349,14 +1350,14 @@ def _all_keys(value: object) -> set[str]:
 
 
 def test_invalid_required_slot_value_does_not_advance(tmp_path: Path) -> None:
-    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    context = _node_context("IMM_003_DURATION")
     result = _agent(tmp_path).evaluate_turn(
         _policy_input(
             node_context=context,
             player_text="Um,",
             intent_success=True,
             confidence=0.9,
-            extracted_slots={"polite_response": "short acknowledgement / hesitant start"},
+            extracted_slots={"stay_duration": "invalid_duration_val"},
             missing_slots=[],
             client_allowed_next_nodes=context.allowed_next_nodes,
         )
@@ -1367,14 +1368,14 @@ def test_invalid_required_slot_value_does_not_advance(tmp_path: Path) -> None:
 
 
 def test_valid_slot_value_still_advances(tmp_path: Path) -> None:
-    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    context = _node_context("IMM_003_DURATION")
     result = _agent(tmp_path).evaluate_turn(
         _policy_input(
             node_context=context,
-            player_text="Sure, here you are.",
+            player_text="Five days.",
             intent_success=True,
             confidence=0.9,
-            extracted_slots={"polite_response": "offered_help"},
+            extracted_slots={"stay_duration": "days"},
             missing_slots=[],
             client_allowed_next_nodes=context.allowed_next_nodes,
         )
