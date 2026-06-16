@@ -1,5 +1,51 @@
 # Handoff
 
+## 2026-06-16 Developer C Realtime Transcript Multipart Fallback Fix
+
+Developer C investigated the Unreal log where realtime STT subtitles showed the
+player's speech, but the legacy recording path still judged the WAV as too
+short and the backend handled the turn as if it only had fallback/short audio.
+
+Root cause:
+
+- The realtime STT WebSocket path can produce a valid final transcript before
+  the normal `/api/game/ai/respond` call.
+- If Unreal sends the normal `/respond` call as multipart and places that final
+  text inside `turn.audio.transcript`, the previous C multipart parser validated
+  `turn.audio` as plain audio metadata and lost the extra transcript field.
+- After that loss, C saw only the attached WAV bytes. In mock/local batch STT
+  paths this could fall back to the WAV-derived/default transcript instead of
+  the realtime final transcript.
+
+Changed:
+
+- `backend/app/api/ai_respond.py` now copies `turn.audio.transcript` and
+  `turn.audio.transcript_provider` into the internal `MockAudioInput` before
+  validating `UnrealTurnRequest`.
+- When a multipart request carries both a too-short WAV and a realtime final
+  transcript, the transcript wins and batch WAV STT is skipped.
+- Added regression coverage in `backend/tests/test_preprototype_flow.py`.
+
+Unreal alignment note:
+
+- In realtime STT mode, Unreal should treat `final_transcript` as the source of
+  truth for the AI turn. The legacy WAV-duration guard may still be useful for
+  non-realtime uploads, but it should not trigger "too short answer" fallback
+  dialogue once a committed realtime final transcript exists.
+- Recommended payload for multipart compatibility: keep the WAV attachment if
+  needed for capture/debug, but include `turn.audio.transcript` and
+  `turn.audio.transcript_provider="elevenlabs_relay"` in the turn JSON.
+- Recommended payload for pure realtime flow: send JSON with top-level
+  `audio.transcript` and `audio.transcript_provider`, matching the existing
+  `/respond-dialog` demo page.
+
+Verification:
+
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_api_prefers_realtime_transcript_embedded_in_multipart_turn_audio -q`
+  passed after failing before the fix.
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_api_reports_realtime_transcript_provider_as_stt_runtime backend/tests/test_preprototype_flow.py::test_api_accepts_multipart_turn_json_and_sample_wav backend/tests/test_preprototype_flow.py::test_api_prefers_realtime_transcript_embedded_in_multipart_turn_audio backend/tests/test_stt_service.py -q`
+  passed.
+
 ## 2026-06-16 Developer C Realtime STT Client Disconnect Handling
 
 Developer C fixed a WebSocket noise/error case seen while testing

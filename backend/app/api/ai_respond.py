@@ -11,7 +11,7 @@ normal `/respond` turn flow.
 
 import json
 from pathlib import Path
-from typing import Any, Literal, Sequence
+from typing import Any, Literal, Sequence, cast
 
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket
 from pydantic import ValidationError as PydanticValidationError
@@ -25,6 +25,7 @@ from backend.app.schemas.game_turn import (
     RealtimeSubtitlePayload,
     RealtimeTranscriptClientEvent,
     RealtimeTranscriptServerEvent,
+    SttRuntimeUsed,
     UnrealResponse,
     UnrealResultResponse,
     UnrealTurnRequest,
@@ -43,6 +44,17 @@ from backend.app.services.service_c.validator import Validator
 
 router = APIRouter(prefix="/api/game/ai", tags=["game-ai"])
 AGENT_RUN_LOG_ROOT = Path("backend/runtime/generated/agent_runs")
+_STT_RUNTIME_USED_VALUES = frozenset(
+    {
+        "local",
+        "api",
+        "unreal_bridge",
+        "stt_provider_websocket",
+        "elevenlabs_relay",
+        "local_batch_fallback",
+        "mock",
+    }
+)
 
 
 @router.post("/respond", response_model=UnrealResponse)
@@ -322,10 +334,10 @@ async def _parse_multipart_request(
 
     return PrePrototypeRequest(
         turn=UnrealTurnRequest.model_validate(turn_payload),
-        audio=MockAudioInput(
-            mock_wav_path=f"samples/{audio_part.filename}",
-            file_name=audio_part.filename,
-            content_type=audio_part.content_type,
+        audio=_multipart_audio_input_from_turn_payload(
+            turn_payload=turn_payload,
+            audio_filename=audio_part.filename,
+            audio_content_type=audio_part.content_type,
             audio_bytes=audio_bytes,
         ),
     )
@@ -339,6 +351,83 @@ async def _read_form_text(part: Any) -> str:
         return part
 
     raise HTTPException(status_code=422, detail="Multipart turn field must be JSON text")
+
+
+def _multipart_audio_input_from_turn_payload(
+    *,
+    turn_payload: dict[str, Any],
+    audio_filename: str | None,
+    audio_content_type: str | None,
+    audio_bytes: bytes,
+) -> MockAudioInput:
+    """multipart 요청에서 실제 STT 입력으로 쓸 오디오 정보를 만듭니다.
+
+    초보자용 설명:
+    Unreal의 realtime STT 경로는 이미 WebSocket에서 final transcript를 얻은 뒤에도
+    호환성 때문에 짧은 WAV 파일을 multipart에 함께 보낼 수 있습니다. 이때 정답
+    텍스트는 `turn.audio.transcript`에 들어 있으므로, C backend는 WAV를 다시
+    STT하지 않고 이 값을 `MockAudioInput.transcript`로 옮겨야 합니다.
+    """
+
+    transcript, transcript_provider = _extract_realtime_transcript_from_turn_audio(turn_payload)
+    return MockAudioInput(
+        mock_wav_path=f"samples/{audio_filename}",
+        transcript=transcript,
+        transcript_provider=transcript_provider,
+        file_name=audio_filename,
+        content_type=audio_content_type,
+        audio_bytes=audio_bytes,
+    )
+
+
+def _extract_realtime_transcript_from_turn_audio(
+    turn_payload: dict[str, Any],
+) -> tuple[str | None, SttRuntimeUsed | None]:
+    """`turn.audio`에 섞여 들어온 realtime STT 결과를 안전하게 꺼냅니다.
+
+    초보자용 설명:
+    `UnrealTurnRequest.audio`는 원래 오디오 메타데이터 스키마라서 Pydantic 검증 후에는
+    `transcript` 같은 추가 키가 사라집니다. 그래서 검증 전에 원본 dict에서 필요한
+    값을 읽어 별도의 STT 입력 객체로 복사합니다.
+    """
+
+    audio_payload = turn_payload.get("audio")
+    if not isinstance(audio_payload, dict):
+        return None, None
+
+    transcript = _optional_stripped_text(audio_payload.get("transcript"))
+    if transcript is None:
+        return None, None
+
+    return transcript, _optional_stt_runtime_used(audio_payload.get("transcript_provider"))
+
+
+def _optional_stt_runtime_used(value: Any) -> SttRuntimeUsed | None:
+    """STT provider 문자열을 C 내부에서 쓰는 안전한 runtime 값으로 바꿉니다.
+
+    초보자용 설명:
+    외부 JSON은 문자열이면 무엇이든 보낼 수 있지만, backend 스키마는 정해진 provider만
+    허용합니다. 여기서 한 번 검증하면 잘못된 provider가 조용히 `local`처럼 보이는
+    일을 막고, 타입 검사기에도 "이 값은 허용된 STT runtime"이라고 알려줄 수 있습니다.
+    """
+
+    stripped = _optional_stripped_text(value)
+    if stripped is None:
+        return None
+    if stripped not in _STT_RUNTIME_USED_VALUES:
+        raise HTTPException(status_code=422, detail=f"Unsupported transcript_provider: {stripped}")
+
+    return cast(SttRuntimeUsed, stripped)
+
+
+def _optional_stripped_text(value: Any) -> str | None:
+    """문자열이면 공백을 정리하고, 비어 있으면 `None`으로 바꿉니다."""
+
+    if not isinstance(value, str):
+        return None
+
+    stripped = value.strip()
+    return stripped or None
 
 
 async def _send_realtime_event(websocket: WebSocket, event: RealtimeTranscriptServerEvent | dict[str, Any]) -> bool:

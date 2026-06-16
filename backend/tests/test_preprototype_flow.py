@@ -1159,6 +1159,36 @@ def test_api_accepts_multipart_turn_json_and_sample_wav() -> None:
     assert audio_response.content.startswith(b"RIFF")
 
 
+def test_api_prefers_realtime_transcript_embedded_in_multipart_turn_audio() -> None:
+    client = TestClient(app)
+    turn_payload = _turn_payload()
+    turn_payload["audio"]["duration_ms"] = 0
+    turn_payload["audio"]["transcript"] = "Hello."
+    turn_payload["audio"]["transcript_provider"] = "elevenlabs_relay"
+
+    response = client.post(
+        "/api/game/ai/respond",
+        files={
+            "turn": (
+                "imm_002_purpose.json",
+                json.dumps(turn_payload),
+                "application/json",
+            ),
+            "audio": (
+                "too-short.wav",
+                b"RIFF....WAVEfmt ",
+                "audio/wav",
+            ),
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stt"]["player_text"] == "Hello."
+    assert body["stt"]["runtime_used"] == "elevenlabs_relay"
+    assert body["stt"]["model"] == "scribe_v2_realtime"
+
+
 def test_api_captures_unreal_multipart_request_when_debug_mode_is_enabled(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
