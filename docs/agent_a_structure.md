@@ -23,7 +23,10 @@ flowchart LR
         EMOTION_SVC["npc_emotion_service.py<br/>infer_npc_emotion_state()"]
         ROSTER_SVC["npc_roster_service.py<br/>resolve_npc_profile()"]
         LANG_PROFILE["player_language_profile_service.py<br/>build_player_language_profile()"]
-        POLISHER["tts_text_polisher_service.py<br/>polish_tts_text()<br/>build_tts_style_metadata()"]
+        POLISHER["tts_text_polisher_service.py<br/>polish_tts_text()<br/>build_tts_style_metadata()<br/>validate_and_clamp_ssml()"]
+        NON_VERBAL["non_verbal_palette.py<br/>get_non_verbal_palette()"]
+        PROFANITY_LEX["profanity_lexicon.py<br/>allowed_for()<br/>contains_blocked()"]
+        PROFANITY_POL["profanity_response_policy.py<br/>get_profanity_fallback_response()<br/>get_incivility_tts_bias()"]
         VOICE_PROFILE["voice_profile_service.py<br/>resolve_voice_profile(tts_provider)"]
         TTS_SVC["tts_service.py<br/>build_edge_provider_request()<br/>build_elevenlabs_provider_request()<br/>synthesize_speech()"]
         TTS_PROVIDER["tts_provider_service.py<br/>EdgeTTSProvider<br/>ElevenLabsTTSProvider<br/>FakeTTSProvider"]
@@ -195,7 +198,10 @@ sequenceDiagram
 | | `services/service_a/player_language_profile_service.py` | `build_player_language_profile` |
 | | `services/service_a/npc_roster_service.py` | `resolve_npc_profile`, `NPCProfile` |
 | | `services/service_a/developer_a_fallback_service.py` | `build_text_fallback`, `build_audio_fallback` |
-| | `services/service_a/tts_text_polisher_service.py` | `polish_tts_text`, `build_tts_style_metadata` |
+| | `services/service_a/tts_text_polisher_service.py` | `polish_tts_text`, `build_tts_style_metadata`, `validate_and_clamp_ssml` |
+| | `services/service_a/non_verbal_palette.py` | `get_non_verbal_palette` |
+| | `services/service_a/profanity_lexicon.py` | `allowed_for`, `contains_blocked` |
+| | `services/service_a/profanity_response_policy.py` | `get_profanity_fallback_response`, `get_incivility_tts_bias` |
 | **Service (음성)** | `services/service_a/voice_profile_service.py` | `resolve_voice_profile` |
 | | `services/service_a/tts_service.py` | `build_edge_provider_request`, `build_elevenlabs_provider_request`, `synthesize_speech` |
 | | `services/service_a/tts_provider_service.py` | `EdgeTTSProvider`, `ElevenLabsTTSProvider`, `FakeTTSProvider` |
@@ -203,7 +209,7 @@ sequenceDiagram
 | | `services/service_a/audio_storage_service.py` | `build_audio_cache_key`, `audio_output_path` |
 | | `services/service_a/npc_dialogue_agent_run_store.py` | `NPCDialogueAgentRunStore.append_unified_agent_run` |
 | **Agent 코어** | `agents/agent_a/npc_dialogue_agent.py` | `build_npc_dialogue_graph`, `generate_npc_dialogue_from_level_design`, `node_initialize_state`, `node_generate_dialogue_llm`, `node_apply_fallback`, `route_after_init`, `route_after_llm` |
-| **LLM Client** | `agents/agent_a/npc_llm_client.py` | `OpenAINPCDialogueChatModel`, `OpenAICompatibleNPCDialogueChatModel`, `FallbackNPCDialogueLLMClient`, `NPCDialogueCallbackHandler`, `build_npc_dialogue_llm_client_from_environment` |
+| **LLM Client** | `agents/agent_a/npc_llm_client.py` | `OpenAINPCDialogueChatModel`, `OpenAICompatibleNPCDialogueChatModel`, `FallbackNPCDialogueLLMClient`, `NPCDialogueCallbackHandler`, `build_npc_dialogue_llm_client_from_environment`, `_render_developer_instructions` |
 | **Middleware** | `middleware/middleware_a/npc_dialogue_agent_run_middleware.py` | `NPCDialogueAgentRunMiddleware` (`start_run`, `record_event`, `complete_run`, `fail_run`, `before_model`, `after_model`) |
 | **Tool** | `tools/tool_a/npc_dialogue_artifact_tool.py` | `build_npc_dialogue_artifact`, `build_user_visible_run_summary` |
 | | `tools/tool_a/npc_dialogue_cost_tool.py` | `estimate_openai_cost_usd` |

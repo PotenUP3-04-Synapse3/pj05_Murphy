@@ -17,6 +17,7 @@ def test_resolve_known_npc_profile_for_officer_hale() -> None:
         fallback_text="State the purpose of your visit clearly.",
         mock_voice_id="hale_mock",
         persona_instruction="stern, direct, and authoritative immigration officer.",
+        non_verbal_palette=["Hmph.", "Tsk.", "<break time='0.4s'/>"],
         elevenlabs_voice_id="dXtC3XhB9GtPusIpNtQx",
     )
 

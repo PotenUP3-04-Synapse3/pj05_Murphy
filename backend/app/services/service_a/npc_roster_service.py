@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 # 게임 내에 존재하는 NPC들의 정적 프로필(Profile) 명세를 정의하는 데이터 클래스(Data Class)입니다.
@@ -11,6 +11,7 @@ class NPCProfile:
     fallback_text: str      # 통신 두절 등 에러 시 노출할 안전 대사
     mock_voice_id: str      # 로컬 개발 및 유닛 테스트 시 매핑할 가짜 목소리 아이디
     persona_instruction: str # LLM 프롬프트에 결합할 이 NPC의 성격 및 말투 지침입니다.
+    non_verbal_palette: list[str] = field(default_factory=list) # 비-텍스트 표현 목록
     elevenlabs_voice_id: str | None = None  # ElevenLabs 전용 목소리 식별 코드
 
 
@@ -27,6 +28,7 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         fallback_text="Hi there! Traveling is always exciting, isn't it?",
         mock_voice_id="arabella_mock",
         persona_instruction="very friendly, warm, patient, socially easygoing, and welcoming passenger.",
+        non_verbal_palette=["Haha!", "Aww.", "Hmm...", "<break time='0.5s'/>"],
         elevenlabs_voice_id="Z3R5wn05IrDiVCyEkUrK",
     ),
     "novak": NPCProfile(
@@ -37,6 +39,7 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         fallback_text="Hello. Pleased to meet you.",
         mock_voice_id="novak_mock",
         persona_instruction="polite, slightly quiet, but friendly and helpful passenger.",
+        non_verbal_palette=["Hmm.", "Well...", "<break time='0.4s'/>"],
         elevenlabs_voice_id="3TStB8f3X3To0Uj5R7RK",
     ),
     "hale": NPCProfile(
@@ -47,6 +50,7 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         fallback_text="State the purpose of your visit clearly.",
         mock_voice_id="hale_mock",
         persona_instruction="stern, direct, and authoritative immigration officer.",
+        non_verbal_palette=["Hmph.", "Tsk.", "<break time='0.4s'/>"],
         elevenlabs_voice_id="dXtC3XhB9GtPusIpNtQx",
     ),
     "harris": NPCProfile(
@@ -57,6 +61,7 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         fallback_text="Passport, please. I need to see your documentation.",
         mock_voice_id="harris_mock",
         persona_instruction="professional, meticulous, yet supportive immigration officer.",
+        non_verbal_palette=["Mm-hmm.", "Indeed.", "<break time='0.3s'/>"],
         elevenlabs_voice_id="u0REnIJvUgcGQYW2Ux8K",
     ),
     "dan": NPCProfile(
@@ -67,6 +72,7 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         fallback_text="Please stop there. What is inside this luggage?",
         mock_voice_id="dan_mock",
         persona_instruction="firm, alert, and strict security officer.",
+        non_verbal_palette=["Halt.", "Now...", "<break time='0.5s'/>"],
         elevenlabs_voice_id="1cuDPO8sIMatoOE4Z2Zv",
     ),
     "brielle": NPCProfile(
@@ -77,6 +83,7 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         fallback_text="Hello, how can I assist you with your baggage claim?",
         mock_voice_id="brielle_mock",
         persona_instruction="helpful, bright, polite, and service-oriented baggage claim desk clerk.",
+        non_verbal_palette=["Oh!", "Mm-hmm.", "Let's see...", "<break time='0.4s'/>"],
         elevenlabs_voice_id="6u6JbqKdaQy89ENzLSju",
     ),
     "emily": NPCProfile(
@@ -84,9 +91,10 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         display_name="Emily",
         role="seatmate",
         default_animation="move",
-        fallback_text="Let me help you with the form. What seems to be the problem?",
+        fallback_text="Let help you with the form. What seems to be the problem?",
         mock_voice_id="emily_mock",
         persona_instruction="friendly, helpful, and kind passenger who wants to assist with travel forms.",
+        non_verbal_palette=["Oh!", "Aww.", "Let me see...", "<break time='0.3s'/>"],
         elevenlabs_voice_id="Z3R5wn05IrDiVCyEkUrK",
     )
 }
