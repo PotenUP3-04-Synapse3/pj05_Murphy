@@ -1,5 +1,32 @@
 # Handoff
 
+## 2026-06-16 Developer C Realtime STT Model Metadata Fix
+
+Developer C fixed the AI-to-Unreal STT metadata for the realtime transcript
+path.
+
+Root cause:
+
+- `/respond` correctly copied `audio.transcript_provider = "elevenlabs_relay"`
+  into `stt.runtime_used`, but `WhisperLargeV3TurboSttService` still populated
+  `stt_model` from the fixed local batch model label
+  `whisper-large-v3-turbo`.
+- `NormalizedInput.stt_model` was typed as a literal Whisper-only value, so the
+  contract could not represent ElevenLabs realtime model ids.
+
+Changed:
+
+- `backend/app/schemas/game_turn.py` now allows `NormalizedInput.stt_model` to
+  be any string model label.
+- `backend/app/services/service_c/stt_service.py` now reports
+  `settings.elevenlabs_realtime_stt_model` when `runtime_used` is
+  `elevenlabs_relay`.
+- `backend/tests/test_stt_service.py` and
+  `backend/tests/test_preprototype_flow.py` now assert that realtime transcript
+  turns return `stt.model` and `debug.stt_model` as `scribe_v2_realtime`.
+- Updated Developer C schema/adapter contracts to describe the realtime model
+  label behavior.
+
 ## 2026-06-16 Developer A Implementation: Chapter Boundary, Emotion Enum & Dynamic TTS Parameter Integration (Phase P2 & Phase P3)
 
 Developer A implemented Phase P2 and Phase P3 from `docs/workplan-dev-a.md` to support chapter transitions, emotion-based voice parameter tuning, emotion-to-animation mapping, and clean up deprecated middleware code.

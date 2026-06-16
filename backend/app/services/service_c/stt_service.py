@@ -194,7 +194,11 @@ class WhisperLargeV3TurboSttService:
                 language_detected=audio_metadata.language_hint or "en-US",
                 needs_repeat=False,
             ),
-            stt_model=self.model_name,
+            stt_model=_model_name_for_runtime_used(
+                runtime_used=runtime_used,
+                default_model_name=self.model_name,
+                settings=self.settings,
+            ),
             stt_primary_runtime=self.primary_runtime,
             stt_fallback_runtime=self.fallback_runtime,
             stt_runtime_used=runtime_used,
@@ -242,6 +246,26 @@ def _runtime_used_for_existing_transcript(
     """
 
     return transcript_provider or default_runtime
+
+
+def _model_name_for_runtime_used(
+    *,
+    runtime_used: SttRuntimeUsed,
+    default_model_name: str,
+    settings: AppSettings,
+) -> str:
+    """Return the public STT model label for the runtime that produced text.
+
+    Beginner guide:
+    `/respond` can receive either raw WAV audio or a final realtime transcript.
+    Raw WAV audio still uses the local Whisper label.  If a realtime provider
+    already made the transcript, the Unreal response should name that provider's
+    model instead of pretending Whisper produced the text.
+    """
+
+    if runtime_used == "elevenlabs_relay":
+        return settings.elevenlabs_realtime_stt_model
+    return default_model_name
 
 
 def _safe_audio_suffix(file_name: str | None) -> str:

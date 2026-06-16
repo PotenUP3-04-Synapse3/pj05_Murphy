@@ -1095,7 +1095,9 @@ def test_api_reports_realtime_transcript_provider_as_stt_runtime() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["stt"]["player_text"] == "I'm here for tourism."
+    assert body["stt"]["model"] == "scribe_v2_realtime"
     assert body["stt"]["runtime_used"] == "elevenlabs_relay"
+    assert body["debug"]["stt_model"] == "scribe_v2_realtime"
     assert body["debug"]["timing_ms"]["stt_ms"] == 0
 
 
