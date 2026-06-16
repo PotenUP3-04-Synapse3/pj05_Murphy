@@ -24,15 +24,30 @@ _NPC_EDGE_VOICES: dict[str, str] = {
 }
 
 
-def resolve_voice_profile(user_id: str, npc_id: str) -> VoiceProfile:
-    """동일 유저(User)와 NPC 조합의 경우 항상 일관된(Deterministic) voice profile 결과를 결정 및 유지하도록 반환합니다."""
+def resolve_voice_profile(
+    user_id: str,
+    npc_id: str,
+    *,
+    tts_provider: str = "edge",
+) -> VoiceProfile:
+    """동일 유저(User)와 NPC 조합의 경우 항상 일관된(Deterministic) voice profile 결과를 결정 및 유지하도록 반환합니다.
+    tts_provider 매개변수(Parameter)를 도입하여 ElevenLabs와 Edge 엔진(Engine)별 고유 음성 ID를 다르게 선택합니다.
+    """
     safe_user_id = user_id or "user_unknown"
     npc_profile = resolve_npc_profile(npc_id)
     
+    # elevenlabs를 사용하는 경우에는 ElevenLabs 전용 voice_id를 적용하고, 
+    # 그렇지 않은 경우에는 기존 Edge TTS용 voice_id 사전을 이용해 맵핑합니다.
+    if tts_provider == "elevenlabs":
+        voice_id = npc_profile.elevenlabs_voice_id or "CwhRBWXzGAHq8TQ4Fs17"
+    else:
+        voice_id = _NPC_EDGE_VOICES.get(npc_profile.npc_id, "en-US-GuyNeural")
+        
     return VoiceProfile(
         user_id=safe_user_id,
         npc_id=npc_profile.npc_id,
-        voice_profile_id=f"{safe_user_id}:{npc_profile.npc_id}",
-        provider="edge",
-        voice_id=_NPC_EDGE_VOICES.get(npc_profile.npc_id, "en-US-GuyNeural"),
+        # 엔진별로 서로 다른 오디오 캐시(Audio Cache)가 만들어질 수 있도록 voice_profile_id 식별 문자열에 tts_provider를 명시합니다.
+        voice_profile_id=f"{safe_user_id}:{npc_profile.npc_id}:{tts_provider}",
+        provider=tts_provider,
+        voice_id=voice_id,
     )

@@ -24,7 +24,7 @@ flowchart LR
         ROSTER_SVC["npc_roster_service.py<br/>resolve_npc_profile()"]
         LANG_PROFILE["player_language_profile_service.py<br/>build_player_language_profile()"]
         POLISHER["tts_text_polisher_service.py<br/>polish_tts_text()<br/>build_tts_style_metadata()"]
-        VOICE_PROFILE["voice_profile_service.py<br/>resolve_voice_profile()"]
+        VOICE_PROFILE["voice_profile_service.py<br/>resolve_voice_profile(tts_provider)"]
         TTS_SVC["tts_service.py<br/>build_edge_provider_request()<br/>build_elevenlabs_provider_request()<br/>synthesize_speech()"]
         TTS_PROVIDER["tts_provider_service.py<br/>EdgeTTSProvider<br/>ElevenLabsTTSProvider<br/>FakeTTSProvider"]
         AUDIO_QUALITY["audio_quality_service.py<br/>analyze_wav_quality()<br/>build_postprocess_policy()"]
@@ -173,7 +173,7 @@ sequenceDiagram
         end
     end
     Graph-->>VO: 최종 dialogue dict
-    VO->>VO: resolve_voice_profile()
+    VO->>VO: resolve_voice_profile(tts_provider)
     VO->>TTS: build_*_provider_request + synthesize
     TTS-->>VO: TTSAudio (audio_url/path)
     VO->>MW: start_run / complete_run / fail_run

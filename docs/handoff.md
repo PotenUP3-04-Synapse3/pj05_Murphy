@@ -1,5 +1,37 @@
 # Handoff
 
+## 2026-06-16 Developer A 구현: NPC별 voice_id 라우팅 및 환경변수(Environment Variable) 오버라이드 정정 (Phase A ~ Phase E)
+
+Developer A는 `docs/workplan-dev-a-npc-voice-routing.md` 작업 계획서에 따라 ElevenLabs 및 Edge TTS 경로 모두에서 NPC별 고유 voice_id 라우팅을 복구하고, 환경변수 우선순위가 뒤바뀌는 결함 및 캐시 키(Cache Key) 충돌 문제를 해결했습니다.
+
+### Phase A - voice_profile_service 리팩터링:
+- **프로바이더 매개변수(Parameter)화**: `voice_profile_service.py`의 `resolve_voice_profile` 함수에 `tts_provider` 인자를 추가하여, 활성화된 TTS 엔진에 맞춰 적절한 목소리를 선택하도록 개선했습니다.
+- **NPC별 ElevenLabs 라우팅 복구**: roster에 정의되어 있던 `NPCProfile.elevenlabs_voice_id`가 ElevenLabs 요청 시 실제로 사용되도록 연동하여 죽은 필드(Dead field) 문제를 해결했습니다.
+- **캐시(Cache) 격리**: 동일한 NPC라도 엔진별로 오디오 캐시 파일이 충돌 없이 격리될 수 있도록, 생성되는 `voice_profile_id`에 `tts_provider` 정보를 결합(`{user_id}:{npc_id}:{provider}`)했습니다.
+
+### Phase B - voice_output_service 라우팅 구조 수정:
+- **호출 순서 조정**: `voice_output_service.py`의 `build_voice_output_from_level_design` 내에서 `resolve_voice_profile`을 호출하기 전에 먼저 `tts_provider_name`을 결정 및 결정된 엔진 정보를 인가하도록 수정했습니다.
+- **우선순위 역전 해결 헬퍼(Helper) 신설**: NPC별 고유 목소리가 최우선으로 적용될 수 있도록 `_per_npc_voice_or_override` 헬퍼 함수를 신설하여 **강제 오버라이드 환경변수(*_FORCE) > NPC 고유 목소리 > 레거시 단일 오버라이드 환경변수(경고 로깅) > 최종 기본값** 순의 엄격한 우선순위를 확립했습니다.
+- **하위 호환성 유지**: 레거시 환경변수(`MURPHY_ELEVENLABS_VOICE_ID` 및 `MURPHY_EDGE_TTS_VOICE`)가 감지될 경우 `logger.warning`으로 경고(Warning)를 출력한 뒤 차선책으로 적용하도록 설정했습니다.
+
+### Phase C - 캐시 키 및 메타데이터(Metadata) 정합성 검증:
+- **오디오 캐시 고유성**: `build_audio_cache_key`에 voice 식별자 문자열이 정상적으로 유입되고 있음을 검증했습니다.
+- **모델 버전 정보 확장**: `_provider_cache_model_version` 함수의 ElevenLabs 처리 분기 내에 `voice` 식별자가 포함되도록 수정하여 목소리가 바뀔 때 캐시 파일이 고유하게 분리되도록 보장했습니다.
+
+### Phase D - 검증 및 회귀 테스트(Regression Test) 구축:
+- **신규 단위 테스트(Unit Test) 추가**: `backend/tests/test_developer_a_voice_profile_routing.py` 파일을 생성하여 NPC별 라우팅 결과, fallback 처리 규칙, 헬퍼 함수의 우선순위 분기 규칙을 검증했습니다.
+- **기존 테스트 업데이트**: `test_developer_a_npc_roster.py` 및 `test_developer_a_agent_run_logging.py`에서 새로운 `voice_profile_id` 포맷과 모의 환경변수 환경에 맞도록 테스트 단언(Assertion)문을 보정했습니다.
+- **테스트 통과 결과**:
+  - `uv run pytest backend/tests/test_developer_a_voice_profile_routing.py` -> PASS (4 Passed)
+  - `uv run pytest backend/tests/test_developer_a_npc_roster.py` -> PASS (6 Passed)
+  - `uv run pytest backend/tests/test_developer_a_agent_run_logging.py` -> PASS (15 Passed)
+  - `uv run ruff check .` -> PASS (전체 통과)
+  - `uv run mypy .` -> PASS (오류 없음)
+
+### Phase E - 문서 정리 및 환경 명세 최신화:
+- **환경변수 예시 갱신**: `.env.example` 파일에서 옛날 단일 목소리 오버라이드 변수들을 비활성화(Deprecated 주석 처리)하고, 신규 강제 오버라이드 변수인 `*_FORCE` 환경변수 지침을 명시했습니다.
+- **구조 설계도 최신화**: `docs/agent_a_structure.md` 파일 내의 Mermaid 시퀀스(Sequence) 및 전체 아키텍처 다이어그램에서 `resolve_voice_profile(tts_provider)`에 매개변수가 주입되는 설계 흐름을 최신 상태로 반영했습니다.
+
 ## 2026-06-16 Developer A Implementation: Chapter Boundary, Emotion Enum & Dynamic TTS Parameter Integration (Phase P2 & Phase P3)
 
 Developer A implemented Phase P2 and Phase P3 from `docs/workplan-dev-a.md` to support chapter transitions, emotion-based voice parameter tuning, emotion-to-animation mapping, and clean up deprecated middleware code.

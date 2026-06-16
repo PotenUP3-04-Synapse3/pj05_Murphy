@@ -34,7 +34,7 @@ def test_resolve_voice_profile_uses_normalized_npc_id_and_roster_voice() -> None
 
     assert profile.user_id == "session_1"
     assert profile.npc_id == "hale"
-    assert profile.voice_profile_id == "session_1:hale"
+    assert profile.voice_profile_id == "session_1:hale:edge"
     assert profile.provider == "edge"
     assert profile.voice_id == "en-US-GuyNeural"
 
@@ -43,7 +43,7 @@ def test_resolve_voice_profile_unknown_npc_uses_default_roster_profile() -> None
     profile = resolve_voice_profile(user_id="session_1", npc_id="UNKNOWN_NPC")
 
     assert profile.npc_id == "hale"
-    assert profile.voice_profile_id == "session_1:hale"
+    assert profile.voice_profile_id == "session_1:hale:edge"
     assert profile.voice_id == "en-US-GuyNeural"
 
 
