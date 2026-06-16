@@ -3253,3 +3253,45 @@ Known issue / 제외 (Developer B 범위 밖, 변동 없음):
 Next recommended step: Developer C가 Understanding Agent 분류/정규화 정확도
 보강(1차 차단)을 우선 착수. Developer A는 Dialogue Agent 화자 역할/다음 질문
 작문 보강. Developer B 추가 작업 없음.
+
+## 2026-06-16 Developer C B-to-A Payload Boundary Cleanup
+
+Developer B's open handoff/change-request items for B-authored NPC wording were
+applied in the Developer C adapter boundary.
+
+Changed files:
+
+- `backend/app/integrations/dev_a_npc_dialogue_client.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/contracts/change_requests.md`
+- `docs/handoff.md`
+
+Decision:
+
+- Developer A should not receive B-authored model answers or fixed node
+  questions as live NPC-generation input.
+- Removing `recommended_expression` and `npc_question_goal` from the A-facing
+  payload does not block current A generation because A still receives
+  `dialogue_seed.surface_goal`, `dialogue_seed.allowed_followup_intents`,
+  required slot metadata, branch metadata, the NPC identity, and evaluation
+  summary.
+- `recommended_expression` remains available for Unreal UI/out-game feedback
+  through Developer C response assembly; only the internal B-to-A adapter
+  payload is reduced.
+
+Adapter behavior:
+
+- Removed from A-facing `node_context`: `npc_question`, `npc_question_goal`,
+  `recommended_expression`.
+- Removed from A-facing `in_game_feedback`: `npc_recast_line_candidate`,
+  `recommended_expression`.
+- Removed from A-facing `level_hint`: `recommended_expression`.
+- Removed from A-facing `dialogue_directive`: `do_not_generate_npc_text`,
+  `hint_frequency`, `pressure_level`.
+- Kept `dialogue_seed.surface_goal` and `allowed_followup_intents` so A can use
+  them as topic/intent hints rather than receiving B's final wording.
+
+Verification:
+
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_next_question_seed_without_generic_recast_in_llm_mode backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_npc_context_to_voice_builder backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata -q`
+  passed.
