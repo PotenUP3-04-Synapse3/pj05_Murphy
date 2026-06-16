@@ -1,5 +1,35 @@
 # Handoff
 
+## 2026-06-16 Developer C Sprint Added: Incivility Signal and A Adapter Forward
+
+Developer C reviewed Developer A's latest Bad Ending / Profanity Mirror handoff
+and change requests. The C-owned work is now tracked as a sprint:
+
+- `docs/sprints/2026-06-16-incivility-bad-ending-sprint.md`
+
+Developer C scope:
+
+- CR-A1: add additive `incivility` evidence to Understanding output.
+- CR-A3: forward `incivility` to the A-facing payload in
+  `dev_a_npc_dialogue_client.py`.
+- Add C-owned rule classifier, settings, tests, AgentRun/summary visibility, and
+  contract docs.
+
+Out of C scope:
+
+- CR-A2 bad-ending branch policy remains Developer B-owned.
+- CR-A4 verbal-abuse scenario ending nodes remain Developer B-owned.
+- Developer A profanity mirror response wording and TTS behavior remain
+  Developer A-owned.
+
+Recommended execution order:
+
+1. INC-1/INC-2: schema + rule classifier.
+2. INC-3/INC-4: settings + Understanding integration.
+3. INC-5: A adapter forward.
+4. INC-6/INC-7: observability + regression tests.
+5. INC-8/INC-9: contract docs, full verification, commit.
+
 ## 2026-06-16 Developer C Realtime Transcript Multipart Fallback Fix
 
 Developer C investigated the Unreal log where realtime STT subtitles showed the
