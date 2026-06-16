@@ -13,7 +13,10 @@ from backend.app.agents.agent_a.npc_llm_client import (
 )
 from backend.app.services.service_a.developer_a_fallback_service import build_text_fallback
 from backend.app.services.service_a.developer_a_input_service import normalize_level_design_payload
-from backend.app.services.service_a.dialogue_policy_service import build_dialogue_policy
+from backend.app.services.service_a.dialogue_policy_service import (
+    build_dialogue_policy,
+    synthesize_fallback_next_question,
+)
 from backend.app.services.service_a.npc_emotion_service import infer_npc_emotion_state
 from backend.app.services.service_a.npc_roster_service import NPCProfile, resolve_npc_profile
 from backend.app.services.service_a.player_language_profile_service import (
@@ -21,7 +24,6 @@ from backend.app.services.service_a.player_language_profile_service import (
 )
 from backend.app.services.service_a.tts_text_polisher_service import (
     build_tts_style_metadata,
-    polish_tts_text,
 )
 
 # 분기 유형(Branch Type)을 나타내는 리터럴 타입(Literal Type)입니다.
@@ -200,8 +202,22 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
             f"Detected value: '{candidate_text}'"
         )
     
-    # [7단계] 안전한 룰 기반 기본 응답(Fallback Result)을 1차적으로 빌드합니다.
-    result = _apply_npc_profile(build_text_fallback(normalized), npc_profile)
+    # [7단계] 안전한 룰 기반 기본 응답(Fallback Result)을 1차적으로 빌드하고, use_llm이 True이면서 surface_goal이 있으면 룰베이스 다음 질문을 합성합니다.
+    fallback_res = build_text_fallback(normalized)
+    use_llm = state.get("use_llm", False)
+    surface_goal = normalized.get("dialogue_seed", {}).get("surface_goal") or ""
+    transition_status = normalized.get("transition", {}).get("status") or ""
+    next_action = normalized.get("next_action") or ""
+    is_complete_chapter = (transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER")
+    if use_llm and surface_goal and not is_complete_chapter:
+        original_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
+        synthesized_text = synthesize_fallback_next_question(original_text, surface_goal)
+        fallback_res["npc_text"] = synthesized_text
+        fallback_res["text"] = synthesized_text
+        if "tts_text" in fallback_res:
+            fallback_res["tts_text"] = synthesized_text
+            
+    result = _apply_npc_profile(fallback_res, npc_profile, emotion_state.emotion)
         
     # [8단계] 생성 이력 추적용 메타데이터(Metadata)를 결과 사전(Dictionary)에 병합합니다.
     result = _with_generation_metadata(result, profile, emotion_state, policy)
@@ -245,6 +261,13 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     try:
         # [3단계] 최종 LLM 클라이언트를 준비합니다.
         client: Any = llm_client or build_npc_dialogue_llm_client_from_environment()
+        
+        import logging
+        logger = logging.getLogger("backend.app.agents.agent_a")
+        dialogue_seed = payload.get("dialogue_seed")
+        if not dialogue_seed:
+            logger.warning("dialogue_seed is missing from payload in node_generate_dialogue_llm.")
+
         llm_payload = {
             "level_design_payload": payload,
             "normalized": normalized,
@@ -258,6 +281,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
                 "fallback": fallback_result.get("fallback"),
             },
             "generation_profile": fallback_result["generation_profile"],
+            "dialogue_seed": dialogue_seed or {},
         }
 
         # [4단계] 랭체인 1.0+ 규격에 부합하도록 invoke 또는 generate 호출을 수행합니다.
@@ -284,9 +308,30 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     if not _is_safe_english_dialogue_text(npc_text) or not _is_safe_english_dialogue_text(tts_text):
         return {"error": "invalid_llm_dialogue_language"}
 
+    # 추천 표현(Recommended Expression)이 NPC 대사에 그대로 에코되는지 검사합니다.
+    rec_exp = normalized.get("recommended_expression", "").strip()
+    if rec_exp and rec_exp in npc_text:
+        return {"error": "recommended_expression_echo"}
+
+    # surface_goal이 존재할 때 물음표 질문이 누락되었는지 검사합니다.
+    surface_goal = (payload.get("dialogue_seed") or {}).get("surface_goal")
+    if surface_goal:
+        import re
+        sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
+        if len(sentences) <= 1 and "?" not in npc_text:
+            return {"error": "missing_followup_question"}
+
     seed_fallback = _dict_value(fallback_result.get("fallback"))
     
     # [7단계] LLM이 직접 생성한 4대 파라미터와 최종 npc_emotion을 결과 딕셔너리에 바인딩합니다.
+    npc_emotion = (
+        normalized.get("npc_emotion")
+        or llm_result.get("npc_emotion")
+        or fallback_result["generation_profile"]["npc_emotion"]["emotion"]
+    )
+    from backend.app.services.service_a.animation_mapping_service import resolve_animation_by_emotion
+    anim = resolve_animation_by_emotion(npc_profile.default_animation, npc_emotion)
+
     merged = {
         **fallback_result,
         "speaker": npc_profile.display_name,
@@ -295,9 +340,9 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         "tts_text": tts_text,
         "feedback_kr": str(llm_result.get("feedback_kr") or fallback_result["feedback_kr"]),
         "tone": str(llm_result.get("tone") or fallback_result["tone"]),
-        "animation": npc_profile.default_animation,
+        "animation": anim,
         "fallback": {"used": False, "reason": None},
-        "npc_emotion": str(llm_result.get("npc_emotion") or fallback_result["generation_profile"]["npc_emotion"]["emotion"]),
+        "npc_emotion": str(npc_emotion),
         "stability": llm_result.get("stability"),
         "style": llm_result.get("style"),
         "speed": llm_result.get("speed"),
@@ -462,12 +507,15 @@ def _with_generation_metadata(
     return result
 
 
-def _apply_npc_profile(result: dict[str, Any], npc_profile: NPCProfile) -> dict[str, Any]:
-    """정의된 NPC 프로필의 기본 정보(화자 이름, 대기 애니메이션)를 결과 딕셔너리에 매핑합니다."""
+def _apply_npc_profile(result: dict[str, Any], npc_profile: NPCProfile, emotion: str) -> dict[str, Any]:
+    """정의된 NPC 프로필의 기본 정보(화자 이름, 대기 애니메이션)를 결과 딕셔너리에 매핑합니다. 
+    또한 감정에 따라 최종 애니메이션을 동적으로 결정합니다."""
+    from backend.app.services.service_a.animation_mapping_service import resolve_animation_by_emotion
+    anim = resolve_animation_by_emotion(npc_profile.default_animation, emotion)
     return {
         **result,
         "speaker": npc_profile.display_name,
-        "animation": npc_profile.default_animation,
+        "animation": anim,
     }
 
 

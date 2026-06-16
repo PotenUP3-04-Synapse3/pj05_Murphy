@@ -641,8 +641,7 @@ result endpoint while A/C/Unreal migrate to `ALPHA_999_FINAL_SCOREBOARD`.
 
 ## Change Request - 2026-06-12 - Adopt Alpha Chapter Boundary Transition Nodes
 
-Status: Implemented in B/C pre-prototype runtime; Developer A and Unreal should
-consume the additive metadata when their integration surfaces are ready.
+Status: Resolved (Developer A and B/C implementation complete - 2026-06-16).
 
 ### Requested By
 
@@ -1125,7 +1124,7 @@ response `npc.emotion` can continue using `npc.tone` and `npc.animation`.
 
 ## Change Request - 2026-06-12 - Expand NPC Dialogue Client Payload for Dynamic Emotion & Audio Parameters
 
-Status: Open.
+Status: Resolved (Developer A implementation complete - 2026-06-16).
 
 ### Requested By
 
@@ -1244,6 +1243,8 @@ Developer A / kimyonghee
 해당 없음 (전면 리팩터링 적용 완료).
 
 ## Change Request - 2026-06-15 - Deprecate NPCDialogueAgentRunMiddleware and Transition to NPCDialogueAgentRunRecorder
+
+Status: Resolved (Deprecated shim completely removed - 2026-06-16).
 
 ### Requested By
 
@@ -1368,6 +1369,8 @@ Understanding Agent의 **분류 정확도** 보강을 요청합니다. 구체적
   높은 confidence(0.9+)를 부여하지 않도록 조정.
 
 ## Change Request - 2026-06-16 - Dialogue Agent Speaker Role Confusion and Missing Follow-up Question
+
+Status: Resolved (Developer A update - 2026-06-16).
 
 ### Requested By
 

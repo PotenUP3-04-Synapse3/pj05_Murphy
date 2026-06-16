@@ -1,5 +1,55 @@
 # Handoff
 
+## 2026-06-16 Developer A Implementation: Chapter Boundary, Emotion Enum & Dynamic TTS Parameter Integration (Phase P2 & Phase P3)
+
+Developer A implemented Phase P2 and Phase P3 from `docs/workplan-dev-a.md` to support chapter transitions, emotion-based voice parameter tuning, emotion-to-animation mapping, and clean up deprecated middleware code.
+
+### Phase P2-1 - Chapter Boundary & Closing Utterances:
+- **Payload Normalization**: Added `"transition"` and `"next_action"` fields to the standardized payload in `developer_a_input_service.py`.
+- **Role-Specific Fallback Closing Lines**: Updated `build_text_fallback` in `developer_a_fallback_service.py` to check for `complete_chapter` status or `COMPLETE_CHAPTER` next_action. When triggered, it serves role-specific closing lines (e.g., seatmate: `"Enjoy your trip!"`, immigration: `"All right, you're cleared."`) and dynamically resolves speaker names from the resolved NPC profile.
+- **LLM System Prompt Alignment**: Enhanced the `_developer_instructions` in `npc_llm_client.py` to guide the LLM to write only closing statements and omit follow-up questions when a chapter completion is signaled.
+- **Agent Initialization Alignment**: Updated `node_initialize_state` in `npc_dialogue_agent.py` to skip question fallback synthesis if the turn indicates chapter completion.
+
+### Phase P2-2 - Emotion Enum & Dynamic Animation/TTS Parameters:
+- **Emotion Priority**: Sorted the emotion priority in `node_generate_dialogue_llm` so B-provided `npc.emotion` (standardized `npc_emotion` in the payload) is prioritized over LLM-inferred emotions.
+- **Animation Mapping Service**: Created `animation_mapping_service.py` to map the 13 supported emotion types to specific Unreal Engine animation micro-variants (e.g. `joy`, `panic`, `sad`, `suspicion`, etc.), integrating it into `npc_dialogue_agent.py`.
+- **Emotion-Based TTS Parameter Fallback**: Added the `EMOTION_TTS_PARAMETERS` dictionary in `voice_output_service.py` containing preset voice tuning values (stability, style, speed, similarity_boost) for the 13 emotions. If the LLM doesn't output custom values, the service falls back to these emotion presets first before defaulting to tone-based presets.
+
+### Phase P3 - Code Hygiene & Cleanup:
+- **Middleware Cleanup**: Completely deleted the deprecated `npc_dialogue_agent_run_middleware.py` file since all calling paths have migrated to the new `NPCDialogueAgentRunRecorder` standard.
+- **Integration Test Alignment**: Updated the assertion in Developer C's integration test `test_preprototype_flow.py` for Hale's chapter completion to expect the correct dynamic response `"All right, you're cleared."` instead of the legacy generic fallback.
+
+### Verification:
+- Added 3 new unit tests in `test_developer_a_npc_dialogue.py` covering chapter completion fallback lines, emotion-animation mapping, and emotion-based TTS parameter resolution.
+- Executed `uv run pytest backend/tests` -> PASS (All 253 tests passed).
+- Executed `uv run ruff check .` -> PASS (All checks passed).
+- Executed `uv run mypy .` -> PASS (Success: no issues found in 108 source files).
+
+## 2026-06-16 Developer A Implementation: Resolve Dialogue Agent Quality Defects & NPC Roster Expansion (Phase P0 & P1-1)
+
+Developer A implemented Phase P0 and Phase P1-1 from the `docs/workplan-dev-a.md` workplan to fix dialogue generation quality issues and expand the NPC Roster mapping.
+
+### Phase P0 - Dialogue Agent Quality Defects Resolved:
+- **System Prompt Improvements**: Updated [npc_llm_client.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_llm_client.py) to strongly instruct the LLM against player speaker confusion, to never copy the recommended expression verbatim, and to always produce follow-up questions when `dialogue_seed.surface_goal` is present.
+- **Dialogue Seed Injection**: Ensured that the `dialogue_seed` metadata is correctly mapped in `developer_a_input_service.py` and forwarded in `npc_dialogue_agent.py` to the LLM.
+- **Fallback Next Question Synthesizer**: Added a map of `SURFACE_GOAL_QUESTIONS` and a `synthesize_fallback_next_question` helper in [dialogue_policy_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/dialogue_policy_service.py). This synthesizes fallback dialogue and next questions when the LLM fails while `use_llm` is enabled.
+- **Output Validation**: Added validation in [npc_dialogue_agent.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py) to check for recommended expression echo (`recommended_expression_echo` fallback) and missing follow-up questions (`missing_followup_question` fallback) when `surface_goal` is present.
+- **Regression Tests**: Added unit tests in [test_developer_a_npc_dialogue.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_developer_a_npc_dialogue.py) covering next question synthesis, expression echo rejection, and missing follow-up question rejection.
+
+### Phase P1-1 - NPC Roster & Voice Profile Mapping Expansion:
+- **New NPC Profile (Emily)**: Added a new seatmate NPC `emily` (for Chapter C Travel Form Help) to [npc_roster_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/npc_roster_service.py) with friendly/helpful persona instruction.
+- **Non-canonical Mapping Alignment**: Strengthened `_normalize_npc_id` to prevent falling back to Hale when non-canonical IDs (`SEATMATE_A_01`, `SEATMATE_B_01`, `SEATMATE_C_01`, `SEATMATE_EMILY`, `BAGGAGE_STAFF`, `CUSTOMS_OFFICER`) are passed, routing them correctly to `arabella`, `novak`, `emily`, `brielle`, and `dan`.
+- **Voice Profile Registration**: Configured `emily`'s Edge-TTS voice mapping in [voice_profile_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/voice_profile_service.py).
+- **Roster Unit Test**: Added new test cases in [test_developer_a_npc_roster.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_developer_a_npc_roster.py) to verify registration and non-canonical ID resolution.
+
+### Code Hygiene:
+- Removed unused `polish_tts_text` import in [npc_dialogue_agent.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py), resolving a Ruff F401 lint warning.
+
+### Verification:
+- Executed `uv run pytest backend/tests` -> PASS (All 245 tests passed).
+- Executed `uv run ruff check .` -> PASS (All checks passed).
+- Executed `uv run mypy .` -> PASS (Success: no issues found in 108 source files).
+
 ## 2026-06-15 Developer C Refactor: Fix graph.py Redundant Reassignment and Resolve test_preprototype_flow.py Failures
 
 Developer C resolved the lint warnings in `graph.py` and fixed the pre-prototype flow test failures caused by the recent Developer A refactoring.
