@@ -1,5 +1,39 @@
 # Handoff
 
+## 2026-06-16 Developer C Realtime STT Client Disconnect Handling
+
+Developer C fixed a WebSocket noise/error case seen while testing
+`/api/game/ai/stt/stream`.
+
+Root cause:
+
+- The client closed the WebSocket first, with uvicorn reporting
+  `ConnectionClosedOK` and Starlette raising `WebSocketDisconnect`.
+- The backend then tried to send a realtime STT server event to the already
+  closed socket, so uvicorn logged `Exception in ASGI application` even though
+  the client-side close itself was not an ElevenLabs provider failure.
+
+Changed:
+
+- `backend/app/api/ai_respond.py` now treats `WebSocketDisconnect` during
+  realtime server-event sends as a normal client disconnect.
+- `_send_realtime_event()` and `_send_realtime_events()` now return `False`
+  when the client has already closed, which prevents the noisy ASGI stack trace
+  and stops sending the rest of the event batch.
+- Added regression coverage in `backend/tests/test_realtime_stt_websocket.py`.
+
+Verification:
+
+- RED: the new disconnect test failed before the fix with
+  `starlette.websockets.WebSocketDisconnect` escaping from
+  `_send_realtime_event()`.
+- `uv run pytest backend/tests/test_realtime_stt_websocket.py
+  backend/tests/test_elevenlabs_realtime_stt_relay.py -q`: PASS, 15 passed,
+  1 existing `audioop` deprecation warning.
+- `uv run pytest`: PASS, 260 passed, 1 existing `audioop` deprecation warning.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS.
+
 ## 2026-06-16 Developer A 구현: NPC별 voice_id 라우팅 및 환경변수(Environment Variable) 오버라이드 정정 (Phase A ~ Phase E)
 
 Developer A는 `docs/workplan-dev-a-npc-voice-routing.md` 작업 계획서에 따라 ElevenLabs 및 Edge TTS 경로 모두에서 NPC별 고유 voice_id 라우팅을 복구하고, 환경변수 우선순위가 뒤바뀌는 결함 및 캐시 키(Cache Key) 충돌 문제를 해결했습니다.

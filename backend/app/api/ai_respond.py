@@ -325,12 +325,26 @@ async def _read_form_text(part: Any) -> str:
     raise HTTPException(status_code=422, detail="Multipart turn field must be JSON text")
 
 
-async def _send_realtime_event(websocket: WebSocket, event: RealtimeTranscriptServerEvent | dict[str, Any]) -> None:
-    if isinstance(event, RealtimeTranscriptServerEvent):
-        await websocket.send_json(event.model_dump(mode="json", exclude_none=True))
-        return
+async def _send_realtime_event(websocket: WebSocket, event: RealtimeTranscriptServerEvent | dict[str, Any]) -> bool:
+    """Realtime STT 서버 이벤트 1개를 보내고, 전송 성공 여부를 돌려준다.
 
-    await websocket.send_json(event)
+    클라이언트가 녹음 중단, 페이지 이동, Unreal PIE 종료 등으로 WebSocket을
+    먼저 닫을 수 있다. 그 경우는 백엔드 장애가 아니라 정상적인 연결 종료로
+    보고, uvicorn 에러 스택이 남지 않도록 `False`로 정리한다.
+    """
+
+    if isinstance(event, RealtimeTranscriptServerEvent):
+        try:
+            await websocket.send_json(event.model_dump(mode="json", exclude_none=True))
+        except WebSocketDisconnect:
+            return False
+        return True
+
+    try:
+        await websocket.send_json(event)
+    except WebSocketDisconnect:
+        return False
+    return True
 
 
 async def _send_realtime_events(
@@ -339,16 +353,26 @@ async def _send_realtime_events(
     *,
     debug_log_session: RealtimeSttDebugLogSession | None = None,
     complete_on_terminal: bool = False,
-) -> None:
+) -> bool:
+    """Realtime STT 이벤트 묶음을 순서대로 보내고 연결 종료를 안전하게 처리한다.
+
+    여러 이벤트를 보내는 도중 클라이언트가 이미 닫혀 있으면 남은 이벤트 전송을
+    중단한다. 호출자는 반환값을 무시해도 되지만, 테스트와 디버깅에서는 `False`
+    를 보고 "클라이언트가 먼저 끊었다"는 사실을 구분할 수 있다.
+    """
+
     for event in events:
         if debug_log_session is not None:
             debug_log_session.record_server_event(event)
-        await _send_realtime_event(websocket, event)
+        if not await _send_realtime_event(websocket, event):
+            return False
 
     if debug_log_session is not None and complete_on_terminal:
         status = _realtime_debug_completion_status(events)
         if status is not None:
             debug_log_session.complete_and_append(status=status)
+
+    return True
 
 
 def _realtime_debug_completion_status(events: Sequence[RealtimeTranscriptServerEvent | dict[str, Any]]) -> str | None:
