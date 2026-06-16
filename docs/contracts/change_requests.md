@@ -1367,6 +1367,28 @@ Understanding Agent의 **분류 정확도** 보강을 요청합니다. 구체적
 - 슬롯 값 매핑의 근거(`slot_evidence`)가 약하거나 추론에 가까우면
   높은 confidence(0.9+)를 부여하지 않도록 조정.
 
+### Developer C Update - 2026-06-16
+
+Implemented the first C-side guard for the verified root cause:
+
+- `understanding_agent.py` now rejects known off-topic idioms for the current
+  required slot before they can remain as successful extracted slots.
+- The verified `"Okay, you're on."` case for
+  `FLIGHT_A_001_SEATMATE_SMALLTALK` now returns `intent_success=false`,
+  `answer_relevance="off_topic"`, `missing_slots=["polite_response"]`,
+  `needs_clarification=true`, and confidence below `0.9`.
+- If an LLM-filled required slot lacks strong accepted `slot_evidence`,
+  Understanding now keeps the slot value but lowers confidence below `0.9`.
+- `understanding_llm_client.py` developer instructions now explicitly require
+  required-intent relevance judgment before slot filling and prohibit 0.9+
+  confidence for weak, idiomatic, inferred, or loosely related slot evidence.
+- Added `backend/app/prompts/understanding_prompt.md` as the C-owned prompt
+  policy mirror referenced by `AGENTS.md`.
+- Checked `dev_a_npc_dialogue_client.py`: forcing
+  `npc_recast_line_candidate=None` does not remove `dialogue_seed` or
+  `dialogue_directive` metadata used for next-prompt generation. C-owned tests
+  now assert this behavior.
+
 ## Change Request - 2026-06-16 - Dialogue Agent Speaker Role Confusion and Missing Follow-up Question
 
 ### Requested By

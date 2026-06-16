@@ -1,5 +1,108 @@
 # Handoff
 
+## 2026-06-16 Developer C Test and Env Example Cleanup Audit
+
+Developer C audited the current tests after the latest merge for obvious
+legacy-retention cases.
+
+Findings:
+
+- No test file was deleted in this pass. Current tests no longer assert Kokoro
+  or Chatterbox output paths, and no test imports the deprecated
+  `NPCDialogueAgentRunMiddleware` shim.
+- The remaining `generate_npc_dialogue_from_level_design` tests still cover the
+  current Developer A entry point used by `voice_output_service.py`, so they
+  were not removed.
+- The B-side legacy route test checks that old unlabeled Flight node IDs are no
+  longer present in `scenario_nodes.json`; that is an active regression guard,
+  not legacy retention.
+- `test_demo_ai_respond_page.py` still covers the current `/respond-dialog`
+  tester and demo AgentRun summary endpoints. The older `/demo/ai-respond`
+  route is still present in `backend/app/main.py`, so those assertions were left
+  intact rather than silently deleting coverage for a still-mounted route.
+
+Changed:
+
+- Updated `.env.example` so `MURPHY_TTS_PROVIDER=edge`.
+- Removed unused `MURPHY_CHATTERBOX_*` examples from `.env.example`; current
+  runtime code no longer reads these variables after the A-side TTS slimming
+  refactor.
+- Updated the NPC dialogue mode comment so it refers to the selected TTS
+  provider instead of Kokoro.
+
+Verification:
+
+- `rg -n "MURPHY_CHATTERBOX|chatterbox|kokoro|Kokoro|MURPHY_TTS_PROVIDER=kokoro" .env.example backend/tests`:
+  no matches.
+- `uv run pytest`: PASS, 243 passed, 1 existing `audioop` deprecation warning.
+- `uv run mypy .`: PASS, no issues in 108 source files.
+- `uv run ruff check .`: FAIL only in A-owned
+  `backend/app/agents/agent_a/npc_dialogue_agent.py` because
+  `polish_tts_text` is imported but unused. Developer C did not edit that
+  A-owned implementation file.
+
+## 2026-06-16 Developer C Understanding Off-Topic Guard
+
+Developer C implemented the urgent Understanding Agent guard requested after
+Developer B verified that B-side slot membership validation cannot catch
+`"Okay, you're on."` when C already normalizes it to a valid enum value.
+
+Changed:
+
+- Added deterministic postprocessing in
+  `backend/app/agents/agent_c/understanding_agent.py` so known off-topic idioms
+  for the current required slot cannot remain as successful extracted slots.
+- The verified failure case now returns `intent_success = false`,
+  `answer_relevance = "off_topic"`, `missing_slots = ["polite_response"]`,
+  `needs_clarification = true`, and confidence below `0.9`.
+- Added a generic confidence guard: when the LLM fills a required slot but does
+  not provide strong accepted `slot_evidence` for that slot, C keeps the slot
+  value but lowers confidence below `0.9`.
+- Tightened LLM developer instructions in
+  `backend/app/agents/agent_c/understanding_llm_client.py` so the model must
+  judge required-intent relevance before filling slots and must not assign
+  0.9+ confidence to weak or idiomatic slot evidence.
+- Added `backend/app/prompts/understanding_prompt.md` as the prompt-policy
+  mirror listed in `AGENTS.md`; runtime instructions still live in
+  `understanding_llm_client.py`.
+- Added regression coverage in `backend/tests/test_understanding_agent.py` for
+  both LLM mode and rule mode using `"Okay, you're on."`.
+
+Developer A adapter check:
+
+- Verified `dev_a_npc_dialogue_client.py` still forces
+  `in_game_feedback.npc_recast_line_candidate = None`, but does not remove the
+  metadata A needs to generate a next prompt.
+- Strengthened `backend/tests/test_preprototype_flow.py` assertions to confirm
+  `dialogue_directive.purpose = "continue_to_next_question"` and
+  `dialogue_seed.allowed_followup_intents` retains `advance_to_next_prompt`
+  while `npc_recast_line_candidate` remains `None`.
+
+Verification:
+
+- RED: the new Understanding tests failed before the fix because both LLM and
+  rule paths treated `"Okay, you're on."` as successful `short_acknowledgement`.
+- `uv run pytest backend/tests/test_understanding_agent.py
+  backend/tests/test_understanding_llm_client.py
+  backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata
+  backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata
+  backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_next_question_seed_without_generic_recast_in_llm_mode
+  -q`: PASS, 23 passed, 1 existing `audioop` deprecation warning.
+- `uv run pytest backend/tests/test_understanding_agent.py
+  backend/tests/test_understanding_llm_client.py
+  backend/tests/test_preprototype_flow.py -q`: PASS, 50 passed, 1 existing
+  `audioop` deprecation warning.
+- `uv run pytest`: PASS, 243 passed, 1 existing `audioop` deprecation warning.
+- `uv run ruff check backend/app/agents/agent_c/understanding_agent.py
+  backend/app/agents/agent_c/understanding_llm_client.py
+  backend/tests/test_understanding_agent.py
+  backend/tests/test_preprototype_flow.py`: PASS.
+- `uv run mypy .`: PASS.
+- `uv run ruff check .`: FAIL only in A-owned
+  `backend/app/agents/agent_a/npc_dialogue_agent.py` because
+  `polish_tts_text` is imported but unused. Developer C did not edit that
+  A-owned implementation file.
+
 ## 2026-06-15 Respond Dialog Flight NPC Roster Alignment and STT Metadata Check
 
 Corrected during `/respond-dialog` realtime testing:
