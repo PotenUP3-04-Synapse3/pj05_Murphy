@@ -134,6 +134,16 @@
       ],
       "practice_prompt_kr": "신고 접수 후 업데이트 시점을 묻는 문장을 말해보세요.",
       "answer_example": "Thank you. When should I expect an update?"
+    },
+    "verbal_conduct_card": {
+      "title_kr": "올바른 언어 사용 (Verbal Conduct)",
+      "rule_summary_kr": "심사관이나 타인에게 위협, 비속어, 혹은 모욕적인 발화를 사용하면 대화가 즉시 강제 종료됩니다. 항상 공손하고 직접적인 영어 표현을 사용해 주세요.",
+      "good_examples": [
+        "I would like to enter the country for tourism.",
+        "Excuse me, could you help me find my baggage?"
+      ],
+      "practice_prompt_kr": "무례하거나 공격적인 언어를 피하고 공손하게 요청을 표현해 보세요.",
+      "answer_example": "I am traveling for tourism."
     }
   }
 }

@@ -2057,6 +2057,120 @@
         "END_ALPHA_SCENARIO"
       ],
       "node_type": "result"
+    },
+    "FLIGHT_BAD_END_VERBAL_ABUSE": {
+      "node_id": "FLIGHT_BAD_END_VERBAL_ABUSE",
+      "chapter_id": "CH0_01_FLIGHT_SMALLTALK",
+      "node_type": "ending",
+      "npc_question": "Yeah... I'm done talking to you.",
+      "npc_question_goal": "closing_eviction",
+      "objective_kr": "강제 종료 — 무례한 발언으로 인한 대화 중단",
+      "required_intents": [],
+      "required_slots": [],
+      "optional_slots": [],
+      "critical_slots": [],
+      "allowed_slot_values": {},
+      "risk_keywords": [],
+      "recommended_expression": "",
+      "base_hint_kr": "",
+      "hint_policy": {
+        "keyword": [],
+        "sentence_pattern": "",
+        "situation_hint": "",
+        "action_hint": ""
+      },
+      "branch_candidates": {
+        "success": "FLIGHT_BAD_END_VERBAL_ABUSE",
+        "retry":   "FLIGHT_BAD_END_VERBAL_ABUSE",
+        "clarify": "FLIGHT_BAD_END_VERBAL_ABUSE",
+        "hint":    "FLIGHT_BAD_END_VERBAL_ABUSE",
+        "warning": "FLIGHT_BAD_END_VERBAL_ABUSE"
+      },
+      "allowed_next_nodes": ["ALPHA_999_FINAL_SCOREBOARD"],
+      "transition": {
+        "status": "complete_chapter",
+        "completed_chapter_id": "CH0_01_FLIGHT_SMALLTALK",
+        "next_chapter_id": "CH0_05_RESULT",
+        "entry_node_id": "ALPHA_999_FINAL_SCOREBOARD",
+        "unreal_event": "SHOW_BAD_END_SCOREBOARD",
+        "requires_player_input": false
+      }
+    },
+    "IMM_BAD_END_VERBAL_ABUSE": {
+      "node_id": "IMM_BAD_END_VERBAL_ABUSE",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "node_type": "ending",
+      "npc_question": "That's enough. This interview is over.",
+      "npc_question_goal": "closing_eviction",
+      "objective_kr": "강제 종료 — 입국심사관에 대한 무례한 발언",
+      "required_intents": [],
+      "required_slots": [],
+      "optional_slots": [],
+      "critical_slots": [],
+      "allowed_slot_values": {},
+      "risk_keywords": [],
+      "recommended_expression": "",
+      "base_hint_kr": "",
+      "hint_policy": {
+        "keyword": [],
+        "sentence_pattern": "",
+        "situation_hint": "",
+        "action_hint": ""
+      },
+      "branch_candidates": {
+        "success": "IMM_BAD_END_VERBAL_ABUSE",
+        "retry":   "IMM_BAD_END_VERBAL_ABUSE",
+        "clarify": "IMM_BAD_END_VERBAL_ABUSE",
+        "hint":    "IMM_BAD_END_VERBAL_ABUSE",
+        "warning": "IMM_BAD_END_VERBAL_ABUSE"
+      },
+      "allowed_next_nodes": ["ALPHA_999_FINAL_SCOREBOARD"],
+      "transition": {
+        "status": "complete_chapter",
+        "completed_chapter_id": "CH0_03_IMMIGRATION_CHECK",
+        "next_chapter_id": "CH0_05_RESULT",
+        "entry_node_id": "ALPHA_999_FINAL_SCOREBOARD",
+        "unreal_event": "SHOW_BAD_END_SCOREBOARD",
+        "requires_player_input": false
+      }
+    },
+    "BAG_BAD_END_VERBAL_ABUSE": {
+      "node_id": "BAG_BAD_END_VERBAL_ABUSE",
+      "chapter_id": "CH0_04_BAGGAGE_CLAIM",
+      "node_type": "ending",
+      "npc_question": "Sir, that's it. Security will escort you out.",
+      "npc_question_goal": "closing_eviction",
+      "objective_kr": "강제 종료 — 세관 직원에 대한 무례한 발언",
+      "required_intents": [],
+      "required_slots": [],
+      "optional_slots": [],
+      "critical_slots": [],
+      "allowed_slot_values": {},
+      "risk_keywords": [],
+      "recommended_expression": "",
+      "base_hint_kr": "",
+      "hint_policy": {
+        "keyword": [],
+        "sentence_pattern": "",
+        "situation_hint": "",
+        "action_hint": ""
+      },
+      "branch_candidates": {
+        "success": "BAG_BAD_END_VERBAL_ABUSE",
+        "retry":   "BAG_BAD_END_VERBAL_ABUSE",
+        "clarify": "BAG_BAD_END_VERBAL_ABUSE",
+        "hint":    "BAG_BAD_END_VERBAL_ABUSE",
+        "warning": "BAG_BAD_END_VERBAL_ABUSE"
+      },
+      "allowed_next_nodes": ["ALPHA_999_FINAL_SCOREBOARD"],
+      "transition": {
+        "status": "complete_chapter",
+        "completed_chapter_id": "CH0_04_BAGGAGE_CLAIM",
+        "next_chapter_id": "CH0_05_RESULT",
+        "entry_node_id": "ALPHA_999_FINAL_SCOREBOARD",
+        "unreal_event": "SHOW_BAD_END_SCOREBOARD",
+        "requires_player_input": false
+      }
     }
   }
 }
