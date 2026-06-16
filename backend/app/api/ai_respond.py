@@ -74,6 +74,10 @@ async def realtime_stt_stream(websocket: WebSocket) -> None:
                 payload = await websocket.receive_json()
             except WebSocketDisconnect:
                 return
+            except RuntimeError as exc:
+                if _is_websocket_receive_after_disconnect(exc):
+                    return
+                raise
 
             try:
                 event = RealtimeTranscriptClientEvent.model_validate(payload)
@@ -258,6 +262,18 @@ def _chapter_id_for_demo_node(node_id: str) -> str:
     if node_id.startswith("ALPHA_"):
         return "CH0_05_RESULT"
     return "CH0_03_IMMIGRATION_CHECK"
+
+
+def _is_websocket_receive_after_disconnect(error: RuntimeError) -> bool:
+    """이미 닫힌 WebSocket에서 receive를 시도한 Starlette 오류인지 확인한다.
+
+    Starlette는 클라이언트가 먼저 연결을 닫은 뒤 `receive_json()`이 호출되면
+    `WebSocketDisconnect` 대신 RuntimeError를 던지는 경로가 있다. 이 문구만
+    정상적인 클라이언트 종료로 보고, 다른 RuntimeError는 실제 버그일 수 있어
+    그대로 다시 올린다.
+    """
+
+    return 'WebSocket is not connected. Need to call "accept" first.' in str(error)
 
 
 @router.get("/result/{session_id}", response_model=UnrealResultResponse)

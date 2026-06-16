@@ -339,3 +339,25 @@ def test_realtime_stt_send_events_handles_client_disconnect_without_server_error
 
     assert result is False
     assert disconnecting_websocket.sent_payloads[0]["event_type"] == "partial_transcript"
+
+
+def test_realtime_stt_stream_handles_client_close_before_first_message() -> None:
+    class ClosedBeforeMessageWebSocket:
+        def __init__(self) -> None:
+            self.accepted = False
+
+        async def accept(self) -> None:
+            self.accepted = True
+
+        async def receive_json(self) -> dict[str, object]:
+            raise RuntimeError('WebSocket is not connected. Need to call "accept" first.')
+
+    closed_websocket = ClosedBeforeMessageWebSocket()
+
+    result = anyio.run(
+        ai_respond_api.realtime_stt_stream,
+        cast(WebSocket, closed_websocket),
+    )
+
+    assert result is None
+    assert closed_websocket.accepted is True

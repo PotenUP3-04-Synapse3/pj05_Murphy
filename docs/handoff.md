@@ -12,6 +12,10 @@ Root cause:
 - The backend then tried to send a realtime STT server event to the already
   closed socket, so uvicorn logged `Exception in ASGI application` even though
   the client-side close itself was not an ElevenLabs provider failure.
+- A second close path can happen even earlier: the client opens the WebSocket
+  and closes it before sending the first JSON message. In that case Starlette
+  raises a `RuntimeError` from `receive_json()` with
+  `WebSocket is not connected. Need to call "accept" first.`
 
 Changed:
 
@@ -20,6 +24,9 @@ Changed:
 - `_send_realtime_event()` and `_send_realtime_events()` now return `False`
   when the client has already closed, which prevents the noisy ASGI stack trace
   and stops sending the rest of the event batch.
+- `realtime_stt_stream()` now also treats Starlette's receive-after-disconnect
+  RuntimeError as a normal client disconnect while still re-raising unrelated
+  RuntimeErrors.
 - Added regression coverage in `backend/tests/test_realtime_stt_websocket.py`.
 
 Verification:
@@ -27,10 +34,12 @@ Verification:
 - RED: the new disconnect test failed before the fix with
   `starlette.websockets.WebSocketDisconnect` escaping from
   `_send_realtime_event()`.
+- RED: the receive-side disconnect test failed before the fix with
+  `RuntimeError: WebSocket is not connected. Need to call "accept" first.`
 - `uv run pytest backend/tests/test_realtime_stt_websocket.py
-  backend/tests/test_elevenlabs_realtime_stt_relay.py -q`: PASS, 15 passed,
+  backend/tests/test_elevenlabs_realtime_stt_relay.py -q`: PASS, 16 passed,
   1 existing `audioop` deprecation warning.
-- `uv run pytest`: PASS, 260 passed, 1 existing `audioop` deprecation warning.
+- `uv run pytest`: PASS, 261 passed, 1 existing `audioop` deprecation warning.
 - `uv run ruff check .`: PASS.
 - `uv run mypy .`: PASS.
 
