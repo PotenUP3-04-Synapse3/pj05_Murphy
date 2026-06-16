@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Literal
 
 class NPCDialogueLLMResult(BaseModel):
@@ -18,7 +18,7 @@ class NPCDialogueLLMResult(BaseModel):
     tts_text: str = Field(
         ...,
         min_length=1,
-        max_length=220,
+        max_length=256,
         description="ElevenLabs 음성 합성기(TTS)에 전달할 발음 텍스트(TTS Text)입니다."
     )
     feedback_kr: str = Field(
@@ -88,3 +88,10 @@ class NPCDialogueLLMResult(BaseModel):
         max_length=240,
         description="이러한 대사 및 오디오 파라미터를 도출한 LLM의 판단 근거(Reason)입니다."
     )
+
+    @field_validator("tts_text")
+    @classmethod
+    def validate_tts_text(cls, v: str) -> str:
+        if "<script>" in v:
+            raise ValueError("Dangerous <script> tag is forbidden in tts_text.")
+        return v

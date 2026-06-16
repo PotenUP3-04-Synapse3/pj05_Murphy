@@ -89,6 +89,67 @@ Verification:
 - `uv run ruff check .`: PASS.
 - `uv run mypy .`: PASS.
 
+## 2026-06-16 Developer A Request: Bad Ending End-to-End 연동을 위한 B/C 협조 요청
+
+Developer A는 `MURPHY_NPC_PROFANITY_MIRROR_MODE` 기반의 Profanity Mirror/Firm 모드를 이미 구현 완료(`incivility_tier` 수신부, `profanity_response_policy`, `profanity_lexicon`, `_apply_incivility_bias` 등)했으나, **신호를 만드는 쪽(C Understanding), 어댑터 전달(C Adapter), 분기 정책(B Policy), 시나리오 데이터(B Scenario)** 가 모두 비어 있어 다음 두 가지 증상이 관찰됩니다.
+
+- 플레이어가 `"fuck you"` 류 T3 욕설을 발화해도 NPC가 평이한 정상 응답(`"Sure, go ahead. Are you traveling to New York?"`) 으로 받음.
+- A-facing payload 에 `incivility` 키가 없어 항상 `incivility_tier = 0` 으로 평가됨.
+
+원인 검증:
+
+- `.env` / `.env.example` 에 `MURPHY_NPC_PROFANITY_MIRROR_MODE` 키 미정의 → 기본 `"off"`.
+- `grep -rn "incivility" backend/app/services/service_c backend/app/agents/agent_c backend/app/integrations backend/app/schemas backend/app/graphs backend/app/services/service_b` → 0 hits. Understanding/B/C 어댑터 모두 미구현.
+
+따라서 본 핸드오프는 **A 측 구현 완료를 알리고, 동시에 B/C 측에 4건의 Change Request(CR-A1~CR-A4)를 발행** 합니다. CR 본문은 `docs/contracts/change_requests.md`, 각 owner를 위한 작업 가이드는 다음 두 문서로 분리되었습니다:
+
+- `docs/contracts/developer_b_bad_ending_codex_prompt.md` — B owner 작업 지침 (CR-A2, CR-A4)
+- `docs/contracts/developer_c_incivility_codex_prompt.md` — C owner 작업 지침 (CR-A1, CR-A3)
+
+진행 순서 권장: **CR-A1 (Understanding 분류) → CR-A3 (C 어댑터 forward) → CR-A2 (B 분기 정책) → CR-A4 (시나리오 노드)**.
+
+A 측 임시 우회(QA 한정):
+
+- `.env` 에 `MURPHY_NPC_PROFANITY_MIRROR_MODE=mirror` 추가.
+- 추가로 `MURPHY_NPC_DEV_FORCE_INCIVILITY_TIER=2` 같은 dev override 환경변수를 도입하면 payload 에 incivility 가 없을 때 A 단독 룰베이스 분류 또는 강제 tier 주입으로 mirror 응답을 즉시 청취 가능. 다만 bad ending 트리거는 B 분기 권한이라 본 우회로는 동작하지 않음.
+
+본 작업의 A 측 책임 범위 명시:
+
+- A는 payload.incivility 신호 수신·발화 표현·TTS 파라미터 조정·NPC 종결 대사만 책임.
+- 욕설 분류 권한은 C, 분기·점수·bad ending 트리거 권한은 B. A는 신호 수신 후 표현만 담당.
+
+## 2026-06-16 Developer A Implementation: 프롬프트 고도화 + 비-텍스트 표현 (Flash v2.5) + Profanity Mirror 모드 완료
+
+Developer A는 `docs/workplan-dev-a-prompt-and-profanity-mirror.md` 계획서를 기준으로 프롬프트 계층화, 비-텍스트 표현(SSML 및 palette) 처리 인프라 구축, Profanity Mirror/Firm 모드 통합 작업을 완료했습니다.
+
+### 주요 수정/산출물:
+
+- **Phase A - 프롬프트 외부화 및 9계층 구조화**:
+  - [npc_dialogue_prompt.md](file:///C:/5th_project/pj05_Murphy/backend/app/prompts/npc_dialogue_prompt.md) (기본 프롬프트) 및 [npc_dialogue_prompt.short.md](file:///C:/5th_project/pj05_Murphy/backend/app/prompts/npc_dialogue_prompt.short.md) (Gemma/로컬용 축약본) 신설.
+  - [npc_dialogue_few_shots.md](file:///C:/5th_project/pj05_Murphy/backend/app/prompts/npc_dialogue_few_shots.md) (SUCCESS / RETRY / PROFANITY MIRROR 예시) 신설.
+  - [npc_llm_client.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_llm_client.py) 를 리팩토링하여 외부 마크다운 프롬프트 파일을 Jinja2로 동적 렌더링하고 few-shot 마크다운을 결합하도록 수정했습니다.
+
+- **Phase B - Flash v2.5 비-텍스트 표현 인프라**:
+  - [non_verbal_palette.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/non_verbal_palette.py) 신설하여 NPC별 의성어/침묵 팔레트 정의.
+  - [npc_roster_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/npc_roster_service.py)를 확장하여 `NPCProfile`에 `non_verbal_palette` 필드를 추가하고 Roster 정보에 등록했습니다.
+  - [tts_text_polisher_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/tts_text_polisher_service.py)를 보강하여 룰베이스 경로에서도 감정에 맞는 비구어 표현 자동 삽입 기능 및 LLM 출력의 SSML `<break>` 시간 유효성 검증/클램프(0.0~3.0s) 헬퍼를 추가했습니다.
+  - [schemas.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/schemas.py)에서 `tts_text` 의 `max_length`를 256으로 확장하고, Pydantic field_validator를 통해 `<script>` 등의 위험 태그 차단 로직을 추가했습니다.
+
+- **Phase C - Profanity Mirror/Firm 모드**:
+  - [.env.example](file:///C:/5th_project/pj05_Murphy/.env.example) 에 `MURPHY_NPC_PROFANITY_MIRROR_MODE` 및 `MURPHY_NPC_PROFANITY_MIRROR_MAX_INTENSITY` 환경 변수 설명 및 기본값 추가.
+  - [change_requests.md](file:///C:/5th_project/pj05_Murphy/docs/contracts/change_requests.md) 에 신규 Change Request (CR-1, CR-2, CR-3) 등록.
+  - [profanity_lexicon.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/profanity_lexicon.py) 신설하여 항상 금지되는 욕설(`ALWAYS_BLOCKED`) 및 모드별 비속어 허용 목록 정의 및 검출 함수 구현.
+  - [profanity_response_policy.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/profanity_response_policy.py) 신설하여 tier X mode 대응 매트릭스에 따른 룰베이스 응답 및 TTS bias 조율 정책 매핑.
+  - [npc_dialogue_agent.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py)에서 `node_initialize_state` 시점에 욕설 룰베이스 폴백 매핑 및 `node_generate_dialogue_llm` 에서 욕설 차단 후처리 검증(감지 시 `profanity_lexicon_violation` 폴백 강제)을 구현했습니다.
+
+- **Phase D - TTS 파라미터 incivility 연동**:
+  - [voice_output_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/voice_output_service.py)의 `_build_provider_request` (ElevenLabs 분기) 내에서 LLM이 명시적으로 음성 파라미터를 결정하지 않았을 때 `incivility_tier`에 따른 stability, style, speed 오프셋(Bias)을 동적 보정하는 `_apply_incivility_bias` 로직을 추가했습니다.
+
+- **Phase E - 테스트 구축 및 검증**:
+  - [test_developer_a_prompt_rendering.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_developer_a_prompt_rendering.py) (Jinja 템플릿 및 few-shot 결합 검증), [test_developer_a_non_verbal_expression.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_developer_a_non_verbal_expression.py) (SSML 클램프 및 의성어 자동 삽입 검증), [test_developer_a_profanity_mirror.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_developer_a_profanity_mirror.py) (Profanity Mirror 매트릭스 및 금지어 차단 검증) 단위 테스트 파일 3개를 신설했습니다.
+  - [test_developer_a_npc_roster.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_developer_a_npc_roster.py) 내 Roster 기대 단언문을 최신 Roster 규격에 맞게 갱신했습니다.
+  - `uv run pytest backend` 실행 결과 272개 전체 테스트 성공 통과를 완료했습니다.
+
 ## 2026-06-16 Developer B Implementation: 기내 스몰토크 대화형 모드 전환 완료
 
 Developer B는 기내 스몰토크 씬이 출입국 심사용 채점형 상태 머신을 재사용하여 취조처럼 작동하던 문제를 해결하기 위해, 대화형 모드(패널티 0, in-game 피드백 비노출, 느슨한 주제 힌트) 전환 구현을 완료했습니다.

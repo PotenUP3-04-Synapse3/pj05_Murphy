@@ -24,7 +24,19 @@ from backend.app.services.service_a.player_language_profile_service import (
 )
 from backend.app.services.service_a.tts_text_polisher_service import (
     build_tts_style_metadata,
+    polish_tts_text,
+    validate_and_clamp_ssml,
 )
+from backend.app.services.service_a.profanity_response_policy import (
+    get_profanity_fallback_response,
+    get_incivility_tts_bias,
+)
+from backend.app.services.service_a.profanity_lexicon import (
+    contains_blocked,
+    allowed_for,
+    MIRROR_ALLOWED_STRONG,
+)
+import os
 
 # 분기 유형(Branch Type)을 나타내는 리터럴 타입(Literal Type)입니다.
 BranchType = Literal["success", "retry", "fail", "neutral"]
@@ -202,14 +214,33 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
             f"Detected value: '{candidate_text}'"
         )
     
+    # [6.5단계] incivility_tier 및 profanity_mode 파싱
+    incivility = payload.get("incivility") or {}
+    incivility_tier = int(incivility.get("tier", 0))
+    profanity_mode = os.getenv("MURPHY_NPC_PROFANITY_MIRROR_MODE", "off").strip().lower()
+    
     # [7단계] 안전한 룰 기반 기본 응답(Fallback Result)을 1차적으로 빌드하고, use_llm이 True이면서 surface_goal이 있으면 룰베이스 다음 질문을 합성합니다.
     fallback_res = build_text_fallback(normalized)
+    
+    # Profanity Mirror / Firm 룰베이스 매트릭스 적용
+    profanity_res = get_profanity_fallback_response(npc_profile.npc_id, incivility_tier, profanity_mode)
+    if profanity_res:
+        fallback_res.update({
+            "npc_text": profanity_res["npc_text"],
+            "text": profanity_res["npc_text"],
+            "tts_text": profanity_res.get("tts_text") or profanity_res["npc_text"],
+            "tone": profanity_res["tone"],
+            "npc_emotion": profanity_res["npc_emotion"],
+        })
+        
     use_llm = state.get("use_llm", False)
     surface_goal = normalized.get("dialogue_seed", {}).get("surface_goal") or ""
     transition_status = normalized.get("transition", {}).get("status") or ""
     next_action = normalized.get("next_action") or ""
     is_complete_chapter = (transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER")
-    if use_llm and surface_goal and not is_complete_chapter:
+    
+    # profanity_res가 없을 때만 surface_goal 질문을 합성합니다.
+    if use_llm and surface_goal and not is_complete_chapter and not profanity_res:
         original_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
         synthesized_text = synthesize_fallback_next_question(original_text, surface_goal)
         fallback_res["npc_text"] = synthesized_text
@@ -217,10 +248,23 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
         if "tts_text" in fallback_res:
             fallback_res["tts_text"] = synthesized_text
             
-    result = _apply_npc_profile(fallback_res, npc_profile, emotion_state.emotion)
+    # 룰베이스 경로(use_llm이 False일 때) 최종 tts_text 다듬기
+    if not use_llm:
+        raw_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
+        polished_tts = polish_tts_text(
+            raw_text,
+            profile,
+            emotion_state,
+            policy,
+            non_verbal_palette=npc_profile.non_verbal_palette,
+        )
+        fallback_res["tts_text"] = polished_tts
+            
+    resolved_emotion = fallback_res.get("npc_emotion") or emotion_state.emotion
+    result = _apply_npc_profile(fallback_res, npc_profile, resolved_emotion)
         
     # [8단계] 생성 이력 추적용 메타데이터(Metadata)를 결과 사전(Dictionary)에 병합합니다.
-    result = _with_generation_metadata(result, profile, emotion_state, policy)
+    result = _with_generation_metadata(result, profile, emotion_state, policy, incivility_tier, profanity_mode)
     
     # [9단계] 갱신된 변수들을 가진 딕셔너리를 반환하여 상태를 업데이트합니다.
     return {
@@ -268,6 +312,13 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         if not dialogue_seed:
             logger.warning("dialogue_seed is missing from payload in node_generate_dialogue_llm.")
 
+        incivility = payload.get("incivility") or {}
+        incivility_tier = int(incivility.get("tier", 0))
+        profanity_mode = os.getenv("MURPHY_NPC_PROFANITY_MIRROR_MODE", "off").strip().lower()
+        
+        allowed_mild = sorted(list(allowed_for("mirror", "mild")))
+        allowed_strong = sorted(list(allowed_for("mirror", "strong")))
+
         llm_payload = {
             "level_design_payload": payload,
             "normalized": normalized,
@@ -282,6 +333,17 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             },
             "generation_profile": fallback_result["generation_profile"],
             "dialogue_seed": dialogue_seed or {},
+            
+            # Jinja 변수 바인딩
+            "npc_role": npc_profile.role,
+            "english_level": fallback_result["generation_profile"]["player_language"]["english_level"],
+            "incivility_tier": incivility_tier,
+            "profanity_mode": profanity_mode,
+            "surface_goal": (dialogue_seed or {}).get("surface_goal") or "",
+            "allowed_emotions": ["joy", "panic", "sad", "suspicion", "disgust", "fear", "smirk", "normal", "anger", "surprise", "pain", "confusion", "boredom"],
+            "non_verbal_palette": npc_profile.non_verbal_palette,
+            "allowed_mild": allowed_mild,
+            "allowed_strong": allowed_strong,
         }
 
         # [4단계] 랭체인 1.0+ 규격에 부합하도록 invoke 또는 generate 호출을 수행합니다.
@@ -304,6 +366,28 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     npc_text = str(llm_result.get("npc_text") or "").strip()
     tts_text = str(llm_result.get("tts_text") or "").strip()
     
+    # [5.5단계] 비속어 및 욕설 후처리 검증 (ALWAYS_BLOCKED 및 허용되지 않은 비속어 감지 시 fallback 처리)
+    # 1. ALWAYS_BLOCKED 감지 시 차단
+    blocked_found = contains_blocked(npc_text) or contains_blocked(tts_text)
+    if blocked_found:
+        logger.error(f"Always-blocked profanity detected in LLM output. Detected: {blocked_found}")
+        return {"error": "profanity_lexicon_violation"}
+        
+    # 2. mirror 모드 외에 비속어가 등장하거나 mirror 모드더라도 허용 범위 밖의 비속어가 쓰였는지 검증
+    max_intensity = os.getenv("MURPHY_NPC_PROFANITY_MIRROR_MAX_INTENSITY", "mild").strip().lower()
+    allowed_set = allowed_for(profanity_mode, max_intensity)
+    
+    words_npc = [w.strip(".,!?\"'();:") for w in npc_text.lower().split()]
+    words_tts = [w.strip(".,!?\"'();:") for w in tts_text.lower().split()]
+    
+    for word in words_npc + words_tts:
+        if word in MIRROR_ALLOWED_STRONG and word not in allowed_set:
+            logger.error(f"Unallowed profanity word '{word}' detected under mode={profanity_mode}")
+            return {"error": "profanity_lexicon_violation"}
+            
+    # tts_text에 대해 SSML break 태그 유효성 검증 및 시간 0.0s~3.0s 클램프 수행
+    tts_text = validate_and_clamp_ssml(tts_text)
+
     # [6단계] 생성된 대사가 안전한 영문 아스키(ASCII) 텍스트인지 검사합니다.
     if not _is_safe_english_dialogue_text(npc_text) or not _is_safe_english_dialogue_text(tts_text):
         return {"error": "invalid_llm_dialogue_language"}
@@ -476,6 +560,8 @@ def _with_generation_metadata(
     profile: Any,
     emotion_state: Any,
     policy: Any,
+    incivility_tier: int = 0,
+    profanity_mode: str = "off",
 ) -> dict[str, Any]:
     """디버깅 및 비용 추적을 위해 플레이어 레벨, NPC 감정, 대화 정책의 메타데이터(Metadata)를 추가합니다."""
     tts_text = str(result.get("tts_text") or result.get("npc_text") or result.get("text") or "")
@@ -501,6 +587,10 @@ def _with_generation_metadata(
             "use_recast": policy.use_recast,
             "add_officer_ack": policy.add_officer_ack,
             "next_question_style": policy.next_question_style,
+        },
+        "incivility": {
+            "tier": incivility_tier,
+            "profanity_mode": profanity_mode,
         },
         "tts_style": build_tts_style_metadata(profile, emotion_state, policy),
     }

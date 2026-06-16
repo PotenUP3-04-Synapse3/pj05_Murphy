@@ -1521,6 +1521,45 @@ Dev C:
 ### Compatibility Impact
 
 내부 어댑터/프롬프트/생성 정책 변경이며 외부 Unreal 계약은 불변. 입국심사
+
+## Change Request - 2026-06-16 - Add `incivility_tier` to Understanding output + B branch policy
+
+### Requested By
+
+Developer A / kimyonghee
+
+### Affected Owner
+
+Developer C / Sean Han, and Developer B
+
+### Reason
+
+플레이어가 욕설/모독/위협 발화 시 NPC도 동급의 거친 응답을 반환하는 'Profanity Mirror' 모드와 단호히 경고하는 'Firm' 모드를 지원하기 위해, 플레이어 발화의 무례함 정도를 감지하는 분류 신호(`incivility.tier`)가 필요합니다.
+분류와 분기는 각각 Understanding Agent (Developer C) 및 Policy Engine (Developer B)에서 수행되어야 하며, Developer A는 이 신호를 수신해 적합한 발화 및 TTS 톤 조율만 수행합니다.
+
+### Proposed Contract Change
+
+1. **CR-1 (Affected: Developer C) - Understanding Agent `incivility` Signal**:
+   Understanding Agent 출력에 `incivility` 객체를 추가합니다.
+   ```json
+   "incivility": {
+     "tier": 0,           // 0=정상, 1=무례, 2=인격모독, 3=욕설/혐오/위협
+     "detected_terms": ["stupid", "shut up"],
+     "confidence": 0.87,
+     "category": "rudeness|insult|profanity|slur|threat"
+   }
+   ```
+   이 신호는 키워드 기반 혹은 LLM 분류 모드를 통해 산출됩니다.
+
+2. **CR-2 (Affected: Developer B) - Bad Ending / Penalty Policy on `incivility.tier >= 2`**:
+   B Policy는 `incivility.tier >= 2`일 때 분기 판정 및 bad ending 트리거 결정을 소유합니다.
+
+3. **CR-3 (Affected: Developer C) - Forward `incivility` to A Payload**:
+   Developer C 어댑터 `dev_a_npc_dialogue_client.py`는 `incivility` 객체를 A-facing payload 에 포함하여 전달합니다.
+
+### Compatibility Impact
+
+이 필드는 추가적인 속성이며, 신호가 누락되거나 기본값(0)인 경우 평상시의 정중한 응답으로 안전하게 수렴하므로 기존 호환성을 해치지 않습니다.
 (IMM_*)·수하물(BAG_*) 채점 동작은 그대로 유지되어야 한다(회귀 가드).
 `branch_type` enum은 확장하지 않으며, 중립 진행은 `success`+`ADVANCE` 재사용 +
 `branch_reason="flight_smalltalk_continue"` 신호로 표현한다.
@@ -1530,3 +1569,167 @@ Dev C:
 Dev B 기내 분기만 적용해도 기내 씬의 재질문·페널티는 사라진다. Dev A 프롬프트
 변경 전까지는 NPC가 여전히 매 턴 질문형으로 응답할 수 있으나, 진행이 막히거나
 취조형으로 채점되지는 않는다.
+
+## Change Request - 2026-06-16 - [CR-A1] Add `incivility` Signal to Understanding Agent Output
+
+Status: Open. 기존 2026-06-16 통합 CR(`Add incivility_tier to Understanding output + B branch policy`)을 owner 단위로 분해한 정식 요청입니다. CR-A1~A4 4건이 모두 머지되어야 Bad Ending end-to-end 가 동작합니다.
+
+### Requested By
+
+Developer A / kimyonghee
+
+### Affected Owner
+
+Developer C / Sean Han
+
+### Reason
+
+A 측 Profanity Mirror/Firm 모드 구현은 완료되었으나, Understanding Agent가 `incivility` 신호를 산출하지 않아 `payload.get("incivility")` 가 항상 비어 있고 결과적으로 `incivility_tier = 0` 으로 평가됩니다. 욕설/모욕성 입력 분류는 Understanding 단계가 자연스럽고, 분류 신호는 A의 발화 표현(Profanity Mirror) 과 B의 Bad Ending 분기 양쪽에서 공유되어야 합니다.
+
+### Proposed Contract Change
+
+Understanding Agent 출력(`UnderstandingOutput` 또는 동등 스키마)에 다음 객체를 additive 로 추가합니다.
+
+```json
+"incivility": {
+  "tier": 0,
+  "detected_terms": ["fuck", "shut up"],
+  "confidence": 0.92,
+  "category": "rudeness | insult | profanity | slur | threat",
+  "source": "rule | llm"
+}
+```
+
+- `tier`: 0=정상, 1=무례, 2=인격모독, 3=욕설/혐오/위협
+- 분류는 룰베이스(키워드 사전) 또는 LLM 모드에서 산출. 둘 다 가능하면 LLM 우선 + 룰 폴백.
+- 한국어 욕설/우회 표기(`f*ck`, leetspeak) 도 가능한 범위에서 감지.
+- 분류 자체는 신호이며 **분기 권한은 Developer B 가 유지** (가드레일).
+- 신호가 없거나 누락된 경우 A 측은 `incivility_tier = 0` 으로 안전 동작.
+
+### Compatibility Impact
+
+Additive 필드. 기존 응답 형식 변경 없음. 기존 회귀 무영향.
+
+### Temporary Workaround
+
+A 측 `MURPHY_NPC_DEV_FORCE_INCIVILITY_TIER` dev override 또는 A 단독 룰베이스 분류기(`incivility_classifier.py`)를 신설하여 신호 누락 시 임시 폴백 (QA 한정).
+
+## Change Request - 2026-06-16 - [CR-A2] Bad Ending Branch Policy for Severe Player Incivility
+
+Status: Open. CR-A1 의 후속 분기 정책 정의.
+
+### Requested By
+
+Developer A / kimyonghee
+
+### Affected Owner
+
+Developer B
+
+### Reason
+
+`incivility.tier == 3` (욕설·혐오·위협) 발화 시 NPC 만 거칠게 응답하고 게임은 정상 진행되는 반쪽 상태가 됩니다. Alpha 디자인 노트(`docs/handoff.md` "Developer C Alpha Plan Notice") 에 이미 명시된 "dangerous words can trigger an immediate bad ending" 정책의 정식 분기 구현이 필요합니다.
+
+### Proposed Contract Change
+
+1. `incivility.tier == 3` 발화가 들어오면 즉시 bad ending 분기로 라우팅:
+   - `DevBPolicyOutput.branch.next_node_id = "<CHAPTER>_BAD_END_VERBAL_ABUSE"` (CR-A4 노드 사양 참고)
+   - 기존 `branch_type` enum 확장이 부담스러우면 `branch_type = "fail"` 재사용 + `dialogue_directive.reason = "verbal_abuse"` 로 식별 가능.
+   - `state_delta` 에 페널티 점수 (정책에 따라 -2 등).
+   - `out_game_feedback.reason = "verbal_abuse"` 메타 첨부.
+2. `incivility.tier == 2` 가 2턴 연속 반복되면 동일 분기 (정책 결정).
+3. `final_result` 호출 시 bad ending 사유가 학습 리포트에 노출 (학습용 피드백).
+
+### Compatibility Impact
+
+CR-A4 의 시나리오 노드가 없으면 라우팅 실패. CR-A4 와 동시 머지 권장. `branch_type` enum 미확장 시 schema 변경 없음.
+
+### Temporary Workaround
+
+정책 머지 전까지 A 는 거친 응답만 하고 분기는 정상 노드로 진행. UX 상 "NPC 가 화는 내지만 게임은 계속 진행" 상태로 시연 가능.
+
+## Change Request - 2026-06-16 - [CR-A3] Forward `incivility` from C Adapter to A-Facing Payload
+
+Status: Open. CR-A1 신호의 A 측 전달 경로 확보.
+
+### Requested By
+
+Developer A / kimyonghee
+
+### Affected Owner
+
+Developer C / Sean Han
+
+### Reason
+
+CR-A1 에서 Understanding Agent 가 `incivility` 를 산출해도, C 어댑터가 A-facing payload 에 전달하지 않으면 A 측 Profanity Mirror 모드가 동작하지 않습니다. A 측 코드(`npc_dialogue_agent.py:218`)는 이미 `payload.get("incivility") or {}` 로 수신부가 준비되어 있습니다.
+
+### Proposed Contract Change
+
+`backend/app/integrations/dev_a_npc_dialogue_client.py` 의 `_build_level_design_payload` 가 Understanding 결과의 `incivility` 객체를 A-facing payload 최상위에 forward 합니다.
+
+```python
+return {
+    ...,
+    "incivility": (
+        payload.understanding.incivility.model_dump()
+        if payload.understanding.incivility is not None
+        else {"tier": 0}
+    ),
+}
+```
+
+- 기본값 `{"tier": 0}` 으로 안전 폴백.
+- A는 추가 변경 불필요.
+
+### Compatibility Impact
+
+Additive. A 측 `npc_dialogue_agent.py:218` 가 이미 `or {}` 로 안전 처리되어 기존 동작 무영향.
+
+### Temporary Workaround
+
+A 측 `incivility_classifier.py` 단독 분류 (payload 비어있을 때만) 또는 dev override 환경변수.
+
+## Change Request - 2026-06-16 - [CR-A4] Add Bad Ending Scenario Nodes for Verbal Abuse
+
+Status: Open. CR-A2 분기가 라우팅할 종착 노드 신설.
+
+### Requested By
+
+Developer A / kimyonghee
+
+### Affected Owner
+
+Developer B
+
+### Reason
+
+CR-A2 의 bad ending 분기가 라우팅할 대상 노드(`*_BAD_END_VERBAL_ABUSE`)가 `scenario_nodes.json` 에 존재하지 않습니다. A 가 종결 대사를 일관되게 생성하려면 표준 메타(`npc_role`, `npc_question_goal`, `chapter_id`, `node_type`)가 필요합니다.
+
+### Proposed Contract Change
+
+`backend/app/data/scenario_nodes.json` 에 다음 노드를 추가합니다.
+
+| 노드 ID | chapter_id | npc_role | npc_question_goal |
+|---|---|---|---|
+| `FLIGHT_BAD_END_VERBAL_ABUSE` | `CH0_01_FLIGHT_SMALLTALK` | seatmate | `closing_eviction` |
+| `IMM_BAD_END_VERBAL_ABUSE` | `CH0_03_IMMIGRATION_CHECK` | immigration_officer | `closing_eviction` |
+| `BAG_BAD_END_VERBAL_ABUSE` | `CH0_04_BAGGAGE_CLAIM` | customs_officer | `closing_eviction` |
+
+공통 사양:
+- `node_type = "ending"`
+- `next_action = "COMPLETE_CHAPTER"`
+- `transition.unreal_event = "SHOW_BAD_END_SCOREBOARD"` (Unreal 측 컷씬/스코어보드 트리거)
+- `transition.next_chapter_id = "CH0_05_RESULT"` (또는 동등)
+- `objective_kr = "강제 종료 — 무례한 발언으로 인한 절차 중단"`
+- `branch_candidates` 는 모두 `null` 또는 동일 ID (종착 노드)
+- `required_slots = []`
+- 각 NPC role 에 어울리는 짧은 `npc_question` 시드 (A는 이를 그대로 사용하지 않고 페르소나 기반 종결 대사 생성)
+
+### Compatibility Impact
+
+Additive node 추가. 기존 분기/노드 무영향. CR-A2 의 `branch.next_node_id` 와 1:1 매핑.
+
+### Temporary Workaround
+
+Bad ending 노드 미생성 시 A 는 기존 `COMPLETE_CHAPTER` 처리 로직으로 평이한 종결 대사 합성 (게임 종료 사유 미표시).
