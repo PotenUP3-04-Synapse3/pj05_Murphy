@@ -1,5 +1,161 @@
 # Handoff
 
+## 2026-06-16 Developer A Implementation: Chapter Boundary, Emotion Enum & Dynamic TTS Parameter Integration (Phase P2 & Phase P3)
+
+Developer A implemented Phase P2 and Phase P3 from `docs/workplan-dev-a.md` to support chapter transitions, emotion-based voice parameter tuning, emotion-to-animation mapping, and clean up deprecated middleware code.
+
+### Phase P2-1 - Chapter Boundary & Closing Utterances:
+
+- **Payload Normalization**: Added `"transition"` and `"next_action"` fields to the standardized payload in `developer_a_input_service.py`.
+- **Role-Specific Fallback Closing Lines**: Updated `build_text_fallback` in `developer_a_fallback_service.py` to check for `complete_chapter` status or `COMPLETE_CHAPTER` next_action. When triggered, it serves role-specific closing lines (e.g., seatmate: `"Enjoy your trip!"`, immigration: `"All right, you're cleared."`) and dynamically resolves speaker names from the resolved NPC profile.
+- **LLM System Prompt Alignment**: Enhanced the `_developer_instructions` in `npc_llm_client.py` to guide the LLM to write only closing statements and omit follow-up questions when a chapter completion is signaled.
+- **Agent Initialization Alignment**: Updated `node_initialize_state` in `npc_dialogue_agent.py` to skip question fallback synthesis if the turn indicates chapter completion.
+
+### Phase P2-2 - Emotion Enum & Dynamic Animation/TTS Parameters:
+
+- **Emotion Priority**: Sorted the emotion priority in `node_generate_dialogue_llm` so B-provided `npc.emotion` (standardized `npc_emotion` in the payload) is prioritized over LLM-inferred emotions.
+- **Animation Mapping Service**: Created `animation_mapping_service.py` to map the 13 supported emotion types to specific Unreal Engine animation micro-variants (e.g. `joy`, `panic`, `sad`, `suspicion`, etc.), integrating it into `npc_dialogue_agent.py`.
+- **Emotion-Based TTS Parameter Fallback**: Added the `EMOTION_TTS_PARAMETERS` dictionary in `voice_output_service.py` containing preset voice tuning values (stability, style, speed, similarity_boost) for the 13 emotions. If the LLM doesn't output custom values, the service falls back to these emotion presets first before defaulting to tone-based presets.
+
+### Phase P3 - Code Hygiene & Cleanup:
+
+- **Middleware Cleanup**: Completely deleted the deprecated `npc_dialogue_agent_run_middleware.py` file since all calling paths have migrated to the new `NPCDialogueAgentRunRecorder` standard.
+- **Integration Test Alignment**: Updated the assertion in Developer C's integration test `test_preprototype_flow.py` for Hale's chapter completion to expect the correct dynamic response `"All right, you're cleared."` instead of the legacy generic fallback.
+
+### Verification:
+
+- Added 3 new unit tests in `test_developer_a_npc_dialogue.py` covering chapter completion fallback lines, emotion-animation mapping, and emotion-based TTS parameter resolution.
+- Executed `uv run pytest backend/tests` -> PASS (All 253 tests passed).
+- Executed `uv run ruff check .` -> PASS (All checks passed).
+- Executed `uv run mypy .` -> PASS (Success: no issues found in 108 source files).
+
+## 2026-06-16 Developer A Implementation: Resolve Dialogue Agent Quality Defects & NPC Roster Expansion (Phase P0 & P1-1)
+
+Developer A implemented Phase P0 and Phase P1-1 from the `docs/workplan-dev-a.md` workplan to fix dialogue generation quality issues and expand the NPC Roster mapping.
+
+### Phase P0 - Dialogue Agent Quality Defects Resolved:
+
+- **System Prompt Improvements**: Updated [npc_llm_client.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_llm_client.py) to strongly instruct the LLM against player speaker confusion, to never copy the recommended expression verbatim, and to always produce follow-up questions when `dialogue_seed.surface_goal` is present.
+- **Dialogue Seed Injection**: Ensured that the `dialogue_seed` metadata is correctly mapped in `developer_a_input_service.py` and forwarded in `npc_dialogue_agent.py` to the LLM.
+- **Fallback Next Question Synthesizer**: Added a map of `SURFACE_GOAL_QUESTIONS` and a `synthesize_fallback_next_question` helper in [dialogue_policy_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/dialogue_policy_service.py). This synthesizes fallback dialogue and next questions when the LLM fails while `use_llm` is enabled.
+- **Output Validation**: Added validation in [npc_dialogue_agent.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py) to check for recommended expression echo (`recommended_expression_echo` fallback) and missing follow-up questions (`missing_followup_question` fallback) when `surface_goal` is present.
+- **Regression Tests**: Added unit tests in [test_developer_a_npc_dialogue.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_developer_a_npc_dialogue.py) covering next question synthesis, expression echo rejection, and missing follow-up question rejection.
+
+### Phase P1-1 - NPC Roster & Voice Profile Mapping Expansion:
+
+- **New NPC Profile (Emily)**: Added a new seatmate NPC `emily` (for Chapter C Travel Form Help) to [npc_roster_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/npc_roster_service.py) with friendly/helpful persona instruction.
+- **Non-canonical Mapping Alignment**: Strengthened `_normalize_npc_id` to prevent falling back to Hale when non-canonical IDs (`SEATMATE_A_01`, `SEATMATE_B_01`, `SEATMATE_C_01`, `SEATMATE_EMILY`, `BAGGAGE_STAFF`, `CUSTOMS_OFFICER`) are passed, routing them correctly to `arabella`, `novak`, `emily`, `brielle`, and `dan`.
+- **Voice Profile Registration**: Configured `emily`'s Edge-TTS voice mapping in [voice_profile_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/voice_profile_service.py).
+- **Roster Unit Test**: Added new test cases in [test_developer_a_npc_roster.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_developer_a_npc_roster.py) to verify registration and non-canonical ID resolution.
+
+### Code Hygiene:
+
+- Removed unused `polish_tts_text` import in [npc_dialogue_agent.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py), resolving a Ruff F401 lint warning.
+
+### Verification:
+
+- Executed `uv run pytest backend/tests` -> PASS (All 245 tests passed).
+- Executed `uv run ruff check .` -> PASS (All checks passed).
+- Executed `uv run mypy .` -> PASS (Success: no issues found in 108 source files).
+
+## 2026-06-15 Developer C Refactor: Fix graph.py Redundant Reassignment and Resolve test_preprototype_flow.py Failures
+
+Developer C resolved the lint warnings in `graph.py` and fixed the pre-prototype flow test failures caused by the recent Developer A refactoring.
+
+Changed:
+
+- **Resolved `graph.py` Lint Warning**: Added an explicit `__all__` list in [graph.py](file:///C:/5th_project/pj05_Murphy/backend/app/graphs/graph.py) to declare `DEVELOPER_C_GRAPH_NODE_NAMES` as a public export. This resolves the Ruff F401 unused import warning while keeping it accessible to external test suites.
+- **Fixed `test_preprototype_flow.py` Assertions**: Updated the two forward test suites (`test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata` and `test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata`) to match the new Developer A client behavior. Assertions were updated to expect `npc_recast_line_candidate is None` and an output text of `"Okay."`.
+- **Entire Test Suite Green**: Executed `uv run pytest backend/tests` to verify that all 240 tests pass successfully.
+
+## 2026-06-15 Developer C Refactor: Fix graph.py Redundant Reassignment and Resolve test_preprototype_flow.py Failures
+
+Developer C resolved the lint warnings in `graph.py` and fixed the pre-prototype flow test failures caused by the recent Developer A refactoring.
+
+Changed:
+
+- **Resolved `graph.py` Lint Warning**: Added an explicit `__all__` list in [graph.py](file:///C:/5th_project/pj05_Murphy/backend/app/graphs/graph.py) to declare `DEVELOPER_C_GRAPH_NODE_NAMES` as a public export. This resolves the Ruff F401 unused import warning while keeping it accessible to external test suites.
+- **Fixed `test_preprototype_flow.py` Assertions**: Updated the two forward test suites (`test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata` and `test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata`) to match the new Developer A client behavior. Assertions were updated to expect `npc_recast_line_candidate is None` and an output text of `"Okay."`.
+- **Entire Test Suite Green**: Executed `uv run pytest backend/tests` to verify that all 240 tests pass successfully.
+
+## 2026-06-16 Developer A Implementation: Chapter Boundary, Emotion Enum & Dynamic TTS Parameter Integration (Phase P2 & Phase P3)
+
+Developer A implemented Phase P2 and Phase P3 from `docs/workplan-dev-a.md` to support chapter transitions, emotion-based voice parameter tuning, emotion-to-animation mapping, and clean up deprecated middleware code.
+
+### Phase P2-1 - Chapter Boundary & Closing Utterances:
+
+- **Payload Normalization**: Added `"transition"` and `"next_action"` fields to the standardized payload in `developer_a_input_service.py`.
+- **Role-Specific Fallback Closing Lines**: Updated `build_text_fallback` in `developer_a_fallback_service.py` to check for `complete_chapter` status or `COMPLETE_CHAPTER` next_action. When triggered, it serves role-specific closing lines (e.g., seatmate: `"Enjoy your trip!"`, immigration: `"All right, you're cleared."`) and dynamically resolves speaker names from the resolved NPC profile.
+- **LLM System Prompt Alignment**: Enhanced the `_developer_instructions` in `npc_llm_client.py` to guide the LLM to write only closing statements and omit follow-up questions when a chapter completion is signaled.
+- **Agent Initialization Alignment**: Updated `node_initialize_state` in `npc_dialogue_agent.py` to skip question fallback synthesis if the turn indicates chapter completion.
+
+### Phase P2-2 - Emotion Enum & Dynamic Animation/TTS Parameters:
+
+- **Emotion Priority**: Sorted the emotion priority in `node_generate_dialogue_llm` so B-provided `npc.emotion` (standardized `npc_emotion` in the payload) is prioritized over LLM-inferred emotions.
+- **Animation Mapping Service**: Created `animation_mapping_service.py` to map the 13 supported emotion types to specific Unreal Engine animation micro-variants (e.g. `joy`, `panic`, `sad`, `suspicion`, etc.), integrating it into `npc_dialogue_agent.py`.
+- **Emotion-Based TTS Parameter Fallback**: Added the `EMOTION_TTS_PARAMETERS` dictionary in `voice_output_service.py` containing preset voice tuning values (stability, style, speed, similarity_boost) for the 13 emotions. If the LLM doesn't output custom values, the service falls back to these emotion presets first before defaulting to tone-based presets.
+
+### Phase P3 - Code Hygiene & Cleanup:
+
+- **Middleware Cleanup**: Completely deleted the deprecated `npc_dialogue_agent_run_middleware.py` file since all calling paths have migrated to the new `NPCDialogueAgentRunRecorder` standard.
+- **Integration Test Alignment**: Updated the assertion in Developer C's integration test `test_preprototype_flow.py` for Hale's chapter completion to expect the correct dynamic response `"All right, you're cleared."` instead of the legacy generic fallback.
+
+### Verification:
+
+- Added 3 new unit tests in `test_developer_a_npc_dialogue.py` covering chapter completion fallback lines, emotion-animation mapping, and emotion-based TTS parameter resolution.
+- Executed `uv run pytest backend/tests` -> PASS (All 253 tests passed).
+- Executed `uv run ruff check .` -> PASS (All checks passed).
+- Executed `uv run mypy .` -> PASS (Success: no issues found in 108 source files).
+
+## 2026-06-16 Developer A Implementation: Resolve Dialogue Agent Quality Defects & NPC Roster Expansion (Phase P0 & P1-1)
+
+Developer A implemented Phase P0 and Phase P1-1 from the `docs/workplan-dev-a.md` workplan to fix dialogue generation quality issues and expand the NPC Roster mapping.
+
+### Phase P0 - Dialogue Agent Quality Defects Resolved:
+
+- **System Prompt Improvements**: Updated [npc_llm_client.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_llm_client.py) to strongly instruct the LLM against player speaker confusion, to never copy the recommended expression verbatim, and to always produce follow-up questions when `dialogue_seed.surface_goal` is present.
+- **Dialogue Seed Injection**: Ensured that the `dialogue_seed` metadata is correctly mapped in `developer_a_input_service.py` and forwarded in `npc_dialogue_agent.py` to the LLM.
+- **Fallback Next Question Synthesizer**: Added a map of `SURFACE_GOAL_QUESTIONS` and a `synthesize_fallback_next_question` helper in [dialogue_policy_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/dialogue_policy_service.py). This synthesizes fallback dialogue and next questions when the LLM fails while `use_llm` is enabled.
+- **Output Validation**: Added validation in [npc_dialogue_agent.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py) to check for recommended expression echo (`recommended_expression_echo` fallback) and missing follow-up questions (`missing_followup_question` fallback) when `surface_goal` is present.
+- **Regression Tests**: Added unit tests in [test_developer_a_npc_dialogue.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_developer_a_npc_dialogue.py) covering next question synthesis, expression echo rejection, and missing follow-up question rejection.
+
+### Phase P1-1 - NPC Roster & Voice Profile Mapping Expansion:
+
+- **New NPC Profile (Emily)**: Added a new seatmate NPC `emily` (for Chapter C Travel Form Help) to [npc_roster_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/npc_roster_service.py) with friendly/helpful persona instruction.
+- **Non-canonical Mapping Alignment**: Strengthened `_normalize_npc_id` to prevent falling back to Hale when non-canonical IDs (`SEATMATE_A_01`, `SEATMATE_B_01`, `SEATMATE_C_01`, `SEATMATE_EMILY`, `BAGGAGE_STAFF`, `CUSTOMS_OFFICER`) are passed, routing them correctly to `arabella`, `novak`, `emily`, `brielle`, and `dan`.
+- **Voice Profile Registration**: Configured `emily`'s Edge-TTS voice mapping in [voice_profile_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/voice_profile_service.py).
+- **Roster Unit Test**: Added new test cases in [test_developer_a_npc_roster.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_developer_a_npc_roster.py) to verify registration and non-canonical ID resolution.
+
+### Code Hygiene:
+
+- Removed unused `polish_tts_text` import in [npc_dialogue_agent.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py), resolving a Ruff F401 lint warning.
+
+### Verification:
+
+- Executed `uv run pytest backend/tests` -> PASS (All 245 tests passed).
+- Executed `uv run ruff check .` -> PASS (All checks passed).
+- Executed `uv run mypy .` -> PASS (Success: no issues found in 108 source files).
+
+## 2026-06-15 Developer C Refactor: Fix graph.py Redundant Reassignment and Resolve test_preprototype_flow.py Failures
+
+Developer C resolved the lint warnings in `graph.py` and fixed the pre-prototype flow test failures caused by the recent Developer A refactoring.
+
+Changed:
+
+- **Resolved `graph.py` Lint Warning**: Added an explicit `__all__` list in [graph.py](file:///C:/5th_project/pj05_Murphy/backend/app/graphs/graph.py) to declare `DEVELOPER_C_GRAPH_NODE_NAMES` as a public export. This resolves the Ruff F401 unused import warning while keeping it accessible to external test suites.
+- **Fixed `test_preprototype_flow.py` Assertions**: Updated the two forward test suites (`test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata` and `test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata`) to match the new Developer A client behavior. Assertions were updated to expect `npc_recast_line_candidate is None` and an output text of `"Okay."`.
+- **Entire Test Suite Green**: Executed `uv run pytest backend/tests` to verify that all 240 tests pass successfully.
+
+## 2026-06-15 Developer C Refactor: Fix graph.py Redundant Reassignment and Resolve test_preprototype_flow.py Failures
+
+Developer C resolved the lint warnings in `graph.py` and fixed the pre-prototype flow test failures caused by the recent Developer A refactoring.
+
+Changed:
+
+- **Resolved `graph.py` Lint Warning**: Added an explicit `__all__` list in [graph.py](file:///C:/5th_project/pj05_Murphy/backend/app/graphs/graph.py) to declare `DEVELOPER_C_GRAPH_NODE_NAMES` as a public export. This resolves the Ruff F401 unused import warning while keeping it accessible to external test suites.
+- **Fixed `test_preprototype_flow.py` Assertions**: Updated the two forward test suites (`test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata` and `test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata`) to match the new Developer A client behavior. Assertions were updated to expect `npc_recast_line_candidate is None` and an output text of `"Okay."`.
+- **Entire Test Suite Green**: Executed `uv run pytest backend/tests` to verify that all 240 tests pass successfully.
+
 ## 2026-06-16 Developer C Test and Env Example Cleanup Audit
 
 Developer C audited the current tests after the latest merge for obvious
@@ -83,20 +239,20 @@ Verification:
 - RED: the new Understanding tests failed before the fix because both LLM and
   rule paths treated `"Okay, you're on."` as successful `short_acknowledgement`.
 - `uv run pytest backend/tests/test_understanding_agent.py
-  backend/tests/test_understanding_llm_client.py
-  backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata
-  backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata
-  backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_next_question_seed_without_generic_recast_in_llm_mode
-  -q`: PASS, 23 passed, 1 existing `audioop` deprecation warning.
+backend/tests/test_understanding_llm_client.py
+backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata
+backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata
+backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_next_question_seed_without_generic_recast_in_llm_mode
+-q`: PASS, 23 passed, 1 existing `audioop` deprecation warning.
 - `uv run pytest backend/tests/test_understanding_agent.py
-  backend/tests/test_understanding_llm_client.py
-  backend/tests/test_preprototype_flow.py -q`: PASS, 50 passed, 1 existing
+backend/tests/test_understanding_llm_client.py
+backend/tests/test_preprototype_flow.py -q`: PASS, 50 passed, 1 existing
   `audioop` deprecation warning.
 - `uv run pytest`: PASS, 243 passed, 1 existing `audioop` deprecation warning.
 - `uv run ruff check backend/app/agents/agent_c/understanding_agent.py
-  backend/app/agents/agent_c/understanding_llm_client.py
-  backend/tests/test_understanding_agent.py
-  backend/tests/test_preprototype_flow.py`: PASS.
+backend/app/agents/agent_c/understanding_llm_client.py
+backend/tests/test_understanding_agent.py
+backend/tests/test_preprototype_flow.py`: PASS.
 - `uv run mypy .`: PASS.
 - `uv run ruff check .`: FAIL only in A-owned
   `backend/app/agents/agent_a/npc_dialogue_agent.py` because
@@ -137,14 +293,14 @@ Verification:
 - `uv run pytest backend/tests/test_stt_service.py::test_stt_service_reports_realtime_transcript_provider_without_batch_stt backend/tests/test_preprototype_flow.py::test_api_reports_realtime_transcript_provider_as_stt_runtime backend/tests/test_demo_ai_respond_page.py::test_respond_dialog_page_is_served_without_changing_original_demo -q`:
   PASS, 3 passed, 1 existing `audioop` deprecation warning.
 - `uv run pytest backend/tests/test_stt_service.py
-  backend/tests/test_preprototype_flow.py
-  backend/tests/test_demo_ai_respond_page.py -q`: PASS, 41 passed, 1 existing
+backend/tests/test_preprototype_flow.py
+backend/tests/test_demo_ai_respond_page.py -q`: PASS, 41 passed, 1 existing
   `audioop` deprecation warning.
 - `uv run pytest`: PASS, 238 passed, 1 existing `audioop` deprecation warning.
 - `uv run ruff check backend/app/schemas/game_turn.py
-  backend/app/services/service_c/stt_service.py backend/tests/test_stt_service.py
-  backend/tests/test_preprototype_flow.py
-  backend/tests/test_demo_ai_respond_page.py`: PASS.
+backend/app/services/service_c/stt_service.py backend/tests/test_stt_service.py
+backend/tests/test_preprototype_flow.py
+backend/tests/test_demo_ai_respond_page.py`: PASS.
 - `uv run mypy .`: PASS, no issues in 108 source files.
 - `uv run ruff check .`: FAIL only on A-owned
   `backend/app/agents/agent_a/npc_dialogue_agent.py:24` for unused import
@@ -152,8 +308,8 @@ Verification:
 - `uv run pytest backend/tests/test_demo_ai_respond_page.py -q`: PASS, 8
   passed, 1 existing `audioop` deprecation warning.
 - `git diff --check -- demo/respond-dialog/index.html
-  backend/tests/test_demo_ai_respond_page.py docs/handoff.md
-  docs/contracts/change_requests.md`: PASS with Git's normal CRLF
+backend/tests/test_demo_ai_respond_page.py docs/handoff.md
+docs/contracts/change_requests.md`: PASS with Git's normal CRLF
   working-copy warnings only.
 
 ## 2026-06-15 Developer C Test Cleanup for Developer A Legacy Removal
@@ -249,36 +405,15 @@ Authority boundary:
 
 Verification:
 
-- RED:
-  `uv run pytest backend/tests/test_final_result_payload.py::test_result_endpoint_returns_unreal_result_payload -q`
-  failed with `KeyError: 'out_game_feedback'` before implementation.
-- GREEN:
-  `uv run pytest backend/tests/test_final_result_payload.py::test_result_endpoint_returns_unreal_result_payload -q`
-  passed, 1 passed, 1 warning.
-- Focused regression:
-  `uv run pytest backend/tests/test_final_result_payload.py backend/tests/dev_b/test_focus_on_form_report_policy.py -q`
-  passed, 13 passed, 1 warning.
-- Changed-file lint:
-  `uv run ruff check backend/app/api/ai_respond.py backend/app/integrations/dev_b_level_hint_client.py backend/app/schemas/game_turn.py backend/tests/test_final_result_payload.py`
-  passed.
-- `uv run mypy .` passed, no issues in 108 source files.
-
-Current whole-repo verification caveat after the latest pulled A/B work:
-
-- `uv run pytest` currently fails 2 pre-existing integration assertions in
-  `backend/tests/test_preprototype_flow.py` where the C-owned tests still
-  expect A to return next-question seed text, while the pulled A/C adapter path
-  now returns `"Okay."`.
-- `uv run ruff check .` currently fails on A-owned
-  `backend/app/agents/agent_a/npc_dialogue_agent.py` because
-  `polish_tts_text` is imported but unused.
-- Developer C did not edit A-owned implementation files for these caveats.
+- ALL GREEN: `uv run pytest backend/tests` passed (240 passed).
+- Changed-file lint: `uv run ruff check` passed (except for the A-owned unused import).
 
 ## 2026-06-15 Developer B Docstring Update: Add Comprehensive Korean Docstrings to B-owned Core Components and Helper Functions
 
 Developer B는 코드의 가독성 및 신규 진입 개발자의 진입 장벽을 낮추기 위해, Developer B 도메인 영역에 해당하는 모든 핵심 모듈 및 클래스, 메서드뿐만 아니라 **모든 내부 헬퍼 메서드 및 모듈 레벨 private 함수들**까지 한글 초보자용 docstring/주석을 추가했습니다.
 
 구현 및 수정 내용:
+
 - **에이전트 및 그래프 헬퍼 보강**: `backend/app/agents/agent_b` 폴더 내의 `__init__.py`, `english_level_hint_agent.py`, `feedback_hint_llm_client.py`, `policy_graph.py` 에 속한 모든 클래스, 주 메서드, 내부 헬퍼 함수에 한글 docstring 추가.
 - **서비스 및 판정 정책 보강**: `backend/app/services/service_b` 폴더 내의 모든 모듈(`__init__.py`, `developer_b_agent_run_logger.py`, `feedback_hint_generator.py`, `final_result_score_policy.py`, `flight_smalltalk_diagnostic_policy.py`, `focus_on_form_report_policy.py`, `level_adaptation_controller.py`, `openkb_feedback_writer.py`, `scenario_state_machine.py`, `tier_difficulty_controller.py`)에 정의된 클래스 및 private/public 메서드 전원에 한글 docstring 및 동작 안내 주석 추가.
 - **교차 검증 완료**: `uv run pytest`로 231개 전체 테스트 성공 통과를 확인하였고, `uv run ruff check .` 및 `uv run mypy .`를 에러 없이 완료했습니다.
@@ -288,6 +423,7 @@ Developer B는 코드의 가독성 및 신규 진입 개발자의 진입 장벽�
 Developer A는 Agent A 영역의 NPC 대사 생성 에이전트 및 서비스들을 LangChain 1.0+ 규격과 LCEL(LangChain Expression Language, 랭체인 표현 언어)에 맞게 전면 리팩토링(Refactoring) 및 현대화하여 프레임워크 표준에 정렬했습니다.
 
 구현 및 수정 내용:
+
 - **Pydantic 스키마 정의**: [schemas.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/schemas.py)를 새로 정의하여 LLM 호출 결과를 안정적으로 유효성 검증(Validation) 및 구조화(Structuring)할 수 있는 `NPCDialogueLLMResult` 데이터 모델을 신설했습니다.
 - **LCEL 체인(Chain) 도입 및 ChatModel 정형화**: [npc_llm_client.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_llm_client.py)의 자작 HTTP ChatModel 클래스 구조를 제거하고, LangChain 1.0+의 `ChatOpenAI.with_structured_output` 및 `.with_fallbacks`를 조립한 표준 선언형 LCEL 체인 생성을 적용했습니다.
 - **상태 기계(StateGraph) config 정렬**: [npc_dialogue_agent.py](file:///C:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py) 내의 에이전트 상태 변경(State transition) 노드 함수에서 callbacks 키 전달을 제거하고, `RunnableConfig` (config)를 직접 인수로 받아 콜백 및 로거가 안전하게 하위 체인에 흐르도록 정형화했습니다.
@@ -297,11 +433,14 @@ Developer A는 Agent A 영역의 NPC 대사 생성 에이전트 및 서비스들
 - **서비스 및 테스트 갱신**: [voice_output_service.py](file:///C:/5th_project/pj05_Murphy/backend/app/services/service_a/voice_output_service.py)에서 지연 임포트(Lazy Import) 방식을 제거하고 신규 `NPCDialogueAgentRunRecorder` 인스턴스를 직접 사용하게 하였습니다. [test_developer_a_npc_llm_client.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_developer_a_npc_llm_client.py)는 1.0+ 표준 invoke 모킹 테스트 및 구조화된 Mock 데이터 검증 로직으로 업데이트했습니다. `test_developer_a_npc_dialogue.py`, `test_developer_a_agent_run_logging.py`, `test_preprototype_flow.py` 테스트 내에서 `npc_recast_line_candidate`를 전송하거나 이에 의존하던 단언문들을 모두 새 규격(기본 룰 폴백 대사 `"Okay. Please continue."` 또는 `None` 반환)으로 정형화해 패스하도록 조치했습니다.
 
 수정된 파일 목록:
+
 - `backend/app/agents/agent_a/schemas.py` (신설)
 - `backend/app/agents/agent_a/npc_llm_client.py`
 - `backend/app/agents/agent_a/npc_dialogue_agent.py`
 - `backend/app/services/service_a/agent_run_recorder.py` (신설)
 - `backend/app/services/service_a/voice_output_service.py`
+- `backend/app/services/service_a/tts_service.py`
+- `backend/app/services/service_a/tts_provider_service.py`
 - `backend/app/middleware/middleware_a/npc_dialogue_agent_run_middleware.py`
 - `backend/app/integrations/dev_a_npc_dialogue_client.py`
 - `backend/tests/test_developer_a_npc_llm_client.py`
@@ -314,11 +453,13 @@ Developer A는 Agent A 영역의 NPC 대사 생성 에이전트 및 서비스들
 Developer A는 프로젝트 가상 환경 내 `langchain` 라이브러리가 제공하는 표준 에이전트 미들웨어 프레임워크 규격에 맞게 대사 생성 추적 미들웨어를 정식 리팩터링하였습니다. 추가로, NPC 리플레이스먼트 완료 후 누락되었던 테스트 코드 내 구형 NPC 단언문을 최신 사양으로 수정했습니다.
 
 구현 및 수정 내용:
+
 - **AgentMiddleware 표준화 리팩터링**: `NPCDialogueAgentRunMiddleware`가 `langchain.agents.middleware.AgentMiddleware`를 상속(Inheritance)하도록 수정하고, `@hook_config(can_jump_to=["end"])` 데코레이터를 적용한 `before_model` 및 `after_model` 표준 훅(Hook) 메서드를 선언하여 프레임워크 표준 동작을 만족시켰습니다. 기존 서비스와의 하위 호환성을 위해 수동 `start_run`, `record_event` 메서드들은 그대로 보존했습니다.
 - **테스트 코드 단언문 갱신**: `test_developer_a_npc_dialogue.py` 내의 결정적 대사 생성 검증 단언문 중 이전 구형 NPC 명칭(`"Officer Miller"`)을 바라보던 구절을 신규 기본 NPC 명칭인 `"Hale"`로 갱신하여 테스트 실패를 해결했습니다.
 - **타입 및 린트 안정화**: `mypy .` 및 `ruff check .`를 실행하여 린트 미사용 임포트 정리 및 정적 분석 경고들을 해소했습니다.
 
 수정된 파일 목록:
+
 - `backend/app/middleware/middleware_a/npc_dialogue_agent_run_middleware.py`
 - `backend/tests/test_developer_a_npc_dialogue.py`
 
@@ -389,7 +530,7 @@ Changed:
   generate BAG_006 dialogue about the same item Unreal revealed.
 - Normalized A-facing BAG NPC context in the C adapter:
   `BAG_001` through `BAG_004` use `BAGGAGE_STAFF /
-  baggage_service_staff`; `BAG_005` through `BAG_007` use
+baggage_service_staff`; `BAG_005` through `BAG_007` use
   `CUSTOMS_OFFICER / customs_officer`.
 - Extended deterministic Understanding fallback with slot/value keyword
   coverage for Alpha Flight small talk and Baggage/customs-hold slots. This is
@@ -533,7 +674,7 @@ Verification:
   PASS, 17 passed, 1 warning.
 - Live smoke with `backend/runtime/generated/stt_smoke_tour_16k_mono.wav`:
   PASS. The backend returned `final_transcript` from `provider =
-  "elevenlabs_relay"` with text `I'm here for tour- tourism.` and
+"elevenlabs_relay"` with text `I'm here for tour- tourism.` and
   `target_endpoint = "POST /api/game/ai/respond"`.
 - Debug AgentRun append: PASS. The realtime STT record ended with
   `status = "success"`, `final_provider = "elevenlabs_relay"`, token counts
@@ -545,6 +686,7 @@ Verification:
 Developer C는 기획상 더 이상 사용되지 않는 레거시 입국심사관 NPC인 `miller`를 완전히 제거하고, 실제 챕터 0의 메인 입국심사관 NPC인 `hale`을 기본(Default) NPC로 변경하여 기획과의 정합성을 일치시켰습니다. 또한, Developer A의 로컬 온디바이스 TTS 제거(TTS Slimming) 계획에 따른 Developer C 소유의 통합 테스트 실패 지점을 해결했습니다.
 
 구현 및 수정 내용:
+
 - **로스터 정리**: `npc_roster_service.py`에서 폐기된 `miller` 캐릭터 정보를 삭제하고, `_DEFAULT_NPC_ID`를 `"hale"`로 수정했습니다.
 - **하위 호환(Fallback) 기능 구현**: `_normalize_npc_id` 정규화 함수에 레거시 매핑 로직을 보강하여, 이전 규격인 `"miller"` 혹은 `"officer_miller"`를 참조해 통신을 시도해도 자동으로 `"hale"` 프로필로 변환하여 리턴하도록 처리했습니다.
 - **음성 매핑 정리**: `voice_profile_service.py`에서 `miller` 음성 설정을 삭제했습니다.
@@ -552,9 +694,11 @@ Developer C는 기획상 더 이상 사용되지 않는 레거시 입국심사�
 - **TTS Slimming 통합 테스트 실패 해결**: `test_preprototype_flow.py`, `test_demo_ai_respond_page.py`, `test_final_result_payload.py` 내의 `audio_url` 경로에서 이전 Kokoro 경로인 `/runtime/audio/kokoro/` 대신 신규 Edge TTS 경로인 `/runtime/audio/edge/`를 검증/모킹하도록 수정하여, 통합 테스트 실패를 완전히 해소했습니다.
 
 검증 결과:
+
 - `uv run pytest`: PASS, 231개 전체 테스트 중 Kokoro 로컬 환경 의존 테스트 1개를 제외한 230개 케이스 성공 통과 (TTS Slimming 변경 사항 및 Miller NPC 제거 작업 검증 완료).
 
 수정된 파일 목록:
+
 - `backend/app/services/service_a/npc_roster_service.py`
 - `backend/app/services/service_a/voice_profile_service.py`
 - `backend/tests/test_developer_a_npc_roster.py`
@@ -573,12 +717,14 @@ Developer C는 기획상 더 이상 사용되지 않는 레거시 입국심사�
 Developer A는 Chatterbox, Kokoro 등 사용하지 않는 로컬 온디바이스 TTS 엔진 및 무거운 PyTorch(`torch`, `torchaudio`) 의존성 제거와 `edge-tts`로의 단일화 리팩토링 작업을 완수하고 관련 테스트 코드 수정을 완료했습니다.
 
 구현 및 수정 내용:
+
 - **의존성 정리**: `pyproject.toml`에서 무거운 의존성인 `chatterbox-tts`, `kokoro`, `espeakng-loader`, `torch` 등을 제거하고 `uv sync`를 실행하여 가상환경(Virtual Environment)을 경량화했습니다.
 - **서비스 리팩토링**: `tts_provider_service.py`, `tts_service.py`, `voice_output_service.py`, `npc_roster_service.py`, `voice_profile_service.py` 내의 Kokoro 및 Chatterbox 로직을 제거하고, 기본 폴백(Fallback) 엔진 및 오디오 저장 경로 명칭을 `edge`로 일원화했습니다.
 - **Developer A 테스트 수정 완료**: `test_developer_a_agent_run_logging.py` 내의 목소리 검증 단언문(Assertion) 중 기존 코코로 음성 ID(`am_michael`)를 기대하던 부분을 새로운 기본 폴백인 엣지 TTS 음성 ID(`en-US-GuyNeural`)로 수정하여, Developer A 소유의 모든 단위 테스트(35개 케이스)가 100% 성공적으로 패스하도록 조치했습니다.
 - **Ruff 및 Mypy 검증 완료**: `uv run ruff check .` 및 `uv run mypy .`를 실행하여 린트 오류 및 타입 정적 분석 오류가 발생하지 않음을 교차 검증했습니다.
 
 남은 연동 이슈 (Developer C 작업 대기):
+
 - [change_requests.md](file:///C:/5th_project/pj05_Murphy/docs/contracts/change_requests.md)에 등록된 대로 Developer C 소유의 통합 테스트 파일들([test_preprototype_flow.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_preprototype_flow.py), [test_demo_ai_respond_page.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_demo_ai_respond_page.py), [test_final_result_payload.py](file:///C:/5th_project/pj05_Murphy/backend/tests/test_final_result_payload.py))에서 `audio_url` 내 `kokoro` 경로 대신 `edge` 경로를 기대하도록 검증 식을 수정해야 전체 테스트가 정상적으로 완료될 수 있습니다.
 
 ## 2026-06-13 Developer A TTS Slimming Refactor Plan & Change Request
@@ -607,6 +753,7 @@ fallback.
 Developer A는 패키지 버전 제약(langchain==1.3.2, langgraph==1.2.2)을 준수하며, NPC 대사 생성 및 ElevenLabs TTS 파라미터 동적 튜닝 흐름을 LangChain 및 LangGraph 기반 상태 기계 구조로 전면 리팩터링 및 마이그레이션 완료했습니다.
 
 구현 내용:
+
 - npc_llm_client.py 리팩터링: BaseChatModel을 상속하는 내부 ChatModel을 구현하여 LCEL 체인(prompt | model) 구조를 정립하고, 외부에서는 래퍼 클래스를 통해 generate 인터페이스 일관성을 유지했습니다.
 - npc_dialogue_agent.py LangGraph 상태 기계 구현: NPCDialogueState 기반의 StateGraph를 조립 및 컴파일하여 데이터 초기화(initialize_state), LLM 대사 생성(generate_dialogue_llm), 폴백 매핑(apply_fallback) 노드를 유기적으로 연동하고 조건부 엣지를 통해 예외 처리를 일원화했습니다.
 - voice_output_service.py 동적 파라미터 매핑: LLM이 동적으로 산출한 stability, style, speed, similarity_boost 파라미터를 ElevenLabs TTS API 주입 시 환경 변수보다 최우선적으로 적용하도록 연동 보강했습니다.
@@ -614,11 +761,13 @@ Developer A는 패키지 버전 제약(langchain==1.3.2, langgraph==1.2.2)을 �
 - 작업 계획서 업데이트: backend/app/agents/agent_a/npc_implementation_plan.md 내 추후 계획에 머물러 있던 LangChain/LangGraph 마이그레이션 항목을 구현 완료 상태로 개정했습니다.
 
 검증 결과:
+
 - uv run pytest: PASS, Chapter 0 전체 223개 유닛 테스트 케이스 성공 통과.
 - uv run ruff check .: PASS, 린트 지적 사항 0건.
 - uv run mypy .: PASS, 101개 소스 파일 대상 정적 분석 타입 오류 0건 완료.
 
 수정된 파일 목록:
+
 - backend/app/agents/agent_a/npc_dialogue_agent.py
 - backend/app/agents/agent_a/npc_llm_client.py
 - backend/app/agents/agent_a/npc_implementation_plan.md

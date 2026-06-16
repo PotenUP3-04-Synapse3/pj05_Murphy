@@ -59,6 +59,13 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "tone_hint": _optional_text(dialogue_directive.get("tone_hint")) or "neutral",
         "target_slot": _optional_text(dialogue_directive.get("target_slot")),
         "player_emotion": _optional_text(payload.get("understanding", {}).get("emotion")),  # 플레이어 원본 감정 상태 연동
+        "dialogue_seed": payload.get("dialogue_seed") or {},
+        "random_customs_item": _optional_text(
+            payload.get("game_state", {}).get("random_customs_item")
+            or payload.get("random_customs_item")
+        ),
+        "transition": payload.get("transition") or {},
+        "next_action": _optional_text(payload.get("next_action") or branch.get("next_action")),
     }
 
 

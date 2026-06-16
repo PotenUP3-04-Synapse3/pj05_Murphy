@@ -78,6 +78,16 @@ _NPC_ROSTER: dict[str, NPCProfile] = {
         mock_voice_id="brielle_mock",
         persona_instruction="helpful, bright, polite, and service-oriented baggage claim desk clerk.",
         elevenlabs_voice_id="6u6JbqKdaQy89ENzLSju",
+    ),
+    "emily": NPCProfile(
+        npc_id="emily",
+        display_name="Emily",
+        role="seatmate",
+        default_animation="move",
+        fallback_text="Let me help you with the form. What seems to be the problem?",
+        mock_voice_id="emily_mock",
+        persona_instruction="friendly, helpful, and kind passenger who wants to assist with travel forms.",
+        elevenlabs_voice_id="Z3R5wn05IrDiVCyEkUrK",
     )
 }
 
@@ -117,5 +127,21 @@ def _normalize_npc_id(npc_id: str | None) -> str:
         
     if cleaned == "miller":
         return "hale"
+        
+    # 비-canonical 표기 매핑 보강
+    if "seatmate_a" in cleaned or cleaned == "seatmate_emily":
+        return "arabella"
+    elif "seatmate_b" in cleaned:
+        return "novak"
+    elif "seatmate_c" in cleaned:
+        return "emily"
+    elif "seatmate" in cleaned:
+        return "arabella"
+        
+    if "baggage_staff" in cleaned or "baggage" in cleaned or "bag" in cleaned:
+        return "brielle"
+        
+    if "customs_officer" in cleaned or "customs" in cleaned:
+        return "dan"
         
     return cleaned

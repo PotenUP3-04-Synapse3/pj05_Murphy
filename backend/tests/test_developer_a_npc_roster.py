@@ -57,3 +57,36 @@ def test_mock_tts_uses_roster_mock_voice_for_known_speaker() -> None:
     )
 
     assert audio.voice_id == "hale_mock"
+
+
+def test_resolve_new_npcs_and_non_canonical_mapping() -> None:
+    # emily 신규 NPC 조회 검증
+    profile_emily = resolve_npc_profile("emily")
+    assert profile_emily.display_name == "Emily"
+    assert profile_emily.role == "seatmate"
+    
+    # 비-canonical 표기 매핑 검증
+    # SEATMATE_A_01 -> arabella
+    profile_seatmate_a = resolve_npc_profile("SEATMATE_A_01")
+    assert profile_seatmate_a.npc_id == "arabella"
+    assert profile_seatmate_a.display_name == "Arabella"
+    
+    # SEATMATE_B_03 -> novak
+    profile_seatmate_b = resolve_npc_profile("SEATMATE_B_03")
+    assert profile_seatmate_b.npc_id == "novak"
+    assert profile_seatmate_b.display_name == "Novak"
+
+    # SEATMATE_C_01 -> emily
+    profile_seatmate_c = resolve_npc_profile("SEATMATE_C_01")
+    assert profile_seatmate_c.npc_id == "emily"
+    assert profile_seatmate_c.display_name == "Emily"
+    
+    # BAGGAGE_STAFF -> brielle
+    profile_baggage = resolve_npc_profile("BAGGAGE_STAFF")
+    assert profile_baggage.npc_id == "brielle"
+    assert profile_baggage.display_name == "Brielle"
+    
+    # CUSTOMS_OFFICER -> dan
+    profile_customs = resolve_npc_profile("CUSTOMS_OFFICER")
+    assert profile_customs.npc_id == "dan"
+    assert profile_customs.display_name == "Officer Dan"

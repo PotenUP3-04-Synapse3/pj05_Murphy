@@ -49,24 +49,31 @@ class NPCDialogueCallbackHandler(BaseCallbackHandler):
                 output_summary={"generations_count": len(response.generations) if response else 0},
             )
 
-    def on_chain_start(self, serialized: dict[str, Any], inputs: dict[str, Any], **kwargs: Any) -> None:
-        """LCEL 체인 실행이 시작될 때 실행됩니다."""
+    def on_chain_start(self, serialized: dict[str, Any], inputs: Any, **kwargs: Any) -> None:
+        """LCEL 체인 실행이 시작될 때 실행됩니다.
+
+        주의: LCEL 파이프라인 내부 Runnable 단계에 따라 inputs 가 dict / list[BaseMessage] /
+        ChatPromptValue / BaseMessage 등 다양한 타입으로 전달될 수 있으므로 타입별 안전 요약을 사용합니다.
+        """
         if self.recorder and self.metadata:
             self.recorder.record_event(
                 self.metadata,
                 event="langchain_chain_start",
                 status="started",
-                input_summary={"inputs_keys": list(inputs.keys())},
+                input_summary=_summarize_runnable_io(inputs),
             )
 
-    def on_chain_end(self, outputs: dict[str, Any], **kwargs: Any) -> None:
-        """LCEL 체인 실행이 정상적으로 완료될 때 실행됩니다."""
+    def on_chain_end(self, outputs: Any, **kwargs: Any) -> None:
+        """LCEL 체인 실행이 정상적으로 완료될 때 실행됩니다.
+
+        주의: 단계별 Runnable 출력은 dict 가 아닌 BaseMessage / list[BaseMessage] / 임의 객체일 수 있습니다.
+        """
         if self.recorder and self.metadata:
             self.recorder.record_event(
                 self.metadata,
                 event="langchain_chain_end",
                 status="completed",
-                output_summary={"outputs_keys": list(outputs.keys()) if isinstance(outputs, dict) else []},
+                output_summary=_summarize_runnable_io(outputs),
             )
 
 
@@ -102,10 +109,14 @@ class _UnavailableNPCDialogueLLMClient:
 # OpenAI Responses API를 사용하여 NPC 대사를 생성하는 공식 Chat Model 클래스(Class)입니다.
 class OpenAINPCDialogueChatModel:
     def __init__(self, api_key: str, model: str = "gpt-4o-mini", timeout_seconds: float = 10.0) -> None:
+        # api_key: OpenAI 인증을 위한 API 키(Secret Key)입니다.
         self.api_key = api_key
+        # _model: 호출할 OpenAI 모델 식별자(예: gpt-4o-mini)입니다.
         self._model = model
+        # timeout_seconds: HTTP 통신 제한 시간(초)입니다.
         self.timeout_seconds = timeout_seconds
-        # 표준 ChatOpenAI 모델에 structured output 연결
+        
+        # [초기화] 표준 ChatOpenAI 모델에 structured output 스키마를 강제하는 설정입니다.
         self._chat_model = ChatOpenAI(
             model=model,
             api_key=SecretStr(api_key),
@@ -114,6 +125,7 @@ class OpenAINPCDialogueChatModel:
 
     @property
     def model(self) -> str:
+        """현재 사용 중인 모델의 이름을 반환합니다."""
         return self._model
 
     @classmethod
@@ -168,12 +180,16 @@ class OpenAINPCDialogueChatModel:
 # vLLM 또는 Ollama처럼 OpenAI의 Chat Completions API와 호환되는 로컬 서버(Local Server) 연동을 위한 Chat Model 클래스(Class)입니다.
 class OpenAICompatibleNPCDialogueChatModel:
     def __init__(self, api_key: str, model: str, base_url: str, timeout_seconds: float = 10.0) -> None:
+        # api_key: 로컬 서버 인증용 API 키(필요 시 사용)입니다.
         self.api_key = api_key
+        # model: vLLM 또는 Ollama에 탑재된 모델명(예: google/gemma-4-26B-it)입니다.
         self.model = model
+        # base_url: OpenAI 규격 호환 API Endpoint 주소(URL)입니다.
         self.base_url = base_url
+        # timeout_seconds: HTTP 통신 제한 시간(초)입니다.
         self.timeout_seconds = timeout_seconds
         
-        # vLLM의 json_schema 미지원 가능성에 대비해 안전하게 method="json_mode" 사용
+        # [초기화] vLLM의 json_schema 미지원 가능성을 감안해, JSON Mode 출력을 유도하고 구조화 모델을 구성합니다.
         self._chat_model = ChatOpenAI(
             model=model,
             api_key=SecretStr(api_key) if api_key else None,
@@ -215,16 +231,21 @@ class OpenAICompatibleNPCDialogueChatModel:
 def build_npc_dialogue_llm_client_from_environment(
     env_path: Path | None = None,
 ) -> Runnable[dict, dict]:
+    # [1단계] 로컬 .env 파일과 OS 환경 변수에서 구동 옵션을 로드합니다.
     values = _read_env_file(env_path or Path(".env"))
+    
+    # [2단계] 사용할 LLM의 핵심 프로바이더(Provider) 명칭을 결정합니다.
     provider = (
         os.getenv("NPC_DIALOGUE_LLM_PROVIDER")
         or values.get("NPC_DIALOGUE_LLM_PROVIDER")
         or "openai"
     ).strip().lower()
 
+    # 현재는 openai 프로바이더만 공식 지원하고 있으므로 예외 처리를 둡니다.
     if provider != "openai":
         raise NPCDialogueLLMUnavailable(f"Unsupported NPC_DIALOGUE_LLM_PROVIDER: {provider}")
 
+    # [3단계] 기본 모델 에러 시 예외 복구를 위해 활용할 Fallback 모델명을 결정합니다.
     fallback_name = (
         os.getenv("NPC_DIALOGUE_LLM_FALLBACK")
         or values.get("NPC_DIALOGUE_LLM_FALLBACK")
@@ -314,18 +335,18 @@ def _developer_instructions(persona_instruction: str) -> str:
     """LLM이 NPC의 성격, 제한조건, 입력 양식 및 언어 규칙(영어만 사용 등)을 철저히 따르도록 지시하는 시스템 프롬프트(System Prompt)입니다."""
     return (
         "You are Developer A's NPC Dialogue Agent for Murphy's Trippin. "
-        "Generate only JSON that matches the schema. Use the Level Design JSON, "
-        "player language profile, NPC emotion state, and dialogue policy. "
-        "Do not change branch, next_node_id, commands, validation, or scores. "
-        "Generate final npc_text and tts_text from npc_question_goal, required_slots, "
-        "target_slot, question_complexity, npc_speech_speed, emotion_change, player_text, "
-        "and understanding.extracted_slots. "
-        "Do not copy node_context.npc_question, npc_recast_line_candidate, "
-        "fallback_candidate.npc_text, or fallback_candidate.tts_text verbatim as final dialogue. "
-        "Use fallback_candidate only as a safety seed when generation metadata is missing. "
-        "Use fallback_candidate.speaker as the NPC speaker. "
-        f"Adopt the following persona style for the NPC dialogue generation: {persona_instruction} "
+        "Generate only JSON that matches the schema. "
+        "Use the input Level Design JSON (player_text, node_context, understanding, evaluation_summary, dialogue_seed) "
+        "to generate the final npc_text and tts_text. "
+        f"Adopt the following persona style for the NPC dialogue: {persona_instruction} "
         "Always set animation to 'move'. "
+        "Do not copy node_context.npc_question verbatim as the final dialogue. "
+        "If npc_role is seatmate, use casual, warm, conversational tone. Keep sentences short. Avoid officer-style directives. "
+        "If npc_role is baggage_agent or baggage_service_staff, use helpful, bright, polite, and service-oriented tone. "
+        "The player utterance comes from the PLAYER, not the NPC. Do NOT echo the player's recommended phrasing or npc_recast_line_candidate as if the NPC said it. "
+        "If transition.status is 'complete_chapter' or next_action is 'COMPLETE_CHAPTER', the NPC MUST output a natural closing or goodbye line only, and MUST NOT ask the next chapter's opening question or any other question. "
+        "If dialogue_seed.surface_goal is provided (and not complete_chapter), the NPC MUST (a) briefly acknowledge the prior turn AND (b) ask the next question that fulfills surface_goal (e.g., ask_travel_purpose_smalltalk -> ask a travel-purpose follow-up). Do not output reaction-only lines when a surface_goal exists. "
+        "Recommended expression (recommended_expression) is a model answer for the player to learn — never insert it into npc_text/tts_text unless paraphrased as the NPC's own question (e.g., 'So, where are you headed?'). "
         "Evaluate and output the final 'npc_emotion' (selected from: joy, panic, sad, suspicion, disgust, fear, smirk, normal, anger, surprise, pain, confusion, boredom) and 'tone' matching the context. "
         "Based on the resolved emotion, dynamically calculate and adjust ElevenLabs TTS parameters (stability, style, speed, and similarity_boost). "
         "For intense emotions like anger, panic, or fear, lower the stability and increase style/speed. "
@@ -337,8 +358,7 @@ def _developer_instructions(persona_instruction: str) -> str:
         "more speakable version for ElevenLabs TTS. Make tts_text natural for spoken audio: "
         "use short sentences, conversational rhythm, and brief pauses like '...' only where "
         "they improve timing. "
-        "feedback_kr is the only field that may contain Korean, "
-        "and it must be short Korean feedback."
+        "feedback_kr must always be set to 'Good.'."
     )
 
 
@@ -358,6 +378,36 @@ def _read_env_file(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip().strip('"').strip("'")
     return values
+
+
+def _summarize_runnable_io(value: Any) -> dict[str, Any]:
+    """LCEL 단계 입/출력을 타입에 따라 안전하게 요약합니다.
+
+    LCEL Runnable 사이를 흐르는 값은 dict 라고 가정할 수 없습니다.
+    - RunnableSequence / ChatPromptTemplate 단계: dict
+    - ChatModel 단계 입력: list[BaseMessage] 또는 ChatPromptValue
+    - ChatModel 단계 출력 / 후속 단계 입력: BaseMessage(AIMessage)
+    on_chain_start 가 inputs.keys() 를 강제 호출하면 위 비-dict 케이스에서 AttributeError 가 발생하므로
+    본 헬퍼로 타입별 요약을 만들고 핸들러 예외를 방지합니다.
+    """
+    if isinstance(value, dict):
+        return {"type": "dict", "keys": list(value.keys())}
+    if isinstance(value, BaseMessage):
+        return {"type": type(value).__name__, "content_len": len(str(value.content))}
+    if isinstance(value, list):
+        return {
+            "type": "list",
+            "length": len(value),
+            "item_types": sorted({type(item).__name__ for item in value}),
+        }
+    # ChatPromptValue 등 to_messages() 를 가진 LangChain 표준 객체
+    if hasattr(value, "to_messages"):
+        try:
+            messages = value.to_messages()
+            return {"type": type(value).__name__, "messages_count": len(messages)}
+        except Exception:  # noqa: BLE001 - 콜백 안에서는 본 실행을 절대 막지 않는다
+            return {"type": type(value).__name__}
+    return {"type": type(value).__name__}
 
 
 # 하위 호환성을 위한 별칭(Alias) 정의입니다.

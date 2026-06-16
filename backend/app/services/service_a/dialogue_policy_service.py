@@ -83,3 +83,51 @@ def _tone_from_emotion(emotion_state: NPCEmotionState) -> str:
     if emotion_state.emotion == "patient":
         return "formal_supportive"
     return "formal_neutral"
+
+
+# surface_goal에 대응하는 룰베이스 다음 질문 템플릿 맵입니다.
+SURFACE_GOAL_QUESTIONS = {
+    # Flight 챕터
+    "respond_to_polite_request": "Are you visiting New York for a trip?",
+    "ask_travel_purpose_smalltalk": "Are you visiting New York for a trip?",
+    "ask_stay_plan_smalltalk": "How long will you stay?",
+    "check_clarification_or_ask_back": "Where will you stay?",
+    "wrap_up_flight_smalltalk": "Do you have your arrival form?",
+    
+    # Immigration 챕터
+    "request_passport_submission": "May I see your passport?",
+    "ask_visit_purpose": "What is the purpose of your visit?",
+    "ask_stay_duration": "How long will you stay in the United States?",
+    "ask_stay_location": "Where will you stay in the United States?",
+    "ask_return_ticket": "Do you have a return ticket to Korea?",
+    "ask_gold_bag_contents_and_declaration": "Do you have anything to declare?",
+    "ask_declared_item_purpose": "What is the purpose of this declared item?",
+    "ask_packed_bag_ownership": "Is this your bag?",
+    "confirm_immigration_clearance_transition": "Alright, here is your passport. Enjoy your stay.",
+    "complete_immigration_clearance_transition": "All cleared.",
+    
+    # Baggage 챕터
+    "report_missing_bag_at_service_desk": "Do you have your baggage claim tag or ticket?",
+    "ask_claim_tag_or_ticket": "May I see your baggage claim tag?",
+    "confirm_carousel_search": "Let me search the carousel. Can you describe your bag?",
+    "redirect_to_customs_hold_area": "Please go to the customs hold area. Understood?",
+    "customs_hold_explanation_before_unlock": "What brings you to the customs hold area?",
+    "explain_random_customs_item": "",
+    "complete_customs_baggage_clearance": "",
+    "complete_baggage_claim_transition": ""
+}
+
+
+def synthesize_fallback_next_question(fallback_text: str, surface_goal: str) -> str:
+    """LLM 실패 시 사용될 폴백 텍스트(Fallback Text) 뒤에 surface_goal에 따른 룰베이스 다음 질문을 합성합니다."""
+    question = SURFACE_GOAL_QUESTIONS.get(surface_goal)
+    if not question:
+        return fallback_text
+    
+    if question in fallback_text:
+        return fallback_text
+        
+    stripped = fallback_text.strip()
+    if not stripped.endswith((".", "!", "?")):
+        stripped += "."
+    return f"{stripped} {question}"

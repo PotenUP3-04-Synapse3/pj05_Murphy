@@ -20,6 +20,7 @@ _NPC_EDGE_VOICES: dict[str, str] = {
     "harris": "en-US-SoniaNeural",
     "dan": "en-US-GuyNeural",
     "brielle": "en-US-AvaNeural",
+    "emily": "en-US-AvaNeural",
 }
 
 

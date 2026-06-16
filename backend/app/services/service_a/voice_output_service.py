@@ -44,6 +44,25 @@ from backend.app.tools.tool_a.npc_dialogue_evidence_tool import build_npc_dialog
 
 PROMPT_VERSION = "npc_dialogue_prompt_v1"
 
+# 13종 감정(Emotion)에 따른 ElevenLabs TTS의 기본 파라미터 매핑입니다.
+# 형식: (stability, style, speed, similarity_boost)
+EMOTION_TTS_PARAMETERS = {
+    "joy": (0.65, 0.20, 0.95, 0.85),
+    "panic": (0.30, 0.85, 1.10, 0.80),
+    "sad": (0.60, 0.15, 0.75, 0.80),
+    "suspicion": (0.55, 0.35, 0.85, 0.85),
+    "disgust": (0.50, 0.40, 0.80, 0.80),
+    "fear": (0.35, 0.80, 1.05, 0.80),
+    "smirk": (0.60, 0.30, 0.90, 0.85),
+    "normal": (0.72, 0.10, 0.86, 0.82),
+    "anger": (0.40, 0.75, 1.00, 0.85),
+    "surprise": (0.50, 0.50, 1.00, 0.80),
+    "pain": (0.45, 0.60, 0.80, 0.80),
+    "confusion": (0.55, 0.30, 0.85, 0.82),
+    "boredom": (0.75, 0.05, 0.70, 0.80),
+}
+
+
 
 # NPC 대사 생성 결과(NPCDialogueResult)와 음성 파일(TTSAudio)을 하나의 객체로 묶어 제공하는 보관 데이터 클래스(Data Class)입니다.
 @dataclass(frozen=True)
@@ -172,6 +191,7 @@ def build_voice_output_from_level_design(
             tone=str(dialogue["tone"]),
             english_level=str(normalized["english_level"]),
             dialogue=dialogue,
+            player_text=str(normalized.get("player_text", "")),
         )
         agent_run_middleware.record_event(
             evidence_metadata,
@@ -371,30 +391,43 @@ def _build_provider_request(
     tone: str,
     english_level: str,
     dialogue: dict[str, Any],
+    player_text: str = "",
 ) -> Any:
     """설정된 TTS 엔진 명세에 대응되는 개별 파라미터 구조체(Request Object)를 분기 빌드합니다."""
     if provider_name == "elevenlabs":
+        # dialogue에 들어있거나, fallback으로 지정될 npc_emotion을 획득합니다.
+        emotion = dialogue.get("npc_emotion")
+        if not emotion:
+            generation_profile = dialogue.get("generation_profile") or {}
+            emotion = (generation_profile.get("npc_emotion") or {}).get("emotion")
+            
+        emotion_params = EMOTION_TTS_PARAMETERS.get(emotion) if emotion else None
+
         stability_val = dialogue.get("stability")
         if stability_val is None:
-            stability_val = _env_float("MURPHY_ELEVENLABS_STABILITY", _elevenlabs_stability_for_tone(tone))
+            default_stability = emotion_params[0] if emotion_params else _elevenlabs_stability_for_tone(tone)
+            stability_val = _env_float("MURPHY_ELEVENLABS_STABILITY", default_stability)
 
         similarity_boost_val = dialogue.get("similarity_boost")
         if similarity_boost_val is None:
-            similarity_boost_val = _env_float("MURPHY_ELEVENLABS_SIMILARITY_BOOST", 0.82)
+            default_similarity = emotion_params[3] if emotion_params else 0.82
+            similarity_boost_val = _env_float("MURPHY_ELEVENLABS_SIMILARITY_BOOST", default_similarity)
 
         style_val = dialogue.get("style")
         if style_val is None:
-            style_val = _env_float("MURPHY_ELEVENLABS_STYLE", _elevenlabs_style_for_tone(tone))
+            default_style = emotion_params[1] if emotion_params else _elevenlabs_style_for_tone(tone)
+            style_val = _env_float("MURPHY_ELEVENLABS_STYLE", default_style)
 
         speed_val = dialogue.get("speed")
         if speed_val is None:
-            speed_val = _env_float("MURPHY_ELEVENLABS_SPEED", _elevenlabs_speed_for_tone(tone))
+            default_speed = emotion_params[2] if emotion_params else _elevenlabs_speed_for_tone(tone)
+            speed_val = _env_float("MURPHY_ELEVENLABS_SPEED", default_speed)
 
         return build_elevenlabs_provider_request(
             text=text,
             speaker_id=speaker_id,
             voice_profile_id=voice_profile_id,
-            voice_id=_env_value("MURPHY_ELEVENLABS_VOICE_ID", "CwhRBWXzGAHq8TQ4Fs17"),
+            voice_id=_env_value("MURPHY_ELEVENLABS_VOICE_ID", voice_id or "CwhRBWXzGAHq8TQ4Fs17"),
             tone=tone,
             english_level=english_level,
             api_key=_env_value("MURPHY_ELEVENLABS_API_KEY", _env_value("ELEVENLABS_API_KEY", "")),
@@ -408,6 +441,7 @@ def _build_provider_request(
             base_url=_env_value("MURPHY_ELEVENLABS_BASE_URL", "https://api.elevenlabs.io/v1"),
             timeout_seconds=_env_float("MURPHY_ELEVENLABS_TIMEOUT_SECONDS", 60.0),
             use_speaker_boost=_env_bool("MURPHY_ELEVENLABS_USE_SPEAKER_BOOST", True),
+            previous_text=player_text if player_text.strip() else None,
         )
 
     # Edge TTS를 기본 및 명시 프로바이더로 구동합니다.
