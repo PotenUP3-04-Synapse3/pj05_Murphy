@@ -1,5 +1,42 @@
 # Handoff
 
+## 2026-06-16 Developer B Implementation: 기내 스몰토크 대화형 모드 전환 완료
+
+Developer B는 기내 스몰토크 씬이 출입국 심사용 채점형 상태 머신을 재사용하여 취조처럼 작동하던 문제를 해결하기 위해, 대화형 모드(패널티 0, in-game 피드백 비노출, 느슨한 주제 힌트) 전환 구현을 완료했습니다.
+
+- 변경/산출물:
+  - [flight_smalltalk_diagnostic_policy.py](file:///c:/potenup3/pj05_Murphy/backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py): `decide_conversational` 메서드 신설 및 입국 위험 안전 가드라인 배선.
+  - [developer_b_policy_graph_tools.py](file:///c:/potenup3/pj05_Murphy/backend/app/tools/tool_b/developer_b_policy_graph_tools.py): `decide_scenario_branch_tool` 내 기내 스몰토크 씬 판정 라우팅 추가.
+  - [english_level_hint_agent.py](file:///c:/potenup3/pj05_Murphy/backend/app/agents/agent_b/english_level_hint_agent.py): `evaluate_turn` (절차형 폴백), `_build_in_game_feedback` (in-game 노출 차단), `_build_error_capture` (in-game 수집 차단), `_allowed_followup_intents` (반응/자기개방/질문 의도 활성화), `_build_dialogue_directive` (purpose="smalltalk_rapport") 구현.
+- 교차 의존:
+  - Dev A/Dev C 변경 요청 `## Change Request - 2026-06-16 - 기내 스몰토크 대화형 전환 (Flight Smalltalk Conversational Mode)`을 통해 후속 연동 작업 협조 확인.
+- 검증/후속:
+  - [test_flight_smalltalk_diagnostic_policy.py](file:///c:/potenup3/pj05_Murphy/backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py)에 대화형 판정, 오프토픽 무시, 패널티 0, 리스크 감지 가드 유닛 테스트 추가 완료.
+  - `uv run pytest` (261 passed), `ruff check`, `mypy` 검증 완료.
+
+## 2026-06-16 Developer B Plan: 기내 스몰토크 대화형 전환 작업계획 및 교차 변경요청
+
+Developer B는 기내(옆자리 승객) 스몰토크가 출입국 심사용 채점형 상태 머신을
+재사용해 "취조"처럼 느껴지는 문제(같은 질문 반복, 자연 대화감 부재, 매 턴 교정
+노출, 다음 질문 진행에만 집중)에 대해 **재미·라포 우선(절충)** 방향의
+작업계획서를 작성했다.
+
+- `docs/workplan-dev-b.md`를 "기내 스몰토크 대화형 전환" 계획으로 교체(이전
+  슬롯 값 검증 계획은 구현 완료되어 대체). 계획서 §10에 "작업계획서가 교체되어도
+  유지하는 handoff/change_request 문서 틀"을 추가.
+- 핵심(Dev B 소유): 기내 씬을 `ScenarioStateMachine` 채점 분기에서 분리한다 —
+  `FlightSmallTalkDiagnosticPolicy.decide_conversational` 신설 +
+  `decide_scenario_branch_tool` 라우팅, pass/fail·페널티 미적립, in-game 교정
+  억제 → out-game 시드 적립, `dialogue_seed.surface_goal`을 느슨한 주제 힌트로.
+  중립 진행은 `branch_type` enum 미확장으로 `success`+`ADVANCE` 재사용 +
+  `branch_reason="flight_smalltalk_continue"` 신호.
+- 교차 의존: Dev A(스몰토크 페르소나 프롬프트, 매 턴 질문 강제 해제,
+  `SURFACE_GOAL_QUESTIONS` 고정 큐 비활성, 교정 라인 제거, 발화 기반 후속,
+  대화 메모리)와 Dev C(슬롯 강제추출 완화, off-topic 가드 씬 인지화)에 대한
+  변경 요청을 `docs/contracts/change_requests.md`
+  (2026-06-16 기내 스몰토크 대화형 전환)로 전달.
+- 구현/검증은 후속(작업계획서 §7 테스트 계획, §8 검증 명령 참조). 회귀 가드:
+  입국심사(IMM_*)·수하물(BAG_*) 채점 동작은 그대로 유지.
 ## 2026-06-16 Developer A 구현: NPC별 voice_id 라우팅 및 환경변수(Environment Variable) 오버라이드 정정 (Phase A ~ Phase E)
 
 Developer A는 `docs/workplan-dev-a-npc-voice-routing.md` 작업 계획서에 따라 ElevenLabs 및 Edge TTS 경로 모두에서 NPC별 고유 voice_id 라우팅을 복구하고, 환경변수 우선순위가 뒤바뀌는 결함 및 캐시 키(Cache Key) 충돌 문제를 해결했습니다.

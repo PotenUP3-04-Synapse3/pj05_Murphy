@@ -23,6 +23,7 @@ from backend.app.services.service_b.level_adaptation_controller import LevelAdap
 from backend.app.services.service_b.openkb_feedback_writer import OpenKBFeedbackWriter
 from backend.app.services.service_b.scenario_state_machine import ScenarioDecision, ScenarioStateMachine
 from backend.app.services.service_b.tier_difficulty_controller import TierDifficultyController, TierDifficultyResult
+from backend.app.services.service_b.flight_smalltalk_diagnostic_policy import FlightSmallTalkDiagnosticPolicy
 
 
 DEVELOPER_B_POLICY_GRAPH_NAME = "developer_b_policy_graph"
@@ -103,12 +104,21 @@ class DeveloperBPolicyGraphTools(_EnglishLevelHintPolicyCore):
         payload = _require_state_value(state, "payload", DevBPolicyInput)
         agent_run = _require_agent_run(state)
         input_summary = _require_dict(state, "input_summary")
-        decision = self.state_machine.decide(payload)
+        
+        is_flight_smalltalk = (payload.scene_id == "FLIGHT_A_001_SEATMATE_SMALLTALK" or payload.current_node_id.startswith("FLIGHT_"))
+        if is_flight_smalltalk:
+            diagnostic_policy = FlightSmallTalkDiagnosticPolicy()
+            decision = diagnostic_policy.decide_conversational(payload)
+            tool_name = "flight_smalltalk_diagnostic_policy.decide_conversational"
+        else:
+            decision = self.state_machine.decide(payload)
+            tool_name = "scenario_state_machine.decide"
+
         self.agent_run_logger.record_event(
             agent_run,
             event="tool_call",
             status="completed",
-            tool_name="scenario_state_machine.decide",
+            tool_name=tool_name,
             input_summary=input_summary,
             output_summary=_decision_summary(decision),
         )
