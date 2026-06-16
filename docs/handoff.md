@@ -2778,3 +2778,87 @@ Changed:
 Coordination:
 
 - Developer C is currently refactoring the backend orchestrator using LangChain/LangGraph. Developer A's updated plan ensures the Dialogue Agent will expose itself as a single node/subgraph rather than trying to own the overall orchestration, avoiding graph and term conflicts.
+
+## 2026-06-16 Developer B Slot Value Validation Plan and Cross-Team Requests
+
+플레이어가 "Um,"(단순 망설임)으로 답했을 때 SUCCESS(ADVANCE)로 오판정되어
+잘못된 NPC 대사가 생성되는 버그를 분석했다. 원인은 세 영역에 걸쳐 있으며,
+소유권에 따라 작업을 분리했다.
+
+Developer B 소유 작업 (계획 수립 완료, `docs/workplan-dev-b.md`):
+
+- `ScenarioStateMachine`(`backend/app/services/service_b/scenario_state_machine.py`)
+  의 `_is_success`가 `intent_success`와 `missing_slots`만 검사하고, 슬롯에
+  채워진 값이 `node_context.allowed_slot_values`에 실재하는 후보인지
+  검증하지 않는 문제를 확인.
+- 계획: `_has_invalid_required_slot_value` 헬퍼를 추가하고 `_is_success`와
+  `_is_unclear`에 반영하여, 허용 후보로 매핑되지 않는 슬롯 값을 SUCCESS가
+  아닌 clarify(REASK)로 라우팅. 분기 제어는 규칙 기반을 유지(가드레일 준수).
+- 회귀/신규 테스트를 `backend/tests/dev_b/test_developer_b_policy_engine.py`에
+  추가 예정. 추가 스키마/계약 변경 없음.
+- 이 수정이 적용되면 잘못된 SUCCESS가 Developer A로 전달되지 않으므로 Dev A
+  측 환각/다음 질문 누락의 발현 조건이 차단된다.
+
+Cross-team change requests (`docs/contracts/change_requests.md`, 2026-06-16):
+
+- Developer C: Understanding Agent가 슬롯 값을 `allowed_slot_values` 후보로
+  정규화하고, 매핑 실패/망설임 발화는 임의 자유 텍스트를 채우지 말고
+  `intent_success=False` 또는 `needs_clarification=True`로 반환하도록 요청.
+  또한 통합 어댑터의 `npc_recast_line_candidate` 강제 None 필터링이 다음 질문
+  후보까지 제거하는지 점검 요청.
+- Developer A: Dialogue Agent의 화자 역할 혼동/환각 방지 및
+  `dialogue_seed.surface_goal` 기반 다음 질문 작문 결합 보강 요청.
+
+Known issue / 제외:
+
+- 남자 목소리(en-US-GuyNeural) 재생 문제는 env(`MURPHY_EDGE_TTS_VOICE`,
+  `MURPHY_TTS_PROVIDER`) 수작업 및 Developer A 소유 `voice_output_service.py`
+  영역이므로 본 Developer B 작업 범위에서 제외한다.
+
+Next recommended step: `docs/workplan-dev-b.md`의 작업 1~3과 테스트를 구현한 뒤
+`uv run pytest` / `uv run ruff check .` / `uv run mypy .`로 검증.
+
+## 2026-06-16 Developer B Slot Value Validation Verified — Root Cause Confirmed in Developer C
+
+Developer B의 슬롯 값 검증 작업을 구현·검증 완료했고, `/respond-dialog`
+런타임 재현을 통해 잔여 증상의 책임 소재를 확정했다.
+
+Developer B 작업 검증 결과 (정상 완료):
+
+- `scenario_state_machine.py`에 `_has_invalid_required_slot_value` 헬퍼 추가
+  및 `_is_success` / `_is_unclear` 반영 완료.
+- `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py`
+  결과 94 passed. 코드·로직·테스트 모두 계획대로 반영됨.
+
+런타임 재현 (책임 소재 확정):
+
+- `FLIGHT_A_001_SEATMATE_SMALLTALK`에서 off-topic 관용구
+  `"Okay, you're on."` 입력 시, Understanding Agent가
+  `intent_success=true`, `confidence=0.98`, `answer_relevance="on_topic"`,
+  `extracted_slots={"polite_response": "short_acknowledgement"}`(유효 정규값),
+  `missing_slots=[]`을 반환함.
+- 슬롯 값이 허용 후보군에 실재하는 정규값이므로 Developer B의 멤버십 검증은
+  이 케이스를 원천적으로 잡을 수 없음(값이 유효하여 통과가 정상 동작).
+  상태 머신의 모든 규칙 기반 신호가 SUCCESS를 가리킴 → 이 오판정은
+  Understanding Agent(Developer C) 단계에서만 차단 가능.
+- 따라서 Developer C 대상 change request(2026-06-16, Understanding Agent
+  Slot Value Normalization)에 "Verified Runtime Reproduction" 및
+  "Strengthened Request"(정확도 보강)를 추가하고 우선순위를 긴급으로
+  상향함.
+
+분기 vs 대사 구분 (중요):
+
+- 로그상 상태 머신은 `FLIGHT_A_001 -> FLIGHT_A_002 | ADVANCE`로 정상
+  전진함. "다음 질문으로 넘어가지 않는다"는 증상은 분기(노드) 문제가
+  아니라, NPC가 말하는 대사 텍스트가 다음 질문 대신
+  `"Sure, here you are. Thanks!"`로 잘못 생성된 Developer A Dialogue Agent
+  품질 문제임.
+
+Known issue / 제외 (Developer B 범위 밖, 변동 없음):
+
+- 남자 목소리 재생: env(`MURPHY_EDGE_TTS_VOICE`, `MURPHY_TTS_PROVIDER`
+  kokoro→edge 폴백) 수작업 + Developer A `voice_output_service.py` 영역.
+
+Next recommended step: Developer C가 Understanding Agent 분류/정규화 정확도
+보강(1차 차단)을 우선 착수. Developer A는 Dialogue Agent 화자 역할/다음 질문
+작문 보강. Developer B 추가 작업 없음.
