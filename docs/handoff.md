@@ -1,6 +1,5 @@
 # Handoff
 
-<<<<<<< HEAD
 ## 2026-06-16 Developer B 욕설 처리 및 Bad Ending 분기 정책 완료 (CR-A2, CR-A4)
 
 Developer B는 플레이어의 비속어 발화 시 챕터 강제 강등 및 배드 엔딩 분기 연동을 위한 작업(CR-A2, CR-A4)을 완료했습니다.
@@ -30,7 +29,6 @@ Developer B는 기내 스몰토크가 "취조처럼" 느껴지고 플레이어�
   - Dev B 소유 작업: `scenario_nodes.json`(노드 정리·역할 반전 교정), 신규 `flight_smalltalk_probes.json`, `flight_smalltalk_diagnostic_policy.py`(적응형 선택·종료), `developer_b_policy_graph_tools.py`(배선·seed emit), `english_level_hint_agent.py`(능력 추정치+신뢰도 노출·in-game 억제).
 - 교차 의존: Dev A/Dev C 변경 요청을 `docs/contracts/change_requests.md`(**Change Request - 2026-06-16 - [CR-B-SMALLTALK] 기내 스몰토크 적응형 진단 전환**)로 발행. 핵심은 Dev A의 **반응-먼저 대사 생성 + coherence guard 신설 + `missing_followup_question` 해제 + 고정 큐 비활성** 과 Dev C의 **슬롯 추출 완화**. 노드 ID(`FLIGHT_A_001_SEATMATE_SMALLTALK`)는 유지하므로 데모(`respond-dialog`)는 무영향.
 - 검증/후속: 본 항목은 계획·계약 문서 작성 단계(코드 미구현). 구현 시 §9 검증 명령(`uv run pytest backend/tests/dev_b/...`, `ruff`, `mypy`) 및 §8 테스트(probe 선택·bounded 종료·steering=0 추종·안전선 회귀·자연스러움 eval) 수행 예정.
-=======
 ## 2026-06-16 Developer C Realtime Transcript Multipart Fallback Fix
 
 Developer C investigated the Unreal log where realtime STT subtitles showed the
@@ -119,7 +117,6 @@ Verification:
 - `uv run pytest`: PASS, 261 passed, 1 existing `audioop` deprecation warning.
 - `uv run ruff check .`: PASS.
 - `uv run mypy .`: PASS.
->>>>>>> da247ca412a3555d661292366b6e0730e3df7d03
 
 ## 2026-06-16 Developer A Request: Bad Ending End-to-End 연동을 위한 B/C 협조 요청
 
