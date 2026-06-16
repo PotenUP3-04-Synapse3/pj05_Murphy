@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Protocol
 import json
 import os
+import jinja2
 
 import httpx
 
@@ -147,9 +148,9 @@ class OpenAINPCDialogueChatModel:
 
     def generate(self, payload: dict[str, Any], callbacks: list[Any] | None = None) -> dict[str, Any]:
         """LangChain의 ChatPromptTemplate과 LCEL 체인을 결합하여 NPC 대사를 생성합니다."""
-        persona = str(payload.get("persona_instruction", "concise, official, calm, and dry immigration officer.")).strip()
+        system_prompt = _render_developer_instructions(payload, use_short=False)
         prompt = ChatPromptTemplate.from_messages([
-            ("system", _developer_instructions(persona)),
+            ("system", system_prompt),
             ("user", "{input_payload}")
         ])
         chain = prompt | self._chat_model
@@ -199,9 +200,9 @@ class OpenAICompatibleNPCDialogueChatModel:
 
     def generate(self, payload: dict[str, Any], callbacks: list[Any] | None = None) -> dict[str, Any]:
         """LangChain의 ChatPromptTemplate과 LCEL 체인을 결합하여 NPC 대사를 생성합니다."""
-        persona = str(payload.get("persona_instruction", "concise, official, calm, and dry immigration officer.")).strip()
+        system_prompt = _render_developer_instructions(payload, use_short=True)
         prompt = ChatPromptTemplate.from_messages([
-            ("system", _developer_instructions(persona)),
+            ("system", system_prompt),
             ("user", "{input_payload}")
         ])
         chain = prompt | self._chat_model
@@ -254,10 +255,9 @@ def build_npc_dialogue_llm_client_from_environment(
 
     from langchain_core.runnables import RunnableLambda
 
-    # prompt_runner 정의
-    def make_prompt_and_input(payload: dict) -> list[BaseMessage]:
-        persona = str(payload.get("persona_instruction", "concise, official, calm, and dry immigration officer.")).strip()
-        system_prompt = _developer_instructions(persona)
+    # primary_prompt_runner 정의
+    def make_primary_prompt_and_input(payload: dict) -> list[BaseMessage]:
+        system_prompt = _render_developer_instructions(payload, use_short=False)
         prompt_template = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             ("user", "{input_payload}")
@@ -265,7 +265,18 @@ def build_npc_dialogue_llm_client_from_environment(
         input_payload_str = json.dumps(payload, ensure_ascii=False)
         return prompt_template.format_messages(input_payload=input_payload_str)
 
-    prompt_runner = RunnableLambda(make_prompt_and_input)
+    # fallback_prompt_runner 정의
+    def make_fallback_prompt_and_input(payload: dict) -> list[BaseMessage]:
+        system_prompt = _render_developer_instructions(payload, use_short=True)
+        prompt_template = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("user", "{input_payload}")
+        ])
+        input_payload_str = json.dumps(payload, ensure_ascii=False)
+        return prompt_template.format_messages(input_payload=input_payload_str)
+
+    primary_prompt_runner = RunnableLambda(make_primary_prompt_and_input)
+    fallback_prompt_runner = RunnableLambda(make_fallback_prompt_and_input)
 
     # output_formatter 정의
     def format_output(output: dict, fallback_model_name: str | None = None) -> dict:
@@ -300,7 +311,7 @@ def build_npc_dialogue_llm_client_from_environment(
             timeout=fb_timeout,
         ).with_structured_output(NPCDialogueLLMResult, method="json_mode", include_raw=True).with_retry(stop_after_attempt=2)
 
-        fallback_client = prompt_runner | fallback_model | RunnableLambda(lambda out: format_output(out, fallback_model_name=fb_model))
+        fallback_client = fallback_prompt_runner | fallback_model | RunnableLambda(lambda out: format_output(out, fallback_model_name=fb_model))
 
     primary_client: Runnable
     if not primary_api_key:
@@ -318,7 +329,7 @@ def build_npc_dialogue_llm_client_from_environment(
             timeout=primary_timeout,
         ).with_structured_output(NPCDialogueLLMResult, method="json_schema", strict=True, include_raw=True).with_retry(stop_after_attempt=2)
 
-        primary_client = prompt_runner | primary_model | RunnableLambda(lambda out: format_output(out))
+        primary_client = primary_prompt_runner | primary_model | RunnableLambda(lambda out: format_output(out))
 
     if fallback_client is not None:
         final_chain = primary_client.with_fallbacks(
@@ -329,6 +340,54 @@ def build_npc_dialogue_llm_client_from_environment(
 
     return primary_client
 
+
+
+def _render_developer_instructions(context: dict[str, Any], use_short: bool = False) -> str:
+    """외부 마크다운 프롬프트 파일을 읽어 Jinja2 템플릿으로 렌더링하는 헬퍼 함수입니다.
+    
+    use_short가 True일 경우 fallback LLM용 축약본 프롬프트를 렌더링합니다.
+    """
+    # parents[2]가 C:/5th_project/pj05_Murphy/backend/app 이므로 그 하위 prompts 폴더 설정
+    prompt_dir = Path(__file__).resolve().parents[2] / "prompts"
+    
+    filename = "npc_dialogue_prompt.short.md" if use_short else "npc_dialogue_prompt.md"
+    prompt_path = prompt_dir / filename
+    few_shots_path = prompt_dir / "npc_dialogue_few_shots.md"
+    
+    if not prompt_path.exists():
+        import logging
+        logger = logging.getLogger("backend.app.agents.agent_a")
+        logger.warning(f"Prompt template {filename} not found at {prompt_path}. Falling back to default instructions.")
+        return _developer_instructions(str(context.get("persona_instruction", "")))
+        
+    try:
+        render_context = context.copy()
+        
+        for key in ["allowed_mild", "allowed_strong", "non_verbal_palette"]:
+            if key in render_context:
+                val = render_context[key]
+                if isinstance(val, (list, set)):
+                    render_context[key] = ", ".join(f"'{x}'" for x in sorted(list(val)))
+                    
+        if "allowed_emotions" in render_context:
+            val = render_context["allowed_emotions"]
+            if isinstance(val, (list, set)):
+                render_context["allowed_emotions"] = ", ".join(val)
+                
+        template_content = prompt_path.read_text(encoding="utf-8")
+        template = jinja2.Template(template_content)
+        rendered = template.render(render_context)
+        
+        if few_shots_path.exists():
+            few_shots_content = few_shots_path.read_text(encoding="utf-8")
+            rendered += "\n\n" + few_shots_content
+            
+        return rendered
+    except Exception as e:
+        import logging
+        logger = logging.getLogger("backend.app.agents.agent_a")
+        logger.error(f"Failed to render prompt template {filename}: {e}. Falling back to default instructions.")
+        return _developer_instructions(str(context.get("persona_instruction", "")))
 
 
 def _developer_instructions(persona_instruction: str) -> str:

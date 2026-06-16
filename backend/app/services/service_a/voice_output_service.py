@@ -386,6 +386,18 @@ def _build_audio_url(audio_url_base: str | None, output_path: Path, runtime_root
     return f"{audio_url_base.rstrip('/')}/{relative_path}"
 
 
+def _apply_incivility_bias(
+    stability: float, style: float, speed: float, tier: int
+) -> tuple[float, float, float]:
+    """Incivility Tier 에 따른 stability, style, speed 오프셋(Bias)을 계산하여 적용합니다."""
+    if tier <= 0:
+        return stability, style, speed
+    stability = max(0.0, stability - 0.1 * tier)
+    style = min(1.0, style + 0.1 * tier)
+    speed = min(2.0, speed + 0.05 * tier)
+    return stability, style, speed
+
+
 def _build_provider_request(
     *,
     provider_name: str,
@@ -408,24 +420,36 @@ def _build_provider_request(
             
         emotion_params = EMOTION_TTS_PARAMETERS.get(emotion) if emotion else None
 
+        generation_profile = dialogue.get("generation_profile") or {}
+        incivility = generation_profile.get("incivility") or {}
+        incivility_tier = int(incivility.get("tier", 0))
+
         stability_val = dialogue.get("stability")
+        similarity_boost_val = dialogue.get("similarity_boost")
+        style_val = dialogue.get("style")
+        speed_val = dialogue.get("speed")
+
+        # 감정 및 incivility_tier 보정이 반영된 기본값 빌드
+        default_stability = emotion_params[0] if emotion_params else _elevenlabs_stability_for_tone(tone)
+        default_style = emotion_params[1] if emotion_params else _elevenlabs_style_for_tone(tone)
+        default_speed = emotion_params[2] if emotion_params else _elevenlabs_speed_for_tone(tone)
+        default_similarity = emotion_params[3] if emotion_params else 0.82
+
+        if incivility_tier > 0:
+            default_stability, default_style, default_speed = _apply_incivility_bias(
+                default_stability, default_style, default_speed, incivility_tier
+            )
+
         if stability_val is None:
-            default_stability = emotion_params[0] if emotion_params else _elevenlabs_stability_for_tone(tone)
             stability_val = _env_float("MURPHY_ELEVENLABS_STABILITY", default_stability)
 
-        similarity_boost_val = dialogue.get("similarity_boost")
         if similarity_boost_val is None:
-            default_similarity = emotion_params[3] if emotion_params else 0.82
             similarity_boost_val = _env_float("MURPHY_ELEVENLABS_SIMILARITY_BOOST", default_similarity)
 
-        style_val = dialogue.get("style")
         if style_val is None:
-            default_style = emotion_params[1] if emotion_params else _elevenlabs_style_for_tone(tone)
             style_val = _env_float("MURPHY_ELEVENLABS_STYLE", default_style)
 
-        speed_val = dialogue.get("speed")
         if speed_val is None:
-            default_speed = emotion_params[2] if emotion_params else _elevenlabs_speed_for_tone(tone)
             speed_val = _env_float("MURPHY_ELEVENLABS_SPEED", default_speed)
 
         elevenlabs_voice = _per_npc_voice_or_override(

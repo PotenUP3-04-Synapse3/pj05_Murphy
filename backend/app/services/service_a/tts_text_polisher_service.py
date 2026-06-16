@@ -1,4 +1,6 @@
-from typing import Any
+from typing import Any, Any as _Any
+import re
+from pathlib import Path
 
 from backend.app.services.service_a.dialogue_policy_service import DialoguePolicy
 from backend.app.services.service_a.npc_emotion_service import NPCEmotionState
@@ -10,19 +12,84 @@ def polish_tts_text(
     profile: PlayerLanguageProfile,
     emotion_state: NPCEmotionState,
     policy: DialoguePolicy,
+    non_verbal_palette: list[str] | None = None,
 ) -> str:
     """TTS 엔진이 구어체로 가장 어색하지 않게 발음하도록 대사 텍스트에 호흡 주기(Sentence Pause) 및 안내용 시작 어구를 삽입하여 조율 및 보정합니다."""
     text = _normalize_spaces(npc_text)
+    
     # 1. 자연스러운 가이드 대사(Recast)를 줄 때 학습자의 인지 부하를 줄이기 위해 끊어읽기 쉼표(Pause)를 명시적으로 삽입합니다.
     if policy.action == "recast_and_advance" and profile.complexity == "simple":
         text = _add_sentence_pause(text)
+        
     # 2. 강경하고 엄격한 감정 상태일 경우 머뭇거림을 나타내는 기호('...')를 온점('.')으로 치환하여 단호한 발음을 유도합니다.
-    if emotion_state.emotion in {"firm_official", "stern_official", "warning_official"}:
-        return text.replace("...", ".")
+    if emotion_state.emotion in {"firm_official", "stern_official", "warning_official", "anger", "suspicion"}:
+        text = text.replace("...", ".")
+        
     # 3. 정책 상 허용되는 경우 대화 앞에 확인 알림 어구(Alright., Okay.)를 붙여 자연스러움을 증가시킵니다.
     if policy.add_officer_ack and not text.startswith(("Alright.", "Okay.")):
-        return f"Alright. {text}"
-    return text
+        text = f"Alright. {text}"
+        
+    # 4. non_verbal_palette가 존재할 경우, 감정 상태에 맞춰 자연스럽게 비구어 표현을 자동 삽입합니다.
+    if non_verbal_palette:
+        has_verbal = any(item in text for item in non_verbal_palette)
+        if not has_verbal and "<break" not in text:
+            selected_non_verbal = None
+            if emotion_state.emotion in {"anger", "suspicion", "disgust"}:
+                negatives = [item for item in non_verbal_palette if item in {"Hmph.", "Tsk.", "Hmm..."}]
+                if negatives:
+                    selected_non_verbal = negatives[0]
+            elif emotion_state.emotion in {"joy", "smirk"}:
+                positives = [item for item in non_verbal_palette if item in {"Haha!", "Oh!"}]
+                if positives:
+                    selected_non_verbal = positives[0]
+                    
+            if not selected_non_verbal:
+                breaks = [item for item in non_verbal_palette if "<break" in item]
+                if breaks:
+                    selected_non_verbal = breaks[0]
+                elif non_verbal_palette:
+                    selected_non_verbal = non_verbal_palette[0]
+                    
+            if selected_non_verbal:
+                if "<break" in selected_non_verbal:
+                    if ". " in text:
+                        parts = text.split(". ", 1)
+                        text = f"{parts[0]}. {selected_non_verbal} {parts[1]}"
+                    else:
+                        text = f"{text} {selected_non_verbal}"
+                else:
+                    text = f"{selected_non_verbal} {text}"
+                    
+    # 최종 결과 반환 시 SSML 검증 및 시간 한계(Clamp)를 항상 수행합니다.
+    return validate_and_clamp_ssml(text)
+
+
+def validate_and_clamp_ssml(text: str) -> str:
+    """TTS 텍스트 내의 SSML break 태그 유효성을 검증하고, 시간 범위를 0.0s~3.0s로 강제 조율합니다."""
+    pattern = r'(<break\s+time=["\']([^"\'\s]+)["\']\s*/>)'
+    
+    def replacer(match: re.Match) -> str:
+        time_str = match.group(2).strip()
+        time_match = re.match(r'^([0-9.]+)(ms|s)?$', time_str)
+        if not time_match:
+            return '<break time="0.5s"/>'
+            
+        val_str = time_match.group(1)
+        unit = time_match.group(2)
+        
+        try:
+            val = float(val_str)
+        except ValueError:
+            return '<break time="0.5s"/>'
+            
+        if unit == 'ms':
+            val = val / 1000.0
+        
+        # 0.0s ~ 3.0s 범위로 클램핑
+        clamped = max(0.0, min(3.0, val))
+        return f'<break time="{clamped:.1f}s"/>'
+        
+    return re.sub(pattern, replacer, text)
 
 
 def build_tts_style_metadata(
