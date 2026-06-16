@@ -1275,3 +1275,141 @@ Shim 클래스가 존재하므로 당장의 통합 테스트 및 실행은 깨�
 - `uv sync` 완료.
 - `uv run pytest` 결과 231개 전체 테스트 성공 (Shim 미들웨어가 정상적으로 경고를 출력하며 이벤트를 위임하여 로깅되는 것 확인).
 - `uv run ruff check .` 및 `uv run mypy .` 무오류 통과.
+
+## Change Request - 2026-06-16 - Understanding Agent Slot Value Normalization and Hesitation Handling
+
+### Requested By
+
+Developer B
+
+### Affected Owner
+
+Developer C / Sean Han
+
+### Reason
+
+플레이어가 단순 망설임("Um,")을 발화했을 때, Understanding Agent가
+`intent_success=True`로 오인식하고 필수 슬롯 `polite_response`에
+`"short acknowledgement / hesitant start"`라는 자유 텍스트 값을 채워
+넣었습니다. 이 값은 노드의 `allowed_slot_values`(예: `offered_help`,
+`declined_politely`, `short_acknowledgement`)에 실재하지 않는 후보입니다.
+
+Developer B는 `ScenarioStateMachine`에 슬롯 값 유효성 검증을 추가하여 이
+오판정을 2차 방어선에서 차단할 예정이나(`docs/workplan-dev-b.md`), 근본
+원인은 Understanding Agent의 슬롯 채움 단계에 있습니다.
+
+### Proposed Contract Change
+
+1. Understanding Agent가 슬롯 값을 채울 때 해당 노드의 `allowed_slot_values`
+   후보 중 하나로 정규화(canonicalize)하도록 제안합니다.
+2. 발화를 허용 후보로 매핑할 수 없거나 단순 망설임/무의미 발화인 경우,
+   임의 자유 텍스트를 채우지 말고 `intent_success=False` 또는
+   `needs_clarification=True`(혹은 해당 슬롯을 `missing_slots`에 포함)로
+   반환하도록 제안합니다.
+3. 추가로, 통합 어댑터(`backend/app/integrations/dev_a_npc_dialogue_client.py`)의
+   `npc_recast_line_candidate` 강제 None 필터링이 다음 질문 후보까지 함께
+   제거하여 Dialogue Agent의 다음 질문 작문에 영향을 주는지 점검을
+   요청합니다.
+
+### Compatibility Impact
+
+스키마 변경은 없습니다. 기존 필드(`intent_success`, `needs_clarification`,
+`missing_slots`, `extracted_slots`)의 채움 정책만 강화됩니다. Developer B의
+규칙 검증과 독립적으로 동작하며, 둘 다 적용 시 동일한 안전 동작으로
+수렴합니다.
+
+### Temporary Workaround
+
+Developer B의 `ScenarioStateMachine` 슬롯 값 검증이 적용되면, 허용 후보에
+없는 슬롯 값은 SUCCESS가 아니라 clarify(REASK)로 라우팅되어 잘못된 ADVANCE가
+차단됩니다.
+
+### Verified Runtime Reproduction (2026-06-16 업데이트 — Developer C 조치 필수)
+
+Developer B의 슬롯 값 검증을 적용·검증(`uv run pytest` 94 passed)한 뒤
+`/respond-dialog`로 재현 테스트한 결과, 이 변경 요청의 **우선순위가
+긴급(critical)으로 상향**되었습니다. 이유는 다음과 같습니다.
+
+`FLIGHT_A_001_SEATMATE_SMALLTALK` 노드("Could I borrow your pen ...")에서
+플레이어가 off-topic 관용구 `"Okay, you're on."`(내기를 수락한다는 의미)을
+발화했을 때, Understanding Agent가 반환한 실제 런타임 출력은 다음과 같습니다.
+
+```text
+player_text:         "Okay, you're on."
+intent_success:      true
+confidence:          0.98
+answer_relevance:    "on_topic"
+needs_clarification: false
+extracted_slots:     {"polite_response": "short_acknowledgement"}   # 유효한 정규값
+missing_slots:       []
+```
+
+즉, 최초 리포트의 자유 텍스트 쓰레기값(`"short acknowledgement /
+hesitant start"`)과 달리, 지금은 **허용 후보군에 실재하는 정규값
+`short_acknowledgement`** 가 confidence 0.98 / on_topic 으로 반환됩니다.
+
+이로 인해 Developer B의 멤버십 기반 슬롯 값 검증은 이 케이스를 **원천적으로
+잡을 수 없습니다**(값이 유효하므로 통과가 정상 동작). 상태 머신이 규칙
+기반으로 사용할 수 있는 모든 신호(`intent_success`, `missing_slots`,
+슬롯 값 유효성, `confidence`, `answer_relevance`, `needs_clarification`)가
+SUCCESS를 가리키므로, 이 오판정은 **Understanding Agent(Developer C) 단계
+에서만 차단 가능**합니다.
+
+### Strengthened Request (정확도 차원 보강 요청)
+
+기존 정규화 요청(위 1~2번)에 더해, off-topic / 관용구 / 무의미 발화를
+질문의 의도와 무관함에도 정규 슬롯 값으로 confident 매핑하지 않도록
+Understanding Agent의 **분류 정확도** 보강을 요청합니다. 구체적으로:
+
+- 발화가 노드의 `required_intents` 의미에 실제로 부합하는지 먼저 판정하고,
+  부합하지 않으면 `answer_relevance="off_topic"` 또는
+  `intent_success=False`로 반환.
+- 슬롯 값 매핑의 근거(`slot_evidence`)가 약하거나 추론에 가까우면
+  높은 confidence(0.9+)를 부여하지 않도록 조정.
+
+## Change Request - 2026-06-16 - Dialogue Agent Speaker Role Confusion and Missing Follow-up Question
+
+### Requested By
+
+Developer B
+
+### Affected Owner
+
+Developer A / kimyonghee
+
+### Reason
+
+시나리오가 (오)판정으로 SUCCESS 처리된 뒤, Dialogue Agent에서 두 가지 품질
+문제가 관찰되었습니다.
+
+1. 화자 역할 혼동/환각: 플레이어가 해야 할 추천 표현("Sure, here you are.")에
+   대고 NPC 본인이 고맙다고 덧붙이는 비자연적 대사("Sure, here you are.
+   Thanks.")를 생성했습니다.
+2. 다음 질문 작문 누락: `dialogue_seed`의 `surface_goal`(예:
+   `ask_travel_purpose_smalltalk`)을 전달받았음에도, 첫 턴에서 리액션만 단답형
+   으로 생성하고 다음 노드 질문("Are you visiting New York for a trip?")을
+   이어 붙이지 못했습니다.
+
+### Proposed Contract Change
+
+1. Dialogue Agent 프롬프트에서 화자 역할(플레이어 발화 vs NPC 발화)을 명확히
+   구분하여, 플레이어 추천 표현을 NPC 대사로 흡수하지 않도록 보강을
+   제안합니다.
+2. `dialogue_seed.surface_goal`을 활용해 직전 답변에 대한 리액션 이후 다음
+   질문을 자체 작문하여 결합하도록 보강을 제안합니다.
+
+참고: Developer B의 슬롯 값 검증 수정으로 "Um," 류 모호 발화가 더 이상
+SUCCESS로 전달되지 않으므로, 본 현상의 발현 조건(시나리오가 성공으로 잘못
+판정됨) 자체가 상당 부분 사라집니다. 다만 정상 SUCCESS 턴에서도 위 품질
+문제가 재현될 수 있어 별도 보강을 요청합니다.
+
+### Compatibility Impact
+
+Developer A 소유 프롬프트/생성 로직 내부 개선이며, A/B/C 간 스키마·계약 변경은
+없습니다.
+
+### Temporary Workaround
+
+`/respond-dialog` 테스트 시 "Sure, here is my pen."과 같이 의도에 부합하는
+구체적 영어 답변을 입력하면 보다 자연스러운 NPC 전환 대사를 확인할 수
+있습니다.

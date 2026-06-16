@@ -82,21 +82,71 @@ class ScenarioStateMachine:
         if not payload.node_context.allowed_next_nodes:
             raise ValueError("node_context.allowed_next_nodes must not be empty")
 
+    def _has_invalid_required_slot_value(self, payload: DevBPolicyInput) -> bool:
+        """
+        요구되는 슬롯(required_slots) 중 허용 가능한 값 목록(allowed_slot_values)이 정의된 슬롯이 있을 때,
+        실제로 추출된 슬롯 값(extracted_slots)이 존재하지만 그 값이 허용 후보군에 실재하지 않는 경우 True를 반환합니다.
+        추출되지 않은(누락된) 슬롯은 여기서 검증하지 않고 missing_slots 및 retry/hint 로직에서 처리되도록 합니다.
+        """
+        allowed = payload.node_context.allowed_slot_values or {}
+        extracted = payload.understanding.extracted_slots or {}
+        for slot in payload.node_context.required_slots:
+            candidates = allowed.get(slot)
+            if not candidates:
+                # 허용값 목록(후보군)이 정의되지 않은 자유 서술형 슬롯은 검증 생략
+                continue
+            if slot in extracted:
+                value = extracted[slot]
+                if value is None:
+                    return True
+                
+                # stay_duration의 경우 추출값이 "five days", "one week" 등 구체적인 문자열일 수 있으므로
+                # allowed_slot_values 범주인 ("days", "weeks", "months", "until_date")와의 매핑 검사를 별도로 지원합니다.
+                if slot == "stay_duration":
+                    matched = False
+                    for candidate in candidates:
+                        if candidate == "days" and ("day" in value or "days" in value):
+                            matched = True
+                            break
+                        elif candidate == "weeks" and ("week" in value or "weeks" in value):
+                            matched = True
+                            break
+                        elif candidate == "months" and ("month" in value or "months" in value):
+                            matched = True
+                            break
+                        elif candidate == "until_date" and "until" in value:
+                            matched = True
+                            break
+                    if not matched:
+                        return True
+                else:
+                    if value not in candidates:
+                        # 추출된 값이 후보군에 매핑되지 않는 유효하지 않은 값임
+                        return True
+        return False
+
     def _is_success(self, payload: DevBPolicyInput) -> bool:
         """
-        플레이어의 발화 결과가 성공 의도(Intent Success)를 충족하고, 요구되는 중요 슬롯 정보가 누락되지 않았는지 판단합니다.
+        플레이어의 발화 결과가 성공 의도(Intent Success)를 충족하고, 요구되는 중요 슬롯 정보가 누락되지 않았으며,
+        추출된 슬롯 값들이 유효한 후보군에 포함되는지 검사합니다.
         """
-        return payload.understanding.intent_success and not payload.understanding.missing_slots
+        return (
+            payload.understanding.intent_success
+            and not payload.understanding.missing_slots
+            and not self._has_invalid_required_slot_value(payload)
+        )
 
     def _is_unclear(self, payload: DevBPolicyInput) -> bool:
         """
-        사용자의 답변이 모호한지(Confidence 부족, 질문과 무관 등) 또는 다시 말해달라는 요청(needs_repeat)인지 검사합니다.
+        사용자의 답변이 모호한지(Confidence 부족, 질문과 무관 등) 또는 다시 말해달라는 요청(needs_repeat)이거나,
+        추출된 필수 슬롯의 값이 유효하지 않은 경우 검사합니다.
         """
         return (
             payload.input_source.needs_repeat
             or payload.understanding.needs_clarification
             or payload.understanding.confidence < 0.5
             or payload.understanding.answer_relevance == "partially_related"
+            or self._has_invalid_required_slot_value(payload)
         )
 
     def _should_give_hint(self, payload: DevBPolicyInput) -> bool:
