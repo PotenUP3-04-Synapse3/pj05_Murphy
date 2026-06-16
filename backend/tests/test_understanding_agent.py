@@ -69,7 +69,7 @@ def test_understanding_agent_uses_llm_client_in_llm_mode() -> None:
 
     assert output.intent == "state_visit_purpose"
     assert output.intent_success is True
-    assert output.confidence == 0.91
+    assert output.confidence == 0.89
     assert output.extracted_slots == {"visit_purpose": "tourism"}
     assert llm_client.calls[0]["player_text"] == "I want to visit museums."
     assert llm_client.calls[0]["node_context"]["node_id"] == "IMM_002_PURPOSE"
@@ -79,6 +79,8 @@ def test_understanding_agent_uses_llm_client_in_llm_mode() -> None:
     assert agent.last_trace["tool_calls"][0]["tool_name"] == "understanding_llm_client.analyze"
     assert agent.last_trace["tool_calls"][0]["status"] == "completed"
     assert agent.last_trace["tool_calls"][0]["output_summary"]["intent"] == "state_visit_purpose"
+    assert agent.last_trace["postprocessing"]["confidence_evidence_guard_applied"] is True
+    assert agent.last_trace["postprocessing"]["weak_required_slot_evidence"] is True
 
 
 def test_understanding_agent_falls_back_to_rule_mode_when_llm_output_is_forbidden() -> None:
@@ -313,6 +315,52 @@ def test_understanding_agent_filters_generic_llm_slot_evidence_to_node_slots() -
     ]
 
 
+def test_understanding_agent_rejects_off_topic_idiom_despite_valid_polite_response_value() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "respond_to_seatmate_request",
+            "intent_success": True,
+            "confidence": 0.98,
+            "meaning_summary_kr": "The player gave a short acknowledgement.",
+            "emotion": "calm",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "none",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "slot_evidence": [
+                {
+                    "slot": "polite_response",
+                    "value": "short_acknowledgement",
+                    "confidence": 0.98,
+                    "evidence_text": "Okay, you're on.",
+                }
+            ],
+            "extracted_slots": {"polite_response": "short_acknowledgement"},
+            "missing_slots": [],
+            "needs_clarification": False,
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text(
+        "Okay, you're on.",
+        _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK"),
+    )
+
+    assert output.intent == "respond_to_seatmate_request"
+    assert output.intent_success is False
+    assert output.confidence < 0.9
+    assert output.answer_relevance == "off_topic"
+    assert output.extracted_slots == {}
+    assert output.missing_slots == ["polite_response"]
+    assert output.needs_clarification is True
+    assert output.slot_evidence == []
+
+
 def test_understanding_agent_rule_mode_recognizes_allowed_visit_purpose_values() -> None:
     agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
 
@@ -377,3 +425,20 @@ def test_understanding_agent_rule_mode_recognizes_alpha_flight_and_baggage_slot_
         assert output.intent_success is True
         assert output.extracted_slots == {slot_name: slot_value}
         assert output.missing_slots == []
+
+
+def test_understanding_agent_rule_mode_rejects_off_topic_idiom_for_flight_polite_response() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text(
+        "Okay, you're on.",
+        _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK"),
+    )
+
+    assert output.intent == "respond_to_seatmate_request"
+    assert output.intent_success is False
+    assert output.confidence < 0.9
+    assert output.answer_relevance == "off_topic"
+    assert output.extracted_slots == {}
+    assert output.missing_slots == ["polite_response"]
+    assert output.needs_clarification is True
