@@ -118,6 +118,16 @@ ALPHA_SLOT_VALUE_KEYWORDS: dict[str, dict[str, tuple[str, ...]]] = {
     },
 }
 
+ALPHA_SLOT_OFF_TOPIC_PHRASES: dict[str, tuple[str, ...]] = {
+    "polite_response": (
+        "you're on",
+        "you are on",
+        "challenge accepted",
+        "it's a bet",
+        "deal with it",
+    ),
+}
+
 
 class UnderstandingAgent:
     def __init__(
@@ -159,6 +169,7 @@ class UnderstandingAgent:
 
             output, slot_evidence_postprocessing = _apply_generic_slot_evidence(
                 output,
+                player_text,
                 node_context,
             )
             output, slot_repair_postprocessing = _repair_missing_allowed_slots(
@@ -256,6 +267,9 @@ class UnderstandingAgent:
                 missing_slots=node_context.required_slots,
                 needs_clarification=False,
             )
+
+        if _has_required_intent_mismatch(player_text, node_context):
+            return _off_topic_required_slot_output(player_text, node_context)
 
         if "stay_duration" in node_context.required_slots:
             if stay_duration is not None:
@@ -400,6 +414,9 @@ def _match_alpha_allowed_slot_value(
     helper is keyed by slot name and allowed value, not by scenario node id, so
     adding another node that reuses the same slot can reuse the same fallback.
     """
+
+    if _has_slot_intent_mismatch(player_text, slot_name):
+        return None
 
     normalized_text = _normalize_for_keyword_match(player_text)
     slot_value_keywords = ALPHA_SLOT_VALUE_KEYWORDS.get(slot_name, {})
@@ -546,6 +563,7 @@ def _repair_missing_allowed_slots(
 
 def _apply_generic_slot_evidence(
     output: UnderstandingOutput,
+    player_text: str,
     node_context: NodeContext,
 ) -> tuple[UnderstandingOutput, dict[str, Any]]:
     allowed_slots = _allowed_slot_names(node_context)
@@ -553,7 +571,11 @@ def _apply_generic_slot_evidence(
     dropped_slots: list[str] = []
 
     for evidence in output.slot_evidence:
-        if evidence.slot in allowed_slots:
+        if evidence.slot in allowed_slots and _is_supported_slot_evidence(
+            evidence,
+            player_text,
+            node_context,
+        ):
             accepted_evidence.append(evidence)
         else:
             dropped_slots.append(evidence.slot)
@@ -561,20 +583,54 @@ def _apply_generic_slot_evidence(
     extracted_slots = {
         slot: value
         for slot, value in output.extracted_slots.items()
-        if slot in allowed_slots and value
+        if slot in allowed_slots
+        and value
+        and _is_supported_extracted_slot_value(
+            slot_name=slot,
+            slot_value=value,
+            player_text=player_text,
+            node_context=node_context,
+        )
     }
     for evidence in accepted_evidence:
         extracted_slots.setdefault(evidence.slot, evidence.value)
 
+    intent_mismatch = _has_required_intent_mismatch(player_text, node_context)
+    if intent_mismatch:
+        accepted_evidence = []
+        extracted_slots = {
+            slot: value
+            for slot, value in extracted_slots.items()
+            if slot not in node_context.required_slots
+        }
+
     missing_slots = [
         slot for slot in node_context.required_slots if slot not in extracted_slots
     ]
+    weak_required_slot_evidence = _has_weak_required_slot_evidence(
+        accepted_evidence,
+        extracted_slots,
+        node_context,
+    )
+    answer_relevance = "off_topic" if intent_mismatch else output.answer_relevance
+    confidence = _guard_confidence_for_evidence(
+        output.confidence,
+        intent_mismatch=intent_mismatch,
+        weak_required_slot_evidence=weak_required_slot_evidence,
+    )
+    confidence_guard_applied = confidence != output.confidence
     applied = bool(accepted_evidence) and (
         any(evidence.slot not in output.extracted_slots for evidence in accepted_evidence)
         or missing_slots != output.missing_slots
     )
     filtered = len(accepted_evidence) != len(output.slot_evidence)
-    if not applied and not filtered and missing_slots == output.missing_slots:
+    if (
+        not applied
+        and not filtered
+        and missing_slots == output.missing_slots
+        and not intent_mismatch
+        and not confidence_guard_applied
+    ):
         return output, {
             "generic_slot_evidence_applied": False,
             "accepted_slot_evidence": [],
@@ -584,12 +640,21 @@ def _apply_generic_slot_evidence(
     has_clear_required_slots = len(missing_slots) == 0
     normalized = output.model_copy(
         update={
-            "intent_success": output.intent_success
-            or (
+            "intent_success": (
                 has_clear_required_slots
-                and output.answer_relevance != "off_topic"
+                and answer_relevance != "off_topic"
+                and output.risk_delta <= 0
+                and output.intent_success
+            )
+            or (
+                bool(accepted_evidence)
+                and has_clear_required_slots
+                and answer_relevance != "off_topic"
                 and output.risk_delta <= 0
             ),
+            "confidence": confidence,
+            "answer_relevance": answer_relevance,
+            "ambiguity_type": "off_topic_response" if intent_mismatch else output.ambiguity_type,
             "slot_evidence": accepted_evidence,
             "extracted_slots": extracted_slots,
             "missing_slots": missing_slots,
@@ -598,6 +663,9 @@ def _apply_generic_slot_evidence(
     )
     return normalized, {
         "generic_slot_evidence_applied": applied,
+        "intent_relevance_guard_applied": intent_mismatch,
+        "confidence_evidence_guard_applied": confidence_guard_applied,
+        "weak_required_slot_evidence": weak_required_slot_evidence,
         "accepted_slot_evidence": [evidence.slot for evidence in accepted_evidence],
         "dropped_slot_evidence": dropped_slots,
     }
@@ -611,6 +679,172 @@ def _allowed_slot_names(node_context: NodeContext) -> set[str]:
     }
 
 
+def _has_weak_required_slot_evidence(
+    accepted_evidence: list[SlotEvidence],
+    extracted_slots: dict[str, str],
+    node_context: NodeContext,
+) -> bool:
+    """Return whether a filled required slot lacks strong text evidence.
+
+    Beginner guide:
+    A high confidence score should mean "we have strong evidence."  If the LLM
+    fills a required slot but does not provide matching `slot_evidence`, C keeps
+    the slot value for compatibility but lowers the confidence below 0.9.
+    """
+
+    if not node_context.required_slots:
+        return False
+
+    evidence_by_slot = {evidence.slot: evidence for evidence in accepted_evidence}
+    for slot in node_context.required_slots:
+        if slot not in extracted_slots:
+            continue
+        evidence = evidence_by_slot.get(slot)
+        if evidence is None:
+            return True
+        if evidence.confidence < 0.85 or not evidence.evidence_text.strip():
+            return True
+    return False
+
+
+def _guard_confidence_for_evidence(
+    confidence: float,
+    *,
+    intent_mismatch: bool,
+    weak_required_slot_evidence: bool,
+) -> float:
+    """Lower overconfident Understanding scores when evidence is weak.
+
+    Beginner guide:
+    Developer B consumes C's confidence as a signal.  This helper keeps obvious
+    off-topic phrases lower, and also prevents a 0.9+ score when a required slot
+    was filled without strong evidence.
+    """
+
+    if intent_mismatch:
+        return min(confidence, 0.72)
+    if weak_required_slot_evidence:
+        return min(confidence, 0.89)
+    return confidence
+
+
+def _has_required_intent_mismatch(player_text: str, node_context: NodeContext) -> bool:
+    """Return whether the transcript clearly does not answer the required slot.
+
+    Beginner guide:
+    This is a small deterministic guard that runs after the LLM.  It does not
+    try to understand every possible sentence.  It only catches known phrases
+    that are dangerous because they look like a valid short answer, but mean
+    something unrelated to the current scenario task.
+    """
+
+    return any(_has_slot_intent_mismatch(player_text, slot) for slot in node_context.required_slots)
+
+
+def _has_slot_intent_mismatch(player_text: str, slot_name: str) -> bool:
+    """Return whether a phrase is a known mismatch for one slot.
+
+    Beginner guide:
+    For the seatmate pen request, "Okay" can be a valid short acknowledgement.
+    "Okay, you're on" is different: it is an idiom for accepting a challenge or
+    bet.  This helper blocks that kind of phrase before it becomes a valid slot
+    value.
+    """
+
+    normalized_text = _normalize_for_keyword_match(player_text)
+    return any(
+        _normalize_for_keyword_match(phrase) in normalized_text
+        for phrase in ALPHA_SLOT_OFF_TOPIC_PHRASES.get(slot_name, ())
+    )
+
+
+def _off_topic_required_slot_output(player_text: str, node_context: NodeContext) -> UnderstandingOutput:
+    """Build a safe Understanding output for a known off-topic phrase.
+
+    Beginner guide:
+    Developer B decides the branch later, but it relies on C's Understanding
+    result.  When C knows the player did not answer the required intent, C must
+    return missing slots and a lower confidence instead of a confident success.
+    """
+
+    primary_required_slot = node_context.required_slots[0] if node_context.required_slots else "unknown"
+    return UnderstandingOutput(
+        intent=_required_intent_for_slot(node_context, primary_required_slot),
+        intent_success=False,
+        confidence=0.72,
+        meaning_summary_kr="The player used an off-topic idiom instead of answering the current request.",
+        emotion="confused",
+        answer_relevance="off_topic",
+        ambiguity_type="off_topic_response",
+        risk_delta=0,
+        risk_reason="No immigration risk expression was found.",
+        risk_tags=[],
+        extracted_slots={},
+        missing_slots=node_context.required_slots,
+        needs_clarification=True,
+    )
+
+
+def _is_supported_slot_evidence(
+    evidence: SlotEvidence,
+    player_text: str,
+    node_context: NodeContext,
+) -> bool:
+    """Return whether one LLM slot evidence item is allowed and grounded.
+
+    Beginner guide:
+    The LLM can propose a slot name and value.  C accepts it only when the slot
+    belongs to the current node and, for enum-like slots, the value has clear
+    support in the player text.  This prevents a valid-looking enum value from
+    passing through when the sentence means something else.
+    """
+
+    if not _is_supported_extracted_slot_value(
+        slot_name=evidence.slot,
+        slot_value=evidence.value,
+        player_text=player_text,
+        node_context=node_context,
+    ):
+        return False
+
+    allowed_values = node_context.allowed_slot_values.get(evidence.slot, [])
+    if not allowed_values:
+        return True
+    if _match_alpha_allowed_slot_value(player_text, evidence.slot, [evidence.value]) == evidence.value:
+        return True
+
+    normalized_value = _normalize_for_keyword_match(evidence.value)
+    normalized_text = _normalize_for_keyword_match(player_text)
+    return bool(normalized_value and normalized_value in normalized_text)
+
+
+def _is_supported_extracted_slot_value(
+    *,
+    slot_name: str,
+    slot_value: str,
+    player_text: str,
+    node_context: NodeContext,
+) -> bool:
+    """Return whether an extracted slot value is valid for the current text.
+
+    Beginner guide:
+    Some slots are free text, such as a hotel name.  Some slots have allowed
+    enum values, such as `polite_response` or `visit_purpose`.  For extracted
+    slots, C keeps valid enum values because the LLM may do legitimate semantic
+    normalization such as "museums" -> "tourism".  Known mismatch phrases are
+    still blocked before they can become a success.
+    """
+
+    allowed_values = node_context.allowed_slot_values.get(slot_name, [])
+    if not allowed_values:
+        return True
+    if slot_value not in allowed_values:
+        return False
+    if _has_slot_intent_mismatch(player_text, slot_name):
+        return False
+    return True
+
+
 def _merge_postprocessing(
     slot_evidence_postprocessing: dict[str, Any],
     slot_repair_postprocessing: dict[str, Any],
@@ -618,6 +852,8 @@ def _merge_postprocessing(
     slot_evidence_changed = bool(
         slot_evidence_postprocessing.get("generic_slot_evidence_applied")
         or slot_evidence_postprocessing.get("dropped_slot_evidence")
+        or slot_evidence_postprocessing.get("intent_relevance_guard_applied")
+        or slot_evidence_postprocessing.get("confidence_evidence_guard_applied")
     )
     slot_repair_changed = bool(slot_repair_postprocessing.get("slot_repair_applied"))
     if slot_evidence_changed and slot_repair_changed:
