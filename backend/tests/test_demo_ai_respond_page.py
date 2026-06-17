@@ -60,7 +60,7 @@ def test_respond_dialog_page_is_served_without_changing_original_demo() -> None:
     assert "chapter_id: node.chapter_id" in response.text
     assert 'sceneId: "AIRPLANE_CABIN"' in response.text
     assert 'npcId: "arabella"' in response.text
-    assert 'npcId: "OFFICER_HALE"' in response.text
+    assert 'npcId: "hale"' in response.text
     assert 'speaker: "Officer Hale"' in response.text
     assert 'body.npc?.speaker || "Officer Hale"' in response.text
     assert "Officer Miller" not in response.text
@@ -172,6 +172,7 @@ def test_session_usage_endpoint_can_filter_by_request_ids(tmp_path, monkeypatch)
                 "output_tokens": 12,
                 "total_tokens": 42,
                 "estimated_cost_usd": 0.0035,
+                "models": [],
             }
         ],
     }
@@ -212,6 +213,7 @@ def test_session_usage_endpoint_normalizes_alternate_usage_keys(tmp_path, monkey
         "output_tokens": 8,
         "total_tokens": 20,
         "estimated_cost_usd": 0.000009,
+        "models": [],
     }
 
 
@@ -280,6 +282,7 @@ def test_session_usage_endpoint_sums_top_level_model_usage(tmp_path, monkeypatch
             "output_tokens": 50,
             "total_tokens": 150,
             "estimated_cost_usd": 0.01,
+            "models": [],
         },
         {
             "session_id": "session_a",
@@ -289,6 +292,7 @@ def test_session_usage_endpoint_sums_top_level_model_usage(tmp_path, monkeypatch
             "output_tokens": 12,
             "total_tokens": 42,
             "estimated_cost_usd": 0.0035,
+            "models": [],
         },
     ]
 
@@ -338,6 +342,7 @@ def test_session_usage_endpoint_filters_by_session_id(tmp_path, monkeypatch) -> 
                 "output_tokens": 2,
                 "total_tokens": 3,
                 "estimated_cost_usd": 0.0,
+                "models": [],
             }
         ],
     }
@@ -449,6 +454,7 @@ def test_latest_agent_run_endpoint_returns_compact_node_summaries(tmp_path, monk
     assert body["agent_run_id"] == "latest_run"
     assert body["request_id"] == "req_demo"
     assert body["model_usage"] == {
+        "model_name": "",
         "input_tokens": 10,
         "output_tokens": 5,
         "total_tokens": 15,
@@ -463,3 +469,50 @@ def test_latest_agent_run_endpoint_returns_compact_node_summaries(tmp_path, monk
     ]
     assert body["nodes"][0]["output"]["player_text_preview"] == "I'm here to visit my uncle."
     assert body["summary"]["output"]["next_node_id"] == "IMM_003_DURATION"
+
+
+def test_demo_npc_roster_endpoint() -> None:
+    client = TestClient(app)
+    response = client.get("/api/game/ai/demo/npc-roster")
+    assert response.status_code == 200
+    data = response.json()
+    assert "CH0_01_FLIGHT_SMALLTALK" in data
+    assert "CH0_03_IMMIGRATION_CHECK" in data
+    assert "CH0_04_BAGGAGE_CLAIM" in data
+    assert any(npc["id"] == "hale" for npc in data["CH0_03_IMMIGRATION_CHECK"])
+    assert any(npc["id"] == "brielle" for npc in data["CH0_04_BAGGAGE_CLAIM"])
+
+
+def test_demo_eokkka_options_endpoint() -> None:
+    client = TestClient(app)
+    response = client.get("/api/game/ai/demo/eokkka/options")
+    assert response.status_code == 200
+    data = response.json()
+    assert "locations" in data
+    assert "customs_items" in data
+    assert len(data["locations"]) > 0
+    assert len(data["customs_items"]) > 0
+
+
+def test_demo_eokkka_assign_endpoint() -> None:
+    client = TestClient(app)
+
+    # 1. Deterministic assignment by level
+    response_lvl5 = client.get("/api/game/ai/demo/eokkka/assign?level=5")
+    assert response_lvl5.status_code == 200
+    data_lvl5_a = response_lvl5.json()
+
+    response_lvl5_b = client.get("/api/game/ai/demo/eokkka/assign?level=5")
+    data_lvl5_b = response_lvl5_b.json()
+
+    # Must be deterministic (same output for same seed level)
+    assert data_lvl5_a == data_lvl5_b
+    assert "assigned_visit_location" in data_lvl5_a
+    assert "random_customs_item" in data_lvl5_a
+
+    # 2. Random assignment when no level is given
+    response_rand = client.get("/api/game/ai/demo/eokkka/assign")
+    assert response_rand.status_code == 200
+    data_rand = response_rand.json()
+    assert "assigned_visit_location" in data_rand
+    assert "random_customs_item" in data_rand

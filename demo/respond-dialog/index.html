@@ -164,6 +164,7 @@
     }
 
     input[type="file"],
+    select,
     textarea {
       width: 100%;
       border: 1px solid var(--line);
@@ -171,6 +172,10 @@
       background: #fff;
       color: var(--ink);
       font: inherit;
+    }
+
+    select {
+      padding: 9px;
     }
 
     input[type="file"] {
@@ -515,6 +520,10 @@
           <button class="chapter" type="button" data-chapter-id="CH0_04_BAGGAGE_CLAIM">Baggage</button>
           <button class="chapter" type="button" data-chapter-id="CH0_05_RESULT">Result</button>
         </div>
+        <div id="npcSelectContainer" style="margin-top: 14px;">
+          <label for="npcSelect" style="margin-top: 0;">NPC</label>
+          <select id="npcSelect"></select>
+        </div>
       </section>
 
       <section>
@@ -549,8 +558,35 @@
             <div class="realtime-subtitle-text" id="realtimeSubtitleText">-</div>
             <div class="recording-meta" id="realtimeFinalTranscript">Final transcript: -</div>
           </div>
-        </div>
         <button class="primary" id="continueButton" type="button">Continue</button>
+
+        <div id="manualInputContainer" style="margin-top: 16px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--surface-soft);">
+          <label for="manualText" style="margin-top: 0;">Manual Text Input</label>
+          <textarea id="manualText" style="min-height: 80px; font-family: inherit; font-size: inherit; padding: 8px; margin-bottom: 8px;" placeholder="Type your response here..."></textarea>
+          <button class="primary" id="sendTextButton" type="button" style="margin-top: 0; width: 100%;">Send Text</button>
+        </div>
+      </section>
+
+      <section id="eokkkaSection">
+        <h2>Accusation Context (Eokkka)</h2>
+        <div style="display: grid; gap: 8px;">
+          <div>
+            <label for="englishLevelInput" style="margin-top: 0;">English Level Rubric Total (0-12)</label>
+            <div style="display: flex; gap: 8px;">
+              <input id="englishLevelInput" type="number" min="0" max="12" value="0" style="flex: 1; padding: 8px; border: 1px solid var(--line); border-radius: 6px;">
+              <button class="secondary" id="autoFillEokkkaButton" type="button" style="min-height: unset; padding: 0 12px;">Auto-Fill</button>
+            </div>
+          </div>
+          <div>
+            <label for="visitLocationSelect" style="margin-top: 0;">Visit Location</label>
+            <select id="visitLocationSelect"></select>
+          </div>
+          <div>
+            <label for="customsItemSelect" style="margin-top: 0;">Customs Item</label>
+            <select id="customsItemSelect"></select>
+          </div>
+          <button class="primary" id="applyEokkkaButton" type="button" style="margin-top: 8px;">Apply to Game State</button>
+        </div>
       </section>
     </div>
 
@@ -591,6 +627,7 @@
           <div class="metric">
             <strong>Cost USD</strong>
             <span id="sessionCost">$0.000000</span>
+            <div id="sessionModels" style="font-size: 10px; color: var(--muted); margin-top: 4px; line-height: 1.2; word-break: break-all;"></div>
           </div>
           <div class="metric">
             <strong>Turn</strong>
@@ -631,7 +668,7 @@
       CH0_03_IMMIGRATION_CHECK: {
         nodeId: "IMM_001_PASSPORT",
         sceneId: "JFK_IMMIGRATION_HALL",
-        npcId: "OFFICER_HALE",
+        npcId: "hale",
         npcRole: "immigration_officer",
         speaker: "Officer Hale",
         flags: ["arrived_at_jfk"],
@@ -642,9 +679,9 @@
       CH0_04_BAGGAGE_CLAIM: {
         nodeId: "BAG_001_REPORT_MISSING_AT_DESK",
         sceneId: "JFK_BAGGAGE_CLAIM",
-        npcId: "BAGGAGE_STAFF_01",
-        npcRole: "baggage_service_staff",
-        speaker: "Baggage Staff",
+        npcId: "brielle",
+        npcRole: "baggage_agent",
+        speaker: "Brielle",
         flags: ["immigration_cleared", "at_baggage_claim"],
         inventory: ["passport", "boarding_pass", "baggage_claim_tag"],
         completedIntents: [],
@@ -763,7 +800,12 @@
           inventory: chapter.inventory,
           flags: chapter.flags,
           completed_intents: chapter.completedIntents,
-          current_objective: chapter.objective
+          current_objective: chapter.objective,
+          random_customs_item: null,
+          assigned_visit_location: null,
+          assigned_visit_location_ko: null,
+          visit_location_difficulty: null,
+          visit_location_suspicion_reason: null
         },
         previous_node_results: [],
         client_allowed_next_nodes: node.allowed_next_nodes || [],
@@ -868,6 +910,10 @@
     function resetUsageDisplay() {
       refs.sessionTokens.textContent = "0";
       refs.sessionCost.textContent = "$0.000000";
+      const modelsDiv = document.getElementById("sessionModels");
+      if (modelsDiv) {
+        modelsDiv.textContent = "";
+      }
     }
 
     function rememberSubmittedRequestId(requestId) {
@@ -1502,6 +1548,13 @@
       refs.sessionCost.textContent = usage
         ? "$" + Number(usage.estimated_cost_usd).toFixed(6)
         : "$0.000000";
+      
+      const modelsDiv = document.getElementById("sessionModels");
+      if (modelsDiv) {
+        modelsDiv.textContent = usage && usage.models && usage.models.length
+          ? usage.models.join(", ")
+          : "";
+      }
     }
 
     async function resetDialog() {
@@ -1518,12 +1571,42 @@
       refs.rawJson.textContent = "-";
       clearTiming();
       clearQuickRecordingFile();
+      
+      updateNpcSelect(dialogState.selectedChapterId);
+
       const node = await loadNode(chapter.nodeId);
       const turn = buildDefaultTurn(chapter, node);
+      
+      let speakerName = chapter.speaker;
+      const select = document.getElementById("npcSelect");
+      if (select && select.value) {
+        const candidates = npcRoster[dialogState.selectedChapterId] || [];
+        const npc = candidates.find(item => item.id === select.value);
+        if (npc) {
+          turn.npc.npc_id = npc.id;
+          turn.npc.npc_role = npc.role;
+          speakerName = npc.display_name;
+        }
+      }
+
       applyNodeToTurn(turn, node);
       turn.npc.last_npc_message = node.npc_question;
       writeTurn(turn);
-      resetTranscript(node.npc_question, chapter.speaker);
+
+      const eokkkaSec = document.getElementById("eokkkaSection");
+      if (eokkkaSec) {
+        if (dialogState.selectedChapterId === "CH0_01_FLIGHT_SMALLTALK" || dialogState.selectedChapterId === "CH0_05_RESULT") {
+          eokkkaSec.style.display = "none";
+        } else {
+          eokkkaSec.style.display = "block";
+          document.getElementById("englishLevelInput").value = "0";
+          if (eokkkaOptions.locations && eokkkaOptions.locations.length) {
+            await autoFillEokkka();
+          }
+        }
+      }
+
+      resetTranscript(node.npc_question, speakerName);
       updateChapterButtons();
       resetUsageDisplay();
       setStatus("Idle", "");
@@ -1608,6 +1691,64 @@
       }
     }
 
+    async function submitManualText() {
+      const textVal = (document.getElementById("manualText").value || "").trim();
+      if (!textVal) {
+        setStatus("Enter Text First", "warning");
+        return;
+      }
+      if (dialogState.terminal) {
+        setStatus("Reset Required", "warning");
+        return;
+      }
+
+      let turn;
+      try {
+        turn = parseTurn();
+      } catch (error) {
+        setStatus("Invalid JSON", "error");
+        refs.rawJson.textContent = String(error);
+        return;
+      }
+
+      turn.request_id = makeRequestId(turn);
+      turn.audio.mime_type = "audio/wav";
+      turn.audio.channels = 1;
+      turn.audio.sample_rate_hz = 16000;
+      turn.audio.duration_ms = 1000;
+      turn.audio.transcript = textVal;
+      writeTurn(turn);
+
+      setSubmitting(true);
+      setStatus("Running", "running");
+      const started = performance.now();
+      try {
+        const response = await fetch("/api/game/ai/respond", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            turn,
+            audio: {
+              transcript: textVal,
+              "transcript_provider": "mock",
+              file_name: "manual-text-input.txt",
+              content_type: "text/plain"
+            }
+          })
+        });
+        await handleRespondResponse(turn, response, started, document.getElementById("sendTextButton"));
+      } catch (error) {
+        refs.elapsedTotal.textContent = "-";
+        refs.httpStatus.textContent = "-";
+        setStatus("Failed", "error");
+        refs.rawJson.textContent = String(error);
+      } finally {
+        setSubmitting(false);
+      }
+    }
+
     async function submitAudio(audio, activeButton) {
       if (dialogState.terminal) {
         setStatus("Reset Required", "warning");
@@ -1684,6 +1825,13 @@
         refs.quickAudioFile.value = "";
         setRecordingStatus("Realtime transcript submitted.");
       }
+      const sendTextBtn = document.getElementById("sendTextButton");
+      if (activeButton === sendTextBtn) {
+        const manualTextEl = document.getElementById("manualText");
+        if (manualTextEl) {
+          manualTextEl.value = "";
+        }
+      }
       if (!dialogState.terminal) {
         setStatus("Ready", "");
       }
@@ -1704,7 +1852,223 @@
     refs.quickRecordButton.addEventListener("click", startQuickRecording);
     refs.quickStopRecordButton.addEventListener("click", stopQuickRecording);
     refs.quickUseRecordingButton.addEventListener("click", uploadQuickRecording);
-    resetDialog().catch((error) => {
+    
+    const sendTextBtn = document.getElementById("sendTextButton");
+    if (sendTextBtn) {
+      sendTextBtn.addEventListener("click", () => {
+        submitManualText().catch((error) => {
+          setStatus("Send Failed", "error");
+          refs.rawJson.textContent = String(error);
+        });
+      });
+    }
+
+    let npcRoster = {};
+    async function loadNpcRoster() {
+      try {
+        const response = await fetch("/api/game/ai/demo/npc-roster");
+        if (response.ok) {
+          npcRoster = await response.json();
+        }
+      } catch (error) {
+        console.error("Failed to load NPC roster:", error);
+      }
+    }
+
+    function updateNpcSelect(chapterId) {
+      const select = document.getElementById("npcSelect");
+      const container = document.getElementById("npcSelectContainer");
+      if (!select) return;
+
+      const candidates = npcRoster[chapterId];
+      if (!candidates || candidates.length === 0) {
+        container.style.display = "none";
+        return;
+      }
+      container.style.display = "block";
+      select.innerHTML = "";
+
+      const chapterDefault = chapterStarts[chapterId];
+
+      candidates.forEach((npc) => {
+        const option = document.createElement("option");
+        option.value = npc.id;
+        option.textContent = npc.display_name + " (" + npc.role + ")";
+        if (npc.id === chapterDefault.npcId) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      });
+    }
+
+    const npcSelect = document.getElementById("npcSelect");
+    if (npcSelect) {
+      npcSelect.addEventListener("change", (event) => {
+        const selectedNpcId = event.target.value;
+        const candidates = npcRoster[dialogState.selectedChapterId];
+        if (!candidates) return;
+        const npc = candidates.find(item => item.id === selectedNpcId);
+        if (!npc) return;
+
+        let turn;
+        try {
+          turn = parseTurn();
+        } catch (error) {
+          return;
+        }
+
+        turn.npc.npc_id = npc.id;
+        turn.npc.npc_role = npc.role;
+        writeTurn(turn);
+
+        const firstSpeaker = refs.transcript.querySelector(".message.npc .speaker");
+        if (firstSpeaker) {
+          firstSpeaker.textContent = npc.display_name;
+        }
+      });
+    }
+
+    let eokkkaOptions = { locations: [], customs_items: [] };
+    async function loadEokkkaOptions() {
+      try {
+        const response = await fetch("/api/game/ai/demo/eokkka/options");
+        if (response.ok) {
+          eokkkaOptions = await response.json();
+          populateEokkkaDropdowns();
+        }
+      } catch (error) {
+        console.error("Failed to load Eokkka options:", error);
+      }
+    }
+
+    function populateEokkkaDropdowns() {
+      const locSelect = document.getElementById("visitLocationSelect");
+      const itemSelect = document.getElementById("customsItemSelect");
+      if (!locSelect || !itemSelect) return;
+
+      locSelect.innerHTML = "<option value=''>-- None --</option>";
+      eokkkaOptions.locations.forEach((loc) => {
+        const option = document.createElement("option");
+        option.value = loc.location_id;
+        option.textContent = loc.name_en + " (" + loc.name_ko + ", diff " + loc.difficulty + ")";
+        locSelect.appendChild(option);
+      });
+
+      itemSelect.innerHTML = "<option value=''>-- None --</option>";
+      eokkkaOptions.customs_items.forEach((item) => {
+        const option = document.createElement("option");
+        option.value = item.item_id;
+        option.textContent = item.name_en + " (" + item.name_ko + ", diff " + item.difficulty + ")";
+        itemSelect.appendChild(option);
+      });
+    }
+
+    async function autoFillEokkka() {
+      const levelInput = document.getElementById("englishLevelInput");
+      let url = "/api/game/ai/demo/eokkka/assign";
+      const val = (levelInput.value || "").trim();
+      if (val !== "") {
+        url += "?level=" + encodeURIComponent(val);
+      }
+      try {
+        const response = await fetch(url);
+        if (response.ok) {
+          const result = await response.json();
+          const locSelect = document.getElementById("visitLocationSelect");
+          const itemSelect = document.getElementById("customsItemSelect");
+          
+          if (result.assigned_visit_location) {
+            const matchedLoc = eokkkaOptions.locations.find(l => l.name_en === result.assigned_visit_location);
+            if (matchedLoc) {
+              locSelect.value = matchedLoc.location_id;
+            } else {
+              locSelect.value = "";
+            }
+          } else {
+            locSelect.value = "";
+          }
+
+          if (result.random_customs_item && result.random_customs_item.item_id) {
+            itemSelect.value = result.random_customs_item.item_id;
+          } else {
+            itemSelect.value = "";
+          }
+          applyEokkkaToGameState();
+        }
+      } catch (error) {
+        console.error("Failed to auto fill Eokkka:", error);
+      }
+    }
+
+    function applyEokkkaToGameState() {
+      let turn;
+      try {
+        turn = parseTurn();
+      } catch (error) {
+        setStatus("Invalid JSON", "error");
+        return;
+      }
+
+      const locSelect = document.getElementById("visitLocationSelect");
+      const itemSelect = document.getElementById("customsItemSelect");
+
+      const selectedLocId = locSelect.value;
+      const selectedItemId = itemSelect.value;
+
+      if (selectedLocId) {
+        const loc = eokkkaOptions.locations.find(l => l.location_id === selectedLocId);
+        if (loc) {
+          turn.game_state.assigned_visit_location = loc.name_en;
+          turn.game_state.assigned_visit_location_ko = loc.name_ko;
+          turn.game_state.visit_location_difficulty = loc.difficulty;
+          turn.game_state.visit_location_suspicion_reason = loc.suspicion_reason;
+        }
+      } else {
+        turn.game_state.assigned_visit_location = null;
+        turn.game_state.assigned_visit_location_ko = null;
+        turn.game_state.visit_location_difficulty = null;
+        turn.game_state.visit_location_suspicion_reason = null;
+      }
+
+      if (selectedItemId) {
+        const item = eokkkaOptions.customs_items.find(i => i.item_id === selectedItemId);
+        if (item) {
+          turn.game_state.random_customs_item = {
+            item_id: item.item_id,
+            item_name: item.name_en,
+            item_category: item.item_category,
+            item_description: item.suspicion_reason,
+            visit_location: null,
+            declared: false,
+            source: "rule",
+            difficulty: item.difficulty,
+            suspicion_reason: item.suspicion_reason
+          };
+        }
+      } else {
+        turn.game_state.random_customs_item = null;
+      }
+
+      writeTurn(turn);
+    }
+
+    const autoFillBtn = document.getElementById("autoFillEokkkaButton");
+    if (autoFillBtn) {
+      autoFillBtn.addEventListener("click", autoFillEokkka);
+    }
+    const applyEokkkaBtn = document.getElementById("applyEokkkaButton");
+    if (applyEokkkaBtn) {
+      applyEokkkaBtn.addEventListener("click", () => {
+        applyEokkkaToGameState();
+        setStatus("Applied Eokkka", "");
+      });
+    }
+
+    (async () => {
+      await loadNpcRoster();
+      await loadEokkkaOptions();
+      await resetDialog();
+    })().catch((error) => {
       setStatus("Init Failed", "error");
       refs.rawJson.textContent = String(error);
     });

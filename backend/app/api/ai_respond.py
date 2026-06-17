@@ -266,6 +266,115 @@ def demo_node_context(node_id: str) -> dict[str, Any]:
     }
 
 
+@router.get("/demo/npc-roster")
+def demo_npc_roster() -> dict[str, list[dict[str, Any]]]:
+    """임시 데모 페이지용으로, 챕터별 선택 가능한 NPC 프로필 목록을 반환합니다.
+
+    초보자용 설명:
+    원래 게임은 시나리오 노드에 고정된 NPC가 나오지만, 데모/테스트 페이지에서는 
+    각 챕터에 어울리는 NPC를 직접 선택해 대화해볼 수 있어야 합니다. 
+    이 엔드포인트는 Dev A의 Roster를 읽어 프론트 드롭다운 옵션에 채울 데이터를 내려줍니다.
+    """
+    from backend.app.services.service_a.npc_roster_service import _NPC_ROSTER
+
+    chapters_mapping = {
+        "CH0_01_FLIGHT_SMALLTALK": ["arabella", "novak", "emily"],
+        "CH0_03_IMMIGRATION_CHECK": ["hale", "harris"],
+        "CH0_04_BAGGAGE_CLAIM": ["brielle", "dan"],
+    }
+
+    result = {}
+    for chapter_id, npc_ids in chapters_mapping.items():
+        candidates = []
+        for npc_id in npc_ids:
+            if npc_id in _NPC_ROSTER:
+                profile = _NPC_ROSTER[npc_id]
+                candidates.append({
+                    "id": profile.npc_id,
+                    "display_name": profile.display_name,
+                    "role": profile.role,
+                })
+        result[chapter_id] = candidates
+
+    return result
+
+
+@router.get("/demo/eokkka/options")
+def demo_eokkka_options() -> dict[str, Any]:
+    """임시 데모 페이지용으로, 전체 억까 방문지 및 수화물 품목 목록을 반환합니다.
+
+    초보자용 설명:
+    프론트엔드 드롭다운 메뉴를 채우기 위한 정적 테이블 데이터 전체를 전달합니다.
+    """
+    from backend.app.data.challenge_tables import LOCATIONS, CUSTOMS_ITEMS
+
+    # Convert dataclasses to dicts
+    locations_list = []
+    for loc in LOCATIONS:
+        locations_list.append({
+            "location_id": loc.location_id,
+            "name_en": loc.name_en,
+            "name_ko": loc.name_ko,
+            "difficulty": loc.difficulty,
+            "suspicion_reason": loc.suspicion_reason,
+        })
+
+    customs_items_list = []
+    for item in CUSTOMS_ITEMS:
+        customs_items_list.append({
+            "item_id": item.item_id,
+            "name_en": item.name_en,
+            "name_ko": item.name_ko,
+            "item_category": item.item_category,
+            "difficulty": item.difficulty,
+            "suspicion_reason": item.suspicion_reason,
+        })
+
+    return {
+        "locations": locations_list,
+        "customs_items": customs_items_list,
+    }
+
+
+@router.get("/demo/eokkka/assign")
+def demo_eokkka_assign(level: int | None = Query(default=None)) -> dict[str, Any]:
+    """임시 데모 페이지용으로, 영어 레벨 총점에 맞게 결정적 또는 랜덤으로 억까 방문지와 수화물을 선택해 반환합니다.
+
+    초보자용 설명:
+    level이 0~12 사이 정수이면 시드 고정 RNG(Random) 객체를 생성하여
+    매번 해당 난이도 풀에서 고정된 값을 할당(결정론적 부여)해 줍니다.
+    level이 비어(None/null) 있으면 전체 목록에서 임의로 랜덤 선택하여 반환합니다.
+    """
+    import random
+    from backend.app.data.challenge_tables import LOCATIONS, CUSTOMS_ITEMS
+    from backend.app.services.service_b.challenge_assignment_service import (
+        pick_location,
+        pick_customs_item,
+        to_random_customs_item_context,
+    )
+    from backend.app.services.service_b.tier_difficulty_controller import TierDifficultyController
+
+    if level is not None:
+        clamped_level = max(0, min(12, level))
+        tsl = TierDifficultyController().travel_speaking_level_for_total(clamped_level)
+        rng = random.Random(clamped_level)
+        loc = pick_location(tsl, rng=rng)
+        item = pick_customs_item(tsl, rng=rng)
+    else:
+        loc = random.choice(LOCATIONS)
+        item = random.choice(CUSTOMS_ITEMS)
+
+    customs_item_context = to_random_customs_item_context(item)
+
+    return {
+        "assigned_visit_location": loc.name_en,
+        "assigned_visit_location_ko": loc.name_ko,
+        "visit_location_difficulty": loc.difficulty,
+        "visit_location_suspicion_reason": loc.suspicion_reason,
+        "random_customs_item": customs_item_context.model_dump(),
+    }
+
+
 def _chapter_id_for_demo_node(node_id: str) -> str:
     if node_id.startswith("FLIGHT_"):
         return "CH0_01_FLIGHT_SMALLTALK"
