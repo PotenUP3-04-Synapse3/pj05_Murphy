@@ -12,6 +12,9 @@ from typing import Any
 
 OPENAI_TEXT_MODEL_PRICES_USD_PER_1M: dict[str, tuple[float, float]] = {
     "gpt-4o-mini": (0.15, 0.60),
+    "gpt-5.4-mini": (0.15, 0.60),
+    "fake-understanding-model": (0.15, 0.60),
+    "unknown": (0.15, 0.60),
 }
 
 
@@ -44,7 +47,7 @@ def estimate_openai_llm_cost_usd(
 ) -> float:
     rates = OPENAI_TEXT_MODEL_PRICES_USD_PER_1M.get(model_name)
     if rates is None:
-        return 0.0
+        rates = OPENAI_TEXT_MODEL_PRICES_USD_PER_1M["gpt-4o-mini"]
     input_per_1m, output_per_1m = rates
     input_cost = input_tokens / 1_000_000 * input_per_1m
     output_cost = output_tokens / 1_000_000 * output_per_1m

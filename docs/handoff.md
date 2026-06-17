@@ -1,5 +1,27 @@
 # Handoff
 
+## 2026-06-17 Developer C: Improve respond-dialog Test Page Implementation
+
+Developer C completed the implementation for improving the `respond-dialog` test page (`demo/respond-dialog/index.html`) and backend orchestration helper endpoints.
+
+Changed:
+- **llm_cost_estimator.py**: Registered `gpt-5.4-mini`, `fake-understanding-model`, and `unknown` in `OPENAI_TEXT_MODEL_PRICES_USD_PER_1M`. Added fallback to `gpt-4o-mini` pricing for unrecognized models to avoid returning $0.000000 costs.
+- **agent_run_summary_service.py**: Updated model usage summaries to return the `model_name` key and compile a sorted list of unique `models` used in each session.
+- **ai_respond.py**: Added new `/api/game/ai/demo/npc-roster` to return canonical NPCs by chapter, `/api/game/ai/demo/eokkka/options` to return visit location and customs item tables, and `/api/game/ai/demo/eokkka/assign` to return deterministic or random Eokkka challenge context assignment based on player level (0-12).
+- **index.html**:
+  - Reordered and polished UI layout with a dynamic CSS layout.
+  - Added an NPC selector dropdown beneath the Chapter selector, dynamically updated per chapter and linked to the payload.
+  - Added a Manual Text Input textarea and send button to submit turns with a `"mock"` provider directly to `/respond`, bypassing STT.
+  - Added an Eokkka challenge context panel with level input, "Auto-Fill", and "Apply to Game State" buttons. Dynamically hides during Flight and Result chapters.
+  - Displayed model names list under the "Cost USD" field in the Session Usage card.
+- **test_demo_ai_respond_page.py**: Added regression unit tests for all new endpoints and verified correct session usage payloads.
+
+Verification:
+- `uv run pytest` passed: All 314 tests passed.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed.
+- Manual E2E validation using a browser subagent verified dynamic UI toggling, manual text transmission, and non-zero cost estimation.
+
 ## 2026-06-17 Developer A: CR-B-EOKKKA NPC 트집 대사 구현 완료
 
 Developer A 는 CR-B-EOKKKA(억까 장소·수화물 레벨별 배정)의 Dev A 측 후속 작업을 완료했습니다. B 가 작성한 `pick_location`/`pick_customs_item` 결과가 C 어댑터를 통해 `dialogue_seed`/`game_state` 로 forward 된 상태에서, A 가 그 메타 의도대로 NPC 트집 대사를 LLM 으로 생성하고 입국신고서 장소명과 동일 지칭을 유지합니다.

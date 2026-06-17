@@ -98,6 +98,7 @@ class AgentRunSummaryService:
                     "output_tokens": 0,
                     "total_tokens": 0,
                     "estimated_cost_usd": 0.0,
+                    "models": set(),
                     "_last_order": order,
                 },
             )
@@ -108,6 +109,8 @@ class AgentRunSummaryService:
             aggregate["output_tokens"] += usage["output_tokens"]
             aggregate["total_tokens"] += usage["total_tokens"]
             aggregate["estimated_cost_usd"] += usage["estimated_cost_usd"]
+            if usage.get("model_name"):
+                aggregate["models"].add(usage["model_name"])
             aggregate["_last_order"] = order
 
         response_sessions = []
@@ -121,6 +124,7 @@ class AgentRunSummaryService:
                     "output_tokens": aggregate["output_tokens"],
                     "total_tokens": aggregate["total_tokens"],
                     "estimated_cost_usd": round(aggregate["estimated_cost_usd"], 8),
+                    "models": sorted(list(aggregate["models"])),
                 }
             )
 
@@ -185,6 +189,7 @@ def _event_summary(event: dict[str, Any]) -> dict[str, Any]:
 def _model_usage(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {
+            "model_name": "",
             "input_tokens": 0,
             "output_tokens": 0,
             "total_tokens": 0,
@@ -206,6 +211,7 @@ def _model_usage(value: Any) -> dict[str, Any]:
         )
 
     return {
+        "model_name": model_name,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": total_tokens,
