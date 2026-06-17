@@ -373,11 +373,16 @@ class DeveloperCGraphTools:
         timing_ms = _state_timing_ms(state)
 
         stage_started = perf_counter()
+        allowed_next_nodes, client_allowed_next_nodes = self._validation_next_node_guards(
+            request,
+            node_context,
+            dev_b_output,
+        )
         self.validator.validate_dev_b_policy_output(
             dev_b_output,
             current_node_id=request.turn.session.current_node_id,
-            allowed_next_nodes=node_context.allowed_next_nodes,
-            client_allowed_next_nodes=request.turn.client_allowed_next_nodes,
+            allowed_next_nodes=allowed_next_nodes,
+            client_allowed_next_nodes=client_allowed_next_nodes,
         )
         timing_ms["validation_ms"] += _elapsed_ms(stage_started)
         transition = self._transition_for_branch(node_context, dev_b_output)
@@ -394,6 +399,51 @@ class DeveloperCGraphTools:
             output_summary={"validated": True},
         )
         return {"transition": transition, "timing_ms": timing_ms}
+
+    def _validation_next_node_guards(
+        self,
+        request: PrePrototypeRequest,
+        node_context: NodeContext,
+        dev_b_output: DevBPolicyOutput,
+    ) -> tuple[list[str], list[str]]:
+        """검증에 사용할 next-node guard 목록을 C 경계에서 보정합니다.
+
+        초보자용 설명:
+        일반 시나리오 진행은 현재 노드의 `allowed_next_nodes`와 Unreal이 보낸
+        `client_allowed_next_nodes` 안에서만 허용합니다. 다만 비속어 bad ending은
+        모든 노드에 반복해서 적기 어려운 전역 안전 탈출 분기입니다. 그래서 C는 B가
+        `branch_type=bad_end`를 반환했을 때만 대상 노드가 같은 챕터의 ending 노드이고
+        `SHOW_BAD_END_SCOREBOARD` transition을 가진다는 것을 확인한 뒤 guard 목록에
+        임시로 추가합니다.
+        """
+
+        allowed_next_nodes = list(node_context.allowed_next_nodes)
+        client_allowed_next_nodes = list(request.turn.client_allowed_next_nodes)
+        if dev_b_output.branch.branch_type != "bad_end":
+            return allowed_next_nodes, client_allowed_next_nodes
+
+        if self._is_valid_bad_end_target(node_context, dev_b_output):
+            _append_unique(allowed_next_nodes, dev_b_output.branch.next_node_id)
+            _append_unique(client_allowed_next_nodes, dev_b_output.branch.next_node_id)
+
+        return allowed_next_nodes, client_allowed_next_nodes
+
+    def _is_valid_bad_end_target(
+        self,
+        node_context: NodeContext,
+        dev_b_output: DevBPolicyOutput,
+    ) -> bool:
+        """B가 요청한 bad ending target이 실제 ending node인지 확인합니다."""
+
+        target_node = self.openkb_service.get_node_context(
+            node_context.chapter_id,
+            dev_b_output.branch.next_node_id,
+        )
+        return (
+            target_node.node_type == "ending"
+            and target_node.transition is not None
+            and target_node.transition.unreal_event == "SHOW_BAD_END_SCOREBOARD"
+        )
 
     def record_error_capture_tool(self, state: Mapping[str, Any]) -> dict[str, Any]:
         request = _require_state_value(state, "request", PrePrototypeRequest)
@@ -695,6 +745,13 @@ def _optional_state_value(state: Mapping[str, Any], key: str, expected_type: typ
     if isinstance(value, expected_type):
         return value
     raise RuntimeError(f"Developer C graph state has invalid value type: {key}")
+
+
+def _append_unique(items: list[str], value: str) -> None:
+    """문자열 목록에 같은 값을 중복 없이 추가합니다."""
+
+    if value not in items:
+        items.append(value)
 
 
 def _state_timing_ms(state: Mapping[str, Any]) -> dict[str, int]:

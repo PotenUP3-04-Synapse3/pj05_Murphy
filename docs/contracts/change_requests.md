@@ -22,9 +22,9 @@ inside Developer A-owned implementation files:
 - `backend/app/agents/agent_a/npc_dialogue_agent.py`
 - `backend/app/services/service_a/tts_text_polisher_service.py`
 
-Additional unused imports are present in Developer A-focused tests, but the
-blocking implementation files are A-owned, so Developer C should not silently
-edit them.
+Developer C cleaned the unused imports in C-owned test files. The remaining
+blocking files are Developer A-owned implementation files, so Developer C
+should not silently edit them.
 
 ### Proposed Contract Change
 

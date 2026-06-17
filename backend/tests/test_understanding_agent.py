@@ -489,3 +489,19 @@ def test_understanding_agent_rule_mode_rejects_off_topic_idiom_for_flight_polite
     assert output.extracted_slots == {}
     assert output.missing_slots == ["polite_response"]
     assert output.needs_clarification is True
+
+
+def test_understanding_agent_rule_mode_rejects_visit_purpose_in_polite_response_node() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text(
+        "I am traveling alone.",
+        _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK"),
+    )
+
+    assert output.intent == "respond_to_seatmate_request"
+    assert output.intent_success is False
+    assert output.answer_relevance != "on_topic"
+    assert output.extracted_slots == {}
+    assert output.missing_slots == ["polite_response"]
+    assert output.needs_clarification is True

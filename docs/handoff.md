@@ -1,5 +1,39 @@
 # Handoff
 
+## 2026-06-17 Developer C Integrated: Bad Ending Guard and Smalltalk Slot Safety
+
+Developer C integrated Developer B's bad-ending branch output with the C-owned
+orchestration validator and fixed one remaining Understanding guard issue from
+CR-B-SMALLTALK.
+
+Changed:
+
+- `DeveloperCGraphTools.validate_dev_b_policy_tool()` now preserves normal
+  `allowed_next_nodes` validation, but allows a `branch_type="bad_end"` target
+  only when the target node is an actual `node_type="ending"` node with
+  `SHOW_BAD_END_SCOREBOARD`.
+- `TransitionContext.status` accepts both `chapter_complete` and
+  `complete_chapter`, because B's bad-ending nodes use the latter for the same
+  chapter-closing transition meaning.
+- `response_builder` maps `SHOW_BAD_END_SCOREBOARD` to the Alpha scoreboard
+  flow response.
+- Rule-mode Understanding now uses the deterministic `visit_purpose`
+  classifier only when the current node actually requires `visit_purpose`.
+  This prevents travel-purpose-like free speech from passing the
+  `FLIGHT_A_001_SEATMATE_SMALLTALK` `polite_response` node.
+- Cleaned unused imports from C-owned test files that were reported by ruff.
+
+Verification:
+
+- `uv run pytest` passed: 296 passed, 1 warning.
+- `uv run mypy .` passed.
+- Focused ruff for touched C-owned/test files passed.
+- Full `uv run ruff check .` is still blocked only by Developer A-owned unused
+  imports in `backend/app/agents/agent_a/npc_dialogue_agent.py` and
+  `backend/app/services/service_a/tts_text_polisher_service.py`. Developer C
+  did not edit those A-owned implementation files; the existing change request
+  remains the handoff path.
+
 ## 2026-06-16 Developer C Implemented: Incivility Signal and A Adapter Forward
 
 Developer C completed the C-owned portion of Developer A's Bad Ending /

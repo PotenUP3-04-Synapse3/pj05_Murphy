@@ -309,7 +309,8 @@ class UnderstandingAgent:
                 needs_clarification=True,
             )
 
-        if visit_purpose is not None:
+        # 방문 목적 분류기는 해당 노드가 visit_purpose 슬롯을 요구할 때만 성공으로 사용합니다.
+        if "visit_purpose" in node_context.required_slots and visit_purpose is not None:
             return UnderstandingOutput(
                 intent="state_visit_purpose",
                 intent_success=True,

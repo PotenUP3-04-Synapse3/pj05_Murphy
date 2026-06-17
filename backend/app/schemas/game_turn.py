@@ -177,7 +177,15 @@ class HintPolicy(BaseModel):
 
 
 class TransitionContext(BaseModel):
-    status: Literal["chapter_complete"]
+    """Unreal scene/scoreboard transition metadata shared across chapter endings.
+
+    초보자용 설명:
+    기존 C 전환 노드는 `chapter_complete`를 사용했고, B가 추가한 bad ending 노드는
+    같은 의미로 `complete_chapter`를 사용합니다. 두 값 모두 "현재 챕터를 닫고 다음
+    표시 단계로 넘어간다"는 뜻이므로 Alpha 통합에서는 둘 다 허용합니다.
+    """
+
+    status: Literal["chapter_complete", "complete_chapter"]
     completed_chapter_id: str
     next_chapter_id: str
     entry_node_id: str | None = None

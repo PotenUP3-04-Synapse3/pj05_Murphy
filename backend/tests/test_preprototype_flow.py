@@ -301,6 +301,20 @@ def test_orchestrator_advances_family_visit_purpose_to_duration_node() -> None:
     assert response.debug.understanding_confidence == pytest.approx(0.94)
 
 
+def test_orchestrator_allows_incivility_bad_end_branch_outside_normal_next_nodes() -> None:
+    response = Orchestrator().run_turn(_preprototype_request(transcript="fuck you"))
+
+    assert response.next_action == "COMPLETE_CHAPTER"
+    assert response.next_node_id == "IMM_BAD_END_VERBAL_ABUSE"
+    assert response.evaluation.verdict == "FAIL"
+    assert "verbal_abuse" in response.evaluation.feedback_tags
+    assert response.transition is not None
+    assert response.transition.unreal_event == "SHOW_BAD_END_SCOREBOARD"
+    assert response.flow.transition_type == "scoreboard"
+    assert response.flow.transition_id == "bad_end_scoreboard"
+    assert response.flow.show_scoreboard is True
+
+
 def test_orchestrator_advances_stay_duration_answer_to_location_node() -> None:
     turn_payload = _turn_payload()
     turn_payload["request_id"] = "req_imm_duration_0001"
