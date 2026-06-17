@@ -449,7 +449,7 @@ def test_flight_a_friendly_seatmate_fallback_dialogue() -> None:
     result_end = generate_npc_dialogue_from_level_design(
         {
             "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
-            "node_id": "FLIGHT_A_005_WRAP_UP",
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
             "player_text": "Thank you.",
             "node_context": {
                 "recommended_expression": "Thank you very much.",
@@ -473,7 +473,7 @@ def test_flight_b_curious_seatmate_fallback_dialogue() -> None:
     result = generate_npc_dialogue_from_level_design(
         {
             "npc": {"npc_id": "SEATMATE_B_01", "npc_role": "seatmate"},
-            "node_id": "FLIGHT_B_002_COMPANION_OR_VISIT",
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
             "player_text": "I am traveling alone.",
             "node_context": {
                 "recommended_expression": "I am traveling by myself.",
@@ -497,7 +497,7 @@ def test_flight_c_help_seatmate_fallback_dialogue() -> None:
     result = generate_npc_dialogue_from_level_design(
         {
             "npc": {"npc_id": "SEATMATE_C_01", "npc_role": "seatmate"},
-            "node_id": "FLIGHT_C_004_HOTEL_HOSTEL",
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
             "player_text": "I stay hotel.",
             "node_context": {
                 "recommended_expression": "I will stay at a hotel.",
@@ -620,7 +620,7 @@ def test_complete_chapter_transition_returns_closing_phrase_for_each_role() -> N
     res_seatmate = generate_npc_dialogue_from_level_design(
         {
             "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
-            "node_id": "FLIGHT_A_005_WRAP_UP",
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
             "player_text": "Bye.",
             "node_context": {"recommended_expression": "Goodbye."},
             "evaluation_summary": {"task_success": True, "clarity": 1.0},
