@@ -69,7 +69,17 @@ class DeveloperCAgentRunMiddleware:
         input_summary: dict[str, Any] | None = None,
         output_summary: dict[str, Any] | None = None,
         error: str | None = None,
+        error_details: dict[str, Any] | None = None,
     ) -> None:
+        """AgentRun 타임라인에 C 런타임 이벤트 한 줄을 추가합니다.
+
+        초보자용 설명:
+        `error`는 사람이 빠르게 읽는 짧은 문자열이고, `error_details`는
+        디버깅 도구가 바로 파싱할 수 있는 구조화된 실패 정보입니다. 실패
+        원인을 다시 추적할 수 있도록 타입, 메시지, 단계, 도구 이름을 함께
+        남깁니다.
+        """
+
         events = run.setdefault("events", [])
         if not isinstance(events, list):
             events = []
@@ -90,6 +100,8 @@ class DeveloperCAgentRunMiddleware:
             item["output_summary"] = output_summary
         if error is not None:
             item["error"] = error
+        if error_details is not None:
+            item["error_details"] = error_details
         events.append(item)
 
     def record_data_flow(

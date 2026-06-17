@@ -83,6 +83,39 @@ def test_understanding_agent_uses_llm_client_in_llm_mode() -> None:
     assert agent.last_trace["postprocessing"]["weak_required_slot_evidence"] is True
 
 
+def test_understanding_agent_llm_mode_attaches_rule_incivility_signal() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_visit_purpose",
+            "intent_success": False,
+            "confidence": 0.55,
+            "meaning_summary_kr": "The player did not answer the visit purpose.",
+            "emotion": "angry",
+            "answer_relevance": "off_topic",
+            "ambiguity_type": "off_topic_response",
+            "risk_delta": 0,
+            "risk_reason": "No immigration risk expression was found.",
+            "risk_tags": [],
+            "extracted_slots": {},
+            "missing_slots": ["visit_purpose"],
+            "needs_clarification": True,
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text("f*ck you", _purpose_node_context())
+
+    assert output.incivility is not None
+    assert output.incivility.tier == 3
+    assert output.incivility.category == "profanity"
+    assert output.incivility.source == "rule"
+    assert output.intent_success is False
+    assert agent.last_trace["output_summary"]["incivility"]["tier"] == 3
+
+
 def test_understanding_agent_falls_back_to_rule_mode_when_llm_output_is_forbidden() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {
@@ -117,6 +150,12 @@ def test_understanding_agent_falls_back_to_rule_mode_when_llm_output_is_forbidde
     assert agent.last_trace["fallback_used"] is True
     assert agent.last_trace["tool_calls"][0]["status"] == "failed"
     assert agent.last_trace["tool_calls"][0]["error_type"] == "UnderstandingLLMUnavailable"
+    assert agent.last_trace["tool_calls"][0]["error_details"] == {
+        "error_type": "UnderstandingLLMUnavailable",
+        "error_message": "Understanding LLM returned forbidden keys: next_node_id",
+        "phase": "understanding_llm",
+        "tool_name": "understanding_llm_client.analyze",
+    }
 
 
 def test_understanding_agent_logs_llm_failure_before_rule_fallback(caplog) -> None:
@@ -351,14 +390,15 @@ def test_understanding_agent_rejects_off_topic_idiom_despite_valid_polite_respon
         _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK"),
     )
 
-    assert output.intent == "respond_to_seatmate_request"
+    assert output.intent == "estimate_user_travel_speaking_level"
     assert output.intent_success is False
     assert output.confidence < 0.9
     assert output.answer_relevance == "off_topic"
     assert output.extracted_slots == {}
-    assert output.missing_slots == ["polite_response"]
-    assert output.needs_clarification is True
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
     assert output.slot_evidence == []
+    assert agent.last_trace["postprocessing"]["flight_smalltalk_diagnostic_slot_neutralized"] is True
 
 
 def test_understanding_agent_rule_mode_recognizes_allowed_visit_purpose_values() -> None:
@@ -370,6 +410,20 @@ def test_understanding_agent_rule_mode_recognizes_allowed_visit_purpose_values()
     assert output.intent_success is True
     assert output.extracted_slots == {"visit_purpose": "family_visit"}
     assert output.missing_slots == []
+
+
+def test_understanding_agent_rule_mode_attaches_incivility_signal_without_branching() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text("fuck you", _purpose_node_context())
+
+    assert output.incivility is not None
+    assert output.incivility.tier == 3
+    assert output.incivility.category == "profanity"
+    assert output.incivility.source == "rule"
+    assert output.intent_success is False
+    assert output.missing_slots == ["visit_purpose"]
+    assert agent.last_trace["output_summary"]["incivility"]["tier"] == 3
 
 
 def test_understanding_agent_rule_mode_recognizes_stay_duration_values() -> None:
@@ -394,13 +448,6 @@ def test_understanding_agent_rule_mode_recognizes_alpha_flight_and_baggage_slot_
     agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
 
     cases = [
-        (
-            "CH0_01_FLIGHT_SMALLTALK",
-            "FLIGHT_A_001_SEATMATE_SMALLTALK",
-            "Of course, please take it.",
-            "polite_response",
-            "offered_help",
-        ),
         (
             "CH0_04_BAGGAGE_CLAIM",
             "BAG_002_PROVIDE_CLAIM_TAG",
@@ -427,7 +474,22 @@ def test_understanding_agent_rule_mode_recognizes_alpha_flight_and_baggage_slot_
         assert output.missing_slots == []
 
 
-def test_understanding_agent_rule_mode_rejects_off_topic_idiom_for_flight_polite_response() -> None:
+def test_understanding_agent_rule_mode_keeps_flight_diagnostic_node_slot_neutral() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text(
+        "Sure, here you are.",
+        _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK"),
+    )
+
+    assert output.intent == "estimate_user_travel_speaking_level"
+    assert output.intent_success is False
+    assert output.extracted_slots == {}
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
+
+
+def test_understanding_agent_rule_mode_rejects_off_topic_idiom_for_flight_diagnostic_node() -> None:
     agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
 
     output = agent.analyze_player_text(
@@ -435,10 +497,26 @@ def test_understanding_agent_rule_mode_rejects_off_topic_idiom_for_flight_polite
         _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK"),
     )
 
-    assert output.intent == "respond_to_seatmate_request"
+    assert output.intent == "estimate_user_travel_speaking_level"
     assert output.intent_success is False
     assert output.confidence < 0.9
     assert output.answer_relevance == "off_topic"
     assert output.extracted_slots == {}
-    assert output.missing_slots == ["polite_response"]
-    assert output.needs_clarification is True
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
+
+
+def test_understanding_agent_rule_mode_rejects_visit_purpose_in_flight_diagnostic_node() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text(
+        "I am traveling alone.",
+        _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK"),
+    )
+
+    assert output.intent == "estimate_user_travel_speaking_level"
+    assert output.intent_success is False
+    assert output.answer_relevance != "on_topic"
+    assert output.extracted_slots == {}
+    assert output.missing_slots == []
+    assert output.needs_clarification is False

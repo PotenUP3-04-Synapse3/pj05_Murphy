@@ -12,6 +12,7 @@ from backend.app.main import app
 from backend.app.schemas.game_turn import (
     DevADialogueInput,
     DevADialogueOutput,
+    IncivilityClassification,
     MockAudioInput,
     PrePrototypeRequest,
     UnderstandingOutput,
@@ -193,6 +194,27 @@ def _chapter_boundary_request(
     )
 
 
+def _read_openkb_session_records(jsonl_path: Path) -> list[dict[str, Any]]:
+    if not jsonl_path.exists():
+        return []
+    return [
+        json.loads(line)
+        for line in jsonl_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def _remove_openkb_session_records(runtime_dir: Path, jsonl_path: Path) -> None:
+    for record in _read_openkb_session_records(jsonl_path):
+        record_id = record.get("record_id")
+        if isinstance(record_id, str):
+            markdown_path = runtime_dir / f"{record_id}.md"
+            if markdown_path.exists():
+                markdown_path.unlink()
+    if jsonl_path.exists():
+        jsonl_path.unlink()
+
+
 def test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response() -> None:
     response = Orchestrator().run_turn(_preprototype_request())
 
@@ -298,6 +320,20 @@ def test_orchestrator_advances_family_visit_purpose_to_duration_node() -> None:
     assert response.next_action == "ADVANCE"
     assert response.next_node_id == "IMM_003_DURATION"
     assert response.debug.understanding_confidence == pytest.approx(0.94)
+
+
+def test_orchestrator_allows_incivility_bad_end_branch_outside_normal_next_nodes() -> None:
+    response = Orchestrator().run_turn(_preprototype_request(transcript="fuck you"))
+
+    assert response.next_action == "COMPLETE_CHAPTER"
+    assert response.next_node_id == "IMM_BAD_END_VERBAL_ABUSE"
+    assert response.evaluation.verdict == "FAIL"
+    assert "verbal_abuse" in response.evaluation.feedback_tags
+    assert response.transition is not None
+    assert response.transition.unreal_event == "SHOW_BAD_END_SCOREBOARD"
+    assert response.flow.transition_type == "scoreboard"
+    assert response.flow.transition_id == "bad_end_scoreboard"
+    assert response.flow.show_scoreboard is True
 
 
 def test_orchestrator_advances_stay_duration_answer_to_location_node() -> None:
@@ -540,6 +576,67 @@ def test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition() -> N
     finally:
         if jsonl_path.exists():
             jsonl_path.unlink()
+
+
+def test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller() -> None:
+    session_id = "session_flight_smalltalk_openkb_accumulation"
+    runtime_dir = Path("backend/runtime/openkb/dev_b")
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    jsonl_path = runtime_dir / f"{session_id}.jsonl"
+    _remove_openkb_session_records(runtime_dir, jsonl_path)
+
+    transcripts = [
+        "I like playing computer games.",
+        "I want to visit museums and eat pizza.",
+        "I might stay with my friend.",
+        "I feel a little nervous but ready.",
+        "Thanks for the friendly talk.",
+    ]
+
+    try:
+        response = None
+        for turn_index, transcript in enumerate(transcripts, start=1):
+            turn_payload = _turn_payload()
+            turn_payload["request_id"] = f"req_flight_diag_openkb_{turn_index:04d}"
+            turn_payload["session"]["session_id"] = session_id
+            turn_payload["session"]["chapter_id"] = "CH0_01_FLIGHT_SMALLTALK"
+            turn_payload["session"]["scene_id"] = "FLIGHT_A_001_SEATMATE_SMALLTALK"
+            turn_payload["session"]["current_node_id"] = "FLIGHT_A_001_SEATMATE_SMALLTALK"
+            turn_payload["session"]["turn_index"] = turn_index
+            turn_payload["npc"]["npc_id"] = "SEATMATE_A_01"
+            turn_payload["npc"]["npc_role"] = "seatmate"
+            turn_payload["npc"]["last_npc_message"] = "Let's chat while we wait to land."
+            turn_payload["game_state"]["flags"] = ["flight_level_test_active"]
+            turn_payload["game_state"]["completed_intents"] = []
+            turn_payload["game_state"]["current_objective"] = "Continue the flight diagnostic small talk"
+            turn_payload["previous_node_results"] = []
+            turn_payload["client_allowed_next_nodes"] = [
+                "FLIGHT_A_001_SEATMATE_SMALLTALK",
+                "FLIGHT_999_COMPLETE",
+            ]
+
+            response = Orchestrator().run_turn(
+                PrePrototypeRequest(
+                    turn=UnrealTurnRequest.model_validate(turn_payload),
+                    audio=MockAudioInput(
+                        mock_wav_path=f"mock://alpha/flight_diag_{turn_index}.wav",
+                        transcript=transcript,
+                    ),
+                )
+            )
+
+            records = _read_openkb_session_records(jsonl_path)
+            assert len(records) == turn_index
+            assert records[-1]["node_id"] == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+            assert records[-1]["understanding"]["confidence"] == pytest.approx(response.debug.understanding_confidence)
+            assert records[-1]["evaluation"]["verdict"] == response.evaluation.verdict
+            assert records[-1]["dialogue_seed"]["surface_goal"]
+
+        assert response is not None
+        assert response.next_action == "COMPLETE_CHAPTER"
+        assert response.next_node_id == "FLIGHT_999_COMPLETE"
+    finally:
+        _remove_openkb_session_records(runtime_dir, jsonl_path)
 
 
 def test_orchestrator_marks_immigration_clearance_as_baggage_scene_transition() -> None:
@@ -823,6 +920,137 @@ def test_dev_a_adapter_forwards_npc_context_to_voice_builder() -> None:
     assert "npc_question" not in builder_payloads[0]["node_context"]
     assert "npc_question_goal" not in builder_payloads[0]["node_context"]
     assert "do_not_generate_npc_text" not in builder_payloads[0]["dialogue_directive"]
+
+
+def test_dev_a_adapter_forwards_incivility_to_voice_builder() -> None:
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": "Officer Miller",
+            "npc_text": "Watch your language.",
+            "tone": "formal_firm",
+            "animation": "officer_warning",
+            "feedback_kr": "Language warning.",
+            "tts": {
+                "audio_url": "/runtime/audio/edge/test.wav",
+            },
+        }
+
+    request = _preprototype_request()
+    orchestrator = Orchestrator()
+    node_context = orchestrator.openkb_service.get_node_context(
+        request.turn.session.chapter_id,
+        request.turn.session.current_node_id,
+    )
+    normalized_input = orchestrator.stt_service.transcribe_wav(request.audio, request.turn.audio)
+    understanding = _successful_understanding("state_visit_purpose", "visit_purpose", "tourism").model_copy(
+        update={
+            "incivility": IncivilityClassification(
+                tier=3,
+                detected_terms=["fuck"],
+                confidence=0.95,
+                category="profanity",
+                source="rule",
+            )
+        }
+    )
+    dev_b_output = orchestrator.dev_b_client.evaluate_turn(
+        orchestrator.build_dev_b_policy_input(
+            request,
+            normalized_input=normalized_input,
+            node_context=node_context,
+            understanding=understanding,
+        )
+    )
+    client = DevANpcDialogueClient(voice_output_builder=fake_voice_output_builder)
+
+    client.generate_dialogue(
+        DevADialogueInput(
+            contract_version="dev_a_dialogue.v1",
+            request_id=request.turn.request_id,
+            session_id=request.turn.session.session_id,
+            current_node_id=request.turn.session.current_node_id,
+            player_text=normalized_input.player_text,
+            npc=request.turn.npc,
+            node_context=node_context,
+            understanding=understanding,
+            developer_b_policy=dev_b_output,
+        )
+    )
+
+    assert builder_payloads[0]["incivility"] == {
+        "tier": 3,
+        "detected_terms": ["fuck"],
+        "confidence": 0.95,
+        "category": "profanity",
+        "source": "rule",
+    }
+    assert "recommended_expression" not in builder_payloads[0]["level_hint"]
+
+
+def test_dev_a_adapter_defaults_missing_incivility_to_tier_zero() -> None:
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": "Officer Miller",
+            "npc_text": "Okay. Please continue.",
+            "tone": "formal_neutral",
+            "animation": "officer_check_passport",
+            "feedback_kr": "Good.",
+            "tts": {
+                "audio_url": "/runtime/audio/edge/test.wav",
+            },
+        }
+
+    request = _preprototype_request()
+    orchestrator = Orchestrator()
+    node_context = orchestrator.openkb_service.get_node_context(
+        request.turn.session.chapter_id,
+        request.turn.session.current_node_id,
+    )
+    normalized_input = orchestrator.stt_service.transcribe_wav(request.audio, request.turn.audio)
+    understanding = _successful_understanding("state_visit_purpose", "visit_purpose", "tourism")
+    dev_b_output = orchestrator.dev_b_client.evaluate_turn(
+        orchestrator.build_dev_b_policy_input(
+            request,
+            normalized_input=normalized_input,
+            node_context=node_context,
+            understanding=understanding,
+        )
+    )
+    client = DevANpcDialogueClient(voice_output_builder=fake_voice_output_builder)
+
+    client.generate_dialogue(
+        DevADialogueInput(
+            contract_version="dev_a_dialogue.v1",
+            request_id=request.turn.request_id,
+            session_id=request.turn.session.session_id,
+            current_node_id=request.turn.session.current_node_id,
+            player_text=normalized_input.player_text,
+            npc=request.turn.npc,
+            node_context=node_context,
+            understanding=understanding,
+            developer_b_policy=dev_b_output,
+        )
+    )
+
+    assert builder_payloads[0]["incivility"] == {
+        "tier": 0,
+        "detected_terms": [],
+        "confidence": 0.0,
+        "category": "none",
+        "source": "none",
+    }
 
 
 def _dev_a_payload_for_request(request: PrePrototypeRequest) -> tuple[DevADialogueOutput, dict[str, Any]]:

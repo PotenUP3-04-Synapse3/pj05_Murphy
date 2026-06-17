@@ -3,6 +3,43 @@
 Cross-owner change requests are listed below. Status lines describe the current
 repository state as of the latest handoff entry.
 
+## Change Request - 2026-06-16 - Clean Developer A Ruff Unused Imports
+
+### Requested By
+
+Developer C / Sean Han
+
+### Affected Owner
+
+Developer A
+
+### Reason
+
+After Developer C implemented the incivility signal sprint, full `uv run pytest`
+and `uv run mypy .` pass. Full `uv run ruff check .` is blocked by unused imports
+inside Developer A-owned implementation files:
+
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/services/service_a/tts_text_polisher_service.py`
+
+Developer C cleaned the unused imports in C-owned test files. The remaining
+blocking files are Developer A-owned implementation files, so Developer C
+should not silently edit them.
+
+### Proposed Contract Change
+
+Developer A should remove the unused imports reported by ruff, or confirm that
+Developer C may apply a mechanical lint-only cleanup to these specific lines.
+
+### Compatibility Impact
+
+No runtime behavior change is expected. This is lint cleanup only.
+
+### Temporary Workaround
+
+Developer C verified the current C-owned sprint files with a focused ruff
+command and documented that global ruff remains blocked by A-owned lint debt.
+
 ## Change Request - 2026-06-15 - Clarify Ownership for Developer C STT Smoke Scripts
 
 ### Requested By
@@ -1572,6 +1609,11 @@ Dev B 기내 분기만 적용해도 기내 씬의 재질문·페널티는 사라
 
 ## Change Request - 2026-06-16 - [CR-A1] Add `incivility` Signal to Understanding Agent Output
 
+Status update 2026-06-16: Implemented by Developer C. `UnderstandingOutput.incivility`
+is now additive semantic evidence produced by the C-owned rule classifier after
+both rule and LLM Understanding paths. CR-A2 and CR-A4 remain open for Developer
+B before Bad Ending end-to-end can work.
+
 Status: Open. 기존 2026-06-16 통합 CR(`Add incivility_tier to Understanding output + B branch policy`)을 owner 단위로 분해한 정식 요청입니다. CR-A1~A4 4건이 모두 머지되어야 Bad Ending end-to-end 가 동작합니다.
 
 ### Requested By
@@ -1649,6 +1691,10 @@ CR-A4 의 시나리오 노드가 없으면 라우팅 실패. CR-A4 와 동시 �
 정책 머지 전까지 A 는 거친 응답만 하고 분기는 정상 노드로 진행. UX 상 "NPC 가 화는 내지만 게임은 계속 진행" 상태로 시연 가능.
 
 ## Change Request - 2026-06-16 - [CR-A3] Forward `incivility` from C Adapter to A-Facing Payload
+
+Status update 2026-06-16: Implemented by Developer C. `DevANpcDialogueClient`
+now forwards top-level `incivility` to the A-facing level-design payload and
+uses a safe tier 0 default when older mock Understanding objects omit the field.
 
 Status: Open. CR-A1 신호의 A 측 전달 경로 확보.
 
@@ -1736,7 +1782,7 @@ Bad ending 노드 미생성 시 A 는 기존 `COMPLETE_CHAPTER` 처리 로직으
 
 ## Change Request - 2026-06-16 - [CR-B-SMALLTALK] 기내 스몰토크 적응형 진단 전환: Dev A 반응형 대사·coherence guard + Dev C 슬롯 완화
 
-Status: Open (Dev B 측 구현 완료 / Dev A·C 미반영). `docs/workplan-dev-b.md`(기내 스몰토크 적응형 진단 전환, C안)의 §4/§10 타 팀 의존 항목.
+Status: Open (Dev B 구현 완료 / Dev C 슬롯 완화 및 OpenKB 세션 누적 회귀 테스트 반영 완료 / Dev A 반응형 대사 및 coherence guard 후속 필요). `docs/workplan-dev-b.md`(기내 스몰토크 적응형 진단 전환, C안)의 §4/§10 타 팀 의존 항목.
 
 ### 구현 반영 (2026-06-17) — 계획 대비 변경점
 
@@ -1840,3 +1886,108 @@ Dev C는 자유 발화를 임의 슬롯으로 채우지 않도록 추출을 완�
 원인이었음). Dev A 반영 전까지는 기존 LLM 생성 경로가 그대로 동작하되, surface_goal 의도
 문자열을 A가 자연 후속으로 못 풀면 어색할 수 있다 — 이때도 **고정 질문 사다리로 회귀하지
 않는다.** 진단 진행·종료(턴 상·하한, 신뢰도)는 OpenKB 세션 레코드만 적재되면 정상 동작한다.
+
+## Change Request - 2026-06-17 - AgentRun Failure Logs Must Include Structured Error Details
+
+### Owners
+
+Developer A / kimyonghee, Developer B / policy owner, Developer C / Sean Han
+
+### Problem
+
+During realtime `/respond` testing, Developer A returned an NPC dialogue
+fallback with `llm.reason="ValueError"`, but the AgentRun record did not include
+the actual exception message. Developer C could prove that the fallback was
+triggered inside Developer A's LLM dialogue path, but could not determine
+whether the root cause was structured output validation, prompt rendering,
+provider setup, or another A-owned validation step.
+
+The same debugging gap can happen in any A/B/C agent if an AgentRun stores only
+an exception type or a generic fallback reason.
+
+Related contract note:
+
+- `candidate_text` is no longer a live input that Developer A should consume.
+  It is the old A-side normalized form of B's `npc_recast_line_candidate`.
+- Developer B should not send `npc_recast_line_candidate` as NPC wording for
+  Developer A to speak. B-owned recommended expressions remain learning/UI
+  data, not live NPC dialogue.
+- Developer C currently strips B-authored `npc_recast_line_candidate` before
+  the A-facing payload. If `candidate_text` still reaches Developer A, that
+  should be logged as a contract violation with structured `error_details`,
+  not treated as normal dialogue input.
+
+### Requested Contract
+
+Each agent should write structured failure details whenever a tool, LLM call,
+validator, fallback, or graph node fails.
+
+Required fields:
+
+- `error_type`: exception class name or stable failure code.
+- `error_message`: sanitized human-readable message from the failing layer.
+- `phase`: stable phase name, for example `npc_dialogue_llm`,
+  `developer_b_feedback_llm`, `understanding_llm`, or `developer_c_langgraph`.
+- `tool_name`: the tool or internal component that failed.
+- `fallback_used`: whether the agent recovered through fallback.
+- `fallback_reason`: stable fallback reason, if fallback was used.
+- `input_summary`: safe, compact input summary that excludes API keys and raw
+  long audio.
+
+Recommended optional fields:
+
+- `provider`: provider name such as `openai`, `elevenlabs`, `rule`, or
+  `local_batch_fallback`.
+- `model_name`: model attempted at the failed step.
+- `retry_count`: retry attempt count if the client retried.
+- `safe_context`: short context needed to reproduce the failure.
+
+### Developer A Request
+
+When `npc_dialogue_agent` falls back from the LLM path, please record the
+underlying exception message in the Developer A AgentRun. The current output
+shape:
+
+```json
+{"llm": {"used": false, "fallback_used": true, "reason": "ValueError"}}
+```
+
+should be expanded with a structured detail block such as:
+
+```json
+{
+  "llm": {
+    "used": false,
+    "fallback_used": true,
+    "reason": "ValueError",
+    "error_details": {
+      "error_type": "ValueError",
+      "error_message": "sanitized exact message",
+      "phase": "npc_dialogue_llm",
+      "tool_name": "agent_a.npc_dialogue_agent.generate_dialogue_llm"
+    }
+  }
+}
+```
+
+Also, please keep treating `candidate_text` as deprecated input. If it appears,
+record a structured failure/fallback detail that says the payload contained the
+forbidden deprecated field, including the sanitized `error_message`.
+
+### Developer B Request
+
+Developer B already records several `fallback_reason` values for feedback LLM
+fallback. Please keep that behavior and also include the same structured
+`error_details` block for any failed policy graph tool, feedback/hint LLM call,
+forbidden-key rejection, OpenKB write failure, or validation failure.
+
+Also, please do not rely on `npc_recast_line_candidate` or `candidate_text` as
+the path for live NPC dialogue. Use `dialogue_seed`, branch metadata, evaluation
+summary, and learning feedback fields instead; C will continue stripping
+B-authored dialogue candidates before calling A.
+
+### Developer C Status
+
+Developer C updated C-owned logging so failed C LangGraph runs and Understanding
+LLM fallback traces include structured `error_details`. C did not modify A/B
+implementation files.

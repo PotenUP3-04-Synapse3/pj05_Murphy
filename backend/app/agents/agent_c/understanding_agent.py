@@ -23,6 +23,7 @@ from backend.app.agents.agent_c.understanding_llm_client import (
 )
 from backend.app.agents.agent_c.visit_purpose_classifier import classify_visit_purpose
 from backend.app.schemas.game_turn import NodeContext, SlotEvidence, UnderstandingOutput
+from backend.app.services.service_c.incivility_classifier import classify_incivility_rule
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -157,6 +158,7 @@ class UnderstandingAgent:
                     exc,
                 )
                 output = self._analyze_with_rules(player_text, node_context)
+                output = _attach_incivility_classification(output, player_text)
                 self.last_trace = _build_fallback_trace(
                     player_text=player_text,
                     node_context=node_context,
@@ -177,6 +179,7 @@ class UnderstandingAgent:
                 player_text,
                 node_context,
             )
+            output = _attach_incivility_classification(output, player_text)
             postprocessing = _merge_postprocessing(
                 slot_evidence_postprocessing,
                 slot_repair_postprocessing,
@@ -193,6 +196,7 @@ class UnderstandingAgent:
             return output
 
         output = self._analyze_with_rules(player_text, node_context)
+        output = _attach_incivility_classification(output, player_text)
         self.last_trace = _build_rule_trace(output)
         return output
 
@@ -268,6 +272,9 @@ class UnderstandingAgent:
                 needs_clarification=False,
             )
 
+        if _is_flight_smalltalk_diagnostic_node(node_context):
+            return _flight_smalltalk_diagnostic_output(player_text, node_context)
+
         if _has_required_intent_mismatch(player_text, node_context):
             return _off_topic_required_slot_output(player_text, node_context)
 
@@ -305,7 +312,8 @@ class UnderstandingAgent:
                 needs_clarification=True,
             )
 
-        if visit_purpose is not None:
+        # 방문 목적 분류기는 해당 노드가 visit_purpose 슬롯을 요구할 때만 성공으로 사용합니다.
+        if "visit_purpose" in node_context.required_slots and visit_purpose is not None:
             return UnderstandingOutput(
                 intent="state_visit_purpose",
                 intent_success=True,
@@ -371,6 +379,25 @@ def _reject_forbidden_llm_keys(result: dict[str, object]) -> None:
     if forbidden_keys:
         joined_keys = ", ".join(sorted(forbidden_keys))
         raise UnderstandingLLMUnavailable(f"Understanding LLM returned forbidden keys: {joined_keys}")
+
+
+def _attach_incivility_classification(
+    output: UnderstandingOutput,
+    player_text: str,
+) -> UnderstandingOutput:
+    """Attach deterministic incivility evidence to an Understanding result.
+
+    초보자용 설명:
+    LLM mode에서도 욕설 신호는 마지막에 규칙 기반으로 다시 붙입니다. 이렇게 하면
+    LLM이 `incivility`를 빼먹거나 낮게 판단해도, 강한 욕설/모욕 신호가 A와 B로
+    전달되는 길이 끊기지 않습니다.
+    """
+
+    rule_incivility = classify_incivility_rule(player_text)
+    if output.incivility is not None and output.incivility.tier > rule_incivility.tier:
+        return output
+
+    return output.model_copy(update={"incivility": rule_incivility})
 
 
 def _extract_generic_required_slot(
@@ -465,6 +492,9 @@ def _repair_missing_allowed_slots(
     node_context: NodeContext,
 ) -> tuple[UnderstandingOutput, dict[str, Any]]:
     no_repair = {"slot_repair_applied": False}
+    if _is_flight_smalltalk_diagnostic_node(node_context):
+        return output, no_repair
+
     if _has_risk_expression(player_text, node_context):
         return output, no_repair
 
@@ -566,6 +596,9 @@ def _apply_generic_slot_evidence(
     player_text: str,
     node_context: NodeContext,
 ) -> tuple[UnderstandingOutput, dict[str, Any]]:
+    if _is_flight_smalltalk_diagnostic_node(node_context):
+        return _normalize_flight_smalltalk_diagnostic_output(output, player_text, node_context)
+
     allowed_slots = _allowed_slot_names(node_context)
     accepted_evidence: list[SlotEvidence] = []
     dropped_slots: list[str] = []
@@ -758,6 +791,90 @@ def _has_slot_intent_mismatch(player_text: str, slot_name: str) -> bool:
     )
 
 
+def _is_flight_smalltalk_diagnostic_node(node_context: NodeContext) -> bool:
+    """기내 스몰토크 단일 진단 노드인지 확인합니다.
+
+    초보자용 설명:
+    이 노드는 과거 펜 요청 시나리오에서 쓰던 `polite_response` 슬롯이 아직
+    데이터에 남아 있지만, Alpha 진단 플로우에서는 그 슬롯을 진행 조건으로
+    쓰지 않습니다. 그래서 C는 이 노드를 슬롯 채점 노드가 아니라 자유 발화
+    진단 노드로 다룹니다.
+    """
+
+    return (
+        node_context.node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+        and node_context.npc_question_goal == "estimate_user_travel_speaking_level"
+    )
+
+
+def _flight_smalltalk_diagnostic_output(
+    player_text: str,
+    node_context: NodeContext,
+) -> UnderstandingOutput:
+    """rule 모드에서 기내 스몰토크 진단용 Understanding 결과를 만듭니다."""
+
+    intent_mismatch = _has_required_intent_mismatch(player_text, node_context)
+    return UnderstandingOutput(
+        intent=node_context.npc_question_goal,
+        intent_success=False,
+        confidence=0.72 if intent_mismatch else 0.55,
+        meaning_summary_kr="The player gave a free-form answer for the flight speaking diagnostic.",
+        emotion="calm",
+        answer_relevance="off_topic" if intent_mismatch else "partially_related",
+        ambiguity_type="off_topic_response" if intent_mismatch else "diagnostic_free_speech",
+        risk_delta=0,
+        risk_reason="No immigration risk expression was found.",
+        risk_tags=[],
+        extracted_slots={},
+        missing_slots=[],
+        needs_clarification=False,
+    )
+
+
+def _normalize_flight_smalltalk_diagnostic_output(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> tuple[UnderstandingOutput, dict[str, Any]]:
+    """LLM 결과에서 진단 노드의 레거시 슬롯 흔적을 제거합니다.
+
+    초보자용 설명:
+    LLM이 `polite_response`처럼 유효해 보이는 슬롯 값을 반환해도, 현재 노드는
+    레벨 진단용 self-loop입니다. C는 B/A가 그 값을 진행 조건이나 고정 대사
+    근거로 오해하지 않도록 slot evidence와 extracted slot을 비워서 넘깁니다.
+    """
+
+    intent_mismatch = _has_required_intent_mismatch(player_text, node_context)
+    answer_relevance = "off_topic" if intent_mismatch else output.answer_relevance
+    confidence = _guard_confidence_for_evidence(
+        output.confidence,
+        intent_mismatch=intent_mismatch,
+        weak_required_slot_evidence=False,
+    )
+    normalized = output.model_copy(
+        update={
+            "intent": node_context.npc_question_goal,
+            "intent_success": False,
+            "confidence": confidence,
+            "answer_relevance": answer_relevance,
+            "ambiguity_type": "off_topic_response" if intent_mismatch else output.ambiguity_type,
+            "slot_evidence": [],
+            "extracted_slots": {},
+            "missing_slots": [],
+            "needs_clarification": False,
+        }
+    )
+    return normalized, {
+        "generic_slot_evidence_applied": False,
+        "flight_smalltalk_diagnostic_slot_neutralized": True,
+        "intent_relevance_guard_applied": intent_mismatch,
+        "confidence_evidence_guard_applied": confidence != output.confidence,
+        "weak_required_slot_evidence": False,
+        "accepted_slot_evidence": [],
+        "dropped_slot_evidence": [evidence.slot for evidence in output.slot_evidence],
+    }
+
+
 def _off_topic_required_slot_output(player_text: str, node_context: NodeContext) -> UnderstandingOutput:
     """Build a safe Understanding output for a known off-topic phrase.
 
@@ -851,6 +968,7 @@ def _merge_postprocessing(
 ) -> dict[str, Any]:
     slot_evidence_changed = bool(
         slot_evidence_postprocessing.get("generic_slot_evidence_applied")
+        or slot_evidence_postprocessing.get("flight_smalltalk_diagnostic_slot_neutralized")
         or slot_evidence_postprocessing.get("dropped_slot_evidence")
         or slot_evidence_postprocessing.get("intent_relevance_guard_applied")
         or slot_evidence_postprocessing.get("confidence_evidence_guard_applied")
@@ -931,6 +1049,7 @@ def _build_llm_trace(
         "mode": "llm",
         "model_name": model_name,
         "model_usage": model_usage,
+        "output_summary": _understanding_output_summary(output),
         "postprocessing": postprocessing,
         "fallback_used": False,
         "fallback_reason": None,
@@ -962,9 +1081,15 @@ def _build_fallback_trace(
     fallback_output: UnderstandingOutput,
 ) -> dict[str, Any]:
     error_type = error.__class__.__name__
+    error_details = _exception_details(
+        error,
+        phase="understanding_llm",
+        tool_name="understanding_llm_client.analyze",
+    )
     return {
         "mode": "fallback",
         "model_name": model_name,
+        "output_summary": _understanding_output_summary(fallback_output),
         "fallback_used": True,
         "fallback_reason": error_type,
         "tool_calls": [
@@ -977,9 +1102,28 @@ def _build_fallback_trace(
                 "input_summary": _understanding_input_summary(player_text, node_context),
                 "error": str(error),
                 "error_type": error_type,
+                "error_details": error_details,
                 "output_summary": _understanding_output_summary(fallback_output),
             }
         ],
+    }
+
+
+def _exception_details(error: Exception, *, phase: str, tool_name: str) -> dict[str, str]:
+    """예외를 C Understanding 로그에서 재사용할 수 있는 구조로 정리합니다.
+
+    초보자용 설명:
+    로그에 `ValueError` 같은 타입만 남으면 다음 사람이 원인을 다시 재현해야
+    합니다. 여기서는 실패 타입, 실제 메시지, 실패 단계, 도구 이름을 한 묶음으로
+    남겨서 LLM 스키마 문제인지, 네트워크 문제인지, 후처리 문제인지 빠르게
+    구분할 수 있게 합니다.
+    """
+
+    return {
+        "error_type": error.__class__.__name__,
+        "error_message": str(error),
+        "phase": phase,
+        "tool_name": tool_name,
     }
 
 
@@ -1004,6 +1148,19 @@ def _understanding_output_summary(output: UnderstandingOutput) -> dict[str, Any]
         "slot_evidence_slots": [evidence.slot for evidence in output.slot_evidence],
         "missing_slots": output.missing_slots,
         "needs_clarification": output.needs_clarification,
+        "incivility": _incivility_summary(output),
+    }
+
+
+def _incivility_summary(output: UnderstandingOutput) -> dict[str, Any]:
+    """Return a compact QA-safe incivility summary for logs."""
+
+    if output.incivility is None:
+        return {"tier": 0, "category": "none", "source": "none"}
+    return {
+        "tier": output.incivility.tier,
+        "category": output.incivility.category,
+        "source": output.incivility.source,
     }
 
 

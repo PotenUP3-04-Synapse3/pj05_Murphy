@@ -150,6 +150,16 @@ def _build_flow_response(
             show_scoreboard=True,
         )
 
+    # 비속어 배드 엔딩도 결과 UI를 열어야 하므로 Alpha scoreboard flow로 보냅니다.
+    if transition is not None and transition.unreal_event == "SHOW_BAD_END_SCOREBOARD":
+        return FlowResponse(
+            transition_type="scoreboard",
+            transition_id="bad_end_scoreboard",
+            from_scene_id=current_scene_id,
+            to_scene_id="ALPHA_SCOREBOARD",
+            show_scoreboard=True,
+        )
+
     if current_node_id == "FLIGHT_005_WRAP_UP" and next_node_id == "IMM_001_PASSPORT":
         return FlowResponse(
             transition_type="cutscene",

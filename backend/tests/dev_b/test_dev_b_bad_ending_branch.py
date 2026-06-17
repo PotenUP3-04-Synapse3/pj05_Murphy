@@ -7,6 +7,7 @@ from backend.app.agents.agent_b.english_level_hint_agent import EnglishLevelHint
 from backend.app.schemas.game_turn import (
     DevBPolicyInput,
     HintPolicy,
+    IncivilityClassification,
     InputSource,
     NodeContext,
     PlayerProfile,
@@ -16,15 +17,6 @@ from backend.app.schemas.game_turn import (
 )
 from backend.app.services.service_b.openkb_feedback_writer import OpenKBFeedbackWriter
 from backend.app.services.service_b.final_result_score_policy import FinalResultScorePolicy
-
-from pydantic import BaseModel, Field
-
-class IncivilityClassification(BaseModel):
-    tier: int = Field(0, ge=0, le=3)
-    detected_terms: list[str] = Field(default_factory=list)
-    confidence: float = Field(0.0, ge=0.0, le=1.0)
-    category: str = "none"
-    source: str = "none"
 
 class MockUnderstandingOutput(UnderstandingOutput):
     incivility: IncivilityClassification | None = None

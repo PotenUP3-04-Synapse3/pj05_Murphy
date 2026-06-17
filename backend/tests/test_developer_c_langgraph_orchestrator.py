@@ -151,6 +151,32 @@ def test_orchestrator_runs_turn_through_structured_tool_wrappers_and_records_gra
     ]
 
 
+def test_developer_c_failed_agent_run_records_structured_error_details(tmp_path) -> None:
+    from backend.app.tools.tool_c.developer_c_graph_tools import DeveloperCGraphTools
+
+    request = _preprototype_request()
+    tools = DeveloperCGraphTools(agent_run_root=tmp_path)
+    tools.start_agent_run_tool({"request": request})
+
+    tools.complete_failed_run(request, ValueError("simulated graph failure"))
+
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    developer_c_record = next(record for record in records if record["owner"] == "developer_c")
+    failed_event = developer_c_record["events"][-1]
+
+    assert failed_event["status"] == "failed"
+    assert failed_event["error_details"] == {
+        "error_type": "ValueError",
+        "error_message": "simulated graph failure",
+        "phase": "developer_c_langgraph",
+        "tool_name": "developer_c_turn_graph",
+    }
+    assert developer_c_record["summary"]["output"]["error_details"] == failed_event["error_details"]
+
+
 def _preprototype_request(transcript: str = "I'm here for tourism.") -> PrePrototypeRequest:
     return PrePrototypeRequest(
         turn=UnrealTurnRequest.model_validate(
