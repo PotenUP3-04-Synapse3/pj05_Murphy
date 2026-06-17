@@ -343,3 +343,119 @@ Developer B는 <무엇을 / 왜> 했다.
   `docs/contracts/change_requests.md`(<change request 제목>)로 전달.
 - 검증/후속: <테스트·검증 명령 결과 또는 다음 단계>
 ```
+
+---
+
+## 11. Dev C 연동 및 respond-dialog 테스트 페이지 개선 완료 (2026-06-17)
+
+Developer C(Sean Han)는 Developer B의 본 작업계획서에 의존된 **[CR-B-EOKKKA]** 관련 백엔드 연동 작업 및 테스트 페이지(`/respond-dialog`) 개선을 완료했습니다.
+
+### Dev C 반영 내역:
+1. **스키마 확장 & 영속화**:
+   - `game_turn.py` 스키마에 `assigned_visit_location` 계열 필드 및 `random_customs_item` 확장 필드 반영 완료.
+   - `DeveloperCGraphTools.validate_dev_b_policy_tool()` 전환 노드 시점에서 B의 `pick_location` 및 `pick_customs_item`을 호출하여 `GameState`에 자동 배정 및 영속화 완료.
+2. **테스트 페이지 (`respond-dialog`) 개선**:
+   - English Level (0~12) 입력 필드 및 "Auto-Fill", "Apply" 연동 기능을 추가하여 `/api/game/ai/demo/eokkka/assign` 및 `/options` 엔드포인트를 통해 레벨별 결정적/랜덤 억까 정보의 인계 검증을 지원하도록 구현 완료.
+   - Flight 및 Result 챕터 선택 시 억까 패널 자동 숨김 및 상태 초기화 보장.
+3. **비용 추정 및 로그 개선**:
+   - `gpt-5.4-mini`, `fake-understanding-model`, `unknown` 모델의 비용 단가 매핑 및 fallback 단가(`gpt-4o-mini`) 적용으로 $0.000000 비용 오류 해결.
+   - 세션 통계에 사용된 모델 목록(`models`) 노출 완료.
+4. **검증 통과**:
+   - `uv run pytest` 전체 314개 테스트 통과 완료.
+   - `ruff` 및 `mypy` 검사 오류 없이 통과 완료.
+
+---
+
+## 12. Developer B 누적 작업 포트폴리오 (git 이력 기반, 2026-06-04 ~ 06-17)
+
+> §11이 직전 억까/테스트 페이지 연동만 다루므로, 그동안 포트폴리오에 정리되지
+> 않았던 Developer B의 전체 기여를 git 이력 기준으로 누적 정리한다. 각 항목은
+> 실제 커밋·모듈에 근거한다.
+
+### 12.0 역할 한 줄 요약
+
+Developer B는 **결정론적(rule-based) 정책 엔진**을 소유한다. 지저분한 여행 영어·
+한국식 영어·짧은 비문 발화를 받아 **평가(verdict)·레벨/힌트·분기·상태 델타·
+피드백·최종 점수**를 산출한다. NPC 대사(A)·오케스트레이션/검증(C)·TTS·Unreal
+명령은 소유하지 않으며, 모든 출력은 C와의 JSON 계약(`dev_b_policy.v1`)을 엄격히 따른다.
+
+### 12.1 정책 엔진 코어 — 상태 머신 & 난이도 컨트롤러
+
+| 모듈 | 책임 |
+|---|---|
+| `service_b/scenario_state_machine.py` | 턴별 verdict(SUCCESS/PARTIAL/UNCLEAR/FAIL/CRITICAL_FAIL)와 분기(retry/clarify/hint/advance/bad_end) 결정 |
+| `service_b/tier_difficulty_controller.py` | 6개 루브릭 영역(이해·유창·문법·어휘·명확·상호작용) × 0~2점 = **총점 0~12** → `travel_speaking_level_for_total()`로 TSL_1~4 판정, 티어 보정으로 NPC 말속도·질문 복잡도·힌트 빈도·압박 강도 산출 |
+| `agent_b/policy_graph.py`, `tool_b/developer_b_policy_graph_tools.py` | LangGraph 기반 정책 파이프라인 배선 |
+
+- 관련 커밋: `fb92130`(상태 머신 + 테스트 스위트, 06-16), `70b0f4a`(정책 엔진 통합, 06-16), `bed85e4`(진단 서비스·상태 머신·응답 오케스트레이션, 06-12).
+- 회귀 가드: `test_developer_b_policy_engine.py`.
+
+### 12.2 Chapter 0 시나리오 노드 설계 (`scenario_nodes.json`)
+
+- 입국심사 라우트 `IMM_001_PASSPORT` ~ `IMM_007_FINAL_DECISION`: 각 노드에
+  allowed-next-nodes와 retry/clarify/hint/warning/bad-end 분기 후보, `objective_kr`
+  (한국어 UI 목표) 포함.
+- 5턴 **기내 스몰토크 진단 라우트**, **수화물 분실 문제해결 라우트**
+  (`BAG_001_*` ~ `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM`), `ALPHA_999_FINAL_SCOREBOARD`
+  최종 분기 노드.
+- 관련 커밋: `9a9da1a`(입국심사 정책·노드 정의, 06-10), `e6b50b5`(한국어 objective, 06-04).
+
+### 12.3 기내 스몰토크 진단 정책 (`flight_smalltalk_diagnostic_policy.py`)
+
+- 게임 도입부 5턴 대화로 플레이어의 초기 TSL을 **숨은 진단**
+  (`estimate_user_travel_speaking_level`)으로 추정. 슬롯 중립화로 진단 누설 방지.
+- 관련 커밋: `08fa014`(기내 스몰토크 개선, 06-16), `fd10aeb`(진단·리포팅 계약, 06-11),
+  `f1ca214`(smalltalk slot safety, 06-17).
+- 회귀 가드: `test_flight_smalltalk_diagnostic_policy.py`.
+
+### 12.4 레벨·힌트·피드백 생성 계층
+
+| 모듈 | 책임 |
+|---|---|
+| `agent_b/english_level_hint_agent.py`, `agent_b/feedback_hint_llm_client.py` | 레벨별 힌트 산출. **결정론 정책이 verdict/분기/다음 노드/상태 델타의 단일 권위**, LLM은 한국어 힌트·피드백 문구·리포트 표현·Focus-on-Form 설명·루브릭 후보로만 제한(폴백 보장) |
+| `service_b/feedback_hint_generator.py` | 인게임 힌트(keyword/sentence_pattern/situation/action) 생성 |
+| `service_b/focus_on_form_report_policy.py` | Focus-on-Form 교정 타깃 산출 |
+| `service_b/level_adaptation_controller.py` | 진행 중 레벨 적응 조정 |
+
+- 관련 커밋: `df68ff3`(English level hint agent + 정책 그래프 인프라, 06-12),
+  `a99b28d`(피드백 서비스·hint agent, 06-09).
+- 회귀 가드: `test_focus_on_form_report_policy.py`.
+
+### 12.5 최종 점수 & Bad Ending 정책
+
+| 모듈 | 책임 |
+|---|---|
+| `service_b/final_result_score_policy.py` | Alpha 최종 스코어보드 점수·티어·강점/취약점 산출 및 검증 |
+| `service_b/bad_ending_policy.py` | 인내심/의심 한계 초과 시 bad ending 분기 가드 |
+
+- 관련 커밋: `174926d`(최종 점수 정책·검증, 06-05), `f1ca214`(bad ending guard, 06-17).
+- 회귀 가드: `test_final_result_score_policy.py`, `test_dev_b_bad_ending_branch.py`,
+  `test_scenario_nodes_bad_ending.py`.
+
+### 12.6 학습 기록 영속화 & 실행 로깅
+
+| 모듈 | 책임 |
+|---|---|
+| `service_b/openkb_feedback_writer.py` | B 소유 OpenKB `dev_b` 네임스페이스에 error capture·out-game 피드백 seed·Focus-on-Form 타깃·리포트 아이템·분기 결정·상태 델타를 **JSONL + 마크다운**으로 결정론 기록 |
+| `service_b/developer_b_agent_run_logger.py` | Developer B 통합 AgentRun 실행 추적 로깅 |
+
+- 관련 커밋: `eb51775`(OpenKB 통합·피드백 생성, 06-04), `2fbf91a`(AgentRun 로거, 06-04).
+- 회귀 가드: `test_developer_b_agent_run_log.py`.
+
+### 12.7 억까(트집) 장소·수화물 레벨별 배정 — 본 작업계획서(§0~§9)
+
+- 데이터 테이블 `data/challenge_tables.py`(장소 17·수화물 18종, 난이도 1~12),
+  픽 서비스 `service_b/challenge_assignment_service.py`(`TSL_TO_DIFFICULTY_RANGE`,
+  `pick_location`/`pick_customs_item`, 빈 풀 인접 폴백, `to_random_customs_item_context`).
+- 밸런스 단일 소스를 B 순수함수로 소유, 실행·영속화는 C(§9, §11).
+- 관련 커밋: `0cc62aa`(코어 스키마 + 억까 픽 서비스, 06-17).
+- 회귀 가드: `test_challenge_assignment.py`.
+
+### 12.8 계약·문서 산출물
+
+- `docs/contracts/developer_b_json_final_v1.md`, `developer_b_json_key_value_contract_v1.md`,
+  `developer_b_report_and_dialogue_seed_contract.md`, `docs/dev_b_rubric.md`.
+- 타 팀 의존은 `docs/contracts/change_requests.md`(`[CR-B-EOKKKA]`)와
+  `docs/handoff.md`로 양방향 연결(§10 절차).
+- 관련 커밋: `4e6c640`(JSON Key-Value 계약 + 포트폴리오 문서, 06-04).
+
