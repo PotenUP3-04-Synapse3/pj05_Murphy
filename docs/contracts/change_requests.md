@@ -519,6 +519,7 @@ dialogue support.
 Status: Resolved for the current Developer C-to-A adapter payload.
 
 Developer C boundary update, 2026-06-16:
+
 - `dev_a_npc_dialogue_client.py` now removes B-authored live-dialogue fields
   from the A-facing level-design payload instead of passing them as `None`.
 - Removed from A-facing payload: `node_context.npc_question`,
@@ -536,6 +537,7 @@ Developer C boundary update, 2026-06-16:
   internal B-to-A adapter boundary.
 
 Developer A & C update, 2026-06-15:
+
 - Developer A는 `candidate_text` (어댑터 단의 `npc_recast_line_candidate`가 변환된 값)가 A-side 에이전트(`npc_dialogue_agent.py`)에 유입되는 것을 차단하고, 유입될 경우 명시적으로 `ValueError` 예외를 발생시키도록 유효성 검증을 강화했습니다.
 - Developer C는 `dev_a_npc_dialogue_client.py` 어댑터 단에서 B가 반환한 `npc_recast_line_candidate` 값을 A로 인가할 때 강제로 `None`으로 필터링 처리하여 유입을 차단했습니다.
 - 이에 종속된 모든 관련 테스트(유닛 및 통합 테스트) 단언문들이 갱신 및 정상화되었습니다.
@@ -1275,6 +1277,7 @@ Developer C / Sean Han
 Developer A is executing the cleanup and TTS slimming refactor plan (removing Chatterbox/Kokoro packages and unifying fallback to Edge TTS).
 Since the default fallback provider changes from `kokoro` to `edge`, integrated test cases owned by Developer C that assert or mock the `kokoro` audio URL path will fail.
 Specifically:
+
 - `backend/tests/test_preprototype_flow.py` (L840) expects `/runtime/audio/kokoro/` URL prefix.
 - `backend/tests/test_demo_ai_respond_page.py` (L404) uses `/runtime/audio/kokoro/demo.wav` as mock data.
 - `backend/tests/test_final_result_payload.py` (L243) uses `/runtime/audio/kokoro/final.wav` as mock data.
@@ -1523,6 +1526,13 @@ Developer A 소유 프롬프트/생성 로직 내부 개선이며, A/B/C 간 스
 
 ## Change Request - 2026-06-16 - 기내 스몰토크 대화형 전환 (Flight Smalltalk Conversational Mode)
 
+Status: Resolved (Developer A update - 2026-06-17). Developer A 측 후속 작업
+(스몰토크 페르소나 프롬프트, missing_followup_question 우회, SURFACE_GOAL_QUESTIONS
+비활성화, recommended_expression 차단, 대화 메모리, generic 중립 폴백, Coherence Guard)
+이 모두 구현 완료. 상세 내용은 handoff.md 2026-06-17 "Developer A 기내 스몰토크
+적응형 진단(Adaptive Diagnostic) 연동 구현 완료" entry 참고. Developer C 측 후속
+(off-topic 가드 씬 인지화, 슬лот 강제 추출 완화)은 별도로 처리됨.
+
 Status: Open. Developer B 작업계획서(`docs/workplan-dev-b.md`) 기준. Dev B는
 분기 결정·시드 측을 담당하며, 본 요청은 Dev A·Dev C 후속 작업을 정의한다.
 
@@ -1575,7 +1585,7 @@ Dev C:
 - 기내 스몰토크에서 슬롯 강제 추출을 완화한다 — 자유 발화를 임의 슬롯 값으로
   채우지 않는다.
 - **off-topic 가드의 씬 인지화**: 2026-06-16 Understanding off-topic guard는
-  입국심사(IMM_*)에서는 차단을 유지하되, 기내 스몰토크에서는 off-topic을
+  입국심사(IMM\_\*)에서는 차단을 유지하되, 기내 스몰토크에서는 off-topic을
   패널티/재질문 유발로 쓰지 않는다(화제 이동 허용). Dev B 기내 분기는 채점
   신호를 무시하므로 재질문은 발생하지 않으나, understanding 출력이 리포트/적립을
   왜곡하지 않도록 조정 요청.
@@ -1606,6 +1616,7 @@ Developer C / Sean Han, and Developer B
 
 1. **CR-1 (Affected: Developer C) - Understanding Agent `incivility` Signal**:
    Understanding Agent 출력에 `incivility` 객체를 추가합니다.
+
    ```json
    "incivility": {
      "tier": 0,           // 0=정상, 1=무례, 2=인격모독, 3=욕설/혐오/위협
@@ -1614,6 +1625,7 @@ Developer C / Sean Han, and Developer B
      "category": "rudeness|insult|profanity|slur|threat"
    }
    ```
+
    이 신호는 키워드 기반 혹은 LLM 분류 모드를 통해 산출됩니다.
 
 2. **CR-2 (Affected: Developer B) - Bad Ending / Penalty Policy on `incivility.tier >= 2`**:
@@ -1625,7 +1637,7 @@ Developer C / Sean Han, and Developer B
 ### Compatibility Impact
 
 이 필드는 추가적인 속성이며, 신호가 누락되거나 기본값(0)인 경우 평상시의 정중한 응답으로 안전하게 수렴하므로 기존 호환성을 해치지 않습니다.
-(IMM_*)·수하물(BAG_*) 채점 동작은 그대로 유지되어야 한다(회귀 가드).
+(IMM*\*)·수하물(BAG*\*) 채점 동작은 그대로 유지되어야 한다(회귀 가드).
 `branch_type` enum은 확장하지 않으며, 중립 진행은 `success`+`ADVANCE` 재사용 +
 `branch_reason="flight_smalltalk_continue"` 신호로 표현한다.
 
@@ -1784,13 +1796,14 @@ CR-A2 의 bad ending 분기가 라우팅할 대상 노드(`*_BAD_END_VERBAL_ABUS
 
 `backend/app/data/scenario_nodes.json` 에 다음 노드를 추가합니다.
 
-| 노드 ID | chapter_id | npc_role | npc_question_goal |
-|---|---|---|---|
-| `FLIGHT_BAD_END_VERBAL_ABUSE` | `CH0_01_FLIGHT_SMALLTALK` | seatmate | `closing_eviction` |
-| `IMM_BAD_END_VERBAL_ABUSE` | `CH0_03_IMMIGRATION_CHECK` | immigration_officer | `closing_eviction` |
-| `BAG_BAD_END_VERBAL_ABUSE` | `CH0_04_BAGGAGE_CLAIM` | customs_officer | `closing_eviction` |
+| 노드 ID                       | chapter_id                 | npc_role            | npc_question_goal  |
+| ----------------------------- | -------------------------- | ------------------- | ------------------ |
+| `FLIGHT_BAD_END_VERBAL_ABUSE` | `CH0_01_FLIGHT_SMALLTALK`  | seatmate            | `closing_eviction` |
+| `IMM_BAD_END_VERBAL_ABUSE`    | `CH0_03_IMMIGRATION_CHECK` | immigration_officer | `closing_eviction` |
+| `BAG_BAD_END_VERBAL_ABUSE`    | `CH0_04_BAGGAGE_CLAIM`     | customs_officer     | `closing_eviction` |
 
 공통 사양:
+
 - `node_type = "ending"`
 - `next_action = "COMPLETE_CHAPTER"`
 - `transition.unreal_event = "SHOW_BAD_END_SCOREBOARD"` (Unreal 측 컷씬/스코어보드 트리거)
@@ -1811,6 +1824,9 @@ Bad ending 노드 미생성 시 A 는 기존 `COMPLETE_CHAPTER` 처리 로직으
 ## Change Request - 2026-06-16 - [CR-B-SMALLTALK] 기내 스몰토크 적응형 진단 전환: Dev A 반응형 대사·coherence guard + Dev C 슬롯 완화
 
 Status: Open (Dev B 구현 완료 / Dev C 슬롯 완화 및 OpenKB 세션 누적 회귀 테스트 반영 완료 / Dev A 반응형 대사 및 coherence guard 후속 필요). `docs/workplan-dev-b.md`(기내 스몰토크 적응형 진단 전환, C안)의 §4/§10 타 팀 의존 항목.
+Status: Implemented (Developer A 및 Developer B 구현 완료 / Developer C 미반영). `docs/workplan-dev-b.md`(기내 스몰토크 적응형 진단 전환, C안)의 §4/§10 타 팀 의존 항목.
+
+- Developer A 구현 완료 (2026-06-17) - 반응형 대사, coherence guard, missing_followup_question 해제, 중립 폴백 반응 완료.
 
 ### 구현 반영 (2026-06-17) — 계획 대비 변경점
 
@@ -2070,7 +2086,7 @@ underlying exception message in the Developer A AgentRun. The current output
 shape:
 
 ```json
-{"llm": {"used": false, "fallback_used": true, "reason": "ValueError"}}
+{ "llm": { "used": false, "fallback_used": true, "reason": "ValueError" } }
 ```
 
 should be expanded with a structured detail block such as:
