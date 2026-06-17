@@ -42,6 +42,11 @@ from backend.app.services.service_c.openkb_service import OpenKBService
 from backend.app.services.service_c.response_builder import ResponseBuilder
 from backend.app.services.service_c.stt_service import WhisperLargeV3TurboSttService
 from backend.app.services.service_c.validator import Validator
+from backend.app.services.service_b.challenge_assignment_service import (
+    pick_customs_item,
+    pick_location,
+    to_random_customs_item_context,
+)
 
 
 DEVELOPER_C_GRAPH_NAME = "developer_c_turn_graph"
@@ -366,6 +371,23 @@ class DeveloperCGraphTools:
         }
 
     def validate_dev_b_policy_tool(self, state: Mapping[str, Any]) -> dict[str, Any]:
+        """Validate Developer B's policy output and perform TSL-based challenge assignment.
+
+        Beginner guide:
+        This tool runs in the Developer C orchestration flow after Developer B has
+        evaluated the current turn's speaking level and scenario branch. It performs
+        two key roles:
+        1. Validates that the next node is allowed according to the current node context
+           and client constraint settings.
+        2. Assigns "Eokkka" (unfair accusation) challenges during chapter transitions. If
+           transitioning from flight small talk, it assigns a suspicious location; if
+           transitioning from immigration check, it assigns a suspicious customs item.
+           These assignments are written to GameState and forwarded inside DialogueSeed.
+
+        This tool acts as a validation gate and metadata forwarder. It does not decide
+        standard branch routing itself, but enforces correctness constraints and persists
+        the assigned challenge variables in the game state.
+        """
         request = _require_state_value(state, "request", PrePrototypeRequest)
         node_context = _require_state_value(state, "node_context", NodeContext)
         dev_b_output = _require_state_value(state, "dev_b_output", DevBPolicyOutput)
@@ -386,6 +408,39 @@ class DeveloperCGraphTools:
         )
         timing_ms["validation_ms"] += _elapsed_ms(stage_started)
         transition = self._transition_for_branch(node_context, dev_b_output)
+
+        # Dynamic location and customs item assignment during chapter transitions
+        next_node_id = dev_b_output.branch.next_node_id
+        current_tsl = dev_b_output.level_hint.travel_speaking_level or "TSL_1_SURVIVAL"
+
+        if next_node_id == "FLIGHT_999_COMPLETE":
+            # Assign eokkka location based on current diagnostic TSL
+            loc = pick_location(current_tsl)
+            request.turn.game_state.assigned_visit_location = loc.name_en
+            request.turn.game_state.assigned_visit_location_ko = loc.name_ko
+            request.turn.game_state.visit_location_difficulty = loc.difficulty
+            request.turn.game_state.visit_location_suspicion_reason = loc.suspicion_reason
+
+        elif next_node_id == "IMM_999_CLEARED":
+            # Assign eokkka customs item based on post-immigration TSL
+            item = pick_customs_item(current_tsl)
+            request.turn.game_state.random_customs_item = to_random_customs_item_context(item)
+
+        # Inject eokkka suspicion details from GameState into DialogueSeed so Developer A has access to them
+        if dev_b_output.dialogue_seed is not None:
+            gs = request.turn.game_state
+            if gs.assigned_visit_location:
+                dev_b_output.dialogue_seed.assigned_visit_location = gs.assigned_visit_location
+                dev_b_output.dialogue_seed.assigned_visit_location_ko = gs.assigned_visit_location_ko
+                dev_b_output.dialogue_seed.visit_location_difficulty = gs.visit_location_difficulty
+                dev_b_output.dialogue_seed.visit_location_suspicion_reason = gs.visit_location_suspicion_reason
+            if gs.random_customs_item:
+                dev_b_output.dialogue_seed.item_id = gs.random_customs_item.item_id
+                dev_b_output.dialogue_seed.item_name = gs.random_customs_item.item_name
+                dev_b_output.dialogue_seed.item_category = gs.random_customs_item.item_category
+                dev_b_output.dialogue_seed.item_difficulty = gs.random_customs_item.difficulty
+                dev_b_output.dialogue_seed.item_suspicion_reason = gs.random_customs_item.suspicion_reason
+
         self.agent_run_middleware.record_event(
             agent_run,
             event="tool_call",
@@ -398,7 +453,12 @@ class DeveloperCGraphTools:
             },
             output_summary={"validated": True},
         )
-        return {"transition": transition, "timing_ms": timing_ms}
+        return {
+            "transition": transition,
+            "timing_ms": timing_ms,
+            "request": request,
+            "dev_b_output": dev_b_output,
+        }
 
     def _validation_next_node_guards(
         self,

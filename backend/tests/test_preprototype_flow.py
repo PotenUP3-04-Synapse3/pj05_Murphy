@@ -1332,6 +1332,8 @@ def test_orchestrator_passes_random_customs_item_and_routes_customs_npc_to_devel
         "visit_location": "Queens",
         "declared": False,
         "source": "unreal_csv",
+        "difficulty": None,
+        "suspicion_reason": None,
     }
     assert payload["understanding"]["extracted_slots"]["customs_item_explanation"] == "medicine"
 
