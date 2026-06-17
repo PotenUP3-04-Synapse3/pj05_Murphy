@@ -41,6 +41,17 @@ class ResponseBuilder:
         transition: TransitionContext | None = None,
         timing_ms: TurnTimingMs | None = None,
     ) -> UnrealResponse:
+        """Assemble the final UnrealResponse object from turn components.
+
+        Beginner guide:
+        This builder functions as the response packaging layer. It takes the outputs
+        from other team components (STT, Understanding, Dev B policy, Dev A dialogue)
+        and structures them into the final UnrealResponse contract.
+
+        It does not make any business decisions, score evaluations, or branch decisions
+        on its own. It enforces the contract schemas and returns the mutated GameState
+        back to Unreal so that location and item assignments persist across turns.
+        """
         return UnrealResponse(
             contract_version="dev_c_unreal_response.v1",
             request_id=request.turn.request_id,
@@ -51,6 +62,7 @@ class ResponseBuilder:
             next_action=dev_b_output.branch.next_action,
             transition=transition,
             interaction=request.turn.interaction,
+            game_state=request.turn.game_state,
             stt=SttResponse(
                 model=normalized_input.stt_model,
                 primary_runtime=normalized_input.stt_primary_runtime,
