@@ -3,6 +3,34 @@
 Cross-owner change requests are listed below. Status lines describe the current
 repository state as of the latest handoff entry.
 
+## Change Request - 2026-06-17 - Deprecate and Remove do_not_generate_npc_text from Developer B Policy
+
+### Requested By
+
+Developer C / Sean Han
+
+### Affected Owner
+
+Developer B
+
+### Reason
+
+The `do_not_generate_npc_text` field in `DialogueDirective` is not used by Developer C's orchestrator or Developer A's dialogue generation prompt (which is immediately filtered out at the adapter layer). Keeping it as a required field triggers unnecessary Pydantic validation errors and test fixture boilerplates.
+
+### Proposed Contract Change
+
+- Remove references to `do_not_generate_npc_text` from the system prompt guidelines in `backend/app/prompts/english_level_hint_prompt.md`.
+- Remove the `do_not_generate_npc_text` keyword argument when instantiating `DialogueDirective` in `backend/app/agents/agent_b/english_level_hint_agent.py`.
+- Developer C has made this field optional in the shared Pydantic schema to prevent immediate breaking changes, so Developer B can safely clean it up at any time.
+
+### Compatibility Impact
+
+No breaking change is introduced on the runtime boundary, as the shared schema now treats this field as optional. B can safely deploy this cleanup without breaking C's validation.
+
+### Temporary Workaround
+
+Developer C has relaxed the shared schema constraint (`do_not_generate_npc_text: bool | None = None`) and continues to sanitize the field in the A-facing adapter.
+
 ## Change Request - 2026-06-16 - Clean Developer A Ruff Unused Imports
 
 ### Requested By
@@ -1902,6 +1930,99 @@ Dev C는 자유 발화를 임의 슬롯으로 채우지 않도록 추출을 완�
 원인이었음). Dev A 반영 전까지는 기존 LLM 생성 경로가 그대로 동작하되, surface_goal 의도
 문자열을 A가 자연 후속으로 못 풀면 어색할 수 있다 — 이때도 **고정 질문 사다리로 회귀하지
 않는다.** 진단 진행·종료(턴 상·하한, 신뢰도)는 OpenKB 세션 레코드만 적재되면 정상 동작한다.
+
+## Change Request - 2026-06-17 - [CR-B-EOKKKA] 억까 장소·수화물 레벨별 배정
+
+Status: Resolved (Developer C implementation complete - 2026-06-17).
+
+### Requested By
+
+Developer B
+
+### Affected Owner
+
+Developer C / Sean Han (스키마·배선·영속화), Developer A / kimyonghee (NPC 트집 대사),
+Unreal (입국신고서 UI·BAG_006 reveal)
+
+### Reason
+
+입국심사 "억까 장소 리스트"와 세관 "억까 수화물 리스트"를 플레이어의 진단 레벨(TSL)에
+맞춰 난이도 구간별로 랜덤 배정한다(잘할수록 어려운 억까로 난이도 유지). 난이도 1~12는
+루브릭 total(0~12)과 동일 척도라 추가 변환 없이 직접 매핑된다.
+
+배정은 두 책임으로 분리된다:
+
+- **(가) 픽 규칙** — "TSL_3이면 난이도 7~9 풀에서 랜덤"이라는 밸런스 로직.
+- **(나) 픽 실행 + 영속화** — 실제 선택·GameState 기록·턴 간 유지·Unreal 전달·NPC 대사.
+
+확정 방향(1번 안): **(가)는 Dev B 소유**(밸런스 단일 소스, 유닛 테스트로 닫음),
+**(나)는 Dev C/A/Unreal 소유**. 픽 규칙을 코드 밖(CSV/문서)으로 빼면 TSL 경계가 B·C
+두 곳에 중복돼 "레벨 7인데 난이도 11" 같은 붕괴가 조용히 발생하므로, 픽 규칙은 B 코드에
+둔다.
+
+**Dev B가 한 일**(이 CR 발행 시점에는 작업계획 확정, 구현은 후속):
+
+- `backend/app/services/service_b/tier_difficulty_controller.travel_speaking_level_for_total`
+  의 TSL 경계(0-3/4-6/7-9/10+)를 그대로 재사용하는 난이도 구간 맵
+  `TSL_TO_DIFFICULTY_RANGE` 정의.
+- 신규 데이터 테이블 `backend/app/data/challenge_tables.py`(장소 17종·수화물 18종,
+  난이도·en/ko·category·suspicion_reason 태깅) + 순수함수 픽 서비스
+  `backend/app/services/service_b/challenge_assignment_service.py`
+  (`pick_location(tsl, rng)`, `pick_customs_item(tsl, rng)`, 빈 풀 인접 구간 폴백,
+  C 경계 변환 헬퍼 `to_random_customs_item_context`).
+- B는 C 스키마 확장 전에도 **자체 dataclass로 테이블·픽을 완성·유닛 테스트**한다(디커플링).
+
+### Proposed Contract Change
+
+`Dev C:`
+
+1. **스키마 확장**(`backend/app/schemas/game_turn.py`, 모두 additive·옵셔널):
+   - `RandomCustomsItemContext` 에 `difficulty: int | None = None`,
+     `suspicion_reason: str | None = None` 추가.
+   - `GameState` 에 `assigned_visit_location: str | None`,
+     `assigned_visit_location_ko: str | None`,
+     `visit_location_difficulty: int | None`,
+     `visit_location_suspicion_reason: str | None` 추가.
+   - `DialogueSeed` 에 억까 사유 전달 필드 추가(또는 기존 필드 재활용 합의) —
+     배정된 장소/품목의 `suspicion_reason`·식별자·difficulty 가 A로 흘러가게 한다.
+2. **픽 실행**(전환 노드 처리):
+   - `FLIGHT_999_COMPLETE`(CH0_01→CH0_02) 처리 시 `pick_location(<기내 진단 확정 TSL>)`
+     호출 → `GameState.assigned_visit_location*` 기록. 입국심사(CH0_03) **전**에 확정돼야
+     입국신고서에 노출된다.
+   - `IMM_999_CLEARED`(CH0_03→CH0_04, `ENTER_BAGGAGE_CLAIM`) 처리 시
+     `pick_customs_item(<입국심사로 조정된 TSL>)` 호출 →
+     `GameState.random_customs_item` 기록. BAG_006 **전**에 확정돼야 reveal 가능.
+3. **영속화**: 배정값을 다음 턴까지 유지하고, 입국신고서·`BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM`
+   로 Unreal 에 전달.
+
+`Dev A:`
+
+- 배정된 장소/품목의 `suspicion_reason` 의도대로 NPC 트집(억까) 대사를 LLM 생성한다.
+  B 의 고정 질문/정답 예문은 `dev_a_npc_dialogue_client._A_BLOCKED_*` 로 차단되므로,
+  억까 사유는 **`dialogue_seed` 메타로만** 받는다(고정 질문 모방 금지).
+- 입국신고서에 표기된 장소와 NPC 대사가 **동일 장소를 지칭**하도록 유지.
+
+`Unreal:`
+
+- 입국신고서 UI 에 `visit_location`(en, 필요 시 ko) 표시.
+- `BAG_006` 도달 시 배정된 수화물 시각 reveal.
+
+### Compatibility Impact
+
+- 스키마 변경은 전부 additive·옵셔널 → 구버전 요청은 필드 생략 그대로 유효, 기존
+  `IMM_*`/`BAG_*` 채점 분기·테스트 회귀 없음.
+- 픽 규칙은 기존 TSL 경계를 재사용하므로 난이도 정책 단일 소스 유지.
+- **데이터 갭**: 억까 장소 리스트에 난이도 3 항목이 없음(수화물은 1~12 전 구간 분포).
+  TSL_1 구간(1~3) 장소 풀은 난이도 1·2만으로 구성 → 픽 함수의 빈 풀 인접 구간 폴백으로
+  흡수. 데이터 보강이 바람직하면 별도 데이터 과제로 분리.
+- Dev C 스키마 미반영 시: B 픽 함수는 자체 dataclass 로 동작·테스트되나, GameState
+  기록·Unreal 전달·A 대사 연동은 불가(아래 우회).
+
+### Temporary Workaround
+
+Dev C 스키마·배선 반영 전까지 B 픽 함수는 독립 유닛 테스트로만 검증한다. 런타임 배정·
+영속화·대사 연동은 C 반영 후 활성화. 그 전에는 기존처럼 `RandomCustomsItemContext` 가
+Unreal/외부에서 채워지면 그대로 사용(소유 모호 상태 유지).
 
 ## Change Request - 2026-06-17 - AgentRun Failure Logs Must Include Structured Error Details
 

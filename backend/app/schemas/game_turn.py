@@ -100,6 +100,8 @@ class RandomCustomsItemContext(BaseModel):
     visit_location: str | None = None
     declared: bool | None = None
     source: str | None = None
+    difficulty: int | None = None  # Difficulty score (1-12) of this items accusation
+    suspicion_reason: str | None = None  # Why the officer is suspicious of this item (forwarded to Dev A)
 
 
 class GameState(BaseModel):
@@ -108,6 +110,12 @@ class GameState(BaseModel):
     completed_intents: list[str] = Field(default_factory=list)
     current_objective: str
     random_customs_item: RandomCustomsItemContext | None = None
+
+    # Eokkka Assigned Visit Location Info (Determined at FLIGHT_999_COMPLETE)
+    assigned_visit_location: str | None = None  # English name of the assigned visit location
+    assigned_visit_location_ko: str | None = None  # Korean name of the assigned visit location
+    visit_location_difficulty: int | None = None  # Difficulty (1-12) of the location
+    visit_location_suspicion_reason: str | None = None  # Accusation reason for this location
 
 
 class PreviousNodeResult(BaseModel):
@@ -372,6 +380,17 @@ class DialogueSeed(BaseModel):
     stop_condition: str
     cumulative_confidence: float | None = None
 
+    # Eokkka (accusation challenge) metadata passed to Developer A to drive dialogue
+    assigned_visit_location: str | None = None
+    assigned_visit_location_ko: str | None = None
+    visit_location_difficulty: int | None = None
+    visit_location_suspicion_reason: str | None = None
+    item_id: str | None = None
+    item_name: str | None = None
+    item_category: str | None = None
+    item_difficulty: int | None = None
+    item_suspicion_reason: str | None = None
+
 
 class RubricScores(BaseModel):
     comprehension: int = Field(ge=0, le=2)
@@ -555,7 +574,7 @@ class DialogueDirective(BaseModel):
     purpose: str
     tone_hint: str
     target_slot: str | None = None
-    do_not_generate_npc_text: bool
+    do_not_generate_npc_text: bool | None = None
     topic_switch: bool | None = None
     length_target: int | None = None
 
@@ -784,6 +803,7 @@ class UnrealResponse(BaseModel):
     npc: NpcResponse
     ui: UiResponse
     flow: FlowResponse = Field(default_factory=FlowResponse)
+    game_state: GameState | None = None
     state_delta: StateDelta
     evaluation: EvaluationResponse
     report: ReportResponse

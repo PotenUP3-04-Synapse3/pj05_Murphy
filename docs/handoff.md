@@ -1,5 +1,43 @@
 # Handoff
 
+## 2026-06-17 Developer C Integrated: Eokkka (Accusation Challenge) Location and Customs Item Assignment
+
+Developer C integrated Developer B's challenge tables and pick service logic into the orchestration layer.
+
+Changed:
+
+- `RandomCustomsItemContext` schema in `backend/app/schemas/game_turn.py` extended with optional `difficulty` and `suspicion_reason` fields.
+- `GameState` schema in `backend/app/schemas/game_turn.py` extended with `assigned_visit_location`, `assigned_visit_location_ko`, `visit_location_difficulty`, and `visit_location_suspicion_reason` fields.
+- `DialogueSeed` schema in `backend/app/schemas/game_turn.py` extended with location and item metadata fields to forward Eokkka details to Developer A.
+- `UnrealResponse` schema in `backend/app/schemas/game_turn.py` extended to include the `game_state` object.
+- `DeveloperCGraphTools.validate_dev_b_policy_tool()` updated to:
+  1. Call B's `pick_location` at `FLIGHT_999_COMPLETE` and store the chosen location metadata inside `game_state`.
+  2. Call B's `pick_customs_item` at `IMM_999_CLEARED` and store the mapped customs item inside `game_state.random_customs_item`.
+  3. Propagate the assigned location/item metadata from `game_state` to `dev_b_output.dialogue_seed` to drive Developer A's dialogue generation.
+- `ResponseBuilder.build_unreal_response()` updated to persist and return `game_state` in the final `UnrealResponse`.
+- Added unit tests in `backend/tests/dev_b/test_challenge_assignment.py` to cover TSL assignment ranges, deterministic seeded RNG, pool fallbacks, and Pydantic mapper.
+- Updated `backend/tests/test_preprototype_flow.py` assertion to match the extended schema.
+
+Verification:
+
+- `uv run pytest` passed: 302 passed, 1 warning.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed.
+
+## 2026-06-17 Developer C Schema: Make do_not_generate_npc_text Optional and Filed B Change Request
+
+Developer C resolved the validation issue with `do_not_generate_npc_text`.
+
+Changed:
+
+- `DialogueDirective` schema in `backend/app/schemas/game_turn.py` now defines `do_not_generate_npc_text: bool | None = None` for backward compatibility. This prevents validation crashes in tests and mock payloads.
+- Added a formal Change Request in `docs/contracts/change_requests.md` asking Developer B to remove `do_not_generate_npc_text` from their policy prompts and implementation code.
+
+Verification:
+
+- `uv run pytest` passed.
+- `uv run ruff check .` and `uv run mypy .` passed.
+
 ## 2026-06-17 Developer A: Ruff Cleanup + LLM Fallback Debug Logging + Smalltalk CR Status Sync
 
 Developer A 는 handoff/change_requests 인벤토리 확인 후 다음 4가지 후속 작업을 완료했습니다.
@@ -156,6 +194,44 @@ Recommended execution order:
 3. INC-5: A adapter forward.
 4. INC-6/INC-7: observability + regression tests.
 5. INC-8/INC-9: contract docs, full verification, commit.
+
+## 2026-06-17 Developer B 억까 장소·수화물 레벨별 배정 작업계획 확정 및 변경요청 발행
+
+Developer B는 입국심사 "억까 장소 리스트"와 세관 "억까 수화물 리스트"를 플레이어 진단
+레벨(TSL)에 맞춰 난이도 구간별로 랜덤 배정하는 기능의 작업계획을 확정하고, 타 팀 의존
+작업을 변경요청으로 발행했습니다. (구현은 후속 — 이번 항목은 계획·경계 확정 단계입니다.)
+
+- **방향 확정 (1번 안)**: 배정을 (가) 픽 규칙 / (나) 픽 실행·영속화로 분리. **(가)는
+  Dev B**(밸런스 단일 소스, 순수함수 + 유닛 테스트), **(나)는 Dev C/A/Unreal**. 픽 규칙을
+  코드 밖(CSV/문서)으로 빼는 2번 안은 TSL 경계가 B·C 두 곳에 중복돼 밸런스 붕괴 위험이
+  있어 배제.
+- **핵심 매핑**: 억까 난이도 1~12 = 루브릭 total 0~12 동일 척도. 기존
+  `tier_difficulty_controller.travel_speaking_level_for_total` 의 TSL 경계
+  (0-3/4-6/7-9/10+)를 그대로 난이도 구간(1-3/4-6/7-9/10-12)으로 재사용 →
+  `TSL_TO_DIFFICULTY_RANGE` 단일 맵.
+- **배선 지점(확정)**: 장소는 `FLIGHT_999_COMPLETE`(입국심사 **전**), 수화물은
+  `IMM_999_CLEARED`(`ENTER_BAGGAGE_CLAIM`, BAG_006 **전**) 전환 노드에서 배정. 호출
+  주체는 C 런타임.
+- **발견사항**:
+  - 데이터 갭 — 억까 장소 리스트에 **난이도 3 항목 없음**(수화물은 1~12 전 구간 분포).
+    TSL_1 구간 장소 풀은 난이도 1·2만 → 픽 함수 빈 풀 인접 구간 폴백으로 흡수.
+  - A 경계 — B 고정 질문은 `_A_BLOCKED_*` 로 차단되므로 억까 사유(`suspicion_reason`)는
+    `dialogue_seed` 메타로만 A 전달 가능.
+- **산출물**: 작업계획서 `docs/workplan-dev-b.md` 를 본 건으로 교체(이전 기내 스몰토크
+  계획은 통합 완료되어 교체). 신설 예정 자산 — `backend/app/data/challenge_tables.py`,
+  `backend/app/services/service_b/challenge_assignment_service.py`,
+  `backend/tests/dev_b/test_challenge_assignment.py`.
+- **교차 의존 (변경 요청)**: Dev C/A/Unreal 작업을
+  `docs/contracts/change_requests.md`(**[CR-B-EOKKKA] 억까 장소·수화물 레벨별 배정**)로
+  발행.
+  - Dev C: `game_turn.py` 스키마 확장(`RandomCustomsItemContext` +difficulty/suspicion_reason,
+    `GameState` +assigned_visit_location 계열, `DialogueSeed` 억까 컨텍스트) + 전환 노드에서
+    B 픽 함수 호출 + GameState 영속화 + Unreal 전달.
+  - Dev A: `suspicion_reason` 의도대로 NPC 트집 대사 생성(고정 질문 모방 금지), 입국신고서
+    장소와 동일 지칭 유지.
+  - Unreal: 입국신고서 장소 표시, BAG_006 수화물 reveal.
+- **검증/후속**: 이번 단계는 문서(계획·CR·handoff) 동기화. 구현 착수 시 B 단독 범위
+  (테이블+픽 서비스+유닛 테스트)부터 진행하며 C 스키마와 디커플링.
 
 ## 2026-06-17 Developer A 기내 스몰토크 적응형 진단(Adaptive Diagnostic) 연동 구현 완료
 

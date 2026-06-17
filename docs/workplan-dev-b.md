@@ -1,328 +1,304 @@
-# Developer B 작업계획서 — 기내 스몰토크를 적응형 진단(Adaptive Diagnostic)으로 전환
+# Developer B 작업계획서 — 억까(트집) 장소·수화물 레벨별 배정 적용
 
-- 작성일: 2026-06-16
+- 작성일: 2026-06-17
 - 작성자: Developer B
-- 대상 개선: 기내(옆자리 승객) 스몰토크가 "취조처럼" 느껴지고, 플레이어의
-  답을 무시한 채 다음 질문만 이어가며, 꼬리를 무는 자연스러운 대화감이 없고,
-  씬을 15개 고정 노드(A/B/C × 5턴)로 스크립트해 둔 탓에 화제 점프·역할 반전이
-  발생하는 문제.
-- 방향(확정): **C안 — 적응형 진단(Adaptive Diagnostic)**
-  - 표면 대화는 생성형(LLM)으로 자연스럽게, **다음에 무엇을 떠볼지(probe 의도)**
-    는 결정적 컨트롤러가 결정.
-  - 진단은 "free-form에서 레벨을 느낌으로 추정"이 아니라 **설계된 역량 probe로
-    커버리지를 통제**해 타당성을 확보.
-  - 자연스러움은 LLM 선의가 아니라 **구조 제약 + coherence guard + eval 측정**
-    3중으로 보증.
-  - 종료는 **신뢰도(표준오차) + 턴 상·하한**으로 bounded → `FLIGHT_999_COMPLETE`.
+- 대상 기능: 입국심사 "억까 장소 리스트"와 세관 "억까 수화물 리스트"를
+  플레이어의 진단 레벨(TSL)에 맞춰 난이도 구간별로 배정한다. 잘할수록 더
+  황당하고 설명하기 어려운 상황을 부여해 난이도를 유지하는 것이 목적.
+  - 장소: 기내 스몰토크 진단으로 레벨 확정 → **입국심사 전** 입국신고서에
+    표기될 방문지(`visit_location`)를 난이도 구간 내 랜덤 배정. 입국심사 NPC는
+    각 장소의 **설계 이유(억까 사유)** 의도대로 트집 질문을 한다.
+  - 수화물: 입국심사로 **조정된 레벨**에 따라, 입국심사 종료 후 세관 단계에서
+    수화물을 난이도 구간 내 랜덤 배정. 플레이어는
+    `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM` 노드에서 자신의 억까 물품을 확인하고
+    돌발 상황을 설명한다.
+- 방향(확정): **1번 안 — 픽 규칙은 B, 실행·영속화는 C, 대사는 A**
+  - **B**: 난이도→레벨 픽 규칙(순수함수) + 데이터 테이블 + scenario 노드 설계.
+    밸런스의 단일 소스이며 B가 단위 테스트로 닫는다.
+  - **C**: 스키마 확장 + 전환 노드에서 B 픽 함수 호출 + GameState 영속화 +
+    Unreal(입국신고서·BAG_006 reveal) 전달.
+  - **A**: `dialogue_seed`의 억까 사유(suspicion 의도)만 보고 NPC 트집 대사를
+    LLM 생성. B의 고정 질문은 `_A_BLOCKED_*` 경계에서 차단되므로 seed 메타로만
+    전달한다.
 
-## 0. 이전 계획 대비 변경점 (B-ish 절충 → C 적응형)
+## 0. 왜 1번 안인가 (대안 대비)
 
-직전 계획서는 "재미·라포 우선(절충)" — 표면 대화 완전 자유 + 백그라운드 채점
-(사실상 B안, steering 없음) 이었다. 본 계획은 그 토대(중립 진행 ADVANCE,
-페널티 미적립, 안전선 유지, out-game 적립)를 **그대로 유지하면서** 다음을
-추가하여 C안으로 격상한다.
+배정은 두 책임으로 쪼개진다 — **(가) 픽 규칙**("TSL_3이면 난이도 7~9 풀에서
+랜덤"이라는 밸런스 로직)과 **(나) 픽 실행 + 영속화**(실제 선택·GameState 기록·
+다음 턴 유지·Unreal 전달).
 
-| 추가 요소 | 목적 |
+| 안 | (가) 픽 규칙 | (나) 실행·영속화 | 문제 |
+|---|---|---|---|
+| **1 (채택)** | **B 코드** | **C 런타임** | 충돌 없음 |
+| 2 | 문서/CSV | C/Unreal | 밸런스 규칙이 B·C 두 곳에 중복돼 어긋남, B가 검증 불가 |
+| 3 | B | B(정책출력) | 전환-노드 타이밍과 불일치, 영속화는 어차피 C라 이득 없음 |
+
+- 난이도→레벨 경계는 이미 B 소유다(`tier_difficulty_controller.
+  travel_speaking_level_for_total`). 픽 규칙을 코드 밖(2번)으로 빼면 TSL 경계를
+  한 번 바꿀 때 두 곳을 고쳐야 하고, "레벨 7인데 난이도 11 청심환" 같은 붕괴가
+  조용히 발생한다. 1번은 픽 규칙을 B 코드에 두어 **밸런스 단일 소스 + 유닛
+  테스트 가능**.
+- 3번은 배정 시점(전환 노드)이 B 정책 파이프라인(발화 평가 턴)과 안 맞고,
+  영속화는 결국 C라 B 관여만 늘고 이득이 없다.
+
+## 1. 배경 및 목표
+
+`RandomCustomsItemContext`(`game_turn.py:85`)는 이미 `item_name`/`item_category`/
+`visit_location` 필드를 갖고 있고, 주석에 *"chosen by Unreal or a local CSV
+table"* 로 **소유자가 모호**한 상태다. `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM`
+노드(`scenario_nodes.json:1084`)도 이미 존재한다. 그러나:
+
+| 부족한 것 | 현황 |
 |---|---|
-| probe 뱅크(역량·난이도·토픽 태깅) | 진단 커버리지 통제(타당성) |
-| 적응형 probe 선택 + steering 노브 | 능력 추정에 따라 다음 의도 결정. steering=0이면 B 행동과 동치 |
-| bounded 종료(최소·최대 턴 + 신뢰도) | 무한/지루/비용 방지, 설명 가능한 종료 |
-| coherence guard(Dev A) | 반응 없는 맨 질문·비연결 턴을 출력 단계에서 차단 |
-| 자연스러움 eval 루브릭 | "느낌"이 아니라 측정값으로 품질 관리·자동 후퇴 |
+| 난이도→레벨 매핑 | 없음. 어떤 레벨에 어떤 장소/수화물을 줄지 규칙 부재 |
+| 데이터 테이블 | 두 리스트가 Obsidian MD에만 존재, 코드 자산 아님 |
+| 픽 로직 | 없음. 구간 내 랜덤 선택 함수 부재 |
+| 억까 사유 → NPC | `suspicion_reason`을 A에 전달할 경로 없음 |
 
-> **B는 별개 대안이 아니라 C의 극단값이다.** steering=0이면 컨트롤러가 절대
-> 화제를 끌어오지 않고 학습자를 따라가므로 B 행동이 된다. 자연스러움이
-> 부족하면 구조를 버리는 대신 **steering 노브를 follow 쪽으로 내려** 대응한다
-> (§3.4).
+### 이 작업이 중요한 이유
 
-## 1. 배경 및 문제 정의
+난이도 1~12는 이미 **TSL 루브릭 total(0~12)과 동일 척도**로 재배치되어 있어
+(사용자가 12점 만점에 맞춰 재배치 완료) **추가 변환 없이 직접 매핑**된다. 픽
+규칙을 B가 소유하면 기존 TSL 경계를 그대로 재사용해 밸런스 일관성을 보장한다.
 
-기내 스몰토크 씬은 출입국 심사용 채점형 상태 머신을 재사용하면서, 동시에
-`FLIGHT_A_*/B_*/C_*` **15개 고정 노드의 일렬 스크립트**로 짜여 있다. 그 결과:
+## 2. 핵심 설계 (1번 안)
 
-| 증상 | 코드 원인 |
-|---|---|
-| 답을 무시하고 다음 질문만 | `decide_conversational`이 내용과 무관하게 항상 `success`+`ADVANCE`, 각 노드 `npc_question` 고정, Dev A가 `surface_goal`(=노드 고정 질문)만 읽음 |
-| 화제 점프·취조감 | 다음 질문이 노드 그래프로 미리 정해짐 — 플레이어 발화에서 파생되지 않음 |
-| 역할 반전(예: 펜을 빌려줬는데 NPC가 "here you are") | `FLIGHT_A_001`의 `npc_question_goal="respond_to_polite_request"`(=플레이어 관점)가 그대로 `dialogue_seed.surface_goal`로 복사되어(`english_level_hint_agent.py:708`) NPC를 응답자로 오인시킴 |
-| 진단 커버리지 불투명 | 어떤 영어 역량을 실제로 검증했는지 보장 없음 — 5턴을 채워도 시제/의문문 형성 등이 한 번도 안 나올 수 있음 |
+### 2.1 난이도 ↔ 레벨 직접 매핑
 
-### 이 수정이 중요한 이유
+루브릭 total(`tier_difficulty_controller.travel_speaking_level_for_total`)의
+TSL 경계를 그대로 억까 난이도 구간으로 재사용한다.
 
-`FlightSmallTalkDiagnosticPolicy`는 이미 `diagnostic_only=True`,
-`decide_conversational`, `FLIGHT_999_COMPLETE` 참조까지 갖춘 **토대가 반쯤
-완성**된 상태다. 부족한 것은 (1) "무엇을 떠볼지"를 능력 추정에 따라 고르는
-적응형 선택, (2) bounded 종료, (3) 노드 그래프를 probe 뱅크로 대체하는 것이다.
-표면 대화를 자연스럽게 만드는 가장 효과적인 단일 차단점(분기·진행 결정)이
-Dev B 소유 영역에 있다.
+| TSL | 루브릭 total | 억까 난이도 구간 | 의도 |
+|---|---|---|---|
+| TSL_1_SURVIVAL | 0~3 | **1~3** | 약한 학습자 → 쉬운 억까 |
+| TSL_2_FUNCTIONAL | 4~6 | **4~6** | |
+| TSL_3_INDEPENDENT | 7~9 | **7~9** | |
+| TSL_4_STRATEGIC | 10~12 | **10~12** | 강한 학습자 → 황당한 억까 |
 
-## 2. 핵심 설계 (C안)
+> 경계는 **단일 상수 맵** `TSL_TO_DIFFICULTY_RANGE`로 노출해, TSL 경계가 바뀌면
+> 한 곳만 고치면 되도록 한다.
 
-### 2.1 단일 self-loop 진단 노드
+### 2.2 데이터 테이블 (신규, Dev B 자산)
 
-A/B/C 15개 노드의 **그래프 분기는 제거**한다. 단, 엔진/계약/데모 파급을
-최소화하기 위해 **노드 추상화는 1개 유지** — `FLIGHT_A_001_SEATMATE_SMALLTALK`
-을 챕터의 유일한 진단 노드로 남기고 **자기 자신으로 루프**시킨다(종료 전까지
-`success_next_node = self`). 제거되는 A_002~005 / B_* / C_* 의 질문 텍스트는
-버리지 않고 **probe 뱅크 항목으로 강등**해 다양성 재료로 재활용한다.
+신규 `backend/app/data/challenge_tables.py`(또는 동급 JSON + 로더). 두 MD를
+구조화한다. **B 내부 dataclass**로 두어 C 스키마(`game_turn.py`)와 디커플링 —
+B는 C 스키마 확장을 기다리지 않고 테이블·픽을 완성·테스트할 수 있다.
 
-- `entry_node_ids` 는 단일 진단 노드로 정리.
-- `FLIGHT_A_001` 의 잘못된 `npc_question_goal`(역할 반전 원인)은 NPC 관점으로
-  교정하거나, 진단 노드에서는 `surface_goal`을 probe가 대체하므로 제거.
+```python
+@dataclass(frozen=True)
+class LocationEntry:
+    location_id: str        # e.g. "LOC_FRIENDS_HOUSE"
+    name_en: str            # 입국신고서/대사 표기용
+    name_ko: str
+    difficulty: int         # 1~12
+    suspicion_reason: str   # 억까 사유 → A seed로 전달
 
-### 2.2 probe 뱅크 (Dev B 데이터)
+@dataclass(frozen=True)
+class CustomsItemEntry:
+    item_id: str            # e.g. "ITEM_CHEONGSIMHWAN"
+    name_en: str
+    name_ko: str
+    item_category: str      # medicine/food/electronics/luxury/...
+    difficulty: int         # 1~12
+    suspicion_reason: str
+```
 
-신규 데이터 파일 `backend/app/data/flight_smalltalk_probes.json` 를 도입한다.
-각 probe 항목 스키마(안):
+- 장소 17종(난이도 12·12·11·11·10·9·9·8·8·7·7·6·6·5·4·2·1), 수화물 18종
+  (난이도 1~12 전 구간 분포).
+- **데이터 갭 주의**: 장소 리스트에 **난이도 3이 없다.** TSL_1 구간(1~3) 장소
+  풀은 난이도 1·2만으로 구성된다. 픽 함수는 빈 풀/희소 풀을 안전 처리하고(§2.3),
+  테이블 로드시 "각 TSL 구간에 최소 1개"를 보장하는 검증을 둔다.
 
-```jsonc
-{
-  "probe_id": "PAST_NARRATIVE_TRIP",
-  "target_competency": "past_tense_narrative", // 평가 대상 언어 역량
-  "difficulty": 3,                              // 1~5 (CEFR 근사)
-  "topic_tag": "travel",                        // 화제 연속성 판단용
-  "coherent_topics": ["travel", "vacation"],    // 자연 연결 가능 화제
-  "seed_text": "What did you do on your last trip?" // 저자 참고용(A에 미전달)
+### 2.3 픽 서비스 (신규, Dev B 순수함수)
+
+신규 `backend/app/services/service_b/challenge_assignment_service.py`.
+
+```python
+TSL_TO_DIFFICULTY_RANGE = {
+    "TSL_1_SURVIVAL": (1, 3),
+    "TSL_2_FUNCTIONAL": (4, 6),
+    "TSL_3_INDEPENDENT": (7, 9),
+    "TSL_4_STRATEGIC": (10, 12),
 }
+
+def pick_location(tsl: str, *, rng: random.Random | None = None) -> LocationEntry: ...
+def pick_customs_item(tsl: str, *, rng: random.Random | None = None) -> CustomsItemEntry: ...
 ```
 
-- `target_competency` 예: `question_formation`, `past_tense_narrative`,
-  `future_plan`, `opinion_giving`, `vocab_range`, `clarification_handling`.
-- seed_text 는 **저자/디버그 참고용 — A에 전달하지 않는다.** (구현 반영 2026-06-17:
-  A가 폴백 문장을 그대로 모방해 매 턴 반복하는 문제로 폴백 대사를 삭제. 정상·실패 모두
-  Dev A가 생성하며, 실패 시에도 고정 질문으로 회귀하지 않고 generic 중립 응답으로 폴백.)
+- 구간 내 후보를 필터 → 랜덤 1개. **풀이 비면** 인접 구간으로 폴백(예: TSL_1
+  장소 풀에 난이도 3이 없어도 1~2에서 픽). 폴백 규칙을 명시적으로 둔다.
+- `rng` 주입 가능 → 테스트에서 결정적 시드로 검증.
+- C 경계 변환은 B가 **헬퍼만 제공**(예: `to_random_customs_item_context(entry)`)
+  하고, 실제 호출·주입은 C가 한다(§2.4, §9).
 
-### 2.3 진단 컨트롤러 (결정적)
+### 2.4 배정 타이밍·배선 (C가 B 픽 함수 호출)
 
-`FlightSmallTalkDiagnosticPolicy` 에 적응형 선택·종료 로직을 추가한다.
+배선 지점은 **전환(transition) 노드** 두 곳이다. 호출 주체는 C 런타임.
 
-- **능력 추정 소비**: `english_level_hint_agent` 가 산출하는 레벨 추정치와
-  **신뢰도(또는 표준오차)** 를 매 턴 누적(§6 작업 3). 컨트롤러는 이 추정값만
-  소비하고 LLM을 호출하지 않는다.
-- **probe 선택(기회주의적 + 화제 연속)**:
-  1. 플레이어가 새 화제를 꺼냈고 신호가 충분하면 → **그 화제를 받아준다**
-     (probe 강제 안 함). 평가는 관찰된 feature로 점수화.
-  2. 신호가 얇은 역량이 있으면 → 현재 화제(`topic_tag`/`coherent_topics`)에서
-     **도달 가능한 probe 우선 선택**. 부득이 화제 전환 시 dialogue_seed에
-     명시적 전환 신호를 실어 Dev A가 전환구를 붙이게 한다.
-  3. 능동 개입 강도는 **`steering` 파라미터(0.0~1.0)** 로 조절(§3.4).
-- **bounded 종료**: `MIN_TURNS ≤ turns` 이고 `confidence ≥ THRESHOLD`(또는
-  표준오차 < ε) 이면 종료. `turns ≥ MAX_TURNS` 면 무조건 종료. 종료 시
-  `next_action="COMPLETE_CHAPTER"`, `next_node_id="FLIGHT_999_COMPLETE"`.
-- **안전선 유지**: critical risk 감지 시 기존 `_critical_fail` 위임.
+| 배정 | 전환 노드 | Unreal 이벤트 | 시점 | 사용 레벨 |
+|---|---|---|---|---|
+| 장소(`visit_location`) | `FLIGHT_999_COMPLETE`(CH0_01→CH0_02) | (기내 종료) | 입국심사 **전** | 기내 진단 확정 TSL |
+| 수화물(`random_customs_item`) | `IMM_999_CLEARED`(CH0_03→CH0_04, `ENTER_BAGGAGE_CLAIM`) | 세관 진입 | BAG_006 **전** | 입국심사로 **조정된** TSL |
 
-기본 파라미터(안): `MIN_TURNS=3`, `MAX_TURNS=7`, `CONFIDENCE_THRESHOLD=0.7`,
-`steering=0.4`. 모두 단일 상수/설정으로 노출해 튜닝을 코드 수정 없이 가능하게.
+- 장소는 입국심사(CH0_03)에서 입국신고서로 노출되므로 반드시 그 **이전**
+  전환에서 확정돼야 한다.
+- 수화물은 BAG_006에서 reveal되므로 입국심사 종료 전환에서 확정. 입국심사
+  결과로 레벨이 조정됐다면 그 조정 TSL을 입력으로 쓴다.
 
-### 2.4 dialogue_seed = "느슨한 의도", 강제 질문 아님
+### 2.5 노드 보강 + 억까 사유 seed 전달
 
-`attach_report_and_dialogue_seeds_tool` 에서 진단 노드일 때:
+- `BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM`(이미 존재) — `required_slots`
+  (`customs_item_explanation`), `hint_policy`는 유지. 배정된 품목 메타가
+  seed로 흘러가 A가 같은 물건을 지칭하도록 한다.
+- 입국심사 노드(`IMM_*`)의 `npc_question_goal`은 유지하되, 배정된 장소의
+  `suspicion_reason`을 `dialogue_seed`에 실어 A가 "그 장소"의 억까 사유대로
+  압박 질문을 생성하게 한다.
+- **A 경계 준수**: B의 고정 질문/정답 예문은 A에 넘기지 않는다
+  (`dev_a_npc_dialogue_client._A_BLOCKED_*`). 전달은 `dialogue_seed`의 의도
+  메타(`suspicion_reason`, `difficulty`, 품목/장소 식별자)로 한정.
 
-- `surface_goal` 을 노드 고정 질문이 아니라 **선택된 probe 의도**
-  (`target_competency` + `topic_tag`)로 표기.
-- `dialogue_directive.purpose="smalltalk_diagnostic"`,
-  `topic_switch`(true/false), `length_target`(플레이어 발화 길이 기반 권고),
-  `do_not_generate_npc_text=False`.
-- `allowed_followup_intents` 를 넓혀 반응/자기개방/질문을 모두 허용.
+## 3. 범위
 
-## 3. 자연스러움 3중 보증
+### 포함 (Dev B 소유, 단독 진행 가능)
 
-LLM 출력의 자연스러움은 증명할 수 없다. 따라서 **구조로 부자연을 어렵게 만들고,
-가드로 미달 출력을 막고, 측정으로 품질을 관리**한다.
+- `backend/app/data/challenge_tables.py` (신규 — 장소·수화물 테이블 + 로더 +
+  구간 커버리지 검증)
+- `backend/app/services/service_b/challenge_assignment_service.py` (신규 —
+  `TSL_TO_DIFFICULTY_RANGE`, `pick_location`, `pick_customs_item`, 빈 풀 폴백,
+  C 경계 변환 헬퍼)
+- `backend/app/data/scenario_nodes.json` (BAG_006 메타 확인/보강, 입국심사
+  노드에 억까 사유 연결 지점 정리 — 단일 진단 노드 정책과 충돌 없게)
+- B→A seed emit 지점(`tool_b` 정책 그래프 도구): 배정된 장소/품목의
+  `suspicion_reason`을 `dialogue_seed`에 실어보내는 경로
+- `backend/tests/dev_b/test_challenge_assignment.py` (신규),
+  `test_developer_b_policy_engine.py` 회귀
 
-### 3.1 구조 제약 (Dev B 결정 + Dev A 렌더)
+### 제외 (타 팀 → §9 변경 요청)
 
-- **반응-먼저-탐색**: NPC 턴 = `[직전 발화 반응] + [연결] + [후속 의도]`.
-  probe를 단독 질문으로 내보내지 않는다(Dev A 강제, §10 CR).
-- **화제 연속성**: probe 선택을 `topic_tag`/`coherent_topics`로 제약(§2.3).
-- **기회주의적 추종**: 학습자가 꺼낸 화제를 받아주고, 신호 부족 시에만 steer.
-- **중복 방지/콜백**: 다룬 화제·NPC가 밝힌 정보를 추적(Dev A 대화 메모리).
-
-### 3.2 coherence guard (Dev A, 출력 차단)
-
-`npc_dialogue_agent.py:308-322` 의 기존 가드 패턴
-(`recommended_expression_echo` / `missing_followup_question` /
-`invalid_llm_dialogue_language`)과 동일 방식으로 추가:
-
-- 플레이어가 실질 발화를 했는데 NPC 턴이 **반응 없는 맨 질문**이면 reject.
-- 직전 발화와 **의미적 연결이 없으면(non-sequitur)** reject.
-- reject 시 재생성 또는 generic 중립 폴백(반복 금지 — seed_text/고정 질문 사용 안 함).
-- 단, 진단 노드에서는 `missing_followup_question`(매 턴 질문 강제)을 **해제**해
-  반응-only 턴을 허용(§10 CR).
-
-### 3.3 eval 측정 (검증 산출물)
-
-자연스러움 루브릭(반응 존재 / 화제 연속 / 콜백 / 점프 없음)으로 트랜스크립트를
-LLM-judge 또는 사람 스팟체크. 컨트롤러의 probe 선택·종료는 결정적이라 유닛
-테스트로, 자연스러움은 eval로 분리 측정한다(§8).
-
-### 3.4 steering 연속선 (B는 극단값)
-
-`steering` 한 파라미터로 C↔B를 잇는다.
-
-```
-steering = 1.0  → 매 턴 능동 probe 강제  (가장 진단적, 부자연 위험↑)
-steering = 0.0  → 절대 steer 안 함        (= B안 행동: 순수 추종)
-```
-
-자연스러움 eval 점수가 기준 미달이면 **steering을 내려** 대응(데이터 기반 후퇴).
-구조(probe 뱅크·컨트롤러·가드·테스트)는 그대로 유지된다. 진단 자체가 불필요하다는
-**제품 결정**이 날 때만 구조를 폐기한다.
-
-## 4. 범위
-
-### 포함 (Dev B 소유)
-
-- `backend/app/data/scenario_nodes.json` (A/B/C 분기 노드 제거, 단일 진단 노드,
-  `FLIGHT_A_001` 역할 반전 교정, `entry_node_ids` 정리, `FLIGHT_999_COMPLETE` 확인)
-- `backend/app/data/flight_smalltalk_probes.json` (신규 probe 뱅크)
-- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`
-  (적응형 probe 선택 + bounded 종료 + steering)
-- `backend/app/services/service_b/scenario_state_machine.py` (진단 씬 위임 지점)
-- `backend/app/tools/tool_b/developer_b_policy_graph_tools.py`
-  (분기 라우팅, dialogue_seed probe/의도 emit)
-- `backend/app/agents/agent_b/english_level_hint_agent.py`
-  (능력 추정치+신뢰도 노출, in-game feedback 억제·out-game 적립)
-- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`,
-  `backend/tests/dev_b/test_developer_b_policy_engine.py`
-
-### 제외 (타 팀 → 변경 요청으로 전달, §10)
-
-- **Dev A**: 반응-먼저 스몰토크 페르소나, `missing_followup_question` 해제,
-  `SURFACE_GOAL_QUESTIONS` 고정 큐 비활성, `recommended_expression` 라이브
-  삽입 제거, 발화 기반 후속·대화 메모리/콜백, **coherence guard 신설**,
-  길이 미러링, `branch_reason="flight_smalltalk_continue"` 중립 렌더,
-  제거된 노드(`FLIGHT_A_005_WRAP_UP`, `FLIGHT_B_002`, `FLIGHT_C_004`)를
-  참조하는 테스트 갱신.
-- **Dev C**: 스몰토크에서 슬롯 강제 추출/오인식 완화. 데모
-  `demo/respond-dialog/index.html`(`FLIGHT_A_001` 하드코딩)은 진단 노드 ID를
-  유지하므로 무영향(노드 ID 변경 시에만 갱신).
+- **Dev C**: `game_turn.py` 스키마 확장(`RandomCustomsItemContext`에 `difficulty`/
+  `suspicion_reason`, `GameState`에 `assigned_visit_location`/`_ko`/
+  `visit_location_difficulty`/`visit_location_suspicion_reason`, `DialogueSeed`에
+  억까 컨텍스트 필드), 전환 노드에서 B 픽 함수 호출, GameState 영속화(턴 간
+  유지), Unreal로 장소·품목 전달.
+- **Dev A**: 배정된 장소/품목의 `suspicion_reason` 의도대로 NPC 트집 대사
+  LLM 생성(고정 질문 모방 금지), 입국신고서 표기 장소와 동일 지칭 유지.
+- **Unreal**: 입국신고서 UI에 `visit_location` 표시, BAG_006 수화물 시각 reveal.
 - env 수정, TTS/음성 출력.
 
-## 5. 현재 코드 분석
+## 4. 현재 코드 분석
 
-- `developer_b_policy_graph_tools.py:102` `decide_scenario_branch_tool` 가
-  씬과 무관하게 `state_machine.decide(payload)` 호출 → **진단 씬 라우팅 단일 지점.**
-- `DevBPolicyInput` 에 `scene_id`/`current_node_id` 존재(`game_turn.py:262-263`)
-  → 추가 스키마 변경 없이 게이팅 가능.
-- `FlightSmallTalkDiagnosticPolicy.decide_conversational` 가 이미 중립 진행·
-  페널티 0·안전선을 구현 → 여기에 **probe 선택 + 종료 판정**을 더한다.
-- **계약 제약:** `Branch.branch_type`(`game_turn.py:512`)에 `neutral` 없음
-  (`success/retry/clarify/hint/warning/bad_end/final`). 중립 진행은
-  **`success`+`ADVANCE` 재사용**, 스몰토크 의미는 `branch_reason` +
-  `dialogue_directive` 로 신호(enum 미확장).
-- `english_level_hint_agent.py:708` 가 `surface_goal=npc_question_goal` 로
-  복사 → 진단 노드에서는 **이 경로를 probe 의도로 대체**(역할 반전 근본 차단).
+- `tier_difficulty_controller.travel_speaking_level_for_total`(`:163`): total
+  0-3/4-6/7-9/10+ → TSL_1~4. **억까 난이도 구간과 동일 경계** → 그대로 재사용.
+- `RandomCustomsItemContext`(`game_turn.py:85`): `item_name` 필수,
+  `visit_location`/`item_category` 등 옵셔널 존재. **`difficulty`/
+  `suspicion_reason` 없음** → Dev C 추가 필요(§9).
+- `GameState`(`game_turn.py:105`): `random_customs_item`은 있으나 **장소 배정
+  필드 없음** → Dev C 추가 필요.
+- `DialogueSeed`(`game_turn.py:333`): `surface_goal`/`difficulty_profile` 등
+  존재. **억까 사유 전용 필드 없음** → Dev C 추가 또는 기존 필드 재활용 합의.
+- `dev_a_npc_dialogue_client._A_BLOCKED_*`(`:26-46`): B의 `npc_question`/
+  `recommended_expression` 등이 A로 못 넘어감 → 억까 사유는 **seed 메타로만**
+  전달해야 함(고정 질문 경로 불가).
+- 전환 노드: `FLIGHT_999_COMPLETE`(`:94`), `IMM_999_CLEARED`(`:728`) — C가
+  픽을 호출할 배선 지점.
 
-## 6. 작업 항목 (Dev B 소유)
+## 5. 작업 항목 (Dev B 소유)
 
-### 작업 1 — 시나리오 노드 정리 (단일 진단 노드)
+### 작업 1 — 데이터 테이블 신설
 
-- `scenario_nodes.json` 에서 `FLIGHT_A_002~005`, `FLIGHT_B_001~005`,
-  `FLIGHT_C_001~005` 의 그래프 분기를 제거.
-- `FLIGHT_A_001_SEATMATE_SMALLTALK` 를 유일 진단 노드로 남기고 자기 루프
-  (`success_next_node = self`, 종료 시에만 `FLIGHT_999_COMPLETE`).
-- `npc_question_goal` 의 플레이어 관점 라벨(`respond_to_polite_request`) 교정/제거.
-- `entry_node_ids` 를 단일 진단 노드로 정리. `FLIGHT_999_COMPLETE` 전이 확인.
+- 두 MD를 `challenge_tables.py`로 이관(난이도·en/ko·category·suspicion_reason
+  태깅). 로드시 각 TSL 구간 커버리지 검증(빈 구간이면 명시적 폴백 규칙 적용).
 
-### 작업 2 — probe 뱅크 신설
+### 작업 2 — 픽 서비스 신설
 
-- `flight_smalltalk_probes.json` 작성(§2.2 스키마). 제거된 노드 질문을 역량·
-  난이도·토픽 태깅해 이관. 로더 헬퍼를 정책에서 사용.
+- `TSL_TO_DIFFICULTY_RANGE` + `pick_location`/`pick_customs_item`(rng 주입,
+  빈 풀 인접 구간 폴백) + `to_random_customs_item_context` 경계 변환 헬퍼.
 
-### 작업 3 — 능력 추정치 + 신뢰도 노출
+### 작업 3 — seed emit 경로
 
-- `english_level_hint_agent` 가 레벨 추정과 함께 **누적 신뢰도(또는 표준오차)** 를
-  policy output/seed 로 노출 → 컨트롤러가 종료 판정에 사용.
-- 진단 씬에서 `in_game_feedback.show=False`, `blocks_progression=False`,
-  교정은 `out_game_feedback_seed`/`error_capture(should_surface_out_game=True)`
-  로만 적립. `report_seed_summary` 채점은 유지.
+- `tool_b` 정책 그래프에서 배정된 장소/품목의 `suspicion_reason`·식별자를
+  `dialogue_seed`에 실어보내는 경로 추가(고정 질문은 emit 금지, A 경계 준수).
 
-### 작업 4 — 적응형 컨트롤러
+### 작업 4 — 노드 메타 확인/보강
 
-- `decide_conversational` 확장: probe 선택(기회주의 + 화제 연속 + steering),
-  bounded 종료(MIN/MAX/THRESHOLD), 안전선 위임. 모든 delta=0.
-- 파라미터를 모듈 상수/설정으로 노출.
+- `BAG_006`·입국심사 노드가 배정 메타와 정합하는지 확인. 단일 진단 노드 정책
+  (직전 워크플랜)과 충돌 없게 조정.
 
-### 작업 5 — 그래프 배선 + dialogue_seed emit
+## 6. 계약/주의
 
-- `decide_scenario_branch_tool` 에서 진단 씬이면 `decide_conversational` 로 분기.
-- `attach_report_and_dialogue_seeds_tool` 에서 선택 probe를 `surface_goal`(의도) +
-  `dialogue_directive`(`purpose`, `topic_switch`, `length_target`) 로 emit(§2.4).
+- **난이도 척도 = TSL 척도**(둘 다 0/1~12). 별도 변환표를 만들지 말고
+  `TSL_TO_DIFFICULTY_RANGE` 단일 맵만 둔다.
+- **억까 사유는 seed 메타로만** A에 전달(고정 질문 경로 `_A_BLOCKED_*`로 차단됨).
+- **장소 난이도 3 부재** 등 풀 갭은 픽 폴백으로 흡수하되, 데이터 보강이
+  바람직하면 별도 데이터 과제로 분리.
+- B는 C 스키마 확장 전에도 **자체 dataclass로 테이블·픽을 완성·테스트**할 수
+  있다(디커플링). C 경계 변환 헬퍼만 스키마 확정 후 연결.
 
-## 7. 계약/주의
+## 7. 테스트 계획
 
-- `branch_type` enum 미확장: 중립 진행은 `success`+`ADVANCE` 재사용,
-  스몰토크 의미는 `branch_reason="flight_smalltalk_continue"` +
-  `dialogue_directive` 로 구분. enum 확장은 `game_turn.py`/Agent A `BranchType`/
-  Dev C 어댑터 파급이라 후속 과제로 분리.
-- 가드레일: probe 선택·종료·verdict·다음 노드는 **규칙 기반** 유지. LLM은 표면
-  대사 wording 만 담당.
-- 노드 제거는 데모/테스트/openkb 참조에 파급되므로 §10 CR로 타 팀과 동기화.
+`backend/tests/dev_b/test_challenge_assignment.py`(신규):
 
-## 8. 테스트 계획
+- `test_pick_location_respects_tsl_range`: 각 TSL에서 배정 장소의 `difficulty`가
+  해당 구간 내(폴백 포함)인지.
+- `test_pick_customs_item_respects_tsl_range`: 수화물 동일.
+- `test_higher_level_gets_harder_challenge`: TSL_4 풀 최소 난이도 > TSL_1 풀
+  최대 난이도(역전 없음) 보장.
+- `test_pick_is_deterministic_with_seeded_rng`: 동일 시드 → 동일 결과.
+- `test_empty_pool_falls_back_to_adjacent`: 장소 난이도 3 부재 같은 갭에서
+  TSL_1이 빈 결과 없이 인접(1~2)에서 픽.
+- `test_table_covers_all_tiers`: 테이블 로드시 4개 TSL 구간 모두 픽 가능.
+- `test_to_context_helper_maps_fields`: 경계 변환 헬퍼가 name/category/
+  difficulty/suspicion_reason를 올바르게 매핑.
+- 회귀: `IMM_*`/`BAG_*` 기존 분기·채점 영향 없음.
 
-`test_flight_smalltalk_diagnostic_policy.py` / `test_developer_b_policy_engine.py`:
-
-- `test_diagnostic_advances_without_pass_fail`: 알아들을 수 있는 발화는 retry가
-  아니라 ADVANCE(자기 루프), 모든 delta=0.
-- `test_diagnostic_offtopic_is_followed_not_reasked`: 새 화제 발화 →
-  재질문하지 않고 진행(기회주의 추종).
-- `test_probe_selection_prefers_coherent_topic`: 현재 토픽에서 도달 가능한
-  probe를 우선 선택, 강제 전환 시 `topic_switch=True` 신호.
-- `test_steering_zero_never_forces_probe`: steering=0이면 probe 강제가 없어
-  (B 행동) 학습자 화제만 따라가는지.
-- `test_termination_bounded_by_turns_and_confidence`: `MIN_TURNS` 미만이면
-  미종료, 신뢰도 충족 시 `COMPLETE_CHAPTER`+`FLIGHT_999_COMPLETE`,
-  `MAX_TURNS` 도달 시 무조건 종료.
-- `test_diagnostic_critical_risk_still_guarded`: 위험 감지 시 critical_fail 유지.
-- `test_diagnostic_feedback_is_out_game_only`: `in_game_feedback.show=False`,
-  `blocks_progression=False`, 교정이 out-game 으로만 적립.
-- 회귀 가드: `IMM_*`/`BAG_*` 씬은 기존 채점 분기 그대로 통과.
-- 자연스러움 eval(별도): 루브릭 기반 트랜스크립트 채점(유닛 아님, §3.3).
-
-## 9. 검증 명령
+## 8. 검증 명령
 
 ```powershell
-uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py
+uv run pytest backend/tests/dev_b/test_challenge_assignment.py
 uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py
 uv run pytest
 uv run ruff check .
 uv run mypy .
 ```
 
-## 10. 타 팀 의존 작업 (변경 요청)
+## 9. 타 팀 의존 작업 (변경 요청)
 
-C안의 "기계 느낌" 완전 제거와 coherence 보증에는 Dev A의 대사 생성 변경이,
-슬롯 오인식 완화에는 Dev C 변경이 함께 필요하다. 상세 항목은
-`docs/contracts/change_requests.md`
-(**Change Request - 2026-06-16 - [CR-B-SMALLTALK] 기내 스몰토크 적응형 진단 전환**)
-및 `docs/handoff.md`(2026-06-16 Developer B 기내 스몰토크 적응형 진단 전환 항목)에
-동기화한다.
+배정의 실행·영속화·표시·대사는 타 팀 소유다. 상세는
+`docs/contracts/change_requests.md`(**Change Request - 2026-06-17 -
+[CR-B-EOKKKA] 억까 장소·수화물 레벨별 배정**) 및 `docs/handoff.md`에 동기화한다.
 
-- **Dev A**: 반응-먼저 스몰토크 페르소나, `missing_followup_question` 해제(반응-only
-  허용), `SURFACE_GOAL_QUESTIONS` 고정 큐 비활성·발화 기반 후속, **coherence guard
-  신설**, `recommended_expression` 라이브 삽입 제거, 길이 미러링, 대화 메모리/콜백,
-  `flight_smalltalk_continue` 중립 렌더, 제거 노드 참조 테스트 갱신.
-- **Dev C**: 스몰토크 슬롯 강제 추출/오인식 완화. (노드 ID 유지 시 데모 무영향.)
+- **Dev C**:
+  1. `game_turn.py` 스키마 확장 — `RandomCustomsItemContext`에 `difficulty: int |
+     None`, `suspicion_reason: str | None`; `GameState`에 `assigned_visit_location`/
+     `assigned_visit_location_ko`/`visit_location_difficulty`/
+     `visit_location_suspicion_reason`; `DialogueSeed`에 억까 컨텍스트 전달 필드
+     (또는 기존 필드 재활용 합의).
+  2. **픽 실행 주체** — 전환 노드 처리에서 B의 `pick_location`(`FLIGHT_999_COMPLETE`)·
+     `pick_customs_item`(`IMM_999_CLEARED`)을 호출해 GameState에 기록.
+  3. **영속화** — 배정값을 다음 턴까지 유지, 입국신고서·BAG_006로 Unreal 전달.
+- **Dev A**: 배정된 장소/품목의 `suspicion_reason` 의도대로 NPC 트집 대사
+  생성(고정 질문 모방 금지), 입국신고서 장소와 동일 지칭 유지.
+- **Unreal**: 입국신고서 UI 장소 표시, BAG_006 수화물 시각 reveal.
 
-## 11. 산출물·문서 틀 (작업계획서가 교체되어도 유지)
+---
+
+## 10. 산출물·문서 틀 (작업계획서가 교체되어도 유지)
 
 > 이 절은 **이 계획서가 다른 건으로 교체되더라도 유지한다.** Dev B 작업이
 > 타 오너(Dev A / Dev C / Unreal)에 의존하면 **handoff 와 change_request 문서를
-> 반드시 남긴다.** 본 건의 실제 항목은 §10 과 아래 2건(§10 참조)에 작성되어 있다.
+> 반드시 남긴다.** 본 건의 실제 항목은 §9 와 아래 2건에 작성되어 있다.
 
-### 11.1 절차 (매 작업계획서 작성/교체 시)
+### 10.1 절차 (매 작업계획서 작성/교체 시)
 
-1. §4 "제외(타 팀 소유)"와 §10 "타 팀 의존 작업"에 적힌 항목을 오너별
+1. §3 "제외(타 팀 소유)"와 §9 "타 팀 의존 작업"에 적힌 항목을 오너별
    change request 로 구체화한다(파일·함수 단위, 정확한 입출력/동작).
 2. `docs/contracts/change_requests.md` **끝에** 아래 Change Request 틀로 추가한다.
 3. `docs/handoff.md` **상단**(`# Handoff` 바로 아래)에 아래 Handoff 틀로 추가한다.
-4. §10 에서 추가한 change request 의 제목/날짜를 역참조해 양방향으로 연결한다.
+4. §9 에서 추가한 change request 의 제목/날짜를 역참조해 양방향으로 연결한다.
 5. 타 팀 의존이 전혀 없으면 change request 는 생략하되, **handoff 는 항상 남긴다**
    (무엇을 왜 바꿨는지 + 검증 결과).
 
-### 11.2 Change Request 틀
+### 10.2 Change Request 틀
 
 ```markdown
 ## Change Request - YYYY-MM-DD - <짧은 제목>
@@ -355,7 +331,7 @@ Developer A and/or Developer C / Sean Han (필요 시 Unreal)
 타 팀 반영 전까지의 임시 동작.
 ```
 
-### 11.3 Handoff 틀
+### 10.3 Handoff 틀
 
 ```markdown
 ## YYYY-MM-DD Developer B <한 줄 제목>
