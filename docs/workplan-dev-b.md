@@ -82,13 +82,15 @@ A/B/C 15개 노드의 **그래프 분기는 제거**한다. 단, 엔진/계약/�
   "difficulty": 3,                              // 1~5 (CEFR 근사)
   "topic_tag": "travel",                        // 화제 연속성 판단용
   "coherent_topics": ["travel", "vacation"],    // 자연 연결 가능 화제
-  "seed_text": "What did you do on your last trip?" // LLM 실패 시 폴백 문구
+  "seed_text": "What did you do on your last trip?" // 저자 참고용(A에 미전달)
 }
 ```
 
 - `target_competency` 예: `question_formation`, `past_tense_narrative`,
   `future_plan`, `opinion_giving`, `vocab_range`, `clarification_handling`.
-- seed_text 는 **폴백 전용** — 정상 경로의 실제 문장은 Dev A가 생성.
+- seed_text 는 **저자/디버그 참고용 — A에 전달하지 않는다.** (구현 반영 2026-06-17:
+  A가 폴백 문장을 그대로 모방해 매 턴 반복하는 문제로 폴백 대사를 삭제. 정상·실패 모두
+  Dev A가 생성하며, 실패 시에도 고정 질문으로 회귀하지 않고 generic 중립 응답으로 폴백.)
 
 ### 2.3 진단 컨트롤러 (결정적)
 
@@ -144,7 +146,7 @@ LLM 출력의 자연스러움은 증명할 수 없다. 따라서 **구조로 부
 
 - 플레이어가 실질 발화를 했는데 NPC 턴이 **반응 없는 맨 질문**이면 reject.
 - 직전 발화와 **의미적 연결이 없으면(non-sequitur)** reject.
-- reject 시 재생성 또는 폴백(seed_text).
+- reject 시 재생성 또는 generic 중립 폴백(반복 금지 — seed_text/고정 질문 사용 안 함).
 - 단, 진단 노드에서는 `missing_followup_question`(매 턴 질문 강제)을 **해제**해
   반응-only 턴을 허용(§10 CR).
 

@@ -1,5 +1,3 @@
-import pytest
-from pathlib import Path
 from backend.app.agents.agent_a.npc_llm_client import _render_developer_instructions
 
 

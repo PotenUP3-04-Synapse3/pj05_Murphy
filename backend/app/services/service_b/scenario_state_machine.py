@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Any
 
 from backend.app.schemas.game_turn import DevBPolicyInput
 
@@ -34,6 +34,8 @@ class ScenarioDecision:
     suspicion_delta: int
     retry_count_delta: int
     hint_count_delta: int
+    selected_probe: dict[str, Any] | None = None
+    cumulative_confidence: float | None = None
 
 
 class ScenarioStateMachine:

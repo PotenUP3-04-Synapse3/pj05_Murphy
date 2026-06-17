@@ -221,6 +221,7 @@ class DeveloperBPolicyGraphTools(_EnglishLevelHintPolicyCore):
                 example_en=payload.node_context.recommended_expression,
                 avoid_expression=self._avoid_expression(payload),
                 recommended_expression=payload.node_context.recommended_expression,
+                cumulative_confidence=decision.cumulative_confidence if hasattr(decision, "cumulative_confidence") else None,
             ),
             in_game_feedback=self._build_in_game_feedback(payload, decision, feedback_strategy),
             error_capture=self._build_error_capture(payload, decision, has_form_issue),
@@ -306,7 +307,7 @@ class DeveloperBPolicyGraphTools(_EnglishLevelHintPolicyCore):
         output = output.model_copy(
             update={
                 "report_seed_summary": self._build_report_seed_summary(payload, output),
-                "dialogue_seed": self._build_dialogue_seed(payload, output),
+                "dialogue_seed": self._build_dialogue_seed(payload, output, decision=state.get("decision")),
             }
         )
         return {"output": output}

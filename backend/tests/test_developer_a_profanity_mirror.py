@@ -1,5 +1,3 @@
-import pytest
-import os
 from backend.app.services.service_a.profanity_lexicon import contains_blocked, allowed_for
 from backend.app.services.service_a.profanity_response_policy import get_profanity_fallback_response, get_incivility_tts_bias
 from backend.app.agents.agent_a.npc_dialogue_agent import generate_npc_dialogue_from_level_design

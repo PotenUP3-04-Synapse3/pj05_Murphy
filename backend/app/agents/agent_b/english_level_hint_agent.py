@@ -200,6 +200,7 @@ class _EnglishLevelHintPolicyCore:
                     example_en=payload.node_context.recommended_expression,
                     avoid_expression=self._avoid_expression(payload),
                     recommended_expression=payload.node_context.recommended_expression,
+                    cumulative_confidence=decision.cumulative_confidence if hasattr(decision, "cumulative_confidence") else None,
                 ),
                 in_game_feedback=self._build_in_game_feedback(payload, decision, feedback_strategy),
                 error_capture=self._build_error_capture(payload, decision, has_form_issue),
@@ -262,7 +263,7 @@ class _EnglishLevelHintPolicyCore:
             output = output.model_copy(
                 update={
                     "report_seed_summary": self._build_report_seed_summary(payload, output),
-                    "dialogue_seed": self._build_dialogue_seed(payload, output),
+                    "dialogue_seed": self._build_dialogue_seed(payload, output, decision=decision),
                 }
             )
             _validate_b_policy_output(payload, output)
@@ -697,15 +698,24 @@ class _EnglishLevelHintPolicyCore:
         self,
         payload: DevBPolicyInput,
         output: DevBPolicyOutput,
+        decision: ScenarioDecision | None = None,
     ) -> DialogueSeed:
         """
         NPC Dialogue Agent가 다음 발화를 생성하거나 가이드를 잡을 때 필요한 
         대화 연동용 씨앗(DialogueSeed) 메타데이터 객체를 구성합니다.
         """
+        is_flight_smalltalk = (payload.scene_id == "FLIGHT_A_001_SEATMATE_SMALLTALK" or payload.current_node_id.startswith("FLIGHT_"))
+        surface_goal = payload.node_context.npc_question_goal
+        cumulative_confidence = None
+        if is_flight_smalltalk and decision and hasattr(decision, "selected_probe") and decision.selected_probe:
+            probe = decision.selected_probe
+            surface_goal = f"{probe['target_competency']}_{probe['topic_tag']}"
+            cumulative_confidence = decision.cumulative_confidence
+
         return DialogueSeed(
             scene=payload.scene_id,
             npc_role=self._npc_role(payload),
-            surface_goal=payload.node_context.npc_question_goal,
+            surface_goal=surface_goal,
             hidden_assessment_goal="estimate_user_travel_speaking_level",
             opening_intent=self._opening_intent(payload),
             assessment_targets=_unique_non_empty(
@@ -732,6 +742,7 @@ class _EnglishLevelHintPolicyCore:
                 if payload.current_node_id.startswith("FLIGHT_")
                 else "required_slots_filled_or_retry_policy_triggered"
             ),
+            cumulative_confidence=cumulative_confidence,
         )
 
     def _npc_role(self, payload: DevBPolicyInput) -> str:
@@ -788,11 +799,47 @@ class _EnglishLevelHintPolicyCore:
         target_slot = payload.node_context.required_slots[0] if payload.node_context.required_slots else None
         is_flight_smalltalk = (payload.scene_id == "FLIGHT_A_001_SEATMATE_SMALLTALK" or payload.current_node_id.startswith("FLIGHT_"))
         if is_flight_smalltalk:
+            topic_switch = False
+            if hasattr(decision, "selected_probe") and decision.selected_probe:
+                from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader
+                import json
+                reader = OpenKBFinalResultRecordReader(runtime_root=getattr(self.openkb_writer, "runtime_root", None))
+                records = reader.read_session_records(payload.session_id)
+                flight_records = [r for r in records if str(r.get("node_id", "")).startswith("FLIGHT_")]
+                if flight_records:
+                    last_record = flight_records[-1]
+                    dseed = last_record.get("dialogue_seed")
+                    if dseed and isinstance(dseed, dict):
+                        last_goal = dseed.get("surface_goal", "")
+                        last_topic = "travel"
+                        probes_path = Path("backend/app/data/flight_smalltalk_probes.json")
+                        if probes_path.exists():
+                            try:
+                                probes = json.loads(probes_path.read_text(encoding="utf-8"))
+                                for p in probes:
+                                    if p["probe_id"] == last_goal or f"{p['target_competency']}_{p['topic_tag']}" == last_goal:
+                                        last_topic = p["topic_tag"]
+                                        break
+                            except Exception:
+                                pass
+                        if last_topic != decision.selected_probe["topic_tag"]:
+                            topic_switch = True
+
+            player_len = len(payload.player_text.split())
+            if player_len <= 3:
+                length_target = 8
+            elif player_len <= 5:
+                length_target = 10
+            else:
+                length_target = 12
+
             return DialogueDirective(
-                purpose="smalltalk_rapport",
+                purpose="smalltalk_diagnostic",
                 tone_hint="neutral_passenger",
                 target_slot=target_slot,
                 do_not_generate_npc_text=False,
+                topic_switch=topic_switch,
+                length_target=length_target,
             )
 
         if decision.branch_type in {"success", "final"}:
