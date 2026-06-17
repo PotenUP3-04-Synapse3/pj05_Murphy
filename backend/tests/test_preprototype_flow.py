@@ -194,6 +194,27 @@ def _chapter_boundary_request(
     )
 
 
+def _read_openkb_session_records(jsonl_path: Path) -> list[dict[str, Any]]:
+    if not jsonl_path.exists():
+        return []
+    return [
+        json.loads(line)
+        for line in jsonl_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def _remove_openkb_session_records(runtime_dir: Path, jsonl_path: Path) -> None:
+    for record in _read_openkb_session_records(jsonl_path):
+        record_id = record.get("record_id")
+        if isinstance(record_id, str):
+            markdown_path = runtime_dir / f"{record_id}.md"
+            if markdown_path.exists():
+                markdown_path.unlink()
+    if jsonl_path.exists():
+        jsonl_path.unlink()
+
+
 def test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response() -> None:
     response = Orchestrator().run_turn(_preprototype_request())
 
@@ -555,6 +576,67 @@ def test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition() -> N
     finally:
         if jsonl_path.exists():
             jsonl_path.unlink()
+
+
+def test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller() -> None:
+    session_id = "session_flight_smalltalk_openkb_accumulation"
+    runtime_dir = Path("backend/runtime/openkb/dev_b")
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    jsonl_path = runtime_dir / f"{session_id}.jsonl"
+    _remove_openkb_session_records(runtime_dir, jsonl_path)
+
+    transcripts = [
+        "I like playing computer games.",
+        "I want to visit museums and eat pizza.",
+        "I might stay with my friend.",
+        "I feel a little nervous but ready.",
+        "Thanks for the friendly talk.",
+    ]
+
+    try:
+        response = None
+        for turn_index, transcript in enumerate(transcripts, start=1):
+            turn_payload = _turn_payload()
+            turn_payload["request_id"] = f"req_flight_diag_openkb_{turn_index:04d}"
+            turn_payload["session"]["session_id"] = session_id
+            turn_payload["session"]["chapter_id"] = "CH0_01_FLIGHT_SMALLTALK"
+            turn_payload["session"]["scene_id"] = "FLIGHT_A_001_SEATMATE_SMALLTALK"
+            turn_payload["session"]["current_node_id"] = "FLIGHT_A_001_SEATMATE_SMALLTALK"
+            turn_payload["session"]["turn_index"] = turn_index
+            turn_payload["npc"]["npc_id"] = "SEATMATE_A_01"
+            turn_payload["npc"]["npc_role"] = "seatmate"
+            turn_payload["npc"]["last_npc_message"] = "Let's chat while we wait to land."
+            turn_payload["game_state"]["flags"] = ["flight_level_test_active"]
+            turn_payload["game_state"]["completed_intents"] = []
+            turn_payload["game_state"]["current_objective"] = "Continue the flight diagnostic small talk"
+            turn_payload["previous_node_results"] = []
+            turn_payload["client_allowed_next_nodes"] = [
+                "FLIGHT_A_001_SEATMATE_SMALLTALK",
+                "FLIGHT_999_COMPLETE",
+            ]
+
+            response = Orchestrator().run_turn(
+                PrePrototypeRequest(
+                    turn=UnrealTurnRequest.model_validate(turn_payload),
+                    audio=MockAudioInput(
+                        mock_wav_path=f"mock://alpha/flight_diag_{turn_index}.wav",
+                        transcript=transcript,
+                    ),
+                )
+            )
+
+            records = _read_openkb_session_records(jsonl_path)
+            assert len(records) == turn_index
+            assert records[-1]["node_id"] == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+            assert records[-1]["understanding"]["confidence"] == pytest.approx(response.debug.understanding_confidence)
+            assert records[-1]["evaluation"]["verdict"] == response.evaluation.verdict
+            assert records[-1]["dialogue_seed"]["surface_goal"]
+
+        assert response is not None
+        assert response.next_action == "COMPLETE_CHAPTER"
+        assert response.next_node_id == "FLIGHT_999_COMPLETE"
+    finally:
+        _remove_openkb_session_records(runtime_dir, jsonl_path)
 
 
 def test_orchestrator_marks_immigration_clearance_as_baggage_scene_transition() -> None:

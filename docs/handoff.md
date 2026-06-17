@@ -1,5 +1,37 @@
 # Handoff
 
+## 2026-06-17 Developer C Integrated: Flight Smalltalk Diagnostic Slot Neutralization
+
+Developer C reviewed Developer B's merged adaptive flight smalltalk diagnostic
+handoff and completed the C-owned integration items.
+
+Changed:
+
+- `UnderstandingAgent` now treats
+  `FLIGHT_A_001_SEATMATE_SMALLTALK` with
+  `npc_question_goal="estimate_user_travel_speaking_level"` as a slot-neutral
+  diagnostic node.
+- Rule fallback no longer fills the legacy `polite_response` slot on that
+  diagnostic node, even when the player says an old-script answer such as
+  `"Sure, here you are."`.
+- LLM postprocessing also removes diagnostic-node `slot_evidence`,
+  `extracted_slots`, and `missing_slots` so A/B do not mistake the residual
+  scenario slot for a live progression condition.
+- Added an integration regression test proving repeated
+  `FLIGHT_A_001_SEATMATE_SMALLTALK` turns append B OpenKB session records and
+  allow the adaptive controller to reach `FLIGHT_999_COMPLETE` instead of
+  being stuck at turn 1.
+
+Verification:
+
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_preprototype_flow.py -q`
+  passed: 51 passed, 1 warning.
+- `uv run ruff check backend/app/agents/agent_c/understanding_agent.py backend/tests/test_understanding_agent.py backend/tests/test_preprototype_flow.py`
+  passed.
+- `uv run pytest` passed: 294 passed, 1 warning.
+- `uv run mypy .` passed.
+- `uv run ruff check .` passed.
+
 ## 2026-06-17 Developer C Integrated: Bad Ending Guard and Smalltalk Slot Safety
 
 Developer C integrated Developer B's bad-ending branch output with the C-owned

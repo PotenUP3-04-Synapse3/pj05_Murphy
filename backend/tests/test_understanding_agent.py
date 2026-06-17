@@ -384,14 +384,15 @@ def test_understanding_agent_rejects_off_topic_idiom_despite_valid_polite_respon
         _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK"),
     )
 
-    assert output.intent == "respond_to_seatmate_request"
+    assert output.intent == "estimate_user_travel_speaking_level"
     assert output.intent_success is False
     assert output.confidence < 0.9
     assert output.answer_relevance == "off_topic"
     assert output.extracted_slots == {}
-    assert output.missing_slots == ["polite_response"]
-    assert output.needs_clarification is True
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
     assert output.slot_evidence == []
+    assert agent.last_trace["postprocessing"]["flight_smalltalk_diagnostic_slot_neutralized"] is True
 
 
 def test_understanding_agent_rule_mode_recognizes_allowed_visit_purpose_values() -> None:
@@ -442,13 +443,6 @@ def test_understanding_agent_rule_mode_recognizes_alpha_flight_and_baggage_slot_
 
     cases = [
         (
-            "CH0_01_FLIGHT_SMALLTALK",
-            "FLIGHT_A_001_SEATMATE_SMALLTALK",
-            "Of course, please take it.",
-            "polite_response",
-            "offered_help",
-        ),
-        (
             "CH0_04_BAGGAGE_CLAIM",
             "BAG_002_PROVIDE_CLAIM_TAG",
             "I have the tag right here.",
@@ -474,7 +468,22 @@ def test_understanding_agent_rule_mode_recognizes_alpha_flight_and_baggage_slot_
         assert output.missing_slots == []
 
 
-def test_understanding_agent_rule_mode_rejects_off_topic_idiom_for_flight_polite_response() -> None:
+def test_understanding_agent_rule_mode_keeps_flight_diagnostic_node_slot_neutral() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text(
+        "Sure, here you are.",
+        _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK"),
+    )
+
+    assert output.intent == "estimate_user_travel_speaking_level"
+    assert output.intent_success is False
+    assert output.extracted_slots == {}
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
+
+
+def test_understanding_agent_rule_mode_rejects_off_topic_idiom_for_flight_diagnostic_node() -> None:
     agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
 
     output = agent.analyze_player_text(
@@ -482,16 +491,16 @@ def test_understanding_agent_rule_mode_rejects_off_topic_idiom_for_flight_polite
         _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK"),
     )
 
-    assert output.intent == "respond_to_seatmate_request"
+    assert output.intent == "estimate_user_travel_speaking_level"
     assert output.intent_success is False
     assert output.confidence < 0.9
     assert output.answer_relevance == "off_topic"
     assert output.extracted_slots == {}
-    assert output.missing_slots == ["polite_response"]
-    assert output.needs_clarification is True
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
 
 
-def test_understanding_agent_rule_mode_rejects_visit_purpose_in_polite_response_node() -> None:
+def test_understanding_agent_rule_mode_rejects_visit_purpose_in_flight_diagnostic_node() -> None:
     agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
 
     output = agent.analyze_player_text(
@@ -499,9 +508,9 @@ def test_understanding_agent_rule_mode_rejects_visit_purpose_in_polite_response_
         _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK"),
     )
 
-    assert output.intent == "respond_to_seatmate_request"
+    assert output.intent == "estimate_user_travel_speaking_level"
     assert output.intent_success is False
     assert output.answer_relevance != "on_topic"
     assert output.extracted_slots == {}
-    assert output.missing_slots == ["polite_response"]
-    assert output.needs_clarification is True
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
