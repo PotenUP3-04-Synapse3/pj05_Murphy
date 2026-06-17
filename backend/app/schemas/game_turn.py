@@ -555,7 +555,7 @@ class DialogueDirective(BaseModel):
     purpose: str
     tone_hint: str
     target_slot: str | None = None
-    do_not_generate_npc_text: bool
+    do_not_generate_npc_text: bool | None = None
     topic_switch: bool | None = None
     length_target: int | None = None
 

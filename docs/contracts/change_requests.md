@@ -3,6 +3,34 @@
 Cross-owner change requests are listed below. Status lines describe the current
 repository state as of the latest handoff entry.
 
+## Change Request - 2026-06-17 - Deprecate and Remove do_not_generate_npc_text from Developer B Policy
+
+### Requested By
+
+Developer C / Sean Han
+
+### Affected Owner
+
+Developer B
+
+### Reason
+
+The `do_not_generate_npc_text` field in `DialogueDirective` is not used by Developer C's orchestrator or Developer A's dialogue generation prompt (which is immediately filtered out at the adapter layer). Keeping it as a required field triggers unnecessary Pydantic validation errors and test fixture boilerplates.
+
+### Proposed Contract Change
+
+- Remove references to `do_not_generate_npc_text` from the system prompt guidelines in `backend/app/prompts/english_level_hint_prompt.md`.
+- Remove the `do_not_generate_npc_text` keyword argument when instantiating `DialogueDirective` in `backend/app/agents/agent_b/english_level_hint_agent.py`.
+- Developer C has made this field optional in the shared Pydantic schema to prevent immediate breaking changes, so Developer B can safely clean it up at any time.
+
+### Compatibility Impact
+
+No breaking change is introduced on the runtime boundary, as the shared schema now treats this field as optional. B can safely deploy this cleanup without breaking C's validation.
+
+### Temporary Workaround
+
+Developer C has relaxed the shared schema constraint (`do_not_generate_npc_text: bool | None = None`) and continues to sanitize the field in the A-facing adapter.
+
 ## Change Request - 2026-06-16 - Clean Developer A Ruff Unused Imports
 
 ### Requested By

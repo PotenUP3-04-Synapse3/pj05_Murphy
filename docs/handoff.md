@@ -1,5 +1,17 @@
 # Handoff
 
+## 2026-06-17 Developer C Schema: Make do_not_generate_npc_text Optional and Filed B Change Request
+
+Developer C resolved the validation issue with `do_not_generate_npc_text`.
+
+Changed:
+- `DialogueDirective` schema in `backend/app/schemas/game_turn.py` now defines `do_not_generate_npc_text: bool | None = None` for backward compatibility. This prevents validation crashes in tests and mock payloads.
+- Added a formal Change Request in `docs/contracts/change_requests.md` asking Developer B to remove `do_not_generate_npc_text` from their policy prompts and implementation code.
+
+Verification:
+- `uv run pytest` passed.
+- `uv run ruff check .` and `uv run mypy .` passed.
+
 ## 2026-06-17 Developer C Fixed: Respond Dialog Immigration NPC Default
 
 Developer C updated the `/respond-dialog` browser tester so the immigration
