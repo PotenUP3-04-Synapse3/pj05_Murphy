@@ -384,7 +384,12 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             else:
                 llm_result = client.generate(llm_payload)
     except (NPCDialogueLLMUnavailable, httpx.HTTPError, json.JSONDecodeError, KeyError, ValueError) as exc:
-        # 에러 발생 시 상태 전이를 예외 처리 폴백 노드로 분기하기 위해 error를 세팅하여 반환합니다.
+        import logging
+        import traceback
+        logging.getLogger("backend.app.agents.agent_a").error(
+            "LLM ValueError type=%s msg=%s\n%s",
+            type(exc).__name__, exc, traceback.format_exc(),
+        )
         return {"error": type(exc).__name__}
 
 

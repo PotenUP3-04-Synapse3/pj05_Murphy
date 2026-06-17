@@ -1,5 +1,23 @@
 # Handoff
 
+## 2026-06-17 Developer A: Ruff Cleanup + LLM Fallback Debug Logging + Smalltalk CR Status Sync
+
+Developer A 는 handoff/change_requests 인벤토리 확인 후 다음 4가지 후속 작업을 완료했습니다.
+
+Changed:
+
+- **Ruff Unused Imports 청소 (CR-2026-06-16)**: `npc_dialogue_agent.py`, `tts_text_polisher_service.py` 의 unused import 제거. C 측에서 진단된 lint 차단 해소. full `uv run ruff check .` 그린.
+- **LLM Fallback ValueError 디버그 로깅 및 해결**: `node_generate_dialogue_llm` 의 except 블록에 traceback 로깅을 추가하였습니다. 더불어 에러 원인인 ChatPromptTemplate의 f-string 중괄호 파싱 문제를 해결하기 위해, 템플릿 포맷 대신 SystemMessage와 HumanMessage 객체를 직접 생성하여 invoke하도록 수정 완료하였습니다.
+- **Bad Ending end-to-end 회귀 청취 검증**: Immigration "fuck you" 시 bad_end 라우팅 + A 측 mirror 응답("This interview is over. Leave now.")이 정상 동작함을 확인 완료하였습니다.
+- **CR-2026-06-16 기내 스몰토크 대화형 전환 Status 갱신**: A 측 작업이 06-17 에 완료되었음을 change_requests.md 에 명시.
+
+Verification:
+
+- `uv run pytest backend/tests`: PASS (300 passed)
+- `uv run ruff check .`: PASS (All checks passed)
+- `uv run mypy .`: PASS (Success: no issues found in 120 source files)
+- `/respond-dialog` Immigration 회귀 청취: PASS
+
 ## 2026-06-17 Developer C Fixed: Respond Dialog Immigration NPC Default
 
 Developer C updated the `/respond-dialog` browser tester so the immigration

@@ -1498,6 +1498,13 @@ Developer A 소유 프롬프트/생성 로직 내부 개선이며, A/B/C 간 스
 
 ## Change Request - 2026-06-16 - 기내 스몰토크 대화형 전환 (Flight Smalltalk Conversational Mode)
 
+Status: Resolved (Developer A update - 2026-06-17). Developer A 측 후속 작업
+(스몰토크 페르소나 프롬프트, missing_followup_question 우회, SURFACE_GOAL_QUESTIONS
+비활성화, recommended_expression 차단, 대화 메모리, generic 중립 폴백, Coherence Guard)
+이 모두 구현 완료. 상세 내용은 handoff.md 2026-06-17 "Developer A 기내 스몰토크
+적응형 진단(Adaptive Diagnostic) 연동 구현 완료" entry 참고. Developer C 측 후속
+(off-topic 가드 씬 인지화, 슬лот 강제 추출 완화)은 별도로 처리됨.
+
 Status: Open. Developer B 작업계획서(`docs/workplan-dev-b.md`) 기준. Dev B는
 분기 결정·시드 측을 담당하며, 본 요청은 Dev A·Dev C 후속 작업을 정의한다.
 
