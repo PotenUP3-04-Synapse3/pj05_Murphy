@@ -29,7 +29,6 @@ from backend.app.services.service_a.tts_text_polisher_service import (
 )
 from backend.app.services.service_a.profanity_response_policy import (
     get_profanity_fallback_response,
-    get_incivility_tts_bias,
 )
 from backend.app.services.service_a.profanity_lexicon import (
     contains_blocked,

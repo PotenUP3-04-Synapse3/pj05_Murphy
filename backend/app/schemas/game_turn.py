@@ -370,6 +370,7 @@ class DialogueSeed(BaseModel):
     tone_guidance: str
     allowed_followup_intents: list[str] = Field(default_factory=list)
     stop_condition: str
+    cumulative_confidence: float | None = None
 
 
 class RubricScores(BaseModel):
@@ -468,6 +469,7 @@ class LevelHint(BaseModel):
     example_en: str
     avoid_expression: str | None = None
     recommended_expression: str
+    cumulative_confidence: float | None = None
 
 
 class InGameFeedback(BaseModel):
@@ -554,6 +556,8 @@ class DialogueDirective(BaseModel):
     tone_hint: str
     target_slot: str | None = None
     do_not_generate_npc_text: bool
+    topic_switch: bool | None = None
+    length_target: int | None = None
 
 
 class ReportItem(BaseModel):

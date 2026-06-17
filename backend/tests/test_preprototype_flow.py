@@ -492,40 +492,69 @@ def test_orchestrator_attaches_final_result_only_on_alpha_scoreboard_node() -> N
 
 
 def test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition() -> None:
-    turn_payload = _turn_payload()
-    turn_payload["request_id"] = "req_alpha_flight_to_imm_0001"
-    turn_payload["session"]["chapter_id"] = "CH0_01_FLIGHT_SMALLTALK"
-    turn_payload["session"]["scene_id"] = "FLIGHT_SEATMATE_SMALLTALK"
-    turn_payload["session"]["current_node_id"] = "FLIGHT_A_005_WRAP_UP"
-    turn_payload["session"]["turn_index"] = 5
-    turn_payload["npc"]["npc_id"] = "SEATMATE_EMILY"
-    turn_payload["npc"]["npc_role"] = "seatmate"
-    turn_payload["npc"]["last_npc_message"] = (
-        "Looks like we're landing soon. Are you ready for immigration?"
-    )
-    turn_payload["game_state"]["current_objective"] = "Finish the flight small talk"
-    turn_payload["game_state"]["flags"] = ["flight_level_test_active"]
-    turn_payload["client_allowed_next_nodes"] = ["FLIGHT_999_COMPLETE"]
-    request = PrePrototypeRequest(
-        turn=UnrealTurnRequest.model_validate(turn_payload),
-        audio=MockAudioInput(
-            mock_wav_path="mock://alpha/flight_wrap_up_ready.wav",
-            transcript="I think I'm ready. Thanks for talking with me.",
-        ),
-    )
+    session_id = "session_001"
+    runtime_dir = Path("backend/runtime/openkb/dev_b")
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    jsonl_path = runtime_dir / f"{session_id}.jsonl"
+    
+    mock_record = {
+        "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+        "dialogue_seed": {
+            "scene": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "npc_role": "seatmate_passenger",
+            "surface_goal": "TRAVEL_PURPOSE",
+            "hidden_assessment_goal": "estimate_user_travel_speaking_level",
+            "opening_intent": "ask_purpose",
+            "difficulty_profile": "auto",
+            "tone_guidance": "neutral",
+            "stop_condition": "enough_evidence"
+        },
+        "evaluation": {"verdict": "SUCCESS"},
+        "understanding": {"confidence": 0.9}
+    }
 
-    response = Orchestrator().run_turn(request)
+    try:
+        with jsonl_path.open("w", encoding="utf-8") as f:
+            for _ in range(4):
+                f.write(json.dumps(mock_record) + "\n")
 
-    assert response.next_action == "COMPLETE_CHAPTER"
-    assert response.next_node_id == "FLIGHT_999_COMPLETE"
-    assert response.transition is not None
-    assert response.transition.unreal_event == "START_AIRPORT_ARRIVAL_TUTORIAL"
-    assert response.flow.transition_type == "cutscene"
-    assert response.flow.transition_id == "flight_to_arrival_tutorial"
-    assert response.flow.to_scene_id == "ARRIVAL_TUTORIAL"
-    assert response.flow.cinematic_id == "CIN_FLIGHT_ARRIVAL_JFK"
-    assert response.flow.skip_allowed is True
-    assert response.flow.show_scoreboard is False
+        turn_payload = _turn_payload()
+        turn_payload["request_id"] = "req_alpha_flight_to_imm_0001"
+        turn_payload["session"]["chapter_id"] = "CH0_01_FLIGHT_SMALLTALK"
+        turn_payload["session"]["scene_id"] = "FLIGHT_SEATMATE_SMALLTALK"
+        turn_payload["session"]["current_node_id"] = "FLIGHT_A_001_SEATMATE_SMALLTALK"
+        turn_payload["session"]["turn_index"] = 5
+        turn_payload["npc"]["npc_id"] = "SEATMATE_EMILY"
+        turn_payload["npc"]["npc_role"] = "seatmate"
+        turn_payload["npc"]["last_npc_message"] = (
+            "Looks like we're landing soon. Are you ready for immigration?"
+        )
+        turn_payload["game_state"]["current_objective"] = "Finish the flight small talk"
+        turn_payload["game_state"]["flags"] = ["flight_level_test_active"]
+        turn_payload["client_allowed_next_nodes"] = ["FLIGHT_999_COMPLETE"]
+        request = PrePrototypeRequest(
+            turn=UnrealTurnRequest.model_validate(turn_payload),
+            audio=MockAudioInput(
+                mock_wav_path="mock://alpha/flight_wrap_up_ready.wav",
+                transcript="I think I'm ready. Thanks for talking with me.",
+            ),
+        )
+
+        response = Orchestrator().run_turn(request)
+
+        assert response.next_action == "COMPLETE_CHAPTER"
+        assert response.next_node_id == "FLIGHT_999_COMPLETE"
+        assert response.transition is not None
+        assert response.transition.unreal_event == "START_AIRPORT_ARRIVAL_TUTORIAL"
+        assert response.flow.transition_type == "cutscene"
+        assert response.flow.transition_id == "flight_to_arrival_tutorial"
+        assert response.flow.to_scene_id == "ARRIVAL_TUTORIAL"
+        assert response.flow.cinematic_id == "CIN_FLIGHT_ARRIVAL_JFK"
+        assert response.flow.skip_allowed is True
+        assert response.flow.show_scoreboard is False
+    finally:
+        if jsonl_path.exists():
+            jsonl_path.unlink()
 
 
 def test_orchestrator_marks_immigration_clearance_as_baggage_scene_transition() -> None:
@@ -952,6 +981,7 @@ def _dev_a_payload_for_request(request: PrePrototypeRequest) -> tuple[DevADialog
         surface_goal = str((payload.get("dialogue_seed") or {}).get("surface_goal") or "")
         generated_text_by_goal = {
             "respond_to_polite_request": "Are you visiting New York for a trip?",
+            "travel_purpose_travel": "Are you visiting New York for a trip?",
             "report_missing_bag_at_service_desk": "Do you have your baggage claim tag or ticket?",
         }
         builder_payloads.append(payload)
@@ -1017,7 +1047,7 @@ def test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata() -> None:
             npc_role="seatmate",
             last_npc_message="Could I borrow your pen for this arrival form?",
             transcript="Sure, here you are.",
-            allowed_next_nodes=["FLIGHT_A_002_TRAVEL_PURPOSE"],
+            allowed_next_nodes=["FLIGHT_A_001_SEATMATE_SMALLTALK", "FLIGHT_999_COMPLETE"],
         )
     )
 
@@ -1033,9 +1063,9 @@ def test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata() -> None:
     assert "npc_question" not in payload["node_context"]
     assert "npc_question_goal" not in payload["node_context"]
     assert "do_not_generate_npc_text" not in payload["dialogue_directive"]
-    assert payload["dialogue_directive"]["purpose"] == "smalltalk_rapport"
+    assert payload["dialogue_directive"]["purpose"] == "smalltalk_diagnostic"
     assert payload["dialogue_seed"]["npc_role"] == "seatmate_passenger"
-    assert payload["dialogue_seed"]["surface_goal"] == "respond_to_polite_request"
+    assert payload["dialogue_seed"]["surface_goal"] == "travel_purpose_travel"
     assert "advance_to_next_prompt" in payload["dialogue_seed"]["allowed_followup_intents"]
     assert payload["dialogue_seed"]["max_turns"] == 5
 

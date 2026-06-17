@@ -1,0 +1,114 @@
+[
+  {
+    "probe_id": "TRAVEL_PURPOSE",
+    "target_competency": "travel_purpose",
+    "difficulty": 2,
+    "topic_tag": "travel",
+    "coherent_topics": ["travel", "purpose"],
+    "seed_text": "Are you visiting New York for a trip?"
+  },
+  {
+    "probe_id": "STAY_PLAN",
+    "target_competency": "stay_duration",
+    "difficulty": 2,
+    "topic_tag": "travel",
+    "coherent_topics": ["travel", "stay", "duration"],
+    "seed_text": "How long will you stay there?"
+  },
+  {
+    "probe_id": "CLARIFY_OR_ASK_BACK",
+    "target_competency": "clarification_handling",
+    "difficulty": 3,
+    "topic_tag": "travel",
+    "coherent_topics": ["travel", "experience"],
+    "seed_text": "Sorry, did you say this is your first time in America?"
+  },
+  {
+    "probe_id": "WRAP_UP_A",
+    "target_competency": "wrap_up",
+    "difficulty": 2,
+    "topic_tag": "travel",
+    "coherent_topics": ["travel", "landing", "readiness"],
+    "seed_text": "Looks like we're landing soon. Are you ready for immigration?"
+  },
+  {
+    "probe_id": "DESTINATION_CHAT",
+    "target_competency": "destination",
+    "difficulty": 2,
+    "topic_tag": "travel",
+    "coherent_topics": ["travel", "destination"],
+    "seed_text": "Where are you headed after JFK?"
+  },
+  {
+    "probe_id": "COMPANION_OR_VISIT",
+    "target_competency": "companion_plan",
+    "difficulty": 3,
+    "topic_tag": "travel",
+    "coherent_topics": ["travel", "companion", "meeting"],
+    "seed_text": "Are you traveling alone or meeting someone there?"
+  },
+  {
+    "probe_id": "STAY_PLACE",
+    "target_competency": "stay_location",
+    "difficulty": 2,
+    "topic_tag": "travel",
+    "coherent_topics": ["travel", "accommodation", "stay"],
+    "seed_text": "Where are you staying in New York?"
+  },
+  {
+    "probe_id": "TRIP_PLANS",
+    "target_competency": "future_plan",
+    "difficulty": 3,
+    "topic_tag": "travel",
+    "coherent_topics": ["travel", "activities", "plans"],
+    "seed_text": "What are you excited to do there?"
+  },
+  {
+    "probe_id": "LANDING_CLOSE_B",
+    "target_competency": "wrap_up",
+    "difficulty": 2,
+    "topic_tag": "travel",
+    "coherent_topics": ["travel", "landing", "readiness"],
+    "seed_text": "Sounds fun. Do you feel ready for immigration?"
+  },
+  {
+    "probe_id": "FORM_HELP_REQUEST",
+    "target_competency": "help_request_response",
+    "difficulty": 3,
+    "topic_tag": "arrival_form",
+    "coherent_topics": ["arrival_form", "help"],
+    "seed_text": "Do you know how to fill out this part of the arrival form?"
+  },
+  {
+    "probe_id": "FIRST_TIME_ENTRY",
+    "target_competency": "experience",
+    "difficulty": 2,
+    "topic_tag": "travel",
+    "coherent_topics": ["travel", "experience"],
+    "seed_text": "Is this your first time entering the U.S.?"
+  },
+  {
+    "probe_id": "ADDRESS_HELP",
+    "target_competency": "address_guidance",
+    "difficulty": 3,
+    "topic_tag": "arrival_form",
+    "coherent_topics": ["arrival_form", "address"],
+    "seed_text": "What should I write for the address in the U.S.?"
+  },
+  {
+    "probe_id": "HOTEL_HOSTEL_REPAIR",
+    "target_competency": "clarification_handling",
+    "difficulty": 3,
+    "topic_tag": "travel",
+    "coherent_topics": ["travel", "accommodation", "clarification"],
+    "seed_text": "Sorry, did you say hotel or hostel?"
+  },
+  {
+    "probe_id": "FORM_CLOSE_C",
+    "target_competency": "wrap_up",
+    "difficulty": 2,
+    "topic_tag": "travel",
+    "coherent_topics": ["travel", "landing", "readiness"],
+    "seed_text": "Thanks. I think we're landing soon."
+  }
+]

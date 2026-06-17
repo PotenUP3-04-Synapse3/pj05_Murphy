@@ -94,6 +94,40 @@ Recommended execution order:
 4. INC-6/INC-7: observability + regression tests.
 5. INC-8/INC-9: contract docs, full verification, commit.
 
+## 2026-06-17 Developer B 기내 스몰토크 적응형 진단(Adaptive Diagnostic, C안) 통합 및 테스트 갱신 완료
+
+Developer B는 기내 스몰토크를 적응형 진단(C안)으로 전환하는 작업계획에 맞춰 외부 연동 테스트 및 잔여 노드 정리에 따른 테스트 오작동 문제를 해결하고 전체 검증을 완료했습니다.
+
+- **외부 연동 테스트 갱신 및 검증**:
+  - [test_preprototype_flow.py](file:///c:/potenup3/pj05_Murphy/backend/tests/test_preprototype_flow.py)에서 `test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition` 테스트를 단일 self-loop 진단 노드 `FLIGHT_A_001_SEATMATE_SMALLTALK` 및 OpenKB 세션 이력 모킹 기반으로 갱신하여, 최소 턴 및 신뢰도 조건을 통과하고 `FLIGHT_999_COMPLETE`로 자연스럽게 종결되는지 검증했습니다.
+  - `test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata` 테스트에서 허용 가능한 다음 노드 목록(`allowed_next_nodes`), dialogue directive의 `purpose`("smalltalk_diagnostic"), dialogue seed의 `surface_goal`("travel_purpose_travel") 검증을 갱신하였습니다.
+  - `fake_voice_output_builder`에 `"travel_purpose_travel"`을 추가하여 테스트 대화 텍스트가 기대 사항과 맞도록 조정했습니다.
+- **Developer A 유닛 테스트 갱신**:
+  - [test_developer_a_npc_dialogue.py](file:///c:/potenup3/pj05_Murphy/backend/tests/test_developer_a_npc_dialogue.py)에서 삭제된 레거시 비행 노드(`FLIGHT_A_005_WRAP_UP`, `FLIGHT_B_002_COMPANION_OR_VISIT`, `FLIGHT_C_004_HOTEL_HOSTEL`)를 가리키고 있던 `node_id` 값들을 대표 진단 노드인 `FLIGHT_A_001_SEATMATE_SMALLTALK`로 갱신하여 테스트 실패를 차단했습니다.
+- **폴백 대사 연동 배제**:
+  - 에이전트 A가 정책 엔진이 제안한 폴백 질문(seed_text)을 그대로 모방하여 출력하는 의존성 오작동을 차단하기 위해, B 정책 클래스(`FlightSmallTalkDiagnosticPolicy`) 내의 `fallback_question` 메서드 및 관련 유닛 테스트를 완전히 제거하였습니다.
+- **검증 완료**:
+  - `uv run pytest` 실행 결과 278개 전체 테스트 성공 통과를 확인했습니다.
+- **핵심 구조 변경 요약 (A/C 인지 필요)**:
+  - 시나리오: `FLIGHT_A_*/B_*/C_*` 15개 노드 제거 → 단일 self-loop 진단 노드
+    `FLIGHT_A_001_SEATMATE_SMALLTALK`. 역할 반전 원인이던 `npc_question_goal` 을
+    `estimate_user_travel_speaking_level` 로 교정. 종료 시 `FLIGHT_999_COMPLETE`.
+  - 신규 probe 뱅크 `backend/app/data/flight_smalltalk_probes.json`(역량·난이도·토픽 태깅).
+  - 컨트롤러 `FlightSmallTalkDiagnosticPolicy.decide_conversational`: 기회주의적 probe
+    선택(steering=0.4) + bounded 종료(`MIN_TURNS=3`, `MAX_TURNS=7`, `CONFIDENCE_THRESHOLD=0.7`).
+  - 계약 필드(additive): `DialogueDirective.topic_switch/length_target`,
+    `DialogueSeed/LevelHint.cumulative_confidence`, `ScenarioDecision.selected_probe/cumulative_confidence`.
+  - `dialogue_seed.surface_goal` 은 진단 씬에서 **의도 문자열 `{competency}_{topic}`**(예:
+    `travel_purpose_travel`)로 바뀜 — 고정 질문 아님.
+- **교차 의존 (변경 요청)**: Dev A/Dev C 작업을
+  `docs/contracts/change_requests.md`(**[CR-B-SMALLTALK] 기내 스몰토크 적응형 진단 전환**)로 발행.
+  - Dev A: 반응-먼저 생성 + **coherence guard 신설** + `missing_followup_question` 해제 +
+    고정 큐 비활성 + `length_target` 길이 미러링 + `topic_switch` 전환구 + 대화 메모리/콜백.
+    **폴백 대사 없음** — 고정 질문 사다리로 회귀 금지, 실패 시 반복되지 않는 generic 중립 폴백.
+  - Dev C: 스몰토크 슬롯 강제 추출 완화 + **OpenKB 세션 레코드 턴별 적재 보장**(미적재 시
+    턴이 1로 고정되어 종료 불가 위험 — CR 통합 의존성 항목 참조).
+  - `ruff check .` 및 `mypy .` 실행 시 어떠한 Lint/Type 검출 사항도 남지 않고 깨끗하게 통과함을 확인했습니다.
+
 ## 2026-06-16 Developer B 욕설 처리 및 Bad Ending 분기 정책 완료 (CR-A2, CR-A4)
 
 Developer B는 플레이어의 비속어 발화 시 챕터 강제 강등 및 배드 엔딩 분기 연동을 위한 작업(CR-A2, CR-A4)을 완료했습니다.

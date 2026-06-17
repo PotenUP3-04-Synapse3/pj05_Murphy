@@ -309,25 +309,9 @@ def test_all_chapter_zero_nodes_define_branch_candidates_and_allowed_next_nodes(
     assert node_data["chapters"][0]["entry_node_id"] == "FLIGHT_A_001_SEATMATE_SMALLTALK"
     assert node_data["chapters"][0]["entry_node_ids"] == [
         "FLIGHT_A_001_SEATMATE_SMALLTALK",
-        "FLIGHT_B_001_DESTINATION_CHAT",
-        "FLIGHT_C_001_FORM_HELP_REQUEST",
     ]
     assert set(node_data["nodes"]) == {
         "FLIGHT_A_001_SEATMATE_SMALLTALK",
-        "FLIGHT_A_002_TRAVEL_PURPOSE",
-        "FLIGHT_A_003_STAY_PLAN",
-        "FLIGHT_A_004_CLARIFY_OR_ASK_BACK",
-        "FLIGHT_A_005_WRAP_UP",
-        "FLIGHT_B_001_DESTINATION_CHAT",
-        "FLIGHT_B_002_COMPANION_OR_VISIT",
-        "FLIGHT_B_003_STAY_PLACE",
-        "FLIGHT_B_004_TRIP_PLANS",
-        "FLIGHT_B_005_LANDING_CLOSE",
-        "FLIGHT_C_001_FORM_HELP_REQUEST",
-        "FLIGHT_C_002_FIRST_TIME_ENTRY",
-        "FLIGHT_C_003_ADDRESS_HELP",
-        "FLIGHT_C_004_HOTEL_HOSTEL_REPAIR",
-        "FLIGHT_C_005_FORM_CLOSE",
         "FLIGHT_999_COMPLETE",
         "IMM_001_PASSPORT",
         "IMM_002_PURPOSE",
@@ -368,62 +352,15 @@ def test_flight_smalltalk_node_exists_as_alpha_diagnostic_node() -> None:
     context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
 
     assert context.node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
-    assert context.npc_question_goal == "respond_to_polite_request"
+    assert context.npc_question_goal == "estimate_user_travel_speaking_level"
     assert context.required_intents == ["respond_to_seatmate_request"]
     assert context.required_slots == ["polite_response"]
-    assert "FLIGHT_A_002_TRAVEL_PURPOSE" in context.allowed_next_nodes
-
-
-def test_alpha_flight_nodes_form_three_five_turn_diagnostic_routes() -> None:
-    expected_routes = [
-        [
-            ("FLIGHT_A_001_SEATMATE_SMALLTALK", "FLIGHT_A_002_TRAVEL_PURPOSE"),
-            ("FLIGHT_A_002_TRAVEL_PURPOSE", "FLIGHT_A_003_STAY_PLAN"),
-            ("FLIGHT_A_003_STAY_PLAN", "FLIGHT_A_004_CLARIFY_OR_ASK_BACK"),
-            ("FLIGHT_A_004_CLARIFY_OR_ASK_BACK", "FLIGHT_A_005_WRAP_UP"),
-            ("FLIGHT_A_005_WRAP_UP", "FLIGHT_999_COMPLETE"),
-        ],
-        [
-            ("FLIGHT_B_001_DESTINATION_CHAT", "FLIGHT_B_002_COMPANION_OR_VISIT"),
-            ("FLIGHT_B_002_COMPANION_OR_VISIT", "FLIGHT_B_003_STAY_PLACE"),
-            ("FLIGHT_B_003_STAY_PLACE", "FLIGHT_B_004_TRIP_PLANS"),
-            ("FLIGHT_B_004_TRIP_PLANS", "FLIGHT_B_005_LANDING_CLOSE"),
-            ("FLIGHT_B_005_LANDING_CLOSE", "FLIGHT_999_COMPLETE"),
-        ],
-        [
-            ("FLIGHT_C_001_FORM_HELP_REQUEST", "FLIGHT_C_002_FIRST_TIME_ENTRY"),
-            ("FLIGHT_C_002_FIRST_TIME_ENTRY", "FLIGHT_C_003_ADDRESS_HELP"),
-            ("FLIGHT_C_003_ADDRESS_HELP", "FLIGHT_C_004_HOTEL_HOSTEL_REPAIR"),
-            ("FLIGHT_C_004_HOTEL_HOSTEL_REPAIR", "FLIGHT_C_005_FORM_CLOSE"),
-            ("FLIGHT_C_005_FORM_CLOSE", "FLIGHT_999_COMPLETE"),
-        ],
-    ]
-
-    for route in expected_routes:
-        assert len(route) == 5
-        for node_id, next_node_id in route:
-            context = _node_context(node_id)
-            assert context.chapter_id == "CH0_01_FLIGHT_SMALLTALK"
-            assert context.node_type == "dialogue"
-            assert context.success_next_node == next_node_id
-            assert context.retry_next_node == next_node_id
-            assert context.clarify_next_node == next_node_id
-            assert context.hint_next_node == next_node_id
-            assert context.warning_next_node == next_node_id
-            assert set(context.allowed_next_nodes) == {next_node_id}
+    assert "FLIGHT_999_COMPLETE" in context.allowed_next_nodes
 
 
 def test_alpha_flight_route_a_uses_labeled_node_ids() -> None:
     node_data = json.loads(SCENARIO_NODE_PATH.read_text(encoding="utf-8"))
-    legacy_route_a_node_ids = {
-        "FLIGHT_001_SEATMATE_SMALLTALK",
-        "FLIGHT_002_TRAVEL_PURPOSE",
-        "FLIGHT_003_STAY_PLAN",
-        "FLIGHT_004_CLARIFY_OR_ASK_BACK",
-        "FLIGHT_005_WRAP_UP",
-    }
-
-    assert not legacy_route_a_node_ids & set(node_data["nodes"])
+    assert "FLIGHT_001_SEATMATE_SMALLTALK" not in node_data["nodes"]
     assert node_data["chapters"][0]["entry_node_id"] == "FLIGHT_A_001_SEATMATE_SMALLTALK"
 
 
@@ -495,31 +432,12 @@ def test_flight_smalltalk_creates_deferred_out_game_feedback_seed(tmp_path: Path
     assert result.out_game_feedback_seed.focus_on_form_targets == ["smalltalk_response_clarity"]
     assert "deferred_out_game_feedback" in result.out_game_feedback_seed.openkb_query_tags
     assert result.branch.next_node_id in context.allowed_next_nodes
-    assert result.branch.next_node_id == "FLIGHT_A_002_TRAVEL_PURPOSE"
+    assert result.branch.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
     assert result.dialogue_seed is not None
     assert result.dialogue_seed.max_turns == 5
 
 
-def test_flight_diagnostic_retry_still_moves_to_next_evidence_node(tmp_path: Path) -> None:
-    context = _node_context("FLIGHT_A_003_STAY_PLAN")
-
-    result = _agent(tmp_path).evaluate_turn(
-        _policy_input(
-            node_context=context,
-            player_text="Maybe.",
-            intent_success=False,
-            confidence=0.66,
-            extracted_slots={},
-            missing_slots=["stay_plan"],
-            tier="Silver",
-            client_allowed_next_nodes=context.allowed_next_nodes,
-        )
-    )
-
-    assert result.evaluation.verdict == "SUCCESS"
-    assert result.branch.branch_type == "success"
-    assert result.branch.next_action == "ADVANCE"
-    assert result.branch.next_node_id == "FLIGHT_A_004_CLARIFY_OR_ASK_BACK"
+# test_flight_diagnostic_retry_still_moves_to_next_evidence_node removed because intermediate flight nodes are deleted.
 
 
 def test_alpha_final_scoreboard_is_only_dev_b_final_branch(tmp_path: Path) -> None:
@@ -656,11 +574,7 @@ def test_dialogue_seed_routes_baggage_service_and_customs_roles(
 @pytest.mark.parametrize(
     ("node_id", "slot_name", "slot_value", "success_next_node"),
     [
-        ("FLIGHT_A_001_SEATMATE_SMALLTALK", "polite_response", "offered_help", "FLIGHT_A_002_TRAVEL_PURPOSE"),
-        ("FLIGHT_A_002_TRAVEL_PURPOSE", "travel_purpose", "tourism", "FLIGHT_A_003_STAY_PLAN"),
-        ("FLIGHT_A_003_STAY_PLAN", "stay_plan", "five_days", "FLIGHT_A_004_CLARIFY_OR_ASK_BACK"),
-        ("FLIGHT_A_004_CLARIFY_OR_ASK_BACK", "interaction_repair", "asked_clarification", "FLIGHT_A_005_WRAP_UP"),
-        ("FLIGHT_A_005_WRAP_UP", "smalltalk_closing", "polite_closing", "FLIGHT_999_COMPLETE"),
+        ("FLIGHT_A_001_SEATMATE_SMALLTALK", "polite_response", "offered_help", "FLIGHT_A_001_SEATMATE_SMALLTALK"),
         ("IMM_001_PASSPORT", "passport_submission_status", "submitted", "IMM_002_PURPOSE"),
         ("IMM_002_PURPOSE", "visit_purpose", "tourism", "IMM_003_DURATION"),
         ("IMM_003_DURATION", "stay_duration", "days", "IMM_004_STAY_LOCATION"),

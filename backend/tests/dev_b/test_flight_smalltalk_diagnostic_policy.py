@@ -1,12 +1,15 @@
+import json
 from pathlib import Path
+import pytest
+
 from backend.app.services.service_b.flight_smalltalk_diagnostic_policy import (
     FlightSmallTalkDiagnosticPolicy,
 )
 from backend.tests.dev_b.test_developer_b_policy_engine import _policy_input, _node_context, _agent
 
 
-def test_smalltalk_requires_five_player_turns_before_normal_exit() -> None:
-    decision = FlightSmallTalkDiagnosticPolicy().evaluate(player_turn_count=4)
+def test_smalltalk_requires_three_player_turns_before_normal_exit() -> None:
+    decision = FlightSmallTalkDiagnosticPolicy().evaluate(player_turn_count=2)
 
     assert decision.scene_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
     assert decision.diagnostic_only is True
@@ -17,8 +20,8 @@ def test_smalltalk_requires_five_player_turns_before_normal_exit() -> None:
     assert decision.should_show_out_game_feedback_now is False
 
 
-def test_smalltalk_allows_normal_exit_after_five_player_turns() -> None:
-    decision = FlightSmallTalkDiagnosticPolicy().evaluate(player_turn_count=5)
+def test_smalltalk_allows_normal_exit_after_three_player_turns() -> None:
+    decision = FlightSmallTalkDiagnosticPolicy().evaluate(player_turn_count=3)
 
     assert decision.minimum_turns_met is True
     assert decision.required_more_turns == 0
@@ -27,8 +30,8 @@ def test_smalltalk_allows_normal_exit_after_five_player_turns() -> None:
     assert decision.should_show_out_game_feedback_now is False
 
 
-def test_smalltalk_skip_becomes_eligible_after_five_player_turns() -> None:
-    decision = FlightSmallTalkDiagnosticPolicy().evaluate(player_turn_count=5)
+def test_smalltalk_skip_becomes_eligible_after_three_player_turns() -> None:
+    decision = FlightSmallTalkDiagnosticPolicy().evaluate(player_turn_count=3)
 
     assert decision.minimum_turns_met is True
     assert decision.required_more_turns == 0
@@ -37,12 +40,7 @@ def test_smalltalk_skip_becomes_eligible_after_five_player_turns() -> None:
     assert decision.should_show_out_game_feedback_now is False
 
 
-def test_smalltalk_fallback_questions_are_available_when_flow_stalls() -> None:
-    policy = FlightSmallTalkDiagnosticPolicy()
 
-    assert policy.fallback_question(0) == "Could I borrow your pen for this form?"
-    assert policy.fallback_question(1) == "Are you visiting New York for a trip?"
-    assert policy.fallback_question(4) == "Looks like we're landing soon. Are you ready for immigration?"
 
 
 def test_flight_smalltalk_offtopic_does_not_reask(tmp_path: Path) -> None:
@@ -60,7 +58,7 @@ def test_flight_smalltalk_offtopic_does_not_reask(tmp_path: Path) -> None:
     assert result.evaluation.verdict == "SUCCESS"
     assert result.branch.branch_type == "success"
     assert result.branch.next_action == "ADVANCE"
-    assert result.branch.next_node_id == "FLIGHT_A_002_TRAVEL_PURPOSE"
+    assert result.branch.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
     assert result.state_delta.patience_delta == 0
     assert result.state_delta.retry_count_delta == 0
 
@@ -80,7 +78,7 @@ def test_flight_smalltalk_missing_slot_still_advances(tmp_path: Path) -> None:
     assert result.evaluation.verdict == "SUCCESS"
     assert result.branch.branch_type == "success"
     assert result.branch.next_action == "ADVANCE"
-    assert result.branch.next_node_id == "FLIGHT_A_002_TRAVEL_PURPOSE"
+    assert result.branch.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
 
 
 def test_flight_smalltalk_no_penalty_delta(tmp_path: Path) -> None:
@@ -163,3 +161,93 @@ def test_flight_smalltalk_feedback_is_out_game_only(tmp_path: Path) -> None:
     assert result.in_game_feedback.blocks_progression is False
     assert result.out_game_feedback_seed.include_in_final_report is True
     assert "smalltalk_response_clarity" in result.out_game_feedback_seed.focus_on_form_targets
+
+
+def test_steering_zero_never_forces_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Set steering parameter to 0
+    from backend.app.services.service_b import flight_smalltalk_diagnostic_policy
+    monkeypatch.setattr(flight_smalltalk_diagnostic_policy, "STEERING", 0.0)
+
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(node_context=context, player_text="Sure")
+    
+    policy = FlightSmallTalkDiagnosticPolicy(runtime_root=tmp_path / "openkb" / "dev_b")
+    decision = policy.decide_conversational(payload)
+    
+    assert decision.selected_probe is not None
+    assert decision.selected_probe["probe_id"] == "TRAVEL_PURPOSE"
+
+
+def test_probe_selection_prefers_coherent_topic(tmp_path: Path) -> None:
+    # Setup some history to set topic tag
+    runtime_root = tmp_path / "openkb" / "dev_b"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    
+    # Write a past record with travel_purpose probe
+    history_record = {
+        "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+        "dialogue_seed": {
+            "scene": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "npc_role": "seatmate_passenger",
+            "surface_goal": "TRAVEL_PURPOSE",
+            "hidden_assessment_goal": "estimate_user_travel_speaking_level",
+            "opening_intent": "ask_purpose",
+            "difficulty_profile": "auto",
+            "tone_guidance": "neutral",
+            "stop_condition": "enough_evidence"
+        },
+        "evaluation": {"verdict": "SUCCESS"}
+    }
+    
+    jsonl_path = runtime_root / "session_dev_b_test.jsonl"
+    with jsonl_path.open("w", encoding="utf-8") as f:
+        f.write(json.dumps(history_record) + "\n")
+        
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(node_context=context, player_text="New York.")
+    
+    policy = FlightSmallTalkDiagnosticPolicy(runtime_root=runtime_root)
+    decision = policy.decide_conversational(payload)
+    
+    # Next coherent probe should be STAY_PLAN (difficulty 2, topic tag travel, coherent topics contains travel)
+    assert decision.selected_probe is not None
+    assert decision.selected_probe["probe_id"] == "STAY_PLAN"
+
+
+def test_termination_bounded_by_turns_and_confidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.services.service_b import flight_smalltalk_diagnostic_policy
+    monkeypatch.setattr(flight_smalltalk_diagnostic_policy, "MIN_TURNS", 3)
+    monkeypatch.setattr(flight_smalltalk_diagnostic_policy, "MAX_TURNS", 5)
+
+    runtime_root = tmp_path / "openkb" / "dev_b"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    jsonl_path = runtime_root / "session_dev_b_test.jsonl"
+    
+    # 1. 2 turns -> MIN_TURNS not met yet
+    history_record = {
+        "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+        "dialogue_seed": {"scene": "FLIGHT_A_001_SEATMATE_SMALLTALK", "npc_role": "seatmate", "surface_goal": "TRAVEL_PURPOSE", "hidden_assessment_goal": "a", "opening_intent": "a", "difficulty_profile": "a", "tone_guidance": "a", "stop_condition": "a"},
+        "evaluation": {"verdict": "SUCCESS"},
+        "understanding": {"confidence": 0.9}
+    }
+    
+    with jsonl_path.open("w", encoding="utf-8") as f:
+        f.write(json.dumps(history_record) + "\n")
+        
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(node_context=context, player_text="Yes", confidence=0.9)
+    policy = FlightSmallTalkDiagnosticPolicy(runtime_root=runtime_root)
+    decision = policy.decide_conversational(payload)
+    
+    assert decision.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+    assert decision.next_action == "ADVANCE"
+    
+    # 2. 4 turns, with enough confidence -> should terminate
+    with jsonl_path.open("w", encoding="utf-8") as f:
+        f.write(json.dumps(history_record) + "\n")
+        f.write(json.dumps(history_record) + "\n")
+        f.write(json.dumps(history_record) + "\n")
+        
+    decision2 = policy.decide_conversational(payload)
+    assert decision2.next_node_id == "FLIGHT_999_COMPLETE"
+    assert decision2.next_action == "COMPLETE_CHAPTER"

@@ -1782,7 +1782,23 @@ Bad ending 노드 미생성 시 A 는 기존 `COMPLETE_CHAPTER` 처리 로직으
 
 ## Change Request - 2026-06-16 - [CR-B-SMALLTALK] 기내 스몰토크 적응형 진단 전환: Dev A 반응형 대사·coherence guard + Dev C 슬롯 완화
 
-Status: Open. `docs/workplan-dev-b.md`(기내 스몰토크 적응형 진단 전환, C안)의 §4/§10 타 팀 의존 항목.
+Status: Open (Dev B 측 구현 완료 / Dev A·C 미반영). `docs/workplan-dev-b.md`(기내 스몰토크 적응형 진단 전환, C안)의 §4/§10 타 팀 의존 항목.
+
+### 구현 반영 (2026-06-17) — 계획 대비 변경점
+
+- **폴백 대사 삭제(게임성 사유):** A가 정책이 넘긴 폴백 문장(`seed_text`)을 그대로 모방해
+  **매 턴 같은 대사를 반복** → AI와 대화하는 느낌이 사라지는 문제가 관찰되어, Dev B는
+  `FlightSmallTalkDiagnosticPolicy.fallback_question` 과 `FALLBACK_QUESTIONS` 를 **제거**했다.
+  `seed_text` 는 probe 뱅크(`flight_smalltalk_probes.json`)에 남아 있으나 **A로 전달되지 않는다**
+  (저자/디버그 참고용). → CR 본문의 "seed_text 폴백" 표현은 모두 무효이며, 아래 "폴백 대사 없음"
+  규약으로 대체한다.
+- **`surface_goal` 포맷 변경:** 진단 씬에서 `dialogue_seed.surface_goal` 은 노드 고정 질문이
+  아니라 **의도 문자열 `{target_competency}_{topic_tag}`**(예: `travel_purpose_travel`)로 들어온다.
+- **신규 계약 필드:** `DialogueDirective.topic_switch: bool|None`, `DialogueDirective.length_target: int|None`,
+  `DialogueSeed.cumulative_confidence: float|None`, `LevelHint.cumulative_confidence: float|None`
+  (`game_turn.py`). 모두 additive(Optional).
+- **종료/턴 계수 의존성:** 컨트롤러는 OpenKB 세션 이력(`read_session_records(session_id)`)을 읽어
+  `FLIGHT_` 레코드 수로 턴을 세고 신뢰도를 누적한다(§Dev C 통합 의존성 참조).
 
 ### Requested By
 
@@ -1818,13 +1834,18 @@ Dev C는 자유 발화를 임의 슬롯으로 채우지 않도록 추출을 완�
   - **반응-먼저-탐색** 구조 강제: NPC 턴 = `[직전 발화 반응] + [연결] + [후속 의도]`.
     probe를 단독 질문으로 내보내지 않는다.
   - `missing_followup_question` 에러/매 턴 질문 강제 **해제** → 반응-only 턴 허용.
-  - `SURFACE_GOAL_QUESTIONS` 고정 큐 **비활성** → `surface_goal`(`target_competency`
-    +`topic_tag`) 및 플레이어 발화 기반 맥락 후속 생성. seed_text(probe 뱅크)는 LLM
-    실패 시 폴백으로만.
+  - `SURFACE_GOAL_QUESTIONS` 고정 큐 **비활성** → `surface_goal` 은 이제 고정 질문이 아니라
+    **의도 문자열 `{target_competency}_{topic_tag}`**(예: `travel_purpose_travel`,
+    `future_plan_travel`)로 들어온다. A는 이를 **그대로 발화하지 말고** 직전 발화 반응 +
+    해당 역량을 끌어내는 자연 후속으로 생성한다.
+  - **폴백 대사 없음(중요):** Dev B가 반복 문제로 `fallback_question`/`FALLBACK_QUESTIONS` 를
+    삭제했고 `seed_text` 는 A에 전달되지 않는다. 따라서 A는 **반드시 생성**하며, LLM 실패
+    시에도 고정 질문 사다리로 회귀하지 말고 **매번 달라지는 generic 중립 응답**(예: 직전
+    발화를 짧게 받아주는 한 문장)으로만 폴백한다.
   - `recommended_expression`/교정 표현을 **라이브 대사에 삽입 금지**(피드백은 out-game).
   - **coherence guard 신설**: `npc_dialogue_agent.py:308-322` 의 가드 패턴과 동일하게,
     플레이어 실질 발화에 대해 (a) 반응 없는 맨 질문, (b) 직전 발화와 비연결(non-sequitur)
-    인 NPC 턴을 reject → 재생성 또는 seed_text 폴백.
+    인 NPC 턴을 reject → 재생성 또는 generic 중립 폴백(반복 금지).
   - `dialogue_directive.length_target` 에 따른 **길이 미러링**(하한/상한 둔).
   - **대화 메모리**: 다룬 화제·NPC가 밝힌 정보를 추적해 재질문 방지 및 콜백.
   - `dialogue_directive.topic_switch=True` 신호 시 명시적 전환구("Anyway,", "By the way")
@@ -1837,7 +1858,16 @@ Dev C는 자유 발화를 임의 슬롯으로 채우지 않도록 추출을 완�
 **Dev C:**
 
 - 스몰토크 씬에서 슬롯 강제 추출/오인식 완화 — 자유 발화를 임의 `required_slot` 값으로
-  채우지 않는다(진단 노드는 필수 슬롯 개념 미적용).
+  채우지 않는다. (진단 노드 `FLIGHT_A_001` 에 `required_slots:["polite_response"]`,
+  `recommended_expression:"Sure, here you are."` 가 레거시로 남아 있으나 진단 분기는 슬롯
+  충족을 진행 조건으로 쓰지 않는다 — C 어댑터가 이 잔여 슬롯을 강제 추출 대상으로 삼지 않도록.)
+- **통합 의존성(중요):** 적응형 컨트롤러의 턴 계수·신뢰도 누적은 **OpenKB 세션 이력**에
+  의존한다 — `OpenKBFinalResultRecordReader.read_session_records(session_id)` 로 읽은
+  `FLIGHT_` 레코드 수가 곧 진행 턴이고, 각 레코드의 `understanding.confidence`,
+  `evaluation.verdict`, `dialogue_seed.surface_goal` 로 신뢰도와 used-probe/현재 토픽을
+  계산한다. 오케스트레이터가 **매 턴 이 레코드를 OpenKB에 적재**하지 않으면 턴이 1로 고정되어
+  신뢰도가 누적되지 않고 `MAX_TURNS`(7) 종료도 트리거되지 않아 **종료 불가** 위험이 있다.
+  C는 진단 씬에서 턴별 세션 레코드 적재를 보장해야 한다.
 - 데모 `demo/respond-dialog/index.html` 는 진단 노드 ID(`FLIGHT_A_001_SEATMATE_SMALLTALK`)
   를 **유지**하므로 변경 불필요. (노드 ID가 바뀌는 경우에만 `firstNodeId` 갱신.)
 
@@ -1852,5 +1882,7 @@ Dev C는 자유 발화를 임의 슬롯으로 채우지 않도록 추출을 완�
 
 ### Temporary Workaround
 
-Dev A 반영 전까지 진단 씬은 probe `seed_text` 를 폴백 질문으로 노출(현 `FALLBACK_QUESTIONS`
-사다리와 동등한 degraded 모드). 화제 점프가 일부 남지만 진단 진행·종료는 정상 동작.
+폴백 대사가 제거되었으므로 "고정 질문 노출" 우회는 더 이상 쓰지 않는다(반복 대사 문제의
+원인이었음). Dev A 반영 전까지는 기존 LLM 생성 경로가 그대로 동작하되, surface_goal 의도
+문자열을 A가 자연 후속으로 못 풀면 어색할 수 있다 — 이때도 **고정 질문 사다리로 회귀하지
+않는다.** 진단 진행·종료(턴 상·하한, 신뢰도)는 OpenKB 세션 레코드만 적재되면 정상 동작한다.
