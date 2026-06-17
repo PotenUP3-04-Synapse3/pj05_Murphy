@@ -3,6 +3,43 @@
 Cross-owner change requests are listed below. Status lines describe the current
 repository state as of the latest handoff entry.
 
+## Change Request - 2026-06-16 - Clean Developer A Ruff Unused Imports
+
+### Requested By
+
+Developer C / Sean Han
+
+### Affected Owner
+
+Developer A
+
+### Reason
+
+After Developer C implemented the incivility signal sprint, full `uv run pytest`
+and `uv run mypy .` pass. Full `uv run ruff check .` is blocked by unused imports
+inside Developer A-owned implementation files:
+
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/services/service_a/tts_text_polisher_service.py`
+
+Developer C cleaned the unused imports in C-owned test files. The remaining
+blocking files are Developer A-owned implementation files, so Developer C
+should not silently edit them.
+
+### Proposed Contract Change
+
+Developer A should remove the unused imports reported by ruff, or confirm that
+Developer C may apply a mechanical lint-only cleanup to these specific lines.
+
+### Compatibility Impact
+
+No runtime behavior change is expected. This is lint cleanup only.
+
+### Temporary Workaround
+
+Developer C verified the current C-owned sprint files with a focused ruff
+command and documented that global ruff remains blocked by A-owned lint debt.
+
 ## Change Request - 2026-06-15 - Clarify Ownership for Developer C STT Smoke Scripts
 
 ### Requested By
@@ -454,6 +491,7 @@ dialogue support.
 Status: Resolved for the current Developer C-to-A adapter payload.
 
 Developer C boundary update, 2026-06-16:
+
 - `dev_a_npc_dialogue_client.py` now removes B-authored live-dialogue fields
   from the A-facing level-design payload instead of passing them as `None`.
 - Removed from A-facing payload: `node_context.npc_question`,
@@ -471,6 +509,7 @@ Developer C boundary update, 2026-06-16:
   internal B-to-A adapter boundary.
 
 Developer A & C update, 2026-06-15:
+
 - Developer A는 `candidate_text` (어댑터 단의 `npc_recast_line_candidate`가 변환된 값)가 A-side 에이전트(`npc_dialogue_agent.py`)에 유입되는 것을 차단하고, 유입될 경우 명시적으로 `ValueError` 예외를 발생시키도록 유효성 검증을 강화했습니다.
 - Developer C는 `dev_a_npc_dialogue_client.py` 어댑터 단에서 B가 반환한 `npc_recast_line_candidate` 값을 A로 인가할 때 강제로 `None`으로 필터링 처리하여 유입을 차단했습니다.
 - 이에 종속된 모든 관련 테스트(유닛 및 통합 테스트) 단언문들이 갱신 및 정상화되었습니다.
@@ -1210,6 +1249,7 @@ Developer C / Sean Han
 Developer A is executing the cleanup and TTS slimming refactor plan (removing Chatterbox/Kokoro packages and unifying fallback to Edge TTS).
 Since the default fallback provider changes from `kokoro` to `edge`, integrated test cases owned by Developer C that assert or mock the `kokoro` audio URL path will fail.
 Specifically:
+
 - `backend/tests/test_preprototype_flow.py` (L840) expects `/runtime/audio/kokoro/` URL prefix.
 - `backend/tests/test_demo_ai_respond_page.py` (L404) uses `/runtime/audio/kokoro/demo.wav` as mock data.
 - `backend/tests/test_final_result_payload.py` (L243) uses `/runtime/audio/kokoro/final.wav` as mock data.
@@ -1510,7 +1550,7 @@ Dev C:
 - 기내 스몰토크에서 슬롯 강제 추출을 완화한다 — 자유 발화를 임의 슬롯 값으로
   채우지 않는다.
 - **off-topic 가드의 씬 인지화**: 2026-06-16 Understanding off-topic guard는
-  입국심사(IMM_*)에서는 차단을 유지하되, 기내 스몰토크에서는 off-topic을
+  입국심사(IMM\_\*)에서는 차단을 유지하되, 기내 스몰토크에서는 off-topic을
   패널티/재질문 유발로 쓰지 않는다(화제 이동 허용). Dev B 기내 분기는 채점
   신호를 무시하므로 재질문은 발생하지 않으나, understanding 출력이 리포트/적립을
   왜곡하지 않도록 조정 요청.
@@ -1541,6 +1581,7 @@ Developer C / Sean Han, and Developer B
 
 1. **CR-1 (Affected: Developer C) - Understanding Agent `incivility` Signal**:
    Understanding Agent 출력에 `incivility` 객체를 추가합니다.
+
    ```json
    "incivility": {
      "tier": 0,           // 0=정상, 1=무례, 2=인격모독, 3=욕설/혐오/위협
@@ -1549,6 +1590,7 @@ Developer C / Sean Han, and Developer B
      "category": "rudeness|insult|profanity|slur|threat"
    }
    ```
+
    이 신호는 키워드 기반 혹은 LLM 분류 모드를 통해 산출됩니다.
 
 2. **CR-2 (Affected: Developer B) - Bad Ending / Penalty Policy on `incivility.tier >= 2`**:
@@ -1560,7 +1602,7 @@ Developer C / Sean Han, and Developer B
 ### Compatibility Impact
 
 이 필드는 추가적인 속성이며, 신호가 누락되거나 기본값(0)인 경우 평상시의 정중한 응답으로 안전하게 수렴하므로 기존 호환성을 해치지 않습니다.
-(IMM_*)·수하물(BAG_*) 채점 동작은 그대로 유지되어야 한다(회귀 가드).
+(IMM*\*)·수하물(BAG*\*) 채점 동작은 그대로 유지되어야 한다(회귀 가드).
 `branch_type` enum은 확장하지 않으며, 중립 진행은 `success`+`ADVANCE` 재사용 +
 `branch_reason="flight_smalltalk_continue"` 신호로 표현한다.
 
@@ -1571,6 +1613,11 @@ Dev B 기내 분기만 적용해도 기내 씬의 재질문·페널티는 사라
 취조형으로 채점되지는 않는다.
 
 ## Change Request - 2026-06-16 - [CR-A1] Add `incivility` Signal to Understanding Agent Output
+
+Status update 2026-06-16: Implemented by Developer C. `UnderstandingOutput.incivility`
+is now additive semantic evidence produced by the C-owned rule classifier after
+both rule and LLM Understanding paths. CR-A2 and CR-A4 remain open for Developer
+B before Bad Ending end-to-end can work.
 
 Status: Open. 기존 2026-06-16 통합 CR(`Add incivility_tier to Understanding output + B branch policy`)을 owner 단위로 분해한 정식 요청입니다. CR-A1~A4 4건이 모두 머지되어야 Bad Ending end-to-end 가 동작합니다.
 
@@ -1650,6 +1697,10 @@ CR-A4 의 시나리오 노드가 없으면 라우팅 실패. CR-A4 와 동시 �
 
 ## Change Request - 2026-06-16 - [CR-A3] Forward `incivility` from C Adapter to A-Facing Payload
 
+Status update 2026-06-16: Implemented by Developer C. `DevANpcDialogueClient`
+now forwards top-level `incivility` to the A-facing level-design payload and
+uses a safe tier 0 default when older mock Understanding objects omit the field.
+
 Status: Open. CR-A1 신호의 A 측 전달 경로 확보.
 
 ### Requested By
@@ -1710,13 +1761,14 @@ CR-A2 의 bad ending 분기가 라우팅할 대상 노드(`*_BAD_END_VERBAL_ABUS
 
 `backend/app/data/scenario_nodes.json` 에 다음 노드를 추가합니다.
 
-| 노드 ID | chapter_id | npc_role | npc_question_goal |
-|---|---|---|---|
-| `FLIGHT_BAD_END_VERBAL_ABUSE` | `CH0_01_FLIGHT_SMALLTALK` | seatmate | `closing_eviction` |
-| `IMM_BAD_END_VERBAL_ABUSE` | `CH0_03_IMMIGRATION_CHECK` | immigration_officer | `closing_eviction` |
-| `BAG_BAD_END_VERBAL_ABUSE` | `CH0_04_BAGGAGE_CLAIM` | customs_officer | `closing_eviction` |
+| 노드 ID                       | chapter_id                 | npc_role            | npc_question_goal  |
+| ----------------------------- | -------------------------- | ------------------- | ------------------ |
+| `FLIGHT_BAD_END_VERBAL_ABUSE` | `CH0_01_FLIGHT_SMALLTALK`  | seatmate            | `closing_eviction` |
+| `IMM_BAD_END_VERBAL_ABUSE`    | `CH0_03_IMMIGRATION_CHECK` | immigration_officer | `closing_eviction` |
+| `BAG_BAD_END_VERBAL_ABUSE`    | `CH0_04_BAGGAGE_CLAIM`     | customs_officer     | `closing_eviction` |
 
 공통 사양:
+
 - `node_type = "ending"`
 - `next_action = "COMPLETE_CHAPTER"`
 - `transition.unreal_event = "SHOW_BAD_END_SCOREBOARD"` (Unreal 측 컷씬/스코어보드 트리거)
@@ -1736,8 +1788,10 @@ Bad ending 노드 미생성 시 A 는 기존 `COMPLETE_CHAPTER` 처리 로직으
 
 ## Change Request - 2026-06-16 - [CR-B-SMALLTALK] 기내 스몰토크 적응형 진단 전환: Dev A 반응형 대사·coherence guard + Dev C 슬롯 완화
 
+Status: Open (Dev B 구현 완료 / Dev C 슬롯 완화 및 OpenKB 세션 누적 회귀 테스트 반영 완료 / Dev A 반응형 대사 및 coherence guard 후속 필요). `docs/workplan-dev-b.md`(기내 스몰토크 적응형 진단 전환, C안)의 §4/§10 타 팀 의존 항목.
 Status: Implemented (Developer A 및 Developer B 구현 완료 / Developer C 미반영). `docs/workplan-dev-b.md`(기내 스몰토크 적응형 진단 전환, C안)의 §4/§10 타 팀 의존 항목.
-  - Developer A 구현 완료 (2026-06-17) - 반응형 대사, coherence guard, missing_followup_question 해제, 중립 폴백 반응 완료.
+
+- Developer A 구현 완료 (2026-06-17) - 반응형 대사, coherence guard, missing_followup_question 해제, 중립 폴백 반응 완료.
 
 ### 구현 반영 (2026-06-17) — 계획 대비 변경점
 
@@ -1841,3 +1895,108 @@ Dev C는 자유 발화를 임의 슬롯으로 채우지 않도록 추출을 완�
 원인이었음). Dev A 반영 전까지는 기존 LLM 생성 경로가 그대로 동작하되, surface_goal 의도
 문자열을 A가 자연 후속으로 못 풀면 어색할 수 있다 — 이때도 **고정 질문 사다리로 회귀하지
 않는다.** 진단 진행·종료(턴 상·하한, 신뢰도)는 OpenKB 세션 레코드만 적재되면 정상 동작한다.
+
+## Change Request - 2026-06-17 - AgentRun Failure Logs Must Include Structured Error Details
+
+### Owners
+
+Developer A / kimyonghee, Developer B / policy owner, Developer C / Sean Han
+
+### Problem
+
+During realtime `/respond` testing, Developer A returned an NPC dialogue
+fallback with `llm.reason="ValueError"`, but the AgentRun record did not include
+the actual exception message. Developer C could prove that the fallback was
+triggered inside Developer A's LLM dialogue path, but could not determine
+whether the root cause was structured output validation, prompt rendering,
+provider setup, or another A-owned validation step.
+
+The same debugging gap can happen in any A/B/C agent if an AgentRun stores only
+an exception type or a generic fallback reason.
+
+Related contract note:
+
+- `candidate_text` is no longer a live input that Developer A should consume.
+  It is the old A-side normalized form of B's `npc_recast_line_candidate`.
+- Developer B should not send `npc_recast_line_candidate` as NPC wording for
+  Developer A to speak. B-owned recommended expressions remain learning/UI
+  data, not live NPC dialogue.
+- Developer C currently strips B-authored `npc_recast_line_candidate` before
+  the A-facing payload. If `candidate_text` still reaches Developer A, that
+  should be logged as a contract violation with structured `error_details`,
+  not treated as normal dialogue input.
+
+### Requested Contract
+
+Each agent should write structured failure details whenever a tool, LLM call,
+validator, fallback, or graph node fails.
+
+Required fields:
+
+- `error_type`: exception class name or stable failure code.
+- `error_message`: sanitized human-readable message from the failing layer.
+- `phase`: stable phase name, for example `npc_dialogue_llm`,
+  `developer_b_feedback_llm`, `understanding_llm`, or `developer_c_langgraph`.
+- `tool_name`: the tool or internal component that failed.
+- `fallback_used`: whether the agent recovered through fallback.
+- `fallback_reason`: stable fallback reason, if fallback was used.
+- `input_summary`: safe, compact input summary that excludes API keys and raw
+  long audio.
+
+Recommended optional fields:
+
+- `provider`: provider name such as `openai`, `elevenlabs`, `rule`, or
+  `local_batch_fallback`.
+- `model_name`: model attempted at the failed step.
+- `retry_count`: retry attempt count if the client retried.
+- `safe_context`: short context needed to reproduce the failure.
+
+### Developer A Request
+
+When `npc_dialogue_agent` falls back from the LLM path, please record the
+underlying exception message in the Developer A AgentRun. The current output
+shape:
+
+```json
+{ "llm": { "used": false, "fallback_used": true, "reason": "ValueError" } }
+```
+
+should be expanded with a structured detail block such as:
+
+```json
+{
+  "llm": {
+    "used": false,
+    "fallback_used": true,
+    "reason": "ValueError",
+    "error_details": {
+      "error_type": "ValueError",
+      "error_message": "sanitized exact message",
+      "phase": "npc_dialogue_llm",
+      "tool_name": "agent_a.npc_dialogue_agent.generate_dialogue_llm"
+    }
+  }
+}
+```
+
+Also, please keep treating `candidate_text` as deprecated input. If it appears,
+record a structured failure/fallback detail that says the payload contained the
+forbidden deprecated field, including the sanitized `error_message`.
+
+### Developer B Request
+
+Developer B already records several `fallback_reason` values for feedback LLM
+fallback. Please keep that behavior and also include the same structured
+`error_details` block for any failed policy graph tool, feedback/hint LLM call,
+forbidden-key rejection, OpenKB write failure, or validation failure.
+
+Also, please do not rely on `npc_recast_line_candidate` or `candidate_text` as
+the path for live NPC dialogue. Use `dialogue_seed`, branch metadata, evaluation
+summary, and learning feedback fields instead; C will continue stripping
+B-authored dialogue candidates before calling A.
+
+### Developer C Status
+
+Developer C updated C-owned logging so failed C LangGraph runs and Understanding
+LLM fallback traces include structured `error_details`. C did not modify A/B
+implementation files.

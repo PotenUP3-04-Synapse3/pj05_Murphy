@@ -1,5 +1,144 @@
 # Handoff
 
+## 2026-06-17 Developer C Fixed: Respond Dialog Immigration NPC Default
+
+Developer C updated the `/respond-dialog` browser tester so the immigration
+chapter preset sends `npcId="OFFICER_HALE"` and displays `Officer Hale` instead
+of the legacy `Officer Miller` fallback. Added a page regression assertion to
+keep Miller from returning to the respond-dialog HTML.
+
+Verification:
+
+- `uv run pytest backend/tests/test_demo_ai_respond_page.py -q` passed: 8
+  passed, 1 warning.
+- `uv run ruff check .` passed.
+
+## 2026-06-17 Developer C Integrated: Flight Smalltalk Diagnostic Slot Neutralization
+
+Developer C reviewed Developer B's merged adaptive flight smalltalk diagnostic
+handoff and completed the C-owned integration items.
+
+Changed:
+
+- `UnderstandingAgent` now treats
+  `FLIGHT_A_001_SEATMATE_SMALLTALK` with
+  `npc_question_goal="estimate_user_travel_speaking_level"` as a slot-neutral
+  diagnostic node.
+- Rule fallback no longer fills the legacy `polite_response` slot on that
+  diagnostic node, even when the player says an old-script answer such as
+  `"Sure, here you are."`.
+- LLM postprocessing also removes diagnostic-node `slot_evidence`,
+  `extracted_slots`, and `missing_slots` so A/B do not mistake the residual
+  scenario slot for a live progression condition.
+- Added an integration regression test proving repeated
+  `FLIGHT_A_001_SEATMATE_SMALLTALK` turns append B OpenKB session records and
+  allow the adaptive controller to reach `FLIGHT_999_COMPLETE` instead of
+  being stuck at turn 1.
+
+Verification:
+
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_preprototype_flow.py -q`
+  passed: 51 passed, 1 warning.
+- `uv run ruff check backend/app/agents/agent_c/understanding_agent.py backend/tests/test_understanding_agent.py backend/tests/test_preprototype_flow.py`
+  passed.
+- `uv run pytest` passed: 294 passed, 1 warning.
+- `uv run mypy .` passed.
+- `uv run ruff check .` passed.
+
+## 2026-06-17 Developer C Integrated: Bad Ending Guard and Smalltalk Slot Safety
+
+Developer C integrated Developer B's bad-ending branch output with the C-owned
+orchestration validator and fixed one remaining Understanding guard issue from
+CR-B-SMALLTALK.
+
+Changed:
+
+- `DeveloperCGraphTools.validate_dev_b_policy_tool()` now preserves normal
+  `allowed_next_nodes` validation, but allows a `branch_type="bad_end"` target
+  only when the target node is an actual `node_type="ending"` node with
+  `SHOW_BAD_END_SCOREBOARD`.
+- `TransitionContext.status` accepts both `chapter_complete` and
+  `complete_chapter`, because B's bad-ending nodes use the latter for the same
+  chapter-closing transition meaning.
+- `response_builder` maps `SHOW_BAD_END_SCOREBOARD` to the Alpha scoreboard
+  flow response.
+- Rule-mode Understanding now uses the deterministic `visit_purpose`
+  classifier only when the current node actually requires `visit_purpose`.
+  This prevents travel-purpose-like free speech from passing the
+  `FLIGHT_A_001_SEATMATE_SMALLTALK` `polite_response` node.
+- Cleaned unused imports from C-owned test files that were reported by ruff.
+
+Verification:
+
+- `uv run pytest` passed: 296 passed, 1 warning.
+- `uv run mypy .` passed.
+- Focused ruff for touched C-owned/test files passed.
+- Full `uv run ruff check .` is still blocked only by Developer A-owned unused
+  imports in `backend/app/agents/agent_a/npc_dialogue_agent.py` and
+  `backend/app/services/service_a/tts_text_polisher_service.py`. Developer C
+  did not edit those A-owned implementation files; the existing change request
+  remains the handoff path.
+
+## 2026-06-16 Developer C Implemented: Incivility Signal and A Adapter Forward
+
+Developer C completed the C-owned portion of Developer A's Bad Ending /
+Profanity Mirror handoff:
+
+- Added additive `IncivilityClassification` and optional
+  `UnderstandingOutput.incivility`.
+- Added `backend/app/services/service_c/incivility_classifier.py` as the
+  deterministic Alpha classifier for tier 0-3 rude/insult/profanity/threat
+  evidence.
+- Attached incivility evidence after both rule and LLM Understanding paths.
+- Forwarded top-level `incivility` from `DevANpcDialogueClient` to Developer A's
+  level-design payload, with a safe tier 0 default for older mocks.
+- Added compact `incivility` summaries to C Understanding traces and unified
+  AgentRun output summaries.
+- Documented the schema/adapter contract and marked CR-A1/CR-A3 with C
+  implementation status. CR-A2 bad-ending branch policy and CR-A4 verbal-abuse
+  scenario nodes remain Developer B-owned.
+
+Verification:
+
+- `uv run pytest` passed: 287 passed, 1 warning.
+- Focused C-owned `uv run ruff check ...` passed for the sprint files.
+- `uv run mypy .` passed.
+- Full `uv run ruff check .` is still blocked by Developer A-owned unused import
+  findings in `backend/app/agents/agent_a/npc_dialogue_agent.py` and
+  `backend/app/services/service_a/tts_text_polisher_service.py`. Developer C did
+  not edit those A-owned implementation files; a change request was added in
+  `docs/contracts/change_requests.md`.
+
+## 2026-06-16 Developer C Sprint Added: Incivility Signal and A Adapter Forward
+
+Developer C reviewed Developer A's latest Bad Ending / Profanity Mirror handoff
+and change requests. The C-owned work is now tracked as a sprint:
+
+- `docs/sprints/2026-06-16-incivility-bad-ending-sprint.md`
+
+Developer C scope:
+
+- CR-A1: add additive `incivility` evidence to Understanding output.
+- CR-A3: forward `incivility` to the A-facing payload in
+  `dev_a_npc_dialogue_client.py`.
+- Add C-owned rule classifier, settings, tests, AgentRun/summary visibility, and
+  contract docs.
+
+Out of C scope:
+
+- CR-A2 bad-ending branch policy remains Developer B-owned.
+- CR-A4 verbal-abuse scenario ending nodes remain Developer B-owned.
+- Developer A profanity mirror response wording and TTS behavior remain
+  Developer A-owned.
+
+Recommended execution order:
+
+1. INC-1/INC-2: schema + rule classifier.
+2. INC-3/INC-4: settings + Understanding integration.
+3. INC-5: A adapter forward.
+4. INC-6/INC-7: observability + regression tests.
+5. INC-8/INC-9: contract docs, full verification, commit.
+
 ## 2026-06-17 Developer A 기내 스몰토크 적응형 진단(Adaptive Diagnostic) 연동 구현 완료
 
 Developer A는 [CR-B-SMALLTALK] 변경 요청에 맞춰 기내 스몰토크 단일 self-loop 진단 노드 `FLIGHT_A_001_SEATMATE_SMALLTALK` 및 `smalltalk_diagnostic` 진단 모드에 대응하는 NPC 대사 생성 및 가드 제어 구현을 완료했습니다.
@@ -60,6 +199,7 @@ Developer B는 기내 스몰토크를 적응형 진단(C안)으로 전환하는 
 Developer B는 플레이어의 비속어 발화 시 챕터 강제 강등 및 배드 엔딩 분기 연동을 위한 작업(CR-A2, CR-A4)을 완료했습니다.
 
 ### 주요 수정/산출물:
+
 - **시나리오 노드 3종 추가 (CR-A4)**:
   - [scenario_nodes.json](file:///c:/potenup3/pj05_Murphy/backend/app/data/scenario_nodes.json)에 비속어 누적으로 인한 배드 엔딩용 노드 3종(`FLIGHT_BAD_END_VERBAL_ABUSE`, `IMM_BAD_END_VERBAL_ABUSE`, `BAG_BAD_END_VERBAL_ABUSE`)을 `node_type = "ending"` 및 `ALPHA_999_FINAL_SCOREBOARD` 전송 트랜지션 구조로 추가.
 - **비속어 배드 엔딩 정책 구현 (CR-A2)**:
@@ -84,6 +224,7 @@ Developer B는 기내 스몰토크가 "취조처럼" 느껴지고 플레이어�
   - Dev B 소유 작업: `scenario_nodes.json`(노드 정리·역할 반전 교정), 신규 `flight_smalltalk_probes.json`, `flight_smalltalk_diagnostic_policy.py`(적응형 선택·종료), `developer_b_policy_graph_tools.py`(배선·seed emit), `english_level_hint_agent.py`(능력 추정치+신뢰도 노출·in-game 억제).
 - 교차 의존: Dev A/Dev C 변경 요청을 `docs/contracts/change_requests.md`(**Change Request - 2026-06-16 - [CR-B-SMALLTALK] 기내 스몰토크 적응형 진단 전환**)로 발행. 핵심은 Dev A의 **반응-먼저 대사 생성 + coherence guard 신설 + `missing_followup_question` 해제 + 고정 큐 비활성** 과 Dev C의 **슬롯 추출 완화**. 노드 ID(`FLIGHT_A_001_SEATMATE_SMALLTALK`)는 유지하므로 데모(`respond-dialog`)는 무영향.
 - 검증/후속: 본 항목은 계획·계약 문서 작성 단계(코드 미구현). 구현 시 §9 검증 명령(`uv run pytest backend/tests/dev_b/...`, `ruff`, `mypy`) 및 §8 테스트(probe 선택·bounded 종료·steering=0 추종·안전선 회귀·자연스러움 eval) 수행 예정.
+
 ## 2026-06-16 Developer C Realtime Transcript Multipart Fallback Fix
 
 Developer C investigated the Unreal log where realtime STT subtitles showed the
@@ -167,7 +308,7 @@ Verification:
 - RED: the receive-side disconnect test failed before the fix with
   `RuntimeError: WebSocket is not connected. Need to call "accept" first.`
 - `uv run pytest backend/tests/test_realtime_stt_websocket.py
-  backend/tests/test_elevenlabs_realtime_stt_relay.py -q`: PASS, 16 passed,
+backend/tests/test_elevenlabs_realtime_stt_relay.py -q`: PASS, 16 passed,
   1 existing `audioop` deprecation warning.
 - `uv run pytest`: PASS, 261 passed, 1 existing `audioop` deprecation warning.
 - `uv run ruff check .`: PASS.
@@ -270,26 +411,31 @@ Developer B는 기내(옆자리 승객) 스몰토크가 출입국 심사용 채�
   변경 요청을 `docs/contracts/change_requests.md`
   (2026-06-16 기내 스몰토크 대화형 전환)로 전달.
 - 구현/검증은 후속(작업계획서 §7 테스트 계획, §8 검증 명령 참조). 회귀 가드:
-  입국심사(IMM_*)·수하물(BAG_*) 채점 동작은 그대로 유지.
+  입국심사(IMM*\*)·수하물(BAG*\*) 채점 동작은 그대로 유지.
+
 ## 2026-06-16 Developer A 구현: NPC별 voice_id 라우팅 및 환경변수(Environment Variable) 오버라이드 정정 (Phase A ~ Phase E)
 
 Developer A는 `docs/workplan-dev-a-npc-voice-routing.md` 작업 계획서에 따라 ElevenLabs 및 Edge TTS 경로 모두에서 NPC별 고유 voice_id 라우팅을 복구하고, 환경변수 우선순위가 뒤바뀌는 결함 및 캐시 키(Cache Key) 충돌 문제를 해결했습니다.
 
 ### Phase A - voice_profile_service 리팩터링:
+
 - **프로바이더 매개변수(Parameter)화**: `voice_profile_service.py`의 `resolve_voice_profile` 함수에 `tts_provider` 인자를 추가하여, 활성화된 TTS 엔진에 맞춰 적절한 목소리를 선택하도록 개선했습니다.
 - **NPC별 ElevenLabs 라우팅 복구**: roster에 정의되어 있던 `NPCProfile.elevenlabs_voice_id`가 ElevenLabs 요청 시 실제로 사용되도록 연동하여 죽은 필드(Dead field) 문제를 해결했습니다.
 - **캐시(Cache) 격리**: 동일한 NPC라도 엔진별로 오디오 캐시 파일이 충돌 없이 격리될 수 있도록, 생성되는 `voice_profile_id`에 `tts_provider` 정보를 결합(`{user_id}:{npc_id}:{provider}`)했습니다.
 
 ### Phase B - voice_output_service 라우팅 구조 수정:
+
 - **호출 순서 조정**: `voice_output_service.py`의 `build_voice_output_from_level_design` 내에서 `resolve_voice_profile`을 호출하기 전에 먼저 `tts_provider_name`을 결정 및 결정된 엔진 정보를 인가하도록 수정했습니다.
-- **우선순위 역전 해결 헬퍼(Helper) 신설**: NPC별 고유 목소리가 최우선으로 적용될 수 있도록 `_per_npc_voice_or_override` 헬퍼 함수를 신설하여 **강제 오버라이드 환경변수(*_FORCE) > NPC 고유 목소리 > 레거시 단일 오버라이드 환경변수(경고 로깅) > 최종 기본값** 순의 엄격한 우선순위를 확립했습니다.
+- **우선순위 역전 해결 헬퍼(Helper) 신설**: NPC별 고유 목소리가 최우선으로 적용될 수 있도록 `_per_npc_voice_or_override` 헬퍼 함수를 신설하여 **강제 오버라이드 환경변수(\*\_FORCE) > NPC 고유 목소리 > 레거시 단일 오버라이드 환경변수(경고 로깅) > 최종 기본값** 순의 엄격한 우선순위를 확립했습니다.
 - **하위 호환성 유지**: 레거시 환경변수(`MURPHY_ELEVENLABS_VOICE_ID` 및 `MURPHY_EDGE_TTS_VOICE`)가 감지될 경우 `logger.warning`으로 경고(Warning)를 출력한 뒤 차선책으로 적용하도록 설정했습니다.
 
 ### Phase C - 캐시 키 및 메타데이터(Metadata) 정합성 검증:
+
 - **오디오 캐시 고유성**: `build_audio_cache_key`에 voice 식별자 문자열이 정상적으로 유입되고 있음을 검증했습니다.
 - **모델 버전 정보 확장**: `_provider_cache_model_version` 함수의 ElevenLabs 처리 분기 내에 `voice` 식별자가 포함되도록 수정하여 목소리가 바뀔 때 캐시 파일이 고유하게 분리되도록 보장했습니다.
 
 ### Phase D - 검증 및 회귀 테스트(Regression Test) 구축:
+
 - **신규 단위 테스트(Unit Test) 추가**: `backend/tests/test_developer_a_voice_profile_routing.py` 파일을 생성하여 NPC별 라우팅 결과, fallback 처리 규칙, 헬퍼 함수의 우선순위 분기 규칙을 검증했습니다.
 - **기존 테스트 업데이트**: `test_developer_a_npc_roster.py` 및 `test_developer_a_agent_run_logging.py`에서 새로운 `voice_profile_id` 포맷과 모의 환경변수 환경에 맞도록 테스트 단언(Assertion)문을 보정했습니다.
 - **테스트 통과 결과**:
@@ -300,6 +446,7 @@ Developer A는 `docs/workplan-dev-a-npc-voice-routing.md` 작업 계획서에 �
   - `uv run mypy .` -> PASS (오류 없음)
 
 ### Phase E - 문서 정리 및 환경 명세 최신화:
+
 - **환경변수 예시 갱신**: `.env.example` 파일에서 옛날 단일 목소리 오버라이드 변수들을 비활성화(Deprecated 주석 처리)하고, 신규 강제 오버라이드 변수인 `*_FORCE` 환경변수 지침을 명시했습니다.
 - **구조 설계도 최신화**: `docs/agent_a_structure.md` 파일 내의 Mermaid 시퀀스(Sequence) 및 전체 아키텍처 다이어그램에서 `resolve_voice_profile(tts_provider)`에 매개변수가 주입되는 설계 흐름을 최신 상태로 반영했습니다.
 
@@ -3486,3 +3633,52 @@ Verification:
 
 - `uv run pytest backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_next_question_seed_without_generic_recast_in_llm_mode backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_npc_context_to_voice_builder backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata -q`
   passed.
+
+## 2026-06-17 Developer C Structured Failure Logging
+
+Developer C investigated a runtime case where Developer A's NPC dialogue
+AgentRun showed `fallback_used=true` and `llm.reason="ValueError"` without the
+actual exception message. The observable root cause was inside A's LLM dialogue
+generation path, but the precise A-owned failure condition could not be
+confirmed because the AgentRun stored only the exception type.
+
+Changed C-owned files:
+
+- `backend/app/middleware/middleware_c/developer_c_agent_run_middleware.py`
+- `backend/app/tools/tool_c/developer_c_graph_tools.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/tests/test_developer_c_langgraph_orchestrator.py`
+- `backend/tests/test_understanding_agent.py`
+- `docs/contracts/change_requests.md`
+- `docs/handoff.md`
+
+Behavior added:
+
+- Failed Developer C LangGraph runs now write a structured `error_details`
+  block on the failed AgentRun event and in `summary.output.error_details`.
+- Understanding Agent LLM fallback traces now include `error_details` with
+  `error_type`, `error_message`, `phase`, and `tool_name`.
+- The extra details are sanitized and do not include API keys, raw audio, or
+  full payload dumps.
+
+Cross-team request:
+
+- Added `docs/contracts/change_requests.md` request asking Developer A and
+  Developer B to record structured `error_details` whenever their own tools,
+  LLM calls, validators, or fallback paths fail.
+- Developer A's highest-priority follow-up is to expand the current
+  `llm.reason="ValueError"` output with the exact sanitized exception message
+  from the NPC dialogue LLM path.
+- The same change request now restates the `candidate_text` boundary:
+  `candidate_text` is deprecated A-side normalized input from B's old
+  `npc_recast_line_candidate`; A should not consume it as live dialogue, B
+  should not rely on it for NPC wording, and C continues stripping
+  B-authored dialogue candidates before the A-facing payload.
+
+Verification:
+
+- `uv run pytest backend/tests/test_developer_c_langgraph_orchestrator.py::test_developer_c_failed_agent_run_records_structured_error_details backend/tests/test_understanding_agent.py::test_understanding_agent_falls_back_to_rule_mode_when_llm_output_is_forbidden -q`
+  passed.
+- `uv run pytest -q` passed: 279 passed, 1 warning.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed: no issues found in 118 source files.

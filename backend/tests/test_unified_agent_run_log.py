@@ -110,6 +110,25 @@ def test_orchestrator_unified_agent_run_includes_understanding_llm_tokens_and_co
     assert understanding_trace["tool_calls"][0]["output_summary"]["estimated_cost_usd"] == 0.00045
 
 
+def test_orchestrator_agent_run_logs_understanding_incivility_summary(tmp_path) -> None:
+    Orchestrator(agent_run_root=tmp_path).run_turn(_preprototype_request(transcript="fuck you"))
+
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "unified_agent_runs.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    record = next(item for item in records if item["owner"] == "developer_c")
+    understanding_event = next(
+        event for event in record["events"] if event.get("tool_name") == "understanding_agent.analyze_player_text"
+    )
+
+    assert understanding_event["output_summary"]["understanding"]["incivility"] == {
+        "tier": 3,
+        "category": "profanity",
+        "source": "rule",
+    }
+
+
 class FakeUnderstandingLLMClient:
     model = "gpt-4o-mini"
 

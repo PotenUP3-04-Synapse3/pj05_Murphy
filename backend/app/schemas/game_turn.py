@@ -177,7 +177,15 @@ class HintPolicy(BaseModel):
 
 
 class TransitionContext(BaseModel):
-    status: Literal["chapter_complete"]
+    """Unreal scene/scoreboard transition metadata shared across chapter endings.
+
+    초보자용 설명:
+    기존 C 전환 노드는 `chapter_complete`를 사용했고, B가 추가한 bad ending 노드는
+    같은 의미로 `complete_chapter`를 사용합니다. 두 값 모두 "현재 챕터를 닫고 다음
+    표시 단계로 넘어간다"는 뜻이므로 Alpha 통합에서는 둘 다 허용합니다.
+    """
+
+    status: Literal["chapter_complete", "complete_chapter"]
     completed_chapter_id: str
     next_chapter_id: str
     entry_node_id: str | None = None
@@ -218,6 +226,23 @@ class SlotEvidence(BaseModel):
     evidence_text: str
 
 
+class IncivilityClassification(BaseModel):
+    """플레이어 발화의 무례함 정도를 표현하는 C-owned 안전 신호입니다.
+
+    초보자용 설명:
+    이 객체는 "게임을 실패시킬지"를 결정하지 않습니다. C는 사용자 발화에서
+    욕설, 모욕, 위협 같은 표현이 있는지 tier 0-3으로 표시만 합니다. 실제
+    bad ending 분기나 패널티는 Developer B가 이 신호를 참고해서 결정합니다.
+    Developer A는 같은 신호를 받아 NPC가 얼마나 단호하게 반응할지 정합니다.
+    """
+
+    tier: int = Field(default=0, ge=0, le=3)
+    detected_terms: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=0.0, ge=0, le=1)
+    category: Literal["none", "rudeness", "insult", "profanity", "slur", "threat"] = "none"
+    source: Literal["none", "rule", "llm"] = "none"
+
+
 class UnderstandingOutput(BaseModel):
     intent: str
     intent_success: bool
@@ -233,6 +258,7 @@ class UnderstandingOutput(BaseModel):
     extracted_slots: dict[str, str]
     missing_slots: list[str]
     needs_clarification: bool
+    incivility: IncivilityClassification | None = None
 
 
 # `Nomal` spelling follows the current external emotion enum contract.
