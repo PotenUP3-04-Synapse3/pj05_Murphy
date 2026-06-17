@@ -631,9 +631,9 @@
       CH0_03_IMMIGRATION_CHECK: {
         nodeId: "IMM_001_PASSPORT",
         sceneId: "JFK_IMMIGRATION_HALL",
-        npcId: "OFFICER_MILLER",
+        npcId: "OFFICER_HALE",
         npcRole: "immigration_officer",
-        speaker: "Officer Miller",
+        speaker: "Officer Hale",
         flags: ["arrived_at_jfk"],
         inventory: ["passport", "boarding_pass", "return_ticket"],
         completedIntents: [],
@@ -1669,7 +1669,7 @@
       }
 
       appendMessage("user", "You", body.stt?.player_text || "-");
-      appendMessage("npc", body.npc?.speaker || "Officer Miller", body.npc?.text || "-", body.npc?.audio_url);
+      appendMessage("npc", body.npc?.speaker || "Officer Hale", body.npc?.text || "-", body.npc?.audio_url);
       appendDivider(body);
       rememberSubmittedRequestId(body.request_id || turn.request_id);
       await updateUsage(body.session_id || turn.session.session_id);

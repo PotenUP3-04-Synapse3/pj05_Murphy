@@ -1,5 +1,18 @@
 # Handoff
 
+## 2026-06-17 Developer C Fixed: Respond Dialog Immigration NPC Default
+
+Developer C updated the `/respond-dialog` browser tester so the immigration
+chapter preset sends `npcId="OFFICER_HALE"` and displays `Officer Hale` instead
+of the legacy `Officer Miller` fallback. Added a page regression assertion to
+keep Miller from returning to the respond-dialog HTML.
+
+Verification:
+
+- `uv run pytest backend/tests/test_demo_ai_respond_page.py -q` passed: 8
+  passed, 1 warning.
+- `uv run ruff check .` passed.
+
 ## 2026-06-17 Developer C Integrated: Flight Smalltalk Diagnostic Slot Neutralization
 
 Developer C reviewed Developer B's merged adaptive flight smalltalk diagnostic

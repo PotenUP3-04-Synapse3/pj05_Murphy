@@ -60,6 +60,10 @@ def test_respond_dialog_page_is_served_without_changing_original_demo() -> None:
     assert "chapter_id: node.chapter_id" in response.text
     assert 'sceneId: "AIRPLANE_CABIN"' in response.text
     assert 'npcId: "arabella"' in response.text
+    assert 'npcId: "OFFICER_HALE"' in response.text
+    assert 'speaker: "Officer Hale"' in response.text
+    assert 'body.npc?.speaker || "Officer Hale"' in response.text
+    assert "Officer Miller" not in response.text
     assert 'nextNodeId.startsWith("FLIGHT_")' in response.text
     assert "function startChapter" in response.text
     assert "Upload WAV" in response.text
