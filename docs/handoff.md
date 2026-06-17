@@ -60,6 +60,35 @@ Recommended execution order:
 4. INC-6/INC-7: observability + regression tests.
 5. INC-8/INC-9: contract docs, full verification, commit.
 
+## 2026-06-16 Developer B 욕설 처리 및 Bad Ending 분기 정책 완료 (CR-A2, CR-A4)
+
+Developer B는 플레이어의 비속어 발화 시 챕터 강제 강등 및 배드 엔딩 분기 연동을 위한 작업(CR-A2, CR-A4)을 완료했습니다.
+
+### 주요 수정/산출물:
+- **시나리오 노드 3종 추가 (CR-A4)**:
+  - [scenario_nodes.json](file:///c:/potenup3/pj05_Murphy/backend/app/data/scenario_nodes.json)에 비속어 누적으로 인한 배드 엔딩용 노드 3종(`FLIGHT_BAD_END_VERBAL_ABUSE`, `IMM_BAD_END_VERBAL_ABUSE`, `BAG_BAD_END_VERBAL_ABUSE`)을 `node_type = "ending"` 및 `ALPHA_999_FINAL_SCOREBOARD` 전송 트랜지션 구조로 추가.
+- **비속어 배드 엔딩 정책 구현 (CR-A2)**:
+  - [bad_ending_policy.py](file:///c:/potenup3/pj05_Murphy/backend/app/services/service_b/bad_ending_policy.py) 신설: `branch_type="bad_end"`, `verdict="FAIL"`, `verbal_abuse` 피드백 태그, `verbal_conduct_card` 형태 초점 카드를 주입하는 `build_bad_ending_output` 구현.
+  - [focus_on_form_cards.json](file:///c:/potenup3/pj05_Murphy/backend/app/kb/dev_b/focus_on_form_cards.json)에 비속어 주의를 주는 `verbal_conduct_card` 추가.
+  - [english_level_hint_agent.py](file:///c:/potenup3/pj05_Murphy/backend/app/agents/agent_b/english_level_hint_agent.py): `evaluate_turn` 진입 시 `payload.understanding.incivility`를 확인하여 즉각적 T3 혹은 누적 T2 비속어 감지 시 배드 엔딩으로 조기 반환 처리. OpenKB 세션 로그 및 `_test_incivility_t2_streak`로 연속 욕설 상태 추적.
+  - [openkb_feedback_writer.py](file:///c:/potenup3/pj05_Murphy/backend/app/services/service_b/openkb_feedback_writer.py): 턴별 피드백 저장 시 `payload.understanding` 정보를 통째로 로깅하여 다음 턴에서 연속 T2 비속어 판단을 가능케 함.
+  - [final_result_score_policy.py](file:///c:/potenup3/pj05_Murphy/backend/app/services/service_b/final_result_score_policy.py): 최종 성적표 빌드 시 `verbal_abuse` 피드백 태그가 존재하면 `"COMIC_FAIL"` 추천 결과와 `"verbal_abuse"` 사유 코드를 부여하도록 개선.
+- **테스트 및 검증**:
+  - [test_dev_b_bad_ending_branch.py](file:///c:/potenup3/pj05_Murphy/backend/tests/dev_b/test_dev_b_bad_ending_branch.py) 신설: T3 욕설 조기종료, T2 1회 시 정상 진행, T2 연속 2회 시 조기종료 및 성적표 `"COMIC_FAIL"` 검증. Pydantic v2 dynamic field 우회를 위한 `MockUnderstandingOutput` 및 `MockDevBPolicyInput` 구현.
+  - [test_scenario_nodes_bad_ending.py](file:///c:/potenup3/pj05_Murphy/backend/tests/dev_b/test_scenario_nodes_bad_ending.py) 신설: 3종 배드 엔딩 노드의 트랜지션 필드 존재 및 형상 준수 검증.
+  - [test_developer_b_policy_engine.py](file:///c:/potenup3/pj05_Murphy/backend/tests/dev_b/test_developer_b_policy_engine.py): 신규 노드 등록 및 터미널 `ending` 노드에 대한 브랜치 후보 검증을 격리 조치.
+  - 검증 완료: `uv run pytest` (279 passed), `ruff check`, `mypy` 모두 결함 없음 통과.
+
+## 2026-06-16 Developer B 기내 스몰토크 적응형 진단(Adaptive Diagnostic, C안) 전환
+
+Developer B는 기내 스몰토크가 "취조처럼" 느껴지고 플레이어의 답을 무시한 채 다음 질문만 이어가는 문제(및 펜 대여 시 NPC가 `"Sure, here you are."`로 역할이 반전되는 버그)의 근본 원인을, **출입국용 채점 상태 머신 재사용 + 15개 고정 노드(A/B/C × 5턴) 일렬 스크립트 + player 관점 `npc_question_goal`이 `surface_goal`로 흘러 NPC를 응답자로 오인시키는 구조**로 진단하고, 이를 **적응형 진단(C안)**으로 전환하는 계획서를 작성했다.
+
+- 변경/산출물:
+  - `docs/workplan-dev-b.md` 를 **C안(적응형 진단)** 으로 전면 교체 — 단일 self-loop 진단 노드 + probe 뱅크(역량·난이도·토픽 태깅) + 결정적 컨트롤러(기회주의적 probe 선택 + bounded 종료: 최소·최대 턴 + 신뢰도) + **자연스러움 3중 보증**(구조 제약 / coherence guard / eval 측정) + `steering` 노브(B안은 steering=0의 극단값).
+  - 직전 "재미·라포 우선(절충, 사실상 B안)" 계획의 토대(중립 진행 ADVANCE·페널티 0·안전선·out-game 적립)는 유지하고 위 요소를 추가해 격상.
+  - Dev B 소유 작업: `scenario_nodes.json`(노드 정리·역할 반전 교정), 신규 `flight_smalltalk_probes.json`, `flight_smalltalk_diagnostic_policy.py`(적응형 선택·종료), `developer_b_policy_graph_tools.py`(배선·seed emit), `english_level_hint_agent.py`(능력 추정치+신뢰도 노출·in-game 억제).
+- 교차 의존: Dev A/Dev C 변경 요청을 `docs/contracts/change_requests.md`(**Change Request - 2026-06-16 - [CR-B-SMALLTALK] 기내 스몰토크 적응형 진단 전환**)로 발행. 핵심은 Dev A의 **반응-먼저 대사 생성 + coherence guard 신설 + `missing_followup_question` 해제 + 고정 큐 비활성** 과 Dev C의 **슬롯 추출 완화**. 노드 ID(`FLIGHT_A_001_SEATMATE_SMALLTALK`)는 유지하므로 데모(`respond-dialog`)는 무영향.
+- 검증/후속: 본 항목은 계획·계약 문서 작성 단계(코드 미구현). 구현 시 §9 검증 명령(`uv run pytest backend/tests/dev_b/...`, `ruff`, `mypy`) 및 §8 테스트(probe 선택·bounded 종료·steering=0 추종·안전선 회귀·자연스러움 eval) 수행 예정.
 ## 2026-06-16 Developer C Realtime Transcript Multipart Fallback Fix
 
 Developer C investigated the Unreal log where realtime STT subtitles showed the

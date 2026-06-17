@@ -348,6 +348,9 @@ def test_all_chapter_zero_nodes_define_branch_candidates_and_allowed_next_nodes(
         "BAG_007_CUSTOMS_CLEARANCE",
         "BAG_999_COMPLETE",
         "ALPHA_999_FINAL_SCOREBOARD",
+        "FLIGHT_BAD_END_VERBAL_ABUSE",
+        "IMM_BAD_END_VERBAL_ABUSE",
+        "BAG_BAD_END_VERBAL_ABUSE",
     }
     for node in node_data["nodes"].values():
         allowed_next_nodes = set(node["allowed_next_nodes"])
@@ -355,9 +358,10 @@ def test_all_chapter_zero_nodes_define_branch_candidates_and_allowed_next_nodes(
         assert node["chapter_id"].startswith("CH0_")
         assert node["node_type"] in {"dialogue", "transition", "result", "ending"}
         assert node["objective_kr"]
-        for branch_name in ["retry", "clarify", "warning", "bad_end"]:
-            assert branch_name in node["branch_candidates"]
-            assert node["branch_candidates"][branch_name] in allowed_next_nodes
+        if node["node_type"] != "ending":
+            for branch_name in ["retry", "clarify", "warning", "bad_end"]:
+                assert branch_name in node["branch_candidates"]
+                assert node["branch_candidates"][branch_name] in allowed_next_nodes
 
 
 def test_flight_smalltalk_node_exists_as_alpha_diagnostic_node() -> None:

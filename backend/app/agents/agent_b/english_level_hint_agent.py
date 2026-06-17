@@ -986,6 +986,44 @@ class EnglishLevelHintAgent:
         self.feedback_generator = self.graph_tools.feedback_generator
         self.openkb_writer = self.graph_tools.openkb_writer
         self.agent_run_logger = self.graph_tools.agent_run_logger
+        self._test_streak_session_id: str | None = None
+        self._test_incivility_t2_streak: int = 0
+
+    def _get_incivility_t2_streak(self, payload: DevBPolicyInput) -> int:
+        if self._test_streak_session_id == payload.session_id:
+            return self._test_incivility_t2_streak
+
+        records = []
+        writer_any: Any = self.openkb_writer
+        try:
+            if hasattr(writer_any, "read_session_records"):
+                records = writer_any.read_session_records(payload.session_id)
+            else:
+                from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader
+                runtime_root = getattr(writer_any, "runtime_root", None)
+                reader = OpenKBFinalResultRecordReader(runtime_root=runtime_root)
+                records = reader.read_session_records(payload.session_id)
+        except Exception:
+            pass
+
+        if not records:
+            return 0
+
+        last_record = records[-1]
+        under = last_record.get("understanding") or {}
+        inciv = under.get("incivility") or {}
+        last_tier = inciv.get("tier", 0)
+        return 1 if last_tier == 2 else 0
+
+    def _update_streak(self, payload: DevBPolicyInput, current_tier: int) -> None:
+        if self._test_streak_session_id != payload.session_id:
+            self._test_streak_session_id = payload.session_id
+            self._test_incivility_t2_streak = 0
+
+        if current_tier == 2:
+            self._test_incivility_t2_streak += 1
+        else:
+            self._test_incivility_t2_streak = 0
 
     def evaluate_turn(self, payload: DevBPolicyInput) -> DevBPolicyOutput:
         """
@@ -998,6 +1036,65 @@ class EnglishLevelHintAgent:
             최종 레벨 판정, 피드백 가이드, 힌트 내용 및 다음 분기 노드가 포함된 DevBPolicyOutput 객체
         """
         from backend.app.agents.agent_b.policy_graph import build_initial_developer_b_policy_state
+        from backend.app.services.service_b.bad_ending_policy import build_bad_ending_output
+
+        incivility = getattr(payload.understanding, "incivility", None)
+        is_bad_end = False
+        reason = None
+        current_tier = 0
+
+        if incivility is not None:
+            current_tier = incivility.tier
+            if current_tier >= 3:
+                is_bad_end = True
+                reason = "verbal_abuse_t3"
+            elif current_tier == 2:
+                streak = self._get_incivility_t2_streak(payload)
+                if streak >= 1:
+                    is_bad_end = True
+                    reason = "verbal_abuse_t2_repeated"
+
+        if is_bad_end and reason:
+            output = build_bad_ending_output(payload, reason)
+            
+            # Start agent run logging
+            agent_run = self.agent_run_logger.start_run(payload)
+            input_summary = _policy_input_summary(payload)
+            self.agent_run_logger.record_event(
+                agent_run,
+                event="agent_start",
+                status="started",
+                data_loaded=input_summary,
+            )
+            
+            # Write to OpenKB
+            try:
+                openkb_write = self.openkb_writer.write_policy_output(payload, output)
+            except Exception as exc:
+                openkb_write = self.openkb_writer.failure_result(exc)
+            output = output.model_copy(update={"openkb_write": openkb_write})
+            
+            # Finish agent run logging
+            output_summary = _policy_output_summary(output)
+            self.agent_run_logger.record_event(
+                agent_run,
+                event="agent_end",
+                status="completed",
+                output_summary=output_summary,
+            )
+            self.agent_run_logger.complete_and_append(
+                agent_run,
+                status="completed",
+                summary={
+                    "input": input_summary,
+                    "output": output_summary,
+                    "fallback_used": False,
+                    "audio_url": None,
+                },
+                model_name="rule_based",
+            )
+            self._update_streak(payload, current_tier)
+            return output
 
         state = build_initial_developer_b_policy_state(payload=payload, tools=self.graph_tools)
         try:
@@ -1009,6 +1106,8 @@ class EnglishLevelHintAgent:
         output = final_state.get("output")
         if not isinstance(output, DevBPolicyOutput):
             raise RuntimeError("Developer B graph did not produce DevBPolicyOutput")
+
+        self._update_streak(payload, current_tier)
         return output
 
 

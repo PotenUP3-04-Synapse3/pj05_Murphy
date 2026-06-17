@@ -118,6 +118,7 @@ class OpenKBFeedbackWriter:
             "player_text": payload.player_text,
             "input_source": payload.input_source.model_dump(),
             "understanding_summary_kr": payload.understanding.meaning_summary_kr,
+            "understanding": payload.understanding.model_dump(),
             "evaluation": output.evaluation.model_dump(),
             "level_hint": output.level_hint.model_dump(),
             "error_capture": output.error_capture.model_dump(),

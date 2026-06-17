@@ -230,6 +230,18 @@ class FinalResultScorePolicy:
         has_critical_fail = any(verdict == "CRITICAL_FAIL" for verdict in verdicts)
         has_non_success = any(verdict in {"FAIL", "PARTIAL", "UNCLEAR"} for verdict in verdicts)
 
+        has_verbal_abuse = False
+        for record in included_records:
+            eval_dict = record.get("evaluation") or {}
+            tags = eval_dict.get("feedback_tags") or []
+            if "verbal_abuse" in tags:
+                has_verbal_abuse = True
+                break
+
+        if has_verbal_abuse:
+            reason_tags.append("verbal_abuse")
+            return "COMIC_FAIL", reason_tags
+
         if has_critical_fail:
             reason_tags.append("critical_fail")
         if final_state.patience <= 0:
