@@ -51,21 +51,24 @@ Changed:
 
 - `RandomCustomsItemContext` schema in `backend/app/schemas/game_turn.py` extended with optional `difficulty` and `suspicion_reason` fields.
 - `GameState` schema in `backend/app/schemas/game_turn.py` extended with `assigned_visit_location`, `assigned_visit_location_ko`, `visit_location_difficulty`, and `visit_location_suspicion_reason` fields.
-- `DialogueSeed` schema in `backend/app/schemas/game_turn.py` extended with location and item metadata fields to forward Eokkka details to Developer A.
+- `DialogueSeed` schema in `backend/app/schemas/game_turn.py` extended with `challenge_context` plus backward-compatible location and item metadata fields to forward Eokkka intent details to Developer A.
 - `UnrealResponse` schema in `backend/app/schemas/game_turn.py` extended to include the `game_state` object.
 - `DeveloperCGraphTools.validate_dev_b_policy_tool()` updated to:
   1. Call B's `pick_location` at `FLIGHT_999_COMPLETE` and store the chosen location metadata inside `game_state`.
   2. Call B's `pick_customs_item` at `IMM_999_CLEARED` and store the mapped customs item inside `game_state.random_customs_item`.
-  3. Propagate the assigned location/item metadata from `game_state` to `dev_b_output.dialogue_seed` to drive Developer A's dialogue generation.
+  3. Preserve existing assignments instead of re-picking every turn.
+  4. Propagate the assigned location/item metadata from `game_state` to `dev_b_output.dialogue_seed.challenge_context` so Developer A can generate challenge dialogue from intent metadata, not fixed B-authored question text.
 - `ResponseBuilder.build_unreal_response()` updated to persist and return `game_state` in the final `UnrealResponse`.
 - Added unit tests in `backend/tests/dev_b/test_challenge_assignment.py` to cover TSL assignment ranges, deterministic seeded RNG, pool fallbacks, and Pydantic mapper.
-- Updated `backend/tests/test_preprototype_flow.py` assertion to match the extended schema.
+- Updated `backend/tests/test_preprototype_flow.py` assertions to verify both location assignment at `FLIGHT_999_COMPLETE` and customs-item assignment plus A payload `challenge_context` at `IMM_999_CLEARED`.
 
 Verification:
 
 - `uv run pytest` passed: 302 passed, 1 warning.
 - `uv run ruff check .` passed.
 - `uv run mypy .` passed.
+- Latest focused check: `uv run pytest backend/tests/test_preprototype_flow.py::test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition backend/tests/test_preprototype_flow.py::test_orchestrator_marks_immigration_clearance_as_baggage_scene_transition backend/tests/test_preprototype_flow.py::test_orchestrator_passes_random_customs_item_and_routes_customs_npc_to_developer_a backend/tests/dev_b/test_challenge_assignment.py -q` passed: 10 passed, 1 warning.
+- Latest static checks passed: `uv run ruff check .`; `uv run mypy backend/app/schemas/game_turn.py backend/app/tools/tool_c/developer_c_graph_tools.py`.
 
 ## 2026-06-17 Developer C Schema: Make do_not_generate_npc_text Optional and Filed B Change Request
 

@@ -1935,6 +1935,11 @@ Dev C는 자유 발화를 임의 슬롯으로 채우지 않도록 추출을 완�
 
 Status: Resolved (Developer C implementation complete - 2026-06-17).
 
+Developer C follow-up:
+- `DialogueSeed.challenge_context` is now the preferred A-facing Eokkka metadata field.
+- Existing flat location/item metadata fields remain for backward compatibility while A migrates.
+- C preserves an already assigned location/customs item and only picks a new value at the transition point when the `GameState` field is empty.
+
 ### Requested By
 
 Developer B

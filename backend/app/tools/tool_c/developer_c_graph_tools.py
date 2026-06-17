@@ -23,10 +23,13 @@ from backend.app.integrations.dev_a_npc_dialogue_client import DevANpcDialogueCl
 from backend.app.integrations.dev_b_level_hint_client import DevBPolicyClient
 from backend.app.middleware.middleware_c.developer_c_agent_run_middleware import DeveloperCAgentRunMiddleware
 from backend.app.schemas.game_turn import (
+    ChallengeContext,
     DevADialogueInput,
     DevADialogueOutput,
     DevBPolicyInput,
     DevBPolicyOutput,
+    DialogueSeed,
+    GameState,
     NodeContext,
     NormalizedInput,
     PrePrototypeRequest,
@@ -371,22 +374,13 @@ class DeveloperCGraphTools:
         }
 
     def validate_dev_b_policy_tool(self, state: Mapping[str, Any]) -> dict[str, Any]:
-        """Validate Developer B's policy output and perform TSL-based challenge assignment.
+        """B 정책 결과를 검증하고 억까 배정값을 C 런타임 상태에 저장합니다.
 
-        Beginner guide:
-        This tool runs in the Developer C orchestration flow after Developer B has
-        evaluated the current turn's speaking level and scenario branch. It performs
-        two key roles:
-        1. Validates that the next node is allowed according to the current node context
-           and client constraint settings.
-        2. Assigns "Eokkka" (unfair accusation) challenges during chapter transitions. If
-           transitioning from flight small talk, it assigns a suspicious location; if
-           transitioning from immigration check, it assigns a suspicious customs item.
-           These assignments are written to GameState and forwarded inside DialogueSeed.
-
-        This tool acts as a validation gate and metadata forwarder. It does not decide
-        standard branch routing itself, but enforces correctness constraints and persists
-        the assigned challenge variables in the game state.
+        초보자용 설명:
+        일반 분기 판단은 Developer B가 합니다. C는 그 결과가 안전한지 검증한 뒤,
+        챕터 전환 순간에만 B의 픽 서비스를 호출해서 장소/수화물 억까를 배정합니다.
+        배정값은 `game_state`에 저장되어 Unreal 응답으로 돌아가고, A에게는
+        `dialogue_seed.challenge_context`라는 메타데이터로만 전달됩니다.
         """
         request = _require_state_value(state, "request", PrePrototypeRequest)
         node_context = _require_state_value(state, "node_context", NodeContext)
@@ -409,37 +403,25 @@ class DeveloperCGraphTools:
         timing_ms["validation_ms"] += _elapsed_ms(stage_started)
         transition = self._transition_for_branch(node_context, dev_b_output)
 
-        # Dynamic location and customs item assignment during chapter transitions
         next_node_id = dev_b_output.branch.next_node_id
         current_tsl = dev_b_output.level_hint.travel_speaking_level or "TSL_1_SURVIVAL"
+        game_state = request.turn.game_state
 
-        if next_node_id == "FLIGHT_999_COMPLETE":
-            # Assign eokkka location based on current diagnostic TSL
+        if next_node_id == "FLIGHT_999_COMPLETE" and not game_state.assigned_visit_location:
             loc = pick_location(current_tsl)
-            request.turn.game_state.assigned_visit_location = loc.name_en
-            request.turn.game_state.assigned_visit_location_ko = loc.name_ko
-            request.turn.game_state.visit_location_difficulty = loc.difficulty
-            request.turn.game_state.visit_location_suspicion_reason = loc.suspicion_reason
+            game_state.assigned_visit_location = loc.name_en
+            game_state.assigned_visit_location_ko = loc.name_ko
+            game_state.visit_location_difficulty = loc.difficulty
+            game_state.visit_location_suspicion_reason = loc.suspicion_reason
 
-        elif next_node_id == "IMM_999_CLEARED":
-            # Assign eokkka customs item based on post-immigration TSL
+        elif next_node_id == "IMM_999_CLEARED" and game_state.random_customs_item is None:
             item = pick_customs_item(current_tsl)
-            request.turn.game_state.random_customs_item = to_random_customs_item_context(item)
+            game_state.random_customs_item = to_random_customs_item_context(item)
 
-        # Inject eokkka suspicion details from GameState into DialogueSeed so Developer A has access to them
-        if dev_b_output.dialogue_seed is not None:
-            gs = request.turn.game_state
-            if gs.assigned_visit_location:
-                dev_b_output.dialogue_seed.assigned_visit_location = gs.assigned_visit_location
-                dev_b_output.dialogue_seed.assigned_visit_location_ko = gs.assigned_visit_location_ko
-                dev_b_output.dialogue_seed.visit_location_difficulty = gs.visit_location_difficulty
-                dev_b_output.dialogue_seed.visit_location_suspicion_reason = gs.visit_location_suspicion_reason
-            if gs.random_customs_item:
-                dev_b_output.dialogue_seed.item_id = gs.random_customs_item.item_id
-                dev_b_output.dialogue_seed.item_name = gs.random_customs_item.item_name
-                dev_b_output.dialogue_seed.item_category = gs.random_customs_item.item_category
-                dev_b_output.dialogue_seed.item_difficulty = gs.random_customs_item.difficulty
-                dev_b_output.dialogue_seed.item_suspicion_reason = gs.random_customs_item.suspicion_reason
+        challenge_context = _sync_challenge_context_to_dialogue_seed(
+            game_state,
+            dev_b_output.dialogue_seed,
+        )
 
         self.agent_run_middleware.record_event(
             agent_run,
@@ -451,7 +433,14 @@ class DeveloperCGraphTools:
                 "next_node_id": dev_b_output.branch.next_node_id,
                 "allowed_next_node_checked": dev_b_output.branch.allowed_next_node_checked,
             },
-            output_summary={"validated": True},
+            output_summary={
+                "validated": True,
+                "challenge_context": (
+                    challenge_context.model_dump(exclude_none=True)
+                    if challenge_context is not None
+                    else None
+                ),
+            },
         )
         return {
             "transition": transition,
@@ -768,6 +757,65 @@ class DeveloperCGraphTools:
             previous_node_results=request.turn.previous_node_results,
             client_allowed_next_nodes=request.turn.client_allowed_next_nodes,
         )
+
+
+def _sync_challenge_context_to_dialogue_seed(
+    game_state: GameState,
+    dialogue_seed: DialogueSeed | None,
+) -> ChallengeContext | None:
+    """GameState의 억까 배정값을 Developer A용 DialogueSeed에 복사합니다.
+
+    초보자용 설명:
+    `game_state`는 Unreal 응답과 다음 턴 요청에 다시 실려야 하는 저장소입니다.
+    `dialogue_seed`는 Developer A가 이번 턴 NPC 대사를 만들 때 보는 입력값입니다.
+    두 곳이 같은 장소/물품을 바라보도록 맞춰야, Unreal 화면 reveal과 NPC의 트집 대사가
+    서로 다른 대상을 말하는 사고를 막을 수 있습니다.
+    """
+
+    if dialogue_seed is None:
+        return None
+
+    challenge_context: ChallengeContext | None = None
+    if game_state.random_customs_item is not None:
+        item = game_state.random_customs_item
+        challenge_context = ChallengeContext(
+            challenge_type="customs_item",
+            assigned_visit_location=game_state.assigned_visit_location,
+            assigned_visit_location_ko=game_state.assigned_visit_location_ko,
+            visit_location_difficulty=game_state.visit_location_difficulty,
+            visit_location_suspicion_reason=game_state.visit_location_suspicion_reason,
+            item_id=item.item_id,
+            item_name=item.item_name,
+            item_category=item.item_category,
+            item_difficulty=item.difficulty,
+            item_suspicion_reason=item.suspicion_reason,
+        )
+    elif game_state.assigned_visit_location:
+        challenge_context = ChallengeContext(
+            challenge_type="visit_location",
+            assigned_visit_location=game_state.assigned_visit_location,
+            assigned_visit_location_ko=game_state.assigned_visit_location_ko,
+            visit_location_difficulty=game_state.visit_location_difficulty,
+            visit_location_suspicion_reason=game_state.visit_location_suspicion_reason,
+        )
+
+    if challenge_context is None:
+        return None
+
+    dialogue_seed.challenge_context = challenge_context
+
+    # 기존 A/B 어댑터가 아직 펼친 필드를 읽을 수 있으므로 같은 값을 함께 맞춰 둡니다.
+    dialogue_seed.assigned_visit_location = challenge_context.assigned_visit_location
+    dialogue_seed.assigned_visit_location_ko = challenge_context.assigned_visit_location_ko
+    dialogue_seed.visit_location_difficulty = challenge_context.visit_location_difficulty
+    dialogue_seed.visit_location_suspicion_reason = challenge_context.visit_location_suspicion_reason
+    dialogue_seed.item_id = challenge_context.item_id
+    dialogue_seed.item_name = challenge_context.item_name
+    dialogue_seed.item_category = challenge_context.item_category
+    dialogue_seed.item_difficulty = challenge_context.item_difficulty
+    dialogue_seed.item_suspicion_reason = challenge_context.item_suspicion_reason
+
+    return challenge_context
 
 
 def _attach_langgraph_runtime_metadata(agent_run: dict[str, Any]) -> None:

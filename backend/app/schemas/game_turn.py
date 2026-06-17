@@ -83,14 +83,13 @@ class ScenarioState(BaseModel):
 
 
 class RandomCustomsItemContext(BaseModel):
-    """Optional Alpha baggage item chosen by Unreal or a local CSV table.
+    """Alpha 수화물 억까 아이템을 턴 사이에 유지하는 작은 데이터 묶음입니다.
 
-    Beginner guide:
-    Alpha baggage can reveal a random "why is this in your suitcase?" item.
-    Unreal still owns the visual reveal, but C needs this small context object
-    so Understanding, Developer B, and Developer A can keep the dialogue about
-    the same item.  Every field is additive and optional except the display
-    name, so older requests can keep omitting the object.
+    초보자용 설명:
+    Developer B는 플레이어 레벨에 맞는 아이템 후보를 고르고, Developer C는 그
+    결과를 `game_state`에 저장해서 Unreal과 다음 턴에 다시 전달합니다. Unreal은
+    실제 시각 reveal을 담당하고, C는 A/B/Understanding이 같은 아이템을 기준으로
+    대화하도록 이 컨텍스트만 운반합니다.
     """
 
     item_id: str | None = None
@@ -100,8 +99,29 @@ class RandomCustomsItemContext(BaseModel):
     visit_location: str | None = None
     declared: bool | None = None
     source: str | None = None
-    difficulty: int | None = None  # Difficulty score (1-12) of this items accusation
-    suspicion_reason: str | None = None  # Why the officer is suspicious of this item (forwarded to Dev A)
+    difficulty: int | None = None
+    suspicion_reason: str | None = None
+
+
+class ChallengeContext(BaseModel):
+    """Developer A가 억까 의도를 이해하도록 전달하는 메타데이터입니다.
+
+    초보자용 설명:
+    A에게 고정 질문 문장을 넘기면 A가 그대로 읽어버릴 수 있습니다. 그래서 C는
+    "왜 수상하게 보는지"라는 의도와 배정된 장소/아이템 정보만 전달합니다. A는 이
+    메타데이터를 보고 NPC 대사를 직접 생성합니다.
+    """
+
+    challenge_type: Literal["visit_location", "customs_item"]
+    assigned_visit_location: str | None = None
+    assigned_visit_location_ko: str | None = None
+    visit_location_difficulty: int | None = None
+    visit_location_suspicion_reason: str | None = None
+    item_id: str | None = None
+    item_name: str | None = None
+    item_category: str | None = None
+    item_difficulty: int | None = None
+    item_suspicion_reason: str | None = None
 
 
 class GameState(BaseModel):
@@ -111,11 +131,11 @@ class GameState(BaseModel):
     current_objective: str
     random_customs_item: RandomCustomsItemContext | None = None
 
-    # Eokkka Assigned Visit Location Info (Determined at FLIGHT_999_COMPLETE)
-    assigned_visit_location: str | None = None  # English name of the assigned visit location
-    assigned_visit_location_ko: str | None = None  # Korean name of the assigned visit location
-    visit_location_difficulty: int | None = None  # Difficulty (1-12) of the location
-    visit_location_suspicion_reason: str | None = None  # Accusation reason for this location
+    # FLIGHT_999_COMPLETE에서 C가 배정하고 Unreal 입국신고서 UI가 표시할 장소 정보입니다.
+    assigned_visit_location: str | None = None
+    assigned_visit_location_ko: str | None = None
+    visit_location_difficulty: int | None = None
+    visit_location_suspicion_reason: str | None = None
 
 
 class PreviousNodeResult(BaseModel):
@@ -380,7 +400,10 @@ class DialogueSeed(BaseModel):
     stop_condition: str
     cumulative_confidence: float | None = None
 
-    # Eokkka (accusation challenge) metadata passed to Developer A to drive dialogue
+    # A가 고정 질문 대신 억까 의도만 보고 대사를 생성하도록 넘기는 컨텍스트입니다.
+    challenge_context: ChallengeContext | None = None
+
+    # 기존 A/B 어댑터 호환을 위해 유지하는 펼친 형태의 억까 메타데이터입니다.
     assigned_visit_location: str | None = None
     assigned_visit_location_ko: str | None = None
     visit_location_difficulty: int | None = None
