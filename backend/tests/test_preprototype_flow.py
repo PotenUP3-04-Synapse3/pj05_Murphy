@@ -573,6 +573,11 @@ def test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition() -> N
         assert response.flow.cinematic_id == "CIN_FLIGHT_ARRIVAL_JFK"
         assert response.flow.skip_allowed is True
         assert response.flow.show_scoreboard is False
+        assert response.game_state is not None
+        assert response.game_state.assigned_visit_location
+        assert response.game_state.assigned_visit_location_ko
+        assert response.game_state.visit_location_difficulty is not None
+        assert response.game_state.visit_location_suspicion_reason
     finally:
         if jsonl_path.exists():
             jsonl_path.unlink()
@@ -640,6 +645,24 @@ def test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller(
 
 
 def test_orchestrator_marks_immigration_clearance_as_baggage_scene_transition() -> None:
+    builder_payloads: list[dict[str, Any]] = []
+
+    def capture_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": "Officer Hale",
+            "npc_text": "All right, you're cleared.",
+            "tone": "formal_neutral",
+            "animation": "officer_check_passport",
+            "feedback_kr": "Good.",
+            "tts": {
+                "audio_url": "/runtime/audio/edge/immigration-cleared.wav",
+            },
+        }
+
     turn_payload = _turn_payload()
     turn_payload["request_id"] = "req_alpha_imm_to_bag_flow_0001"
     turn_payload["session"]["scene_id"] = "IMMIGRATION_ALPHA"
@@ -655,8 +678,13 @@ def test_orchestrator_marks_immigration_clearance_as_baggage_scene_transition() 
             transcript="Thank you, officer.",
         ),
     )
+    orchestrator = Orchestrator()
+    orchestrator.dev_a_client = DevANpcDialogueClient(
+        settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+        voice_output_builder=capture_voice_output_builder,
+    )
 
-    response = Orchestrator().run_turn(request)
+    response = orchestrator.run_turn(request)
 
     assert response.next_action == "COMPLETE_CHAPTER"
     assert response.next_node_id == "IMM_999_CLEARED"
@@ -667,6 +695,16 @@ def test_orchestrator_marks_immigration_clearance_as_baggage_scene_transition() 
     assert response.flow.to_scene_id == "BAGGAGE_MISSING"
     assert response.flow.cinematic_id is None
     assert response.flow.skip_allowed is False
+    assert response.game_state is not None
+    assert response.game_state.random_customs_item is not None
+    assert response.game_state.random_customs_item.item_name
+    assert response.game_state.random_customs_item.difficulty is not None
+    assert response.game_state.random_customs_item.suspicion_reason
+    assert builder_payloads
+    challenge_context = builder_payloads[0]["dialogue_seed"]["challenge_context"]
+    assert challenge_context["challenge_type"] == "customs_item"
+    assert challenge_context["item_name"] == response.game_state.random_customs_item.item_name
+    assert challenge_context["item_suspicion_reason"] == response.game_state.random_customs_item.suspicion_reason
 
 
 def test_orchestrator_marks_alpha_final_branch_as_scoreboard_flow() -> None:
