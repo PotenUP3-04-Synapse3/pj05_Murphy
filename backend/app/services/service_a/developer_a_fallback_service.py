@@ -48,6 +48,9 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
     next_action = normalized.get("next_action") or ""
     npc_role = normalized.get("npc_role", "")
     
+    purpose = normalized.get("dialogue_purpose") or ""
+    reason = "missing_or_blocked_candidate_text"
+    
     if transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER":
         if npc_role == "seatmate":
             text = "Enjoy your trip!"
@@ -59,25 +62,53 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
             text = "You're all set. Have a nice day."
         else:
             text = "You're all set."
+        reason = "complete_chapter_fallback"
+    elif purpose == "smalltalk_diagnostic":
+        import random
+        generic_neutral_responses = [
+            "I see. Tell me more about that.",
+            "That sounds interesting. Go on.",
+            "Oh, really? That's good to know.",
+            "I understand. What else can you tell me?",
+            "Interesting. Let's keep talking.",
+            "Right, I get what you mean.",
+            "I hear you. Let's move forward."
+        ]
+        text = random.choice(generic_neutral_responses)
+        reason = "smalltalk_diagnostic_fallback"
     elif surface_goal == "explain_random_customs_item":
         random_item = normalized.get("random_customs_item") or ""
         if random_item:
             text = f"What is this {random_item} in your bag?"
         else:
             text = "What is inside this package?"
+        reason = "explain_random_customs_item"
     elif surface_goal in SURFACE_GOAL_FALLBACK_TEXTS:
         text = SURFACE_GOAL_FALLBACK_TEXTS[surface_goal]
+        reason = f"surface_goal_{surface_goal}"
+    elif normalized.get("assigned_visit_location", "").strip():
+        assigned_visit_location = normalized.get("assigned_visit_location", "").strip()
+        text = f"{assigned_visit_location}? Tell me more about that."
+        reason = "suspicion_visit_location_seeded"
+    elif normalized.get("random_customs_item", "").strip():
+        random_item = normalized.get("random_customs_item", "").strip()
+        text = f"{random_item}? What is this for?"
+        reason = "suspicion_customs_item_seeded"
     else:
         target_slot = normalized.get("target_slot")
         # 대화 목표 슬롯(Target Slot)이 체류 기간(Stay Duration)인지 식별하여 템플릿(Template) 대사를 다변화합니다.
         if target_slot == "stay_duration":
             text = "Okay. How long will you stay?"
+            reason = "stay_duration_fallback"
         else:
             text = "Okay. Please continue."
+            reason = "default_text_fallback"
 
     # 플레이어에게 제시될 한국어 피드백(Feedback) 내용을 가져오거나 기본 오류 안내 문구로 보정합니다.
     default_feedback = "의미는 전달됐습니다. 조금 더 자연스럽게 말해 봅시다."
-    if npc_role == "seatmate":
+    if purpose == "smalltalk_diagnostic":
+        default_feedback = "자유롭게 스몰토크를 이어가고 있습니다. 계속 대화를 나누어 보세요."
+    elif npc_role == "seatmate":
         default_feedback = "친절하게 답변해 주었어요. 더 자연스럽게 표현해 볼까요?"
     elif npc_role in {"customs_officer", "security_officer"}:
         default_feedback = "세관 질문에 적절히 대답했어요. 더 명확하게 표현해 볼까요?"
@@ -102,7 +133,7 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
         # 폴백이 사용되었음을 명시하고 디버깅용 추적 사유(Reason)를 첨부합니다.
         "fallback": {
             "used": True,
-            "reason": "missing_or_blocked_candidate_text",
+            "reason": reason,
             "branch_type": normalized.get("branch_type"),
             "next_node_id": normalized.get("next_node_id"),
         },

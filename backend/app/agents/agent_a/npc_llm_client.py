@@ -10,7 +10,7 @@ import jinja2
 import httpx
 
 
-from langchain_core.messages import BaseMessage, AIMessage
+from langchain_core.messages import BaseMessage, AIMessage, SystemMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.runnables import Runnable
@@ -201,15 +201,15 @@ class OpenAICompatibleNPCDialogueChatModel:
     def generate(self, payload: dict[str, Any], callbacks: list[Any] | None = None) -> dict[str, Any]:
         """LangChain의 ChatPromptTemplate과 LCEL 체인을 결합하여 NPC 대사를 생성합니다."""
         system_prompt = _render_developer_instructions(payload, use_short=True)
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("user", "{input_payload}")
-        ])
-        chain = prompt | self._chat_model
+        input_payload_str = json.dumps(payload, ensure_ascii=False)
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=input_payload_str)
+        ]
         
         # include_raw=True 방식에 의해 동일한 출력을 얻습니다.
-        output = chain.invoke(
-            {"input_payload": json.dumps(payload, ensure_ascii=False)},
+        output = self._chat_model.invoke(
+            messages,
             config={"callbacks": callbacks}
         )
         
@@ -258,22 +258,20 @@ def build_npc_dialogue_llm_client_from_environment(
     # primary_prompt_runner 정의
     def make_primary_prompt_and_input(payload: dict) -> list[BaseMessage]:
         system_prompt = _render_developer_instructions(payload, use_short=False)
-        prompt_template = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("user", "{input_payload}")
-        ])
         input_payload_str = json.dumps(payload, ensure_ascii=False)
-        return prompt_template.format_messages(input_payload=input_payload_str)
+        return [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=input_payload_str)
+        ]
 
     # fallback_prompt_runner 정의
     def make_fallback_prompt_and_input(payload: dict) -> list[BaseMessage]:
         system_prompt = _render_developer_instructions(payload, use_short=True)
-        prompt_template = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("user", "{input_payload}")
-        ])
         input_payload_str = json.dumps(payload, ensure_ascii=False)
-        return prompt_template.format_messages(input_payload=input_payload_str)
+        return [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=input_payload_str)
+        ]
 
     primary_prompt_runner = RunnableLambda(make_primary_prompt_and_input)
     fallback_prompt_runner = RunnableLambda(make_fallback_prompt_and_input)
@@ -363,12 +361,17 @@ def _render_developer_instructions(context: dict[str, Any], use_short: bool = Fa
     try:
         render_context = context.copy()
         
-        for key in ["allowed_mild", "allowed_strong", "non_verbal_palette"]:
+        for key in ["allowed_mild", "allowed_strong", "non_verbal_palette", "discussed_topics"]:
             if key in render_context:
                 val = render_context[key]
                 if isinstance(val, (list, set)):
                     render_context[key] = ", ".join(f"'{x}'" for x in sorted(list(val)))
                     
+        if "past_player_utterances" in render_context:
+            val = render_context["past_player_utterances"]
+            if isinstance(val, (list, set)):
+                render_context["past_player_utterances"] = ", ".join(f"'{x}'" for x in list(val))
+                
         if "allowed_emotions" in render_context:
             val = render_context["allowed_emotions"]
             if isinstance(val, (list, set)):

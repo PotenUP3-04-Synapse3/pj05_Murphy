@@ -238,8 +238,9 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
     next_action = normalized.get("next_action") or ""
     is_complete_chapter = (transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER")
     
+    purpose = normalized.get("dialogue_purpose") or ""
     # profanity_res가 없을 때만 surface_goal 질문을 합성합니다.
-    if use_llm and surface_goal and not is_complete_chapter and not profanity_res:
+    if use_llm and surface_goal and not is_complete_chapter and not profanity_res and purpose != "smalltalk_diagnostic":
         original_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
         synthesized_text = synthesize_fallback_next_question(original_text, surface_goal)
         fallback_res["npc_text"] = synthesized_text
@@ -311,6 +312,26 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         if not dialogue_seed:
             logger.warning("dialogue_seed is missing from payload in node_generate_dialogue_llm.")
 
+        purpose = payload.get("dialogue_directive", {}).get("purpose", "")
+        discussed_topics = []
+        past_player_utterances = []
+        
+        if purpose == "smalltalk_diagnostic":
+            from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader
+            reader = OpenKBFinalResultRecordReader()
+            session_id = payload.get("session_id") or ""
+            records = reader.read_session_records(session_id) if session_id else []
+            for r in records:
+                d_seed = r.get("dialogue_seed") or {}
+                sg = d_seed.get("surface_goal")
+                if sg:
+                    discussed_topics.append(sg)
+                pt = r.get("player_text")
+                if pt:
+                    past_player_utterances.append(pt)
+            discussed_topics = list(dict.fromkeys(discussed_topics))
+            past_player_utterances = list(dict.fromkeys(past_player_utterances))
+
         incivility = payload.get("incivility") or {}
         incivility_tier = int(incivility.get("tier", 0))
         profanity_mode = os.getenv("MURPHY_NPC_PROFANITY_MIRROR_MODE", "off").strip().lower()
@@ -343,6 +364,22 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "non_verbal_palette": npc_profile.non_verbal_palette,
             "allowed_mild": allowed_mild,
             "allowed_strong": allowed_strong,
+            
+            # smalltalk_diagnostic 변수들
+            "purpose": purpose,
+            "topic_switch": payload.get("dialogue_directive", {}).get("topic_switch", False),
+            "length_target": payload.get("dialogue_directive", {}).get("length_target"),
+            "discussed_topics": discussed_topics,
+            "past_player_utterances": past_player_utterances,
+            
+            # Eokkka / Challenge 관련 변수들
+            "assigned_visit_location": normalized.get("assigned_visit_location", ""),
+            "assigned_visit_location_ko": normalized.get("assigned_visit_location_ko", ""),
+            "visit_location_difficulty": normalized.get("visit_location_difficulty", 0),
+            "visit_location_suspicion_reason": normalized.get("visit_location_suspicion_reason", ""),
+            "random_customs_item": normalized.get("random_customs_item", ""),
+            "random_customs_item_difficulty": normalized.get("random_customs_item_difficulty", 0),
+            "random_customs_item_suspicion_reason": normalized.get("random_customs_item_suspicion_reason", ""),
         }
 
         # [4단계] 랭체인 1.0+ 규격에 부합하도록 invoke 또는 generate 호출을 수행합니다.
@@ -356,7 +393,12 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             else:
                 llm_result = client.generate(llm_payload)
     except (NPCDialogueLLMUnavailable, httpx.HTTPError, json.JSONDecodeError, KeyError, ValueError) as exc:
-        # 에러 발생 시 상태 전이를 예외 처리 폴백 노드로 분기하기 위해 error를 세팅하여 반환합니다.
+        import logging
+        import traceback
+        logging.getLogger("backend.app.agents.agent_a").error(
+            "LLM ValueError type=%s msg=%s\n%s",
+            type(exc).__name__, exc, traceback.format_exc(),
+        )
         return {"error": type(exc).__name__}
 
 
@@ -396,13 +438,55 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     if rec_exp and rec_exp in npc_text:
         return {"error": "recommended_expression_echo"}
 
-    # surface_goal이 존재할 때 물음표 질문이 누락되었는지 검사합니다.
+    # surface_goal이 존재할 때 물음표 질문이 누락되었는지 검사합니다. (diagnostic 목적 하에서는 해제)
     surface_goal = (payload.get("dialogue_seed") or {}).get("surface_goal")
-    if surface_goal:
+    purpose = payload.get("dialogue_directive", {}).get("purpose", "")
+    if surface_goal and purpose != "smalltalk_diagnostic":
         import re
         sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
         if len(sentences) <= 1 and "?" not in npc_text:
             return {"error": "missing_followup_question"}
+
+    # coherence guard 신설 (smalltalk_diagnostic 전용)
+    if purpose == "smalltalk_diagnostic":
+        import re
+        sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
+        
+        # (a) 반응 없는 맨 질문 검사 (첫 문장이 질문이거나 전체 문장이 1개인데 질문인 경우)
+        if sentences:
+            first_sentence = sentences[0]
+            first_idx = npc_text.find(first_sentence)
+            if first_idx != -1:
+                end_char = npc_text[first_idx + len(first_sentence):first_idx + len(first_sentence) + 1]
+                if end_char == "?":
+                    logger.error(f"Coherence violation: Naked question at the start of dialogue: {npc_text}")
+                    return {"error": "coherence_violation_naked_question"}
+            if len(sentences) == 1 and "?" in npc_text:
+                logger.error(f"Coherence violation: Single question dialogue without reaction: {npc_text}")
+                return {"error": "coherence_violation_naked_question"}
+                
+        # (b) 직전 발화와 비연결 턴 검사 (llm_reason에 [COHERENT] 누락 또는 [NON-SEQUITUR] 포함 검사)
+        llm_reason_upper = llm_result.get("llm_reason", "").upper()
+        if "NON-SEQUITUR" in llm_reason_upper or "COHERENT" not in llm_reason_upper:
+            logger.error(f"Coherence violation: non-sequitur detected or coherent flag missing in llm_reason: {llm_result.get('llm_reason')}")
+            return {"error": "coherence_violation_non_sequitur"}
+
+    # topic_switch 전환구 강제 보정 (smalltalk_diagnostic 전용)
+    topic_switch = payload.get("dialogue_directive", {}).get("topic_switch", False)
+    if purpose == "smalltalk_diagnostic" and topic_switch:
+        clean_text = npc_text.strip()
+        starts_with_pivot = any(clean_text.startswith(p) for p in ["Anyway", "By the way", "Anyway,", "By the way,"])
+        if not starts_with_pivot:
+            npc_text = f"Anyway, {npc_text}"
+            tts_clean = tts_text.strip()
+            if tts_clean.startswith("<break"):
+                break_end_idx = tts_clean.find("/>")
+                if break_end_idx != -1:
+                    tts_text = tts_clean[:break_end_idx+2] + " Anyway, " + tts_clean[break_end_idx+2:]
+                else:
+                    tts_text = f"Anyway, {tts_text}"
+            else:
+                tts_text = f"Anyway, {tts_text}"
 
     seed_fallback = _dict_value(fallback_result.get("fallback"))
     

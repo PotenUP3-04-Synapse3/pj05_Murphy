@@ -24,6 +24,29 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
         or ""
     )
 
+    # 억까 장소 및 수화물 관련 데이터 파싱
+    random_item_obj = (
+        payload.get("game_state", {}).get("random_customs_item")
+        or (payload.get("dialogue_seed") or {}).get("random_customs_item")
+        or payload.get("random_customs_item")
+        or {}
+    )
+    if isinstance(random_item_obj, str):
+        random_item_name = random_item_obj
+        random_item_difficulty = 0
+        random_item_suspicion_reason = ""
+    elif isinstance(random_item_obj, dict):
+        random_item_name = random_item_obj.get("item_name") or random_item_obj.get("item_id") or ""
+        random_item_difficulty = random_item_obj.get("difficulty") or 0
+        random_item_suspicion_reason = random_item_obj.get("suspicion_reason") or ""
+    else:
+        random_item_name = ""
+        random_item_difficulty = 0
+        random_item_suspicion_reason = ""
+
+    dialogue_seed = payload.get("dialogue_seed") or {}
+    game_state = payload.get("game_state") or {}
+
     return {
         "node_id": _optional_text(payload.get("node_id")),
         "player_text": _optional_text(payload.get("player_text")),
@@ -59,10 +82,26 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "tone_hint": _optional_text(dialogue_directive.get("tone_hint")) or "neutral",
         "target_slot": _optional_text(dialogue_directive.get("target_slot")),
         "player_emotion": _optional_text(payload.get("understanding", {}).get("emotion")),  # 플레이어 원본 감정 상태 연동
-        "dialogue_seed": payload.get("dialogue_seed") or {},
-        "random_customs_item": _optional_text(
-            payload.get("game_state", {}).get("random_customs_item")
-            or payload.get("random_customs_item")
+        "dialogue_seed": dialogue_seed,
+        "random_customs_item": _optional_text(random_item_name),
+        "random_customs_item_difficulty": int(random_item_difficulty),
+        "random_customs_item_suspicion_reason": _optional_text(random_item_suspicion_reason),
+        "assigned_visit_location": _optional_text(
+            dialogue_seed.get("assigned_visit_location")
+            or game_state.get("assigned_visit_location")
+        ),
+        "assigned_visit_location_ko": _optional_text(
+            dialogue_seed.get("assigned_visit_location_ko")
+            or game_state.get("assigned_visit_location_ko")
+        ),
+        "visit_location_difficulty": int(
+            dialogue_seed.get("visit_location_difficulty")
+            or game_state.get("visit_location_difficulty")
+            or 0
+        ),
+        "visit_location_suspicion_reason": _optional_text(
+            dialogue_seed.get("visit_location_suspicion_reason")
+            or game_state.get("visit_location_suspicion_reason")
         ),
         "transition": payload.get("transition") or {},
         "next_action": _optional_text(payload.get("next_action") or branch.get("next_action")),

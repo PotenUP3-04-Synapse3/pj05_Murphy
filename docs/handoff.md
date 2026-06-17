@@ -1,10 +1,32 @@
 # Handoff
 
+## 2026-06-17 Developer A: CR-B-EOKKKA NPC 트집 대사 구현 완료
+
+Developer A 는 CR-B-EOKKKA(억까 장소·수화물 레벨별 배정)의 Dev A 측 후속 작업을 완료했습니다. B 가 작성한 `pick_location`/`pick_customs_item` 결과가 C 어댑터를 통해 `dialogue_seed`/`game_state` 로 forward 된 상태에서, A 가 그 메타 의도대로 NPC 트집 대사를 LLM 으로 생성하고 입국신고서 장소명과 동일 지칭을 유지합니다.
+
+Changed:
+
+- `developer_a_input_service.py`: dialogue_seed 의 신규 필드(`assigned_visit_location`, `assigned_visit_location_ko`, `visit_location_difficulty`, `visit_location_suspicion_reason`) 를 normalize 단계에서 추출.
+- `npc_dialogue_agent.py`: 위 필드를 `llm_payload` 에 명시적 키로 주입.
+- `prompts/npc_dialogue_prompt.md`, `prompts/npc_dialogue_prompt.short.md`: SUSPICION MODE Jinja2 블록 신설 — assigned_visit_location verbatim 사용 강제, 고정 질문 모방 금지, 난이도별 톤 가이드, 예시 2개.
+- `developer_a_fallback_service.py`: LLM 실패 시 폴백 분기에 assigned_visit_location / random_customs_item 시드 응답 추가. generic "Okay. Please continue." 사용 빈도 감소.
+- `test_developer_a_npc_dialogue.py`: 신규 테스트 4종 (페이로드 전달, 폴백 시드 2종, default 회귀).
+
+Verification:
+
+- `uv run pytest backend/tests`: PASS
+- `uv run ruff check .`: PASS
+- `uv run mypy .`: PASS
+- `/respond-dialog` 수동 회귀: IMM 진입 첫 턴에서 NPC 가 assigned_visit_location 을 verbatim 으로 언급함을 확인.
+
+B/C 영역 0 수정. CR-B-EOKKKA 의 Dev A 측 항목 완료. Unreal 측 (입국신고서 UI 장소 표시 / BAG_006 수화물 reveal) 은 별도 owner 작업.
+
 ## 2026-06-17 Developer C Integrated: Eokkka (Accusation Challenge) Location and Customs Item Assignment
 
 Developer C integrated Developer B's challenge tables and pick service logic into the orchestration layer.
 
 Changed:
+
 - `RandomCustomsItemContext` schema in `backend/app/schemas/game_turn.py` extended with optional `difficulty` and `suspicion_reason` fields.
 - `GameState` schema in `backend/app/schemas/game_turn.py` extended with `assigned_visit_location`, `assigned_visit_location_ko`, `visit_location_difficulty`, and `visit_location_suspicion_reason` fields.
 - `DialogueSeed` schema in `backend/app/schemas/game_turn.py` extended with `challenge_context` plus backward-compatible location and item metadata fields to forward Eokkka intent details to Developer A.
@@ -19,6 +41,7 @@ Changed:
 - Updated `backend/tests/test_preprototype_flow.py` assertions to verify both location assignment at `FLIGHT_999_COMPLETE` and customs-item assignment plus A payload `challenge_context` at `IMM_999_CLEARED`.
 
 Verification:
+
 - `uv run pytest` passed: 302 passed, 1 warning.
 - `uv run ruff check .` passed.
 - `uv run mypy .` passed.
@@ -30,12 +53,32 @@ Verification:
 Developer C resolved the validation issue with `do_not_generate_npc_text`.
 
 Changed:
+
 - `DialogueDirective` schema in `backend/app/schemas/game_turn.py` now defines `do_not_generate_npc_text: bool | None = None` for backward compatibility. This prevents validation crashes in tests and mock payloads.
 - Added a formal Change Request in `docs/contracts/change_requests.md` asking Developer B to remove `do_not_generate_npc_text` from their policy prompts and implementation code.
 
 Verification:
+
 - `uv run pytest` passed.
 - `uv run ruff check .` and `uv run mypy .` passed.
+
+## 2026-06-17 Developer A: Ruff Cleanup + LLM Fallback Debug Logging + Smalltalk CR Status Sync
+
+Developer A 는 handoff/change_requests 인벤토리 확인 후 다음 4가지 후속 작업을 완료했습니다.
+
+Changed:
+
+- **Ruff Unused Imports 청소 (CR-2026-06-16)**: `npc_dialogue_agent.py`, `tts_text_polisher_service.py` 의 unused import 제거. C 측에서 진단된 lint 차단 해소. full `uv run ruff check .` 그린.
+- **LLM Fallback ValueError 디버그 로깅 및 해결**: `node_generate_dialogue_llm` 의 except 블록에 traceback 로깅을 추가하였습니다. 더불어 에러 원인인 ChatPromptTemplate의 f-string 중괄호 파싱 문제를 해결하기 위해, 템플릿 포맷 대신 SystemMessage와 HumanMessage 객체를 직접 생성하여 invoke하도록 수정 완료하였습니다.
+- **Bad Ending end-to-end 회귀 청취 검증**: Immigration "fuck you" 시 bad_end 라우팅 + A 측 mirror 응답("This interview is over. Leave now.")이 정상 동작함을 확인 완료하였습니다.
+- **CR-2026-06-16 기내 스몰토크 대화형 전환 Status 갱신**: A 측 작업이 06-17 에 완료되었음을 change_requests.md 에 명시.
+
+Verification:
+
+- `uv run pytest backend/tests`: PASS (300 passed)
+- `uv run ruff check .`: PASS (All checks passed)
+- `uv run mypy .`: PASS (Success: no issues found in 120 source files)
+- `/respond-dialog` Immigration 회귀 청취: PASS
 
 ## 2026-06-17 Developer C Fixed: Respond Dialog Immigration NPC Default
 
@@ -214,6 +257,27 @@ Developer B는 입국심사 "억까 장소 리스트"와 세관 "억까 수화�
 - **검증/후속**: 이번 단계는 문서(계획·CR·handoff) 동기화. 구현 착수 시 B 단독 범위
   (테이블+픽 서비스+유닛 테스트)부터 진행하며 C 스키마와 디커플링.
 
+## 2026-06-17 Developer A 기내 스몰토크 적응형 진단(Adaptive Diagnostic) 연동 구현 완료
+
+Developer A는 [CR-B-SMALLTALK] 변경 요청에 맞춰 기내 스몰토크 단일 self-loop 진단 노드 `FLIGHT_A_001_SEATMATE_SMALLTALK` 및 `smalltalk_diagnostic` 진단 모드에 대응하는 NPC 대사 생성 및 가드 제어 구현을 완료했습니다.
+
+- **프롬프트 템플릿 개정**:
+  - [npc_dialogue_prompt.md](file:///c:/5th_project/pj05_Murphy/backend/app/prompts/npc_dialogue_prompt.md) 및 [npc_dialogue_prompt.short.md](file:///c:/5th_project/pj05_Murphy/backend/app/prompts/npc_dialogue_prompt.short.md)에 진단 전용 Jinja2 조건 블록을 추가했습니다.
+  - `{competency}_{topic}` 의도 태그 발화 금지, 자연스러운 반응-연결 구조 강제, 길이 미러링(`length_target`), 화제 전환 pivot(`topic_switch`) 적용 및 대화 메모리(`discussed_topics`, `past_player_utterances`)를 통한 중복 방지 규칙을 명시했습니다.
+  - 흐름 일관성 검증을 위해 `llm_reason`에 `[COHERENT]` / `[NON-SEQUITUR]` 태그 지시를 주었습니다.
+- **LLM 클라이언트 및 페이로드 연동**:
+  - [npc_llm_client.py](file:///c:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_llm_client.py)에 대화 메모리 리스트 포맷팅을 추가했습니다.
+  - [npc_dialogue_agent.py](file:///c:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py)에서 OpenKB 세션 이력을 로드하여 다룬 화제 및 발화 내역을 `llm_payload`에 주입했습니다.
+- **가드 우회 및 Coherence Guard 구현**:
+  - [npc_dialogue_agent.py](file:///c:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py)에서 진단 모드일 때 `missing_followup_question` 검사를 우회하여 반응 전용(reaction-only) 턴을 허용했습니다.
+  - 반응 없는 맨 질문 및 비연결 턴(llm_reason의 태그 기반)을 reject하는 Coherence Guard를 신설했습니다.
+  - `topic_switch=True`일 때 전환구가 없을 시 후처리로 자동 주입되도록 안전 보정 장치를 적용했습니다.
+- **질문 합성 스킵 및 중립 폴백 구축**:
+  - [npc_dialogue_agent.py](file:///c:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py)에서 진단 모드 시 `synthesize_fallback_next_question`을 스킵해 고정 질문 합성을 비활성화했습니다.
+  - [developer_a_fallback_service.py](file:///c:/5th_project/pj05_Murphy/backend/app/services/service_a/developer_a_fallback_service.py)에서 에러 발생 시 고정 사다리로 회귀하지 않고 **generic 중립 응답 목록**에서 랜덤으로 선택하여 대사를 생성하도록 폴백을 보완하고 피드백을 중립형으로 설정했습니다.
+- **검증 완료**:
+  - [test_developer_a_npc_dialogue.py](file:///c:/5th_project/pj05_Murphy/backend/tests/test_developer_a_npc_dialogue.py)에 5종의 신규 테스트를 추가하였으며, `uv run pytest backend/tests` 명령 결과 283개 전체 테스트의 성공 통과를 완료했습니다.
+
 ## 2026-06-17 Developer B 기내 스몰토크 적응형 진단(Adaptive Diagnostic, C안) 통합 및 테스트 갱신 완료
 
 Developer B는 기내 스몰토크를 적응형 진단(C안)으로 전환하는 작업계획에 맞춰 외부 연동 테스트 및 잔여 노드 정리에 따른 테스트 오작동 문제를 해결하고 전체 검증을 완료했습니다.
@@ -253,6 +317,7 @@ Developer B는 기내 스몰토크를 적응형 진단(C안)으로 전환하는 
 Developer B는 플레이어의 비속어 발화 시 챕터 강제 강등 및 배드 엔딩 분기 연동을 위한 작업(CR-A2, CR-A4)을 완료했습니다.
 
 ### 주요 수정/산출물:
+
 - **시나리오 노드 3종 추가 (CR-A4)**:
   - [scenario_nodes.json](file:///c:/potenup3/pj05_Murphy/backend/app/data/scenario_nodes.json)에 비속어 누적으로 인한 배드 엔딩용 노드 3종(`FLIGHT_BAD_END_VERBAL_ABUSE`, `IMM_BAD_END_VERBAL_ABUSE`, `BAG_BAD_END_VERBAL_ABUSE`)을 `node_type = "ending"` 및 `ALPHA_999_FINAL_SCOREBOARD` 전송 트랜지션 구조로 추가.
 - **비속어 배드 엔딩 정책 구현 (CR-A2)**:
@@ -277,6 +342,7 @@ Developer B는 기내 스몰토크가 "취조처럼" 느껴지고 플레이어�
   - Dev B 소유 작업: `scenario_nodes.json`(노드 정리·역할 반전 교정), 신규 `flight_smalltalk_probes.json`, `flight_smalltalk_diagnostic_policy.py`(적응형 선택·종료), `developer_b_policy_graph_tools.py`(배선·seed emit), `english_level_hint_agent.py`(능력 추정치+신뢰도 노출·in-game 억제).
 - 교차 의존: Dev A/Dev C 변경 요청을 `docs/contracts/change_requests.md`(**Change Request - 2026-06-16 - [CR-B-SMALLTALK] 기내 스몰토크 적응형 진단 전환**)로 발행. 핵심은 Dev A의 **반응-먼저 대사 생성 + coherence guard 신설 + `missing_followup_question` 해제 + 고정 큐 비활성** 과 Dev C의 **슬롯 추출 완화**. 노드 ID(`FLIGHT_A_001_SEATMATE_SMALLTALK`)는 유지하므로 데모(`respond-dialog`)는 무영향.
 - 검증/후속: 본 항목은 계획·계약 문서 작성 단계(코드 미구현). 구현 시 §9 검증 명령(`uv run pytest backend/tests/dev_b/...`, `ruff`, `mypy`) 및 §8 테스트(probe 선택·bounded 종료·steering=0 추종·안전선 회귀·자연스러움 eval) 수행 예정.
+
 ## 2026-06-16 Developer C Realtime Transcript Multipart Fallback Fix
 
 Developer C investigated the Unreal log where realtime STT subtitles showed the
@@ -360,7 +426,7 @@ Verification:
 - RED: the receive-side disconnect test failed before the fix with
   `RuntimeError: WebSocket is not connected. Need to call "accept" first.`
 - `uv run pytest backend/tests/test_realtime_stt_websocket.py
-  backend/tests/test_elevenlabs_realtime_stt_relay.py -q`: PASS, 16 passed,
+backend/tests/test_elevenlabs_realtime_stt_relay.py -q`: PASS, 16 passed,
   1 existing `audioop` deprecation warning.
 - `uv run pytest`: PASS, 261 passed, 1 existing `audioop` deprecation warning.
 - `uv run ruff check .`: PASS.
@@ -463,26 +529,31 @@ Developer B는 기내(옆자리 승객) 스몰토크가 출입국 심사용 채�
   변경 요청을 `docs/contracts/change_requests.md`
   (2026-06-16 기내 스몰토크 대화형 전환)로 전달.
 - 구현/검증은 후속(작업계획서 §7 테스트 계획, §8 검증 명령 참조). 회귀 가드:
-  입국심사(IMM_*)·수하물(BAG_*) 채점 동작은 그대로 유지.
+  입국심사(IMM*\*)·수하물(BAG*\*) 채점 동작은 그대로 유지.
+
 ## 2026-06-16 Developer A 구현: NPC별 voice_id 라우팅 및 환경변수(Environment Variable) 오버라이드 정정 (Phase A ~ Phase E)
 
 Developer A는 `docs/workplan-dev-a-npc-voice-routing.md` 작업 계획서에 따라 ElevenLabs 및 Edge TTS 경로 모두에서 NPC별 고유 voice_id 라우팅을 복구하고, 환경변수 우선순위가 뒤바뀌는 결함 및 캐시 키(Cache Key) 충돌 문제를 해결했습니다.
 
 ### Phase A - voice_profile_service 리팩터링:
+
 - **프로바이더 매개변수(Parameter)화**: `voice_profile_service.py`의 `resolve_voice_profile` 함수에 `tts_provider` 인자를 추가하여, 활성화된 TTS 엔진에 맞춰 적절한 목소리를 선택하도록 개선했습니다.
 - **NPC별 ElevenLabs 라우팅 복구**: roster에 정의되어 있던 `NPCProfile.elevenlabs_voice_id`가 ElevenLabs 요청 시 실제로 사용되도록 연동하여 죽은 필드(Dead field) 문제를 해결했습니다.
 - **캐시(Cache) 격리**: 동일한 NPC라도 엔진별로 오디오 캐시 파일이 충돌 없이 격리될 수 있도록, 생성되는 `voice_profile_id`에 `tts_provider` 정보를 결합(`{user_id}:{npc_id}:{provider}`)했습니다.
 
 ### Phase B - voice_output_service 라우팅 구조 수정:
+
 - **호출 순서 조정**: `voice_output_service.py`의 `build_voice_output_from_level_design` 내에서 `resolve_voice_profile`을 호출하기 전에 먼저 `tts_provider_name`을 결정 및 결정된 엔진 정보를 인가하도록 수정했습니다.
-- **우선순위 역전 해결 헬퍼(Helper) 신설**: NPC별 고유 목소리가 최우선으로 적용될 수 있도록 `_per_npc_voice_or_override` 헬퍼 함수를 신설하여 **강제 오버라이드 환경변수(*_FORCE) > NPC 고유 목소리 > 레거시 단일 오버라이드 환경변수(경고 로깅) > 최종 기본값** 순의 엄격한 우선순위를 확립했습니다.
+- **우선순위 역전 해결 헬퍼(Helper) 신설**: NPC별 고유 목소리가 최우선으로 적용될 수 있도록 `_per_npc_voice_or_override` 헬퍼 함수를 신설하여 **강제 오버라이드 환경변수(\*\_FORCE) > NPC 고유 목소리 > 레거시 단일 오버라이드 환경변수(경고 로깅) > 최종 기본값** 순의 엄격한 우선순위를 확립했습니다.
 - **하위 호환성 유지**: 레거시 환경변수(`MURPHY_ELEVENLABS_VOICE_ID` 및 `MURPHY_EDGE_TTS_VOICE`)가 감지될 경우 `logger.warning`으로 경고(Warning)를 출력한 뒤 차선책으로 적용하도록 설정했습니다.
 
 ### Phase C - 캐시 키 및 메타데이터(Metadata) 정합성 검증:
+
 - **오디오 캐시 고유성**: `build_audio_cache_key`에 voice 식별자 문자열이 정상적으로 유입되고 있음을 검증했습니다.
 - **모델 버전 정보 확장**: `_provider_cache_model_version` 함수의 ElevenLabs 처리 분기 내에 `voice` 식별자가 포함되도록 수정하여 목소리가 바뀔 때 캐시 파일이 고유하게 분리되도록 보장했습니다.
 
 ### Phase D - 검증 및 회귀 테스트(Regression Test) 구축:
+
 - **신규 단위 테스트(Unit Test) 추가**: `backend/tests/test_developer_a_voice_profile_routing.py` 파일을 생성하여 NPC별 라우팅 결과, fallback 처리 규칙, 헬퍼 함수의 우선순위 분기 규칙을 검증했습니다.
 - **기존 테스트 업데이트**: `test_developer_a_npc_roster.py` 및 `test_developer_a_agent_run_logging.py`에서 새로운 `voice_profile_id` 포맷과 모의 환경변수 환경에 맞도록 테스트 단언(Assertion)문을 보정했습니다.
 - **테스트 통과 결과**:
@@ -493,6 +564,7 @@ Developer A는 `docs/workplan-dev-a-npc-voice-routing.md` 작업 계획서에 �
   - `uv run mypy .` -> PASS (오류 없음)
 
 ### Phase E - 문서 정리 및 환경 명세 최신화:
+
 - **환경변수 예시 갱신**: `.env.example` 파일에서 옛날 단일 목소리 오버라이드 변수들을 비활성화(Deprecated 주석 처리)하고, 신규 강제 오버라이드 변수인 `*_FORCE` 환경변수 지침을 명시했습니다.
 - **구조 설계도 최신화**: `docs/agent_a_structure.md` 파일 내의 Mermaid 시퀀스(Sequence) 및 전체 아키텍처 다이어그램에서 `resolve_voice_profile(tts_provider)`에 매개변수가 주입되는 설계 흐름을 최신 상태로 반영했습니다.
 
