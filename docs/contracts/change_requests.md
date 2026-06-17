@@ -1736,7 +1736,8 @@ Bad ending 노드 미생성 시 A 는 기존 `COMPLETE_CHAPTER` 처리 로직으
 
 ## Change Request - 2026-06-16 - [CR-B-SMALLTALK] 기내 스몰토크 적응형 진단 전환: Dev A 반응형 대사·coherence guard + Dev C 슬롯 완화
 
-Status: Open (Dev B 측 구현 완료 / Dev A·C 미반영). `docs/workplan-dev-b.md`(기내 스몰토크 적응형 진단 전환, C안)의 §4/§10 타 팀 의존 항목.
+Status: Implemented (Developer A 및 Developer B 구현 완료 / Developer C 미반영). `docs/workplan-dev-b.md`(기내 스몰토크 적응형 진단 전환, C안)의 §4/§10 타 팀 의존 항목.
+  - Developer A 구현 완료 (2026-06-17) - 반응형 대사, coherence guard, missing_followup_question 해제, 중립 폴백 반응 완료.
 
 ### 구현 반영 (2026-06-17) — 계획 대비 변경점
 

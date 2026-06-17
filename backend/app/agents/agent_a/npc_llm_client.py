@@ -363,12 +363,17 @@ def _render_developer_instructions(context: dict[str, Any], use_short: bool = Fa
     try:
         render_context = context.copy()
         
-        for key in ["allowed_mild", "allowed_strong", "non_verbal_palette"]:
+        for key in ["allowed_mild", "allowed_strong", "non_verbal_palette", "discussed_topics"]:
             if key in render_context:
                 val = render_context[key]
                 if isinstance(val, (list, set)):
                     render_context[key] = ", ".join(f"'{x}'" for x in sorted(list(val)))
                     
+        if "past_player_utterances" in render_context:
+            val = render_context["past_player_utterances"]
+            if isinstance(val, (list, set)):
+                render_context["past_player_utterances"] = ", ".join(f"'{x}'" for x in list(val))
+                
         if "allowed_emotions" in render_context:
             val = render_context["allowed_emotions"]
             if isinstance(val, (list, set)):

@@ -1,5 +1,26 @@
 # Handoff
 
+## 2026-06-17 Developer A 기내 스몰토크 적응형 진단(Adaptive Diagnostic) 연동 구현 완료
+
+Developer A는 [CR-B-SMALLTALK] 변경 요청에 맞춰 기내 스몰토크 단일 self-loop 진단 노드 `FLIGHT_A_001_SEATMATE_SMALLTALK` 및 `smalltalk_diagnostic` 진단 모드에 대응하는 NPC 대사 생성 및 가드 제어 구현을 완료했습니다.
+
+- **프롬프트 템플릿 개정**:
+  - [npc_dialogue_prompt.md](file:///c:/5th_project/pj05_Murphy/backend/app/prompts/npc_dialogue_prompt.md) 및 [npc_dialogue_prompt.short.md](file:///c:/5th_project/pj05_Murphy/backend/app/prompts/npc_dialogue_prompt.short.md)에 진단 전용 Jinja2 조건 블록을 추가했습니다.
+  - `{competency}_{topic}` 의도 태그 발화 금지, 자연스러운 반응-연결 구조 강제, 길이 미러링(`length_target`), 화제 전환 pivot(`topic_switch`) 적용 및 대화 메모리(`discussed_topics`, `past_player_utterances`)를 통한 중복 방지 규칙을 명시했습니다.
+  - 흐름 일관성 검증을 위해 `llm_reason`에 `[COHERENT]` / `[NON-SEQUITUR]` 태그 지시를 주었습니다.
+- **LLM 클라이언트 및 페이로드 연동**:
+  - [npc_llm_client.py](file:///c:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_llm_client.py)에 대화 메모리 리스트 포맷팅을 추가했습니다.
+  - [npc_dialogue_agent.py](file:///c:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py)에서 OpenKB 세션 이력을 로드하여 다룬 화제 및 발화 내역을 `llm_payload`에 주입했습니다.
+- **가드 우회 및 Coherence Guard 구현**:
+  - [npc_dialogue_agent.py](file:///c:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py)에서 진단 모드일 때 `missing_followup_question` 검사를 우회하여 반응 전용(reaction-only) 턴을 허용했습니다.
+  - 반응 없는 맨 질문 및 비연결 턴(llm_reason의 태그 기반)을 reject하는 Coherence Guard를 신설했습니다.
+  - `topic_switch=True`일 때 전환구가 없을 시 후처리로 자동 주입되도록 안전 보정 장치를 적용했습니다.
+- **질문 합성 스킵 및 중립 폴백 구축**:
+  - [npc_dialogue_agent.py](file:///c:/5th_project/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py)에서 진단 모드 시 `synthesize_fallback_next_question`을 스킵해 고정 질문 합성을 비활성화했습니다.
+  - [developer_a_fallback_service.py](file:///c:/5th_project/pj05_Murphy/backend/app/services/service_a/developer_a_fallback_service.py)에서 에러 발생 시 고정 사다리로 회귀하지 않고 **generic 중립 응답 목록**에서 랜덤으로 선택하여 대사를 생성하도록 폴백을 보완하고 피드백을 중립형으로 설정했습니다.
+- **검증 완료**:
+  - [test_developer_a_npc_dialogue.py](file:///c:/5th_project/pj05_Murphy/backend/tests/test_developer_a_npc_dialogue.py)에 5종의 신규 테스트를 추가하였으며, `uv run pytest backend/tests` 명령 결과 283개 전체 테스트의 성공 통과를 완료했습니다.
+
 ## 2026-06-17 Developer B 기내 스몰토크 적응형 진단(Adaptive Diagnostic, C안) 통합 및 테스트 갱신 완료
 
 Developer B는 기내 스몰토크를 적응형 진단(C안)으로 전환하는 작업계획에 맞춰 외부 연동 테스트 및 잔여 노드 정리에 따른 테스트 오작동 문제를 해결하고 전체 검증을 완료했습니다.

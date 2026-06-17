@@ -48,6 +48,8 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
     next_action = normalized.get("next_action") or ""
     npc_role = normalized.get("npc_role", "")
     
+    purpose = normalized.get("dialogue_purpose") or ""
+    
     if transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER":
         if npc_role == "seatmate":
             text = "Enjoy your trip!"
@@ -59,6 +61,18 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
             text = "You're all set. Have a nice day."
         else:
             text = "You're all set."
+    elif purpose == "smalltalk_diagnostic":
+        import random
+        generic_neutral_responses = [
+            "I see. Tell me more about that.",
+            "That sounds interesting. Go on.",
+            "Oh, really? That's good to know.",
+            "I understand. What else can you tell me?",
+            "Interesting. Let's keep talking.",
+            "Right, I get what you mean.",
+            "I hear you. Let's move forward."
+        ]
+        text = random.choice(generic_neutral_responses)
     elif surface_goal == "explain_random_customs_item":
         random_item = normalized.get("random_customs_item") or ""
         if random_item:
@@ -77,7 +91,9 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
 
     # 플레이어에게 제시될 한국어 피드백(Feedback) 내용을 가져오거나 기본 오류 안내 문구로 보정합니다.
     default_feedback = "의미는 전달됐습니다. 조금 더 자연스럽게 말해 봅시다."
-    if npc_role == "seatmate":
+    if purpose == "smalltalk_diagnostic":
+        default_feedback = "자유롭게 스몰토크를 이어가고 있습니다. 계속 대화를 나누어 보세요."
+    elif npc_role == "seatmate":
         default_feedback = "친절하게 답변해 주었어요. 더 자연스럽게 표현해 볼까요?"
     elif npc_role in {"customs_officer", "security_officer"}:
         default_feedback = "세관 질문에 적절히 대답했어요. 더 명확하게 표현해 볼까요?"

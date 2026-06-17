@@ -721,3 +721,225 @@ def test_emotion_based_tts_parameter_mapping(monkeypatch) -> None:
     assert req.provider_options["style"] == 0.20
     assert req.provider_options["speed"] == 0.95
     assert req.provider_options["similarity_boost"] == 0.85
+
+
+def test_smalltalk_diagnostic_bypasses_missing_question_guard() -> None:
+    class FlatDialogueLLMClient:
+        model = "fake-model"
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Arabella",
+                "npc_text": "I see. Let's talk about it.",  # No question
+                "tts_text": "I see. Let's talk about it.",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "joy",
+                "stability": 0.75,
+                "style": 0.45,
+                "speed": 1.0,
+                "similarity_boost": 0.85,
+                "llm_reason": "[COHERENT] Reaction-only statement for testing",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "I am traveling alone.",
+            "node_context": {"recommended_expression": "I am traveling by myself."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+            "dialogue_directive": {"purpose": "smalltalk_diagnostic"},
+            "dialogue_seed": {
+                "surface_goal": "ask_companion_or_visit_plan"
+            }
+        },
+        use_llm=True,
+        llm_client=FlatDialogueLLMClient(),
+    )
+    
+    assert result["npc_text"] == "I see. Let's talk about it."
+    assert result["fallback"]["used"] is False
+
+
+def test_smalltalk_diagnostic_triggers_coherence_guard_for_naked_question() -> None:
+    class NakedQuestionLLMClient:
+        model = "fake-model"
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Arabella",
+                "npc_text": "What is your purpose?",  # Naked question (first sentence ends with ?)
+                "tts_text": "What is your purpose?",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "joy",
+                "stability": 0.75,
+                "style": 0.45,
+                "speed": 1.0,
+                "similarity_boost": 0.85,
+                "llm_reason": "[COHERENT] Naked question without reaction",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "I am traveling alone.",
+            "node_context": {"recommended_expression": "I am traveling by myself."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+            "dialogue_directive": {"purpose": "smalltalk_diagnostic"},
+            "dialogue_seed": {
+                "surface_goal": "ask_companion_or_visit_plan"
+            }
+        },
+        use_llm=True,
+        llm_client=NakedQuestionLLMClient(),
+    )
+    
+    # Should fall back due to coherence guard (naked question)
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "coherence_violation_naked_question"
+    assert result["fallback"]["used"] is True
+
+
+def test_smalltalk_diagnostic_triggers_coherence_guard_for_non_sequitur() -> None:
+    class NonSequiturLLMClient:
+        model = "fake-model"
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Arabella",
+                "npc_text": "Oh, that's nice. What are you going to do?",
+                "tts_text": "Oh, that's nice. What are you going to do?",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "joy",
+                "stability": 0.75,
+                "style": 0.45,
+                "speed": 1.0,
+                "similarity_boost": 0.85,
+                "llm_reason": "[NON-SEQUITUR] Random statement test",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "I am traveling alone.",
+            "node_context": {"recommended_expression": "I am traveling by myself."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+            "dialogue_directive": {"purpose": "smalltalk_diagnostic"},
+            "dialogue_seed": {
+                "surface_goal": "ask_companion_or_visit_plan"
+            }
+        },
+        use_llm=True,
+        llm_client=NonSequiturLLMClient(),
+    )
+    
+    # Should fall back due to coherence guard (non-sequitur)
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "coherence_violation_non_sequitur"
+    assert result["fallback"]["used"] is True
+
+
+def test_smalltalk_diagnostic_fallback_uses_generic_neutral_responses() -> None:
+    class FailingLLMClient:
+        model = "failing-model"
+        def generate(self, payload: dict) -> dict:
+            from backend.app.agents.agent_a.npc_llm_client import NPCDialogueLLMUnavailable
+            raise NPCDialogueLLMUnavailable("Test fail")
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello.",
+            "node_context": {"recommended_expression": "Nice to meet you."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+            "dialogue_directive": {"purpose": "smalltalk_diagnostic"},
+            "dialogue_seed": {
+                "surface_goal": "ask_companion_or_visit_plan"
+            }
+        },
+        use_llm=True,
+        llm_client=FailingLLMClient(),
+    )
+    
+    generic_neutral_responses = [
+        "I see. Tell me more about that.",
+        "That sounds interesting. Go on.",
+        "Oh, really? That's good to know.",
+        "I understand. What else can you tell me?",
+        "Interesting. Let's keep talking.",
+        "Right, I get what you mean.",
+        "I hear you. Let's move forward."
+    ]
+    
+    assert result["npc_text"] in generic_neutral_responses
+    assert result["feedback_kr"] == "자유롭게 스몰토크를 이어가고 있습니다. 계속 대화를 나누어 보세요."
+
+
+def test_smalltalk_diagnostic_handles_topic_switch_and_length_target() -> None:
+    class OkLLMClient:
+        model = "fake-model"
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Arabella",
+                "npc_text": "I see. Let's keep going.",  # No pivot initially
+                "tts_text": "I see. Let's keep going.",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "joy",
+                "stability": 0.75,
+                "style": 0.45,
+                "speed": 1.0,
+                "similarity_boost": 0.85,
+                "llm_reason": "[COHERENT] Valid dialogue response",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Yes.",
+            "node_context": {"recommended_expression": "Yes, it is."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "topic_switch": True,
+                "length_target": 8
+            },
+            "dialogue_seed": {
+                "surface_goal": "ask_companion_or_visit_plan"
+            }
+        },
+        use_llm=True,
+        llm_client=OkLLMClient(),
+    )
+    
+    # Topic switch True should trigger post-processing pivot addition
+    assert result["npc_text"].startswith("Anyway, ")
+    assert result["tts_text"].startswith("Anyway, ")
+
