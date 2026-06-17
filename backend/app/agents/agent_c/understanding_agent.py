@@ -1081,6 +1081,11 @@ def _build_fallback_trace(
     fallback_output: UnderstandingOutput,
 ) -> dict[str, Any]:
     error_type = error.__class__.__name__
+    error_details = _exception_details(
+        error,
+        phase="understanding_llm",
+        tool_name="understanding_llm_client.analyze",
+    )
     return {
         "mode": "fallback",
         "model_name": model_name,
@@ -1097,9 +1102,28 @@ def _build_fallback_trace(
                 "input_summary": _understanding_input_summary(player_text, node_context),
                 "error": str(error),
                 "error_type": error_type,
+                "error_details": error_details,
                 "output_summary": _understanding_output_summary(fallback_output),
             }
         ],
+    }
+
+
+def _exception_details(error: Exception, *, phase: str, tool_name: str) -> dict[str, str]:
+    """예외를 C Understanding 로그에서 재사용할 수 있는 구조로 정리합니다.
+
+    초보자용 설명:
+    로그에 `ValueError` 같은 타입만 남으면 다음 사람이 원인을 다시 재현해야
+    합니다. 여기서는 실패 타입, 실제 메시지, 실패 단계, 도구 이름을 한 묶음으로
+    남겨서 LLM 스키마 문제인지, 네트워크 문제인지, 후처리 문제인지 빠르게
+    구분할 수 있게 합니다.
+    """
+
+    return {
+        "error_type": error.__class__.__name__,
+        "error_message": str(error),
+        "phase": phase,
+        "tool_name": tool_name,
     }
 
 

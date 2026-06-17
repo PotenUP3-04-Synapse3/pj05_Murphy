@@ -3604,3 +3604,52 @@ Verification:
 
 - `uv run pytest backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_next_question_seed_without_generic_recast_in_llm_mode backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_npc_context_to_voice_builder backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata -q`
   passed.
+
+## 2026-06-17 Developer C Structured Failure Logging
+
+Developer C investigated a runtime case where Developer A's NPC dialogue
+AgentRun showed `fallback_used=true` and `llm.reason="ValueError"` without the
+actual exception message. The observable root cause was inside A's LLM dialogue
+generation path, but the precise A-owned failure condition could not be
+confirmed because the AgentRun stored only the exception type.
+
+Changed C-owned files:
+
+- `backend/app/middleware/middleware_c/developer_c_agent_run_middleware.py`
+- `backend/app/tools/tool_c/developer_c_graph_tools.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/tests/test_developer_c_langgraph_orchestrator.py`
+- `backend/tests/test_understanding_agent.py`
+- `docs/contracts/change_requests.md`
+- `docs/handoff.md`
+
+Behavior added:
+
+- Failed Developer C LangGraph runs now write a structured `error_details`
+  block on the failed AgentRun event and in `summary.output.error_details`.
+- Understanding Agent LLM fallback traces now include `error_details` with
+  `error_type`, `error_message`, `phase`, and `tool_name`.
+- The extra details are sanitized and do not include API keys, raw audio, or
+  full payload dumps.
+
+Cross-team request:
+
+- Added `docs/contracts/change_requests.md` request asking Developer A and
+  Developer B to record structured `error_details` whenever their own tools,
+  LLM calls, validators, or fallback paths fail.
+- Developer A's highest-priority follow-up is to expand the current
+  `llm.reason="ValueError"` output with the exact sanitized exception message
+  from the NPC dialogue LLM path.
+- The same change request now restates the `candidate_text` boundary:
+  `candidate_text` is deprecated A-side normalized input from B's old
+  `npc_recast_line_candidate`; A should not consume it as live dialogue, B
+  should not rely on it for NPC wording, and C continues stripping
+  B-authored dialogue candidates before the A-facing payload.
+
+Verification:
+
+- `uv run pytest backend/tests/test_developer_c_langgraph_orchestrator.py::test_developer_c_failed_agent_run_records_structured_error_details backend/tests/test_understanding_agent.py::test_understanding_agent_falls_back_to_rule_mode_when_llm_output_is_forbidden -q`
+  passed.
+- `uv run pytest -q` passed: 279 passed, 1 warning.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed: no issues found in 118 source files.

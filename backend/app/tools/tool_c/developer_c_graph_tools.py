@@ -642,11 +642,17 @@ class DeveloperCGraphTools:
             return
 
         agent_run = self.active_agent_run
+        error_details = _exception_details(
+            exc,
+            phase="developer_c_langgraph",
+            tool_name=DEVELOPER_C_GRAPH_NAME,
+        )
         self.agent_run_middleware.record_event(
             agent_run,
             event="agent_end",
             status="failed",
             error=str(exc),
+            error_details=error_details,
         )
         trace = getattr(self.understanding_agent, "last_trace", {})
         self.agent_run_middleware.complete_and_append(
@@ -654,7 +660,11 @@ class DeveloperCGraphTools:
             status="failed",
             summary={
                 "input": _request_input_summary(request),
-                "output": {"error": str(exc), "error_type": exc.__class__.__name__},
+                "output": {
+                    "error": str(exc),
+                    "error_type": exc.__class__.__name__,
+                    "error_details": error_details,
+                },
                 "fallback_used": _understanding_fallback_used(trace),
                 "audio_url": None,
             },
@@ -937,6 +947,24 @@ def _response_summary(response: UnrealResponse) -> dict[str, Any]:
 
 def _understanding_fallback_used(trace: dict[str, Any]) -> bool:
     return bool(trace.get("fallback_used"))
+
+
+def _exception_details(exc: Exception, *, phase: str, tool_name: str) -> dict[str, str]:
+    """예외를 AgentRun에 남길 수 있는 안전한 디버깅 정보로 바꿉니다.
+
+    초보자용 설명:
+    예외 객체 전체를 그대로 저장하면 너무 길거나 민감한 값이 섞일 수 있습니다.
+    그래서 C 로그에는 실패 타입, 사람이 읽을 수 있는 메시지, 실패 단계, 도구
+    이름만 남깁니다. 이 네 값만 있어도 어느 레이어가 실패했는지 바로 추적할
+    수 있습니다.
+    """
+
+    return {
+        "error_type": exc.__class__.__name__,
+        "error_message": str(exc),
+        "phase": phase,
+        "tool_name": tool_name,
+    }
 
 
 def _agent_run_model_usage(trace: dict[str, Any]) -> dict[str, Any] | None:

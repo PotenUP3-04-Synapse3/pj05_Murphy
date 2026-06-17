@@ -150,6 +150,12 @@ def test_understanding_agent_falls_back_to_rule_mode_when_llm_output_is_forbidde
     assert agent.last_trace["fallback_used"] is True
     assert agent.last_trace["tool_calls"][0]["status"] == "failed"
     assert agent.last_trace["tool_calls"][0]["error_type"] == "UnderstandingLLMUnavailable"
+    assert agent.last_trace["tool_calls"][0]["error_details"] == {
+        "error_type": "UnderstandingLLMUnavailable",
+        "error_message": "Understanding LLM returned forbidden keys: next_node_id",
+        "phase": "understanding_llm",
+        "tool_name": "understanding_llm_client.analyze",
+    }
 
 
 def test_understanding_agent_logs_llm_failure_before_rule_fallback(caplog) -> None:
