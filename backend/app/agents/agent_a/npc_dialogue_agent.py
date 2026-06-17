@@ -371,6 +371,15 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "length_target": payload.get("dialogue_directive", {}).get("length_target"),
             "discussed_topics": discussed_topics,
             "past_player_utterances": past_player_utterances,
+            
+            # Eokkka / Challenge 관련 변수들
+            "assigned_visit_location": normalized.get("assigned_visit_location", ""),
+            "assigned_visit_location_ko": normalized.get("assigned_visit_location_ko", ""),
+            "visit_location_difficulty": normalized.get("visit_location_difficulty", 0),
+            "visit_location_suspicion_reason": normalized.get("visit_location_suspicion_reason", ""),
+            "random_customs_item": normalized.get("random_customs_item", ""),
+            "random_customs_item_difficulty": normalized.get("random_customs_item_difficulty", 0),
+            "random_customs_item_suspicion_reason": normalized.get("random_customs_item_suspicion_reason", ""),
         }
 
         # [4단계] 랭체인 1.0+ 규격에 부합하도록 invoke 또는 generate 호출을 수행합니다.

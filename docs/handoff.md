@@ -1,5 +1,26 @@
 # Handoff
 
+## 2026-06-17 Developer A: CR-B-EOKKKA NPC 트집 대사 구현 완료
+
+Developer A 는 CR-B-EOKKKA(억까 장소·수화물 레벨별 배정)의 Dev A 측 후속 작업을 완료했습니다. B 가 작성한 `pick_location`/`pick_customs_item` 결과가 C 어댑터를 통해 `dialogue_seed`/`game_state` 로 forward 된 상태에서, A 가 그 메타 의도대로 NPC 트집 대사를 LLM 으로 생성하고 입국신고서 장소명과 동일 지칭을 유지합니다.
+
+Changed:
+
+- `developer_a_input_service.py`: dialogue_seed 의 신규 필드(`assigned_visit_location`, `assigned_visit_location_ko`, `visit_location_difficulty`, `visit_location_suspicion_reason`) 를 normalize 단계에서 추출.
+- `npc_dialogue_agent.py`: 위 필드를 `llm_payload` 에 명시적 키로 주입.
+- `prompts/npc_dialogue_prompt.md`, `prompts/npc_dialogue_prompt.short.md`: SUSPICION MODE Jinja2 블록 신설 — assigned_visit_location verbatim 사용 강제, 고정 질문 모방 금지, 난이도별 톤 가이드, 예시 2개.
+- `developer_a_fallback_service.py`: LLM 실패 시 폴백 분기에 assigned_visit_location / random_customs_item 시드 응답 추가. generic "Okay. Please continue." 사용 빈도 감소.
+- `test_developer_a_npc_dialogue.py`: 신규 테스트 4종 (페이로드 전달, 폴백 시드 2종, default 회귀).
+
+Verification:
+
+- `uv run pytest backend/tests`: PASS
+- `uv run ruff check .`: PASS
+- `uv run mypy .`: PASS
+- `/respond-dialog` 수동 회귀: IMM 진입 첫 턴에서 NPC 가 assigned_visit_location 을 verbatim 으로 언급함을 확인.
+
+B/C 영역 0 수정. CR-B-EOKKKA 의 Dev A 측 항목 완료. Unreal 측 (입국신고서 UI 장소 표시 / BAG_006 수화물 reveal) 은 별도 owner 작업.
+
 ## 2026-06-17 Developer C Integrated: Eokkka (Accusation Challenge) Location and Customs Item Assignment
 
 Developer C integrated Developer B's challenge tables and pick service logic into the orchestration layer.

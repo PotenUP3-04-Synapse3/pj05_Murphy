@@ -943,3 +943,99 @@ def test_smalltalk_diagnostic_handles_topic_switch_and_length_target() -> None:
     assert result["npc_text"].startswith("Anyway, ")
     assert result["tts_text"].startswith("Anyway, ")
 
+
+class _CapturingLLMClient:
+    model = "fake-model"
+
+    def __init__(self, captured: dict):
+        self.captured = captured
+
+    def generate(self, payload: dict) -> dict:
+        self.captured["payload"] = payload
+        return {
+            "speaker": "Officer Hale",
+            "npc_text": "I see you stay at MGM Grand Las Vegas.",
+            "tts_text": "I see you stay at MGM Grand Las Vegas.",
+            "feedback_kr": "Good.",
+            "tone": "formal_neutral",
+            "animation": "move",
+            "npc_emotion": "joy",
+            "stability": 0.75,
+            "style": 0.45,
+            "speed": 1.0,
+            "similarity_boost": 0.85,
+            "llm_reason": "testing capture",
+            "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+        }
+
+
+def _eokkka_payload(
+    assigned_visit_location: str = "",
+    visit_location_suspicion_reason: str = "",
+    visit_location_difficulty: int = 0,
+    random_customs_item: str = "",
+) -> dict:
+    return {
+        "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+        "node_id": "IMM_002_PURPOSE",
+        "player_text": "I am traveling.",
+        "node_context": {
+            "npc_question": "What is the purpose of your visit?",
+            "recommended_expression": "I'm here for tourism.",
+        },
+        "evaluation_summary": {"task_success": True, "clarity": 0.9},
+        "level_hint": {"english_level": "beginner"},
+        "in_game_feedback": {"npc_recast_line_candidate": None},
+        "branch": {"branch_type": "success"},
+        "dialogue_seed": {
+            "assigned_visit_location": assigned_visit_location,
+            "visit_location_suspicion_reason": visit_location_suspicion_reason,
+            "visit_location_difficulty": visit_location_difficulty,
+            "random_customs_item": random_customs_item,
+        },
+        "game_state": {
+            "assigned_visit_location": assigned_visit_location,
+            "visit_location_suspicion_reason": visit_location_suspicion_reason,
+            "visit_location_difficulty": visit_location_difficulty,
+            "random_customs_item": random_customs_item,
+        }
+    }
+
+
+def test_dialogue_agent_includes_assigned_visit_location_in_prompt(monkeypatch):
+    """CR-B-EOKKKA: dialogue_seed 의 assigned_visit_location 이 LLM 페이로드에 그대로 전달됨."""
+    payload = _eokkka_payload(
+        assigned_visit_location="MGM Grand Las Vegas",
+        visit_location_suspicion_reason="luxury_hotel_at_business_trip",
+        visit_location_difficulty=10,
+    )
+    captured = {}
+    monkeypatch.setattr(
+        "backend.app.agents.agent_a.npc_dialogue_agent.build_npc_dialogue_llm_client_from_environment",
+        lambda: _CapturingLLMClient(captured),
+    )
+    generate_npc_dialogue_from_level_design(payload, use_llm=True)
+    assert "MGM Grand Las Vegas" in str(captured.get("payload", {}))
+
+
+def test_dialogue_agent_fallback_seeds_assigned_visit_location():
+    """LLM 실패 시 폴백이 generic 이 아닌 assigned_visit_location 시드 응답."""
+    payload = _eokkka_payload(assigned_visit_location="MGM Grand Las Vegas")
+    result = generate_npc_dialogue_from_level_design(payload, use_llm=False)
+    # 룰베이스 시드 시점에 MGM Grand Las Vegas 가 텍스트에 포함되어야 함
+    assert "MGM Grand Las Vegas" in result["npc_text"]
+
+
+def test_dialogue_agent_fallback_seeds_customs_item():
+    """customs item 시드 폴백."""
+    payload = _eokkka_payload(random_customs_item="red ginseng box")
+    result = generate_npc_dialogue_from_level_design(payload, use_llm=False)
+    assert "red ginseng" in result["npc_text"].lower()
+
+
+def test_dialogue_agent_no_suspicion_meta_uses_default_fallback():
+    """assigned_visit_location 도 customs_item 도 없으면 기존 default 폴백 유지."""
+    payload = _eokkka_payload()
+    result = generate_npc_dialogue_from_level_design(payload, use_llm=False)
+    assert result["npc_text"]  # 기존 동작 회귀 보호
+
