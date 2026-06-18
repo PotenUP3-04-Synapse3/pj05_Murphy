@@ -36,10 +36,12 @@ from backend.app.schemas.game_turn import (
     RecordedErrorSummary,
     ScenarioState,
     TransitionContext,
+    TurnHistoryEntry,
     TurnTimingMs,
     UnderstandingOutput,
     UnrealResponse,
 )
+from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader
 from backend.app.services.service_c.logging_service import LoggingService
 from backend.app.services.service_c.openkb_service import OpenKBService
 from backend.app.services.service_c.response_builder import ResponseBuilder
@@ -126,6 +128,7 @@ class DeveloperCGraphTools:
         response_builder: ResponseBuilder | None = None,
         validator: Validator | None = None,
         agent_run_middleware: DeveloperCAgentRunMiddleware | None = None,
+        session_record_reader: OpenKBFinalResultRecordReader | None = None,
         agent_run_root: Path | None = None,
     ) -> None:
         self.stt_service = stt_service or WhisperLargeV3TurboSttService()
@@ -137,6 +140,7 @@ class DeveloperCGraphTools:
         self.response_builder = response_builder or ResponseBuilder()
         self.validator = validator or Validator()
         self.agent_run_middleware = agent_run_middleware or DeveloperCAgentRunMiddleware(agent_run_root)
+        self.session_record_reader = session_record_reader or OpenKBFinalResultRecordReader()
         self.active_agent_run: dict[str, Any] | None = None
         self.structured_tools: dict[str, StructuredTool] = self._build_structured_tools()
 
@@ -422,6 +426,12 @@ class DeveloperCGraphTools:
             game_state,
             dev_b_output.dialogue_seed,
         )
+        dialogue_history = _sync_dialogue_history_to_dialogue_seed(
+            self.session_record_reader.read_session_records(request.turn.session.session_id),
+            dev_b_output.dialogue_seed,
+            current_request_id=request.turn.request_id,
+            current_turn_index=request.turn.session.turn_index,
+        )
 
         self.agent_run_middleware.record_event(
             agent_run,
@@ -440,6 +450,7 @@ class DeveloperCGraphTools:
                     if challenge_context is not None
                     else None
                 ),
+                "dialogue_history_count": len(dialogue_history),
             },
         )
         return {
@@ -775,22 +786,21 @@ def _sync_challenge_context_to_dialogue_seed(
     if dialogue_seed is None:
         return None
 
+    _clear_dialogue_seed_challenge_fields(dialogue_seed)
+
     challenge_context: ChallengeContext | None = None
-    if game_state.random_customs_item is not None:
+    suspicion_scope = dialogue_seed.suspicion_scope or "none"
+    if suspicion_scope == "declaration" and game_state.random_customs_item is not None:
         item = game_state.random_customs_item
         challenge_context = ChallengeContext(
             challenge_type="customs_item",
-            assigned_visit_location=game_state.assigned_visit_location,
-            assigned_visit_location_ko=game_state.assigned_visit_location_ko,
-            visit_location_difficulty=game_state.visit_location_difficulty,
-            visit_location_suspicion_reason=game_state.visit_location_suspicion_reason,
             item_id=item.item_id,
             item_name=item.item_name,
             item_category=item.item_category,
             item_difficulty=item.difficulty,
             item_suspicion_reason=item.suspicion_reason,
         )
-    elif game_state.assigned_visit_location:
+    elif suspicion_scope == "location" and game_state.assigned_visit_location:
         challenge_context = ChallengeContext(
             challenge_type="visit_location",
             assigned_visit_location=game_state.assigned_visit_location,
@@ -816,6 +826,120 @@ def _sync_challenge_context_to_dialogue_seed(
     dialogue_seed.item_suspicion_reason = challenge_context.item_suspicion_reason
 
     return challenge_context
+
+
+def _clear_dialogue_seed_challenge_fields(dialogue_seed: DialogueSeed) -> None:
+    """scope가 꺼진 노드에서 예전 flat 필드가 A의 트집 모드를 켜지 않도록 비웁니다."""
+
+    dialogue_seed.challenge_context = None
+    dialogue_seed.assigned_visit_location = None
+    dialogue_seed.assigned_visit_location_ko = None
+    dialogue_seed.visit_location_difficulty = None
+    dialogue_seed.visit_location_suspicion_reason = None
+    dialogue_seed.item_id = None
+    dialogue_seed.item_name = None
+    dialogue_seed.item_category = None
+    dialogue_seed.item_difficulty = None
+    dialogue_seed.item_suspicion_reason = None
+
+
+def _sync_dialogue_history_to_dialogue_seed(
+    records: list[dict[str, Any]],
+    dialogue_seed: DialogueSeed | None,
+    *,
+    current_request_id: str,
+    current_turn_index: int,
+    max_entries: int = 5,
+) -> list[TurnHistoryEntry]:
+    """OpenKB 세션 레코드에서 최근 대화 요약을 만들어 DialogueSeed에 붙입니다.
+
+    초보자용 설명:
+    Developer B가 매 턴 남긴 OpenKB 레코드는 다음 턴에서 C가 읽을 수 있는 단기기억
+    저장소 역할을 합니다. C는 현재 턴 레코드는 제외하고, 직전 턴들만 짧게 압축해서
+    A가 반복 질문을 피할 수 있도록 전달합니다.
+    """
+
+    if dialogue_seed is None:
+        return []
+
+    history_records = [
+        record
+        for record in records
+        if _is_previous_history_record(
+            record,
+            current_request_id=current_request_id,
+            current_turn_index=current_turn_index,
+        )
+    ]
+    entries = [_turn_history_entry(record) for record in history_records[-max_entries:]]
+    dialogue_seed.dialogue_history = entries
+    return entries
+
+
+def _is_previous_history_record(
+    record: dict[str, Any],
+    *,
+    current_request_id: str,
+    current_turn_index: int,
+) -> bool:
+    if str(record.get("request_id") or "") == current_request_id:
+        return False
+
+    record_turn_index = _int_or_none(record.get("turn_index"))
+    if record_turn_index is not None and record_turn_index >= current_turn_index:
+        return False
+
+    return bool(record.get("node_id") or record.get("player_text"))
+
+
+def _turn_history_entry(record: dict[str, Any]) -> TurnHistoryEntry:
+    return TurnHistoryEntry(
+        node_id=str(record.get("node_id") or ""),
+        player_text_preview=_preview(str(record.get("player_text") or "")),
+        npc_text_preview=_preview(_history_npc_text(record)),
+        filled_slots=_history_filled_slots(record),
+    )
+
+
+def _history_npc_text(record: dict[str, Any]) -> str:
+    npc = record.get("npc")
+    if isinstance(npc, dict):
+        for key in ("text", "npc_text", "last_npc_message"):
+            value = npc.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+
+    dialogue_seed = record.get("dialogue_seed")
+    if isinstance(dialogue_seed, dict):
+        for key in ("npc_text_preview", "surface_goal", "opening_intent"):
+            value = dialogue_seed.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+
+    return str(record.get("npc_text") or "")
+
+
+def _history_filled_slots(record: dict[str, Any]) -> dict[str, str]:
+    understanding = record.get("understanding")
+    if not isinstance(understanding, dict):
+        return {}
+
+    extracted_slots = understanding.get("extracted_slots")
+    if not isinstance(extracted_slots, dict):
+        return {}
+
+    return {
+        str(slot): str(value)
+        for slot, value in extracted_slots.items()
+        if value is not None and str(value).strip()
+    }
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _attach_langgraph_runtime_metadata(agent_run: dict[str, Any]) -> None:

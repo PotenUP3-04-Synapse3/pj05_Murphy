@@ -1,5 +1,21 @@
 # Handoff
 
+## 2026-06-18 Developer C: CR-B-CONV-C 단기기억·이해·트집 스코프 반영
+
+Developer C completed the C-owned items requested by `[CR-B-CONV-C]`.
+
+Changed:
+- `backend/app/schemas/game_turn.py`: Added `TurnHistoryEntry` and `DialogueSeed.dialogue_history` for short-term conversation memory sent to Developer A.
+- `backend/app/tools/tool_c/developer_c_graph_tools.py`: Reads recent B OpenKB session records, excludes the current turn, compresses the previous turns to player/NPC previews plus `filled_slots`, and attaches them to `dialogue_seed` before the A adapter call.
+- `backend/app/tools/tool_c/developer_c_graph_tools.py`: Updated challenge sync to respect B's `dialogue_seed.suspicion_scope`. `location` sends only visit-location context, `declaration` sends only item/declaration context, and `none` clears challenge metadata so A does not enter suspicion mode on unrelated nodes.
+- `backend/app/agents/agent_c/understanding_agent.py`: Added `item_purpose` keyword matching and free-form address recognition for `stay_location=address`; LLM mode now repairs these deterministic slots when the LLM leaves them missing.
+- `backend/tests/test_understanding_agent.py` and `backend/tests/test_preprototype_flow.py`: Added regression coverage for address repair, `item_purpose`, dialogue history payloads, and suspicion-scope gating.
+
+Verification:
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_preprototype_flow.py -q` passed: 53 passed, 1 warning.
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed: 125 source files.
+
 ## 2026-06-18 Developer B: 입국심사·세관 대화 자연스러움 복구 (대화 복구)
 
 Developer B는 입국심사~세관 대화가 무너지는 QA 회귀를 진단하고, B 단독 소유분(상태머신 무한 clarify 루프, 시나리오 노드 참조 무결성, 신고검사 노드 잔재)을 해결했다.
