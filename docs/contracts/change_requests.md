@@ -3,6 +3,115 @@
 Cross-owner change requests are listed below. Status lines describe the current
 repository state as of the latest handoff entry.
 
+## Change Request - 2026-06-18 - [CR-B-CONV-C] 단기기억·이해·트집 스코프 (대화 복구)
+
+Status: Open.
+
+### Requested By
+
+Developer B
+
+### Affected Owner
+
+Developer C / Sean Han
+
+### Reason
+
+입국심사~세관 대화가 무너진다(같은 질문 무한 반복, 말하지 않은 정보 호출,
+갑작스런 신고품). 근본원인 중 C 소유분은 (1) 메인 시나리오에 단기기억이
+연결돼 있지 않음(`npc_dialogue_agent` 히스토리는 smalltalk 전용), (2) 이해
+에이전트가 `item_purpose`/주소를 못 채워 needs_clarification가 고정됨,
+(3) 트집 컨텍스트가 노드 무관하게 dialogue_seed로 sync됨. B는 상태머신 무한
+루프와 노드 무결성을 단독으로 닫지만(`docs/workplan-dev-b.md` §4), 위 3건은
+C 경계다.
+
+### Proposed Contract Change
+
+- **Dev C (스키마/조립/영속화):**
+  1. `game_turn.py`에 대화 히스토리 표현 추가 — `PreviousNodeResult` 확장 또는
+     신규 `TurnHistoryEntry { node_id, player_text_preview, npc_text_preview,
+     filled_slots }`. (full raw text 대신 preview, 기존 로깅 정책 준수)
+  2. 직전 N턴(권장 3~5)을 조립해 `dialogue_seed`(또는 game_state)에
+     `dialogue_history`로 실어 A에 전달. 모든 노드에서.
+  3. game_state 라운드트립/OpenKB 세션 레코드로 턴 간 영속화.
+- **Dev C (이해 에이전트, agent_c/understanding_agent.py):**
+  4. `ALPHA_SLOT_VALUE_KEYWORDS`에 `item_purpose` 추가(B가 정의할 카테고리별
+     허용값과 정합). 예: food→("eat","eating","food","personal use"),
+     medicine→("health","for my health"), 등.
+  5. stay_location 주소 추출 — 자유형 주소 발화를 `address` 허용값으로 인식.
+- **Dev C (트집 스코프 sync):**
+  6. `_sync_challenge_context_to_dialogue_seed`가 B의 `suspicion_scope` 신호를
+     존중해 location은 location 노드, item은 declaration 노드에서만
+     challenge_context를 채우도록 게이팅.
+- **Dev C (desync 조사):**
+  7. seed `surface_goal`이 "다음 답변이 채점될 노드"와 일치하는지 B와 합동 재현.
+     node_context 전달 시점이 원인이면 C 측 수정.
+
+### Compatibility Impact
+
+히스토리 필드는 additive optional. 이해 키워드 추가는 기존 통과 케이스에
+영향 없어야 함(회귀 가드: `test_developer_a_npc_dialogue.py`, 이해 테스트).
+트집 sync 게이팅은 CR-B-EOKKKA 동작을 "관련 노드에서만"으로 좁힐 뿐 verbatim
+규칙 자체는 A 소유.
+
+### Temporary Workaround
+
+히스토리 도입 전까지 B는 상태머신 상한으로 무한 반복만 차단(부분 완화).
+
+## Change Request - 2026-06-18 - [CR-B-CONV-A] 트집 게이팅·히스토리 소비·대사 변주
+
+Status: Open.
+
+### Requested By
+
+Developer B
+
+### Affected Owner
+
+Developer A
+
+### Reason
+
+CR-B-EOKKKA로 도입된 SUSPICION MODE 블록
+(`prompts/npc_dialogue_prompt.md:80`, Rule 3 verbatim 강제)이 **할당만 되면 모든
+입국심사 노드에서 활성**된다. 그래서 방문 목적 노드인데 "Downtown Luxury Hotel"이
+박히고, 플레이어가 답하기도 전에 트집한다. 또 메인 시나리오에 히스토리가
+전달되지 않아 NPC가 이미 답한 질문을 반복하고, stern/retry 대사가 무변주로
+동일 문장만 반복한다. 트집은 핵심 재미이므로 **제거가 아니라 게이팅**이 필요하다.
+
+### Proposed Contract Change
+
+- **Dev A (트집 게이팅):**
+  1. SUSPICION MODE 활성 조건을 `assigned_visit_location` 존재가 아니라 B가
+     보내는 `dialogue_seed.suspicion_scope`(`location`/`declaration`/`none`)로
+     변경. location은 location 노드, item은 declaration 노드에서만 켠다.
+  2. 플레이어가 해당 슬롯을 *답한 후*에만 트집(선제 블러팅 금지). 히스토리의
+     플레이어 진술을 근거로 cross-turn 트집("출장이라며? 근데 고급 호텔?").
+  3. Rule 3 verbatim 강제를 완화 — 장소/품목명을 맥락상 관련될 때만 자연스럽게
+     지칭.
+- **Dev A (히스토리 소비, 전 노드):**
+  4. `llm_payload`에 C가 보내는 `dialogue_history`를 모든 purpose에서 주입.
+     `discussed_topics`/`past_player_utterances` smalltalk 전용 제약 해제.
+  5. 프롬프트에 "이미 답변된 질문 반복 금지 + 직전 턴 반응 후 진행" 가이드를
+     입국심사/세관에도 적용.
+- **Dev A (대사 변주):**
+  6. stern/retry(clarify 반복)에서 동일 문장 반복 대신 표현 변주 +
+     `recommended_expression`을 모범답안으로 1회 제시(verbatim 에코는 금지 규칙
+     유지하되 패러프레이즈 힌트 허용). 필요 시 `dialogue_policy_service.py`
+     (service_a) 보강.
+
+### Compatibility Impact
+
+트집 게이팅은 B의 `suspicion_scope` emit(`docs/workplan-dev-b.md` §4 작업4)에
+의존. 히스토리 소비는 C의 `dialogue_history`(CR-B-CONV-C)에 의존. 회귀 가드:
+`test_developer_a_npc_dialogue.py`. 입국신고서 장소 동일 지칭은 location 노드
+한정으로 유지.
+
+### Temporary Workaround
+
+없음. B의 상태머신 상한으로 무한 반복만 완화되며, 부자연스러운 verbatim 주입은
+A 반영 전까지 잔존.
+
 ## Change Request - 2026-06-17 - Deprecate and Remove do_not_generate_npc_text from Developer B Policy
 
 ### Requested By

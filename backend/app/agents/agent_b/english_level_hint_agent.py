@@ -711,6 +711,37 @@ class _EnglishLevelHintPolicyCore:
             probe = decision.selected_probe
             surface_goal = f"{probe['target_competency']}_{probe['topic_tag']}"
             cumulative_confidence = decision.cumulative_confidence
+        else:
+            # Look up the next node's goal in scenario_nodes.json to avoid off-by-one goal desync
+            next_node_id = output.branch.next_node_id if output.branch else None
+            if next_node_id:
+                import json
+                from pathlib import Path
+                possible_paths = [
+                    Path("backend/app/data/scenario_nodes.json"),
+                    Path("app/data/scenario_nodes.json"),
+                    Path(__file__).parent.parent.parent / "data" / "scenario_nodes.json"
+                ]
+                nodes_db = {}
+                for p in possible_paths:
+                    if p.exists():
+                        try:
+                            with open(p, "r", encoding="utf-8") as f:
+                                nodes_db = json.load(f).get("nodes", {})
+                            break
+                        except Exception:
+                            pass
+                next_node = nodes_db.get(next_node_id)
+                if next_node:
+                    surface_goal = next_node.get("npc_question_goal", surface_goal)
+
+        # Determine suspicion_scope
+        node_id = payload.current_node_id or ""
+        suspicion_scope: Literal["location", "declaration", "none"] = "none"
+        if "location" in node_id.lower() or "stay" in node_id.lower():
+            suspicion_scope = "location"
+        elif "declaration" in node_id.lower() or "bag_content" in node_id.lower() or "customs" in node_id.lower() or "item" in node_id.lower() or node_id.startswith("BAG_006") or node_id.startswith("IMM_006"):
+            suspicion_scope = "declaration"
 
         return DialogueSeed(
             scene=payload.scene_id,
@@ -743,6 +774,7 @@ class _EnglishLevelHintPolicyCore:
                 else "required_slots_filled_or_retry_policy_triggered"
             ),
             cumulative_confidence=cumulative_confidence,
+            suspicion_scope=suspicion_scope,
         )
 
     def _npc_role(self, payload: DevBPolicyInput) -> str:
@@ -1082,6 +1114,19 @@ class EnglishLevelHintAgent:
         Returns:
             최종 레벨 판정, 피드백 가이드, 힌트 내용 및 다음 분기 노드가 포함된 DevBPolicyOutput 객체
         """
+        # Dynamic node context override for IMM_006 and BAG_006 when random_customs_item is present
+        item = getattr(payload, "random_customs_item", None)
+        if item and item.item_name:
+            curr_node = payload.current_node_id or ""
+            if curr_node in {"IMM_006_DECLARATION_CHECK", "IMM_006_RETRY_DECLARATION", "IMM_EXTRA_005_CLARIFY_DECLARATION"}:
+                if payload.node_context and payload.node_context.npc_question:
+                    payload.node_context.npc_question = payload.node_context.npc_question.replace("{declared_item}", item.item_name)
+                if payload.node_context and payload.node_context.recommended_expression:
+                    payload.node_context.recommended_expression = payload.node_context.recommended_expression.replace("{declared_item}", item.item_name)
+            elif curr_node in {"BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM", "BAG_006_RETRY_EXPLAIN_RANDOM_CUSTOMS_ITEM", "BAG_006_CLARIFY_EXPLAIN_RANDOM_CUSTOMS_ITEM"}:
+                if payload.node_context and payload.node_context.npc_question:
+                    payload.node_context.npc_question = payload.node_context.npc_question.replace("this item", f"this {item.item_name}")
+
         from backend.app.agents.agent_b.policy_graph import build_initial_developer_b_policy_state
         from backend.app.services.service_b.bad_ending_policy import build_bad_ending_output
 

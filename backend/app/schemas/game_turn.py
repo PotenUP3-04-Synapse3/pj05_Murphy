@@ -403,6 +403,9 @@ class DialogueSeed(BaseModel):
     # A가 고정 질문 대신 억까 의도만 보고 대사를 생성하도록 넘기는 컨텍스트입니다.
     challenge_context: ChallengeContext | None = None
 
+    # B가 A에게 전달하는 의도 신호 (예: 장소 억까, 수화물 억까 등)
+    suspicion_scope: Literal["location", "declaration", "none"] | None = "none"
+
     # 기존 A/B 어댑터 호환을 위해 유지하는 펼친 형태의 억까 메타데이터입니다.
     assigned_visit_location: str | None = None
     assigned_visit_location_ko: str | None = None
