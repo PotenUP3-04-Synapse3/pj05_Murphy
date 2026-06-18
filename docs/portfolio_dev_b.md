@@ -79,6 +79,8 @@ for the next wav turn, shows a running-only stopwatch indicator, and displays
 request-scoped AgentRun token/cost totals so reused session ids or other
 developers' runtime logs do not distort the visible demo usage.
 
+On 2026-06-18, Developer B resolved dialogue loop and node desync issues (Dialogue Recovery). Implemented scenario loop-exit policies inside `scenario_state_machine.py` to prevent infinite clarify/retry loops by checking patience floor (`<= 0`) and max retries (`>= 3`) at the top of `decide()`, and reordered hint checks before unclear checks when `retry_count >= 2`. Resolved scenario nodes referential integrity issues in `scenario_nodes.json` by defining three terminal endings (`END_SECONDARY_INSPECTION`, `END_BAGGAGE_REPORT_INCOMPLETE`, `END_ALPHA_SCENARIO`) and duplicating 32 retry/clarify nodes dynamically. Generalised customs declaration (`IMM_006`) and baggage reveal (`BAG_006`) checks dynamically based on `random_customs_item`, and resolved off-by-one desync of `DialogueSeed.surface_goal` by looking up the goal of the next transition node. Also set B-side `suspicion_scope` dynamically on the dialogue seed to control Developer A's NPC suspicion mode behavior.
+
 ## Architecture
 
 The Developer B implementation is split into a small public agent and focused
@@ -126,7 +128,8 @@ B ownership.
 ## Main Modules
 
 - English Level and Hint Agent
-- Scenario State Machine
+- Scenario State Machine (with Dialogue Loop Exit & Safety Guards)
+- Scenario Node Referential Integrity & Ending Definitions
 - Level Adaptation Controller
 - Chapter 0 Immigration Node Specs
 - Rule-based Branch Policy
@@ -208,6 +211,7 @@ The branch policy is deterministic:
 - Flight diagnostic nodes intentionally advance to the next evidence node even
   for retry, clarify, hint, warning, or bad-end branch candidates so the scene
   gathers a full five-turn language sample without blocking the Alpha route.
+- The scenario state machine prevents infinite dialogue loop traps by enforcing a patience floor (`<= 0`) and retry limits (`>= 3`), transitioning the player to bad endings or forcing advancement. To prevent deadlocks, the hint checking order is reordered before unclear checks when retry count is 2 or higher.
 
 ## Node Design
 
@@ -259,6 +263,8 @@ Developer A, and Unreal adopt the broader Alpha scene orchestration.
 Each node defines required intents, required slots, optional slots, critical
 slots, allowed slot values, risk keywords, a recommended expression, Korean hint
 base text, hint policy candidates, branch candidates, and allowed next nodes.
+
+To guarantee referential integrity across the scenario nodes database, Developer B defined terminal ending nodes (`END_SECONDARY_INSPECTION`, `END_BAGGAGE_REPORT_INCOMPLETE`, and `END_ALPHA_SCENARIO`) and duplicated 32 retry/clarify nodes dynamically in `scenario_nodes.json`. This ensures that all transition allowed next nodes and branch candidates are fully resolved in the database instead of pointing to missing/ghost nodes. Additionally, the customs declaration (`IMM_006`) and baggage reveal (`BAG_006`) checks are generalized, and static references (like the legacy "small boat motor") are dynamically replaced by placeholders filled from `random_customs_item`.
 
 ## Reliability Design
 
@@ -315,9 +321,14 @@ Developer B coordination requests are recorded in
 
 ## Testing
 
-Developer B added `backend/tests/dev_b/test_developer_b_policy_engine.py`.
+Developer B added `backend/tests/dev_b/test_developer_b_policy_engine.py`, `backend/tests/dev_b/test_scenario_state_machine_loop_exit.py`, and `backend/tests/dev_b/test_scenario_nodes_referential_integrity.py`.
 
 Covered scenarios:
+
+- State machine exits loop to BAD_END or ADVANCE when retry limit (3) or patience floor (<= 0) is met.
+- Hint check is reordered before unclear check when retry count is 2 or higher to prevent deadlocks.
+- Dynamic scenario node override on question and recommended expression is applied when `random_customs_item` is present.
+- Referral integrity checks guarantee all allowed next nodes and branch candidates in `scenario_nodes.json` exist.
 
 - Clear purpose answer advances from `IMM_002_PURPOSE` to `IMM_003_DURATION`.
 - Broken English such as `Travel. New York.` and `I go travel five days` records
@@ -368,15 +379,9 @@ Covered scenarios:
 
 Latest recorded verification:
 
-- `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/dev_b/test_developer_b_agent_run_log.py -q`:
-  26 passed
-- `uv run pytest backend/tests/dev_b/test_final_result_score_policy.py backend/tests/test_final_result_payload.py backend/tests/test_preprototype_flow.py::test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response backend/tests/test_preprototype_flow.py::test_dev_a_adapter_uses_final_node_line_for_final_branch -q`:
-  9 passed, 2 warnings
-- `uv run pytest backend/tests/test_unified_agent_run_log.py -q`: 1 passed,
-  1 warning
-- `uv run pytest -q`: 187 passed, 2 warnings
-- `uv run ruff check .`: passed
-- `uv run mypy .`: passed with no issues in 91 source files.
+- `uv run pytest`: 321 passed, 1 warning (100% success)
+- `uv run ruff check .`: All checks passed!
+- `uv run mypy .`: Success: no issues found in 125 source files
 
 ## Demo Scenarios
 
@@ -405,8 +410,7 @@ Latest recorded verification:
 - Expanded Alpha B-owned scenario policy to cover five flight small-talk nodes,
   missing-bag entry at `BAG_001_NOTICE_BAG_MISSING`, and
   `ALPHA_999_FINAL_SCOREBOARD` as the dedicated final branch node.
-- Built a rule-based scenario state machine for success, retry, clarify, hint,
-  warning, bad-end, and final branch recommendations.
+- Built a rule-based scenario state machine with loop-exit policies (patience floor, max retries) to prevent infinite loops, and ordered hint checks before clarify when retry count is high.
 - Added English level and hint adaptation logic for beginner/Bronze,
   intermediate/Silver, and advanced/Gold player profiles.
 - Generated structured `state_delta`, `error_capture`,
@@ -427,9 +431,7 @@ Latest recorded verification:
 - Improved `/respond-dialog` demo diagnostics with browser-recorded wav input,
   a running-only stopwatch indicator, and request-scoped AgentRun token/cost
   totals.
-- Added focused pytest coverage for broken English, branch safety, risk
-  handling, node spec completeness, feedback/report payload generation,
-  report/dialogue seeds, Alpha route expansion, final scoreboard behavior, and
-  OpenKB write behavior.
+- Resolved dialogue and node desync bugs by dynamically mapping customs declaration (`IMM_006`) and baggage reveal (`BAG_006`) to the random customs item, and aligning `surface_goal` looking up node configurations.
+- Added focused pytest coverage for broken English, branch safety, loop-exit behaviors, node spec referential integrity, risk handling, feedback/report payload generation, and OpenKB write behavior.
 - Documented cross-owner integration requirements for the remaining Alpha scene
   runtime, final out-game report exposure, and tier-aware A/C consumption.

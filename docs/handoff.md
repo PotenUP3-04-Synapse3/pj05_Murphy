@@ -1,5 +1,22 @@
 # Handoff
 
+## 2026-06-18 Developer B: 입국심사·세관 대화 자연스러움 복구 (대화 복구)
+
+Developer B는 입국심사~세관 대화가 무너지는 QA 회귀를 진단하고, B 단독 소유분(상태머신 무한 clarify 루프, 시나리오 노드 참조 무결성, 신고검사 노드 잔재)을 해결했다.
+
+- 변경/산출물:
+  - `backend/app/services/service_b/scenario_state_machine.py`: 동일 노드 누적 retry/patience 한도 검사를 `decide()` 최상단에 배치하여 patience floor (`<= 0`) 및 retry count (`>= 3`) 도달 시 bad endings (`END_SECONDARY_INSPECTION`, `END_BAGGAGE_REPORT_INCOMPLETE`) 또는 강제 ADVANCE로 분기하도록 교정. `retry_count >= 2`인 경우 hint 검사를 unclear 검사 앞에 오도록 순서 변경. `completed_intents`가 설정된 경우 missing slots 검사를 바이패스하도록 수정.
+  - `backend/app/data/scenario_nodes.json`: 유령 노드 참조를 제거하기 위해 3종의 터미널 종료 노드를 신설하고 32개의 retry/clarify 노드를 복제해 참조 무결성(100% resolution) 확보. `IMM_006`에 남은 정적 보트모터 잔재를 제거하고 `{declared_item}` 플레이스홀더로 일반화.
+  - `backend/app/agents/agent_b/english_level_hint_agent.py`: `random_customs_item`이 제공되는 경우 `IMM_006` 및 `BAG_006` 노드의 npc_question과 recommended_expression 내 플레이스홀더를 동적 치환하도록 오버라이드. B-side `suspicion_scope`를 `"location"`, `"declaration"`, 또는 `"none"`으로 dialogue_seed에 emit하여 A측 트집 모드를 적절히 게이팅. `DialogueSeed.surface_goal` 오프바이원 버그 해결을 위해 현재 노드가 아닌 다음 목표 노드의 npc_question_goal을 조회하도록 수정.
+  - `backend/app/schemas/game_turn.py`: `DialogueSeed` 스키마에 `suspicion_scope: Literal["location", "declaration", "none"] | None = "none"` 필드 추가.
+- 신규 테스트 및 검증:
+  - `backend/tests/dev_b/test_scenario_state_machine_loop_exit.py`: 루프 탈출 정책, 힌트 우선순위 재조정, 완료 인텐트 바이패스 등의 상태머신 탈출 정책을 검증하는 유닛 테스트 6종.
+  - `backend/tests/dev_b/test_scenario_nodes_referential_integrity.py`: `scenario_nodes.json` 내 모든 분기 및 이동 대상 노드의 존재성을 확인하고 보트모터 잔재가 없음을 확인하는 무결성 테스트.
+  - `uv run pytest` (321 passed), `uv run ruff check .` (passed), `uv run mypy .` (passed, 125 source files) 성공 확인.
+- 교차 의존:
+  - `[CR-B-CONV-C]`: C가 대화 히스토리를 조립 및 영속화하고, `item_purpose` 및 주소 정규화를 강화할 수 있도록 요청.
+  - `[CR-B-CONV-A]`: A가 `suspicion_scope` 신호를 수신하여 트집 모드를 게이팅하고, 대사 표현에 변주를 줄 수 있도록 요청.
+
 ## 2026-06-17 Developer C: Improve respond-dialog Test Page Implementation
 
 Developer C completed the implementation for improving the `respond-dialog` test page (`demo/respond-dialog/index.html`) and backend orchestration helper endpoints.

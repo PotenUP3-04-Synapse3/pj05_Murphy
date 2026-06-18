@@ -310,7 +310,7 @@ def test_all_chapter_zero_nodes_define_branch_candidates_and_allowed_next_nodes(
     assert node_data["chapters"][0]["entry_node_ids"] == [
         "FLIGHT_A_001_SEATMATE_SMALLTALK",
     ]
-    assert set(node_data["nodes"]) == {
+    expected_base_nodes = {
         "FLIGHT_A_001_SEATMATE_SMALLTALK",
         "FLIGHT_999_COMPLETE",
         "IMM_001_PASSPORT",
@@ -336,6 +336,7 @@ def test_all_chapter_zero_nodes_define_branch_candidates_and_allowed_next_nodes(
         "IMM_BAD_END_VERBAL_ABUSE",
         "BAG_BAD_END_VERBAL_ABUSE",
     }
+    assert expected_base_nodes.issubset(set(node_data["nodes"]))
     for node in node_data["nodes"].values():
         allowed_next_nodes = set(node["allowed_next_nodes"])
         assert allowed_next_nodes
@@ -520,7 +521,7 @@ def test_dialogue_seed_contains_generation_metadata_without_final_npc_text(tmp_p
     assert result.dialogue_seed is not None
     assert result.dialogue_seed.scene == payload.scene_id
     assert result.dialogue_seed.npc_role == "immigration_officer"
-    assert result.dialogue_seed.surface_goal == payload.node_context.npc_question_goal
+    assert result.dialogue_seed.surface_goal == "ask_stay_duration"  # next node is IMM_003_DURATION
     assert result.dialogue_seed.hidden_assessment_goal == "estimate_user_travel_speaking_level"
     assert payload.node_context.required_slots[0] in result.dialogue_seed.required_slots
     assert payload.node_context.required_slots[0] in result.dialogue_seed.assessment_targets

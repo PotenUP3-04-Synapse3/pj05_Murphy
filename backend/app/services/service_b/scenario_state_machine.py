@@ -60,20 +60,41 @@ class ScenarioStateMachine:
         """
         self._validate_allowed_nodes(payload)
 
+        # 1. Check if the user successfully completed the turn
+        is_success = self._is_success(payload)
+
+        # 2. Enforce retry limit (3) and patience floor (<= 0) to transition to bad endings or force ADVANCE
+        if not is_success:
+            if payload.scenario_state.retry_count >= 3 or payload.scenario_state.patience <= 0:
+                # If they are out of retries or patience, force bad ending
+                return self._force_bad_end(
+                    payload,
+                    f"Patience exhausted ({payload.scenario_state.patience}) or retry limit exceeded ({payload.scenario_state.retry_count}) on failure."
+                )
+
+        # 3. Check critical risks
         risk_total = payload.scenario_state.suspicion + payload.understanding.risk_delta
         if self._is_critical_risk(payload, risk_total):
             return self._critical_fail(payload, risk_total)
 
-        if self._is_success(payload):
+        # 4. Handle success branch
+        if is_success:
             if payload.current_node_id == ALPHA_FINAL_SCOREBOARD_NODE_ID:
                 return self._success(payload, branch_type="final", next_action="FINAL_DECISION")
             return self._success(payload, branch_type="success", next_action="ADVANCE")
 
-        if self._is_unclear(payload):
-            return self._clarify(payload)
-
-        if self._should_give_hint(payload):
-            return self._hint(payload)
+        # 5. Handle clarify/hint/retry with patience/retry checks
+        # evaluate _should_give_hint before _is_unclear when retry_count >= 2
+        if payload.scenario_state.retry_count >= 2:
+            if self._should_give_hint(payload):
+                return self._hint(payload)
+            if self._is_unclear(payload):
+                return self._clarify(payload)
+        else:
+            if self._is_unclear(payload):
+                return self._clarify(payload)
+            if self._should_give_hint(payload):
+                return self._hint(payload)
 
         return self._retry(payload)
 
@@ -131,12 +152,24 @@ class ScenarioStateMachine:
         """
         플레이어의 발화 결과가 성공 의도(Intent Success)를 충족하고, 요구되는 중요 슬롯 정보가 누락되지 않았으며,
         추출된 슬롯 값들이 유효한 후보군에 포함되는지 검사합니다.
+        
+        이미 완료된 의도(completed_intents)인 경우 누락 슬롯(missing_slots)이 있더라도 정답 처리(Success)로 우회합니다.
         """
-        return (
-            payload.understanding.intent_success
-            and not payload.understanding.missing_slots
-            and not self._has_invalid_required_slot_value(payload)
-        )
+        req_intents = payload.node_context.required_intents or []
+        completed = set(payload.scenario_state.completed_intents or [])
+        has_already_completed = any(intent in completed for intent in req_intents)
+
+        if has_already_completed:
+            return (
+                payload.understanding.intent_success
+                and not self._has_invalid_required_slot_value(payload)
+            )
+        else:
+            return (
+                payload.understanding.intent_success
+                and not payload.understanding.missing_slots
+                and not self._has_invalid_required_slot_value(payload)
+            )
 
     def _is_unclear(self, payload: DevBPolicyInput) -> bool:
         """
@@ -302,7 +335,27 @@ class ScenarioStateMachine:
         """
         if "END_SECONDARY_INSPECTION" in payload.node_context.allowed_next_nodes:
             return "END_SECONDARY_INSPECTION"
+        if "END_BAGGAGE_REPORT_INCOMPLETE" in payload.node_context.allowed_next_nodes:
+            return "END_BAGGAGE_REPORT_INCOMPLETE"
         return payload.node_context.warning_next_node
+
+    def _force_bad_end(self, payload: DevBPolicyInput, reason: str) -> ScenarioDecision:
+        """
+        인내심 고갈 또는 최대 재시도 횟수 도달 시 즉시 강제 종료 분기(bad_end)로 이끄는 결정을 내립니다.
+        """
+        preferred = self._preferred_bad_end_node(payload)
+        next_node_id = self._checked_next_node(preferred, payload)
+        return ScenarioDecision(
+            verdict="FAIL",
+            branch_type="bad_end",
+            next_action="FAIL_END",
+            next_node_id=next_node_id,
+            branch_reason=reason,
+            patience_delta=0,
+            suspicion_delta=0,
+            retry_count_delta=0,
+            hint_count_delta=0,
+        )
 
     def _checked_next_node(self, preferred_next_node: str, payload: DevBPolicyInput) -> str:
         """

@@ -1103,6 +1103,7 @@ def _dev_a_payload_for_request(request: PrePrototypeRequest) -> tuple[DevADialog
             "respond_to_polite_request": "Are you visiting New York for a trip?",
             "travel_purpose_travel": "Are you visiting New York for a trip?",
             "report_missing_bag_at_service_desk": "Do you have your baggage claim tag or ticket?",
+            "ask_claim_tag_or_ticket": "Do you have your baggage claim tag or ticket?",
         }
         builder_payloads.append(payload)
         return {
@@ -1218,7 +1219,7 @@ def test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata() -> None:
     assert "do_not_generate_npc_text" not in payload["dialogue_directive"]
     assert payload["dialogue_directive"]["purpose"] == "continue_to_next_question"
     assert payload["dialogue_seed"]["npc_role"] == "baggage_service_agent"
-    assert payload["dialogue_seed"]["surface_goal"] == "report_missing_bag_at_service_desk"
+    assert payload["dialogue_seed"]["surface_goal"] == "ask_claim_tag_or_ticket"
     assert "advance_to_next_prompt" in payload["dialogue_seed"]["allowed_followup_intents"]
     assert payload["dialogue_seed"]["max_turns"] == 4
 
