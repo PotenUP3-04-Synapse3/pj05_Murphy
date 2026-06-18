@@ -449,6 +449,20 @@ def test_understanding_agent_rule_mode_recognizes_alpha_flight_and_baggage_slot_
 
     cases = [
         (
+            "CH0_03_IMMIGRATION_CHECK",
+            "IMM_004_STAY_LOCATION",
+            "I will stay at 123 Main Street in Queens.",
+            "stay_location",
+            "address",
+        ),
+        (
+            "CH0_03_IMMIGRATION_CHECK",
+            "IMM_006_DECLARATION_CHECK",
+            "It's a gift for my friend.",
+            "item_purpose",
+            "gift",
+        ),
+        (
             "CH0_04_BAGGAGE_CLAIM",
             "BAG_002_PROVIDE_CLAIM_TAG",
             "I have the tag right here.",
@@ -472,6 +486,42 @@ def test_understanding_agent_rule_mode_recognizes_alpha_flight_and_baggage_slot_
         assert output.intent_success is True
         assert output.extracted_slots == {slot_name: slot_value}
         assert output.missing_slots == []
+
+
+def test_understanding_agent_llm_mode_repairs_freeform_address_slot() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_stay_location",
+            "intent_success": False,
+            "confidence": 0.62,
+            "meaning_summary_kr": "The stay location is unclear.",
+            "emotion": "calm",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "unclear_location",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "extracted_slots": {},
+            "missing_slots": ["stay_location"],
+            "needs_clarification": True,
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text(
+        "I will stay at 123 Main Street in Queens.",
+        _location_node_context(),
+    )
+
+    assert output.intent == "state_stay_location"
+    assert output.intent_success is True
+    assert output.extracted_slots == {"stay_location": "address"}
+    assert output.missing_slots == []
+    assert agent.last_trace["postprocessing"]["slot_repair_applied"] is True
+    assert agent.last_trace["postprocessing"]["slot"] == "stay_location"
 
 
 def test_understanding_agent_rule_mode_keeps_flight_diagnostic_node_slot_neutral() -> None:

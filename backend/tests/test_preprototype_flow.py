@@ -701,10 +701,113 @@ def test_orchestrator_marks_immigration_clearance_as_baggage_scene_transition() 
     assert response.game_state.random_customs_item.difficulty is not None
     assert response.game_state.random_customs_item.suspicion_reason
     assert builder_payloads
-    challenge_context = builder_payloads[0]["dialogue_seed"]["challenge_context"]
-    assert challenge_context["challenge_type"] == "customs_item"
-    assert challenge_context["item_name"] == response.game_state.random_customs_item.item_name
-    assert challenge_context["item_suspicion_reason"] == response.game_state.random_customs_item.suspicion_reason
+    assert builder_payloads[0]["dialogue_seed"]["suspicion_scope"] == "none"
+    assert builder_payloads[0]["dialogue_seed"]["challenge_context"] is None
+
+
+def test_orchestrator_attaches_recent_dialogue_history_to_dev_a_payload() -> None:
+    session_id = "session_dialogue_history_c_bridge"
+    runtime_dir = Path("backend/runtime/openkb/dev_b")
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    jsonl_path = runtime_dir / f"{session_id}.jsonl"
+    _remove_openkb_session_records(runtime_dir, jsonl_path)
+
+    builder_payloads: list[dict[str, Any]] = []
+
+    def capture_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": "Officer Hale",
+            "npc_text": "Where exactly are you staying?",
+            "tone": "formal_neutral",
+            "animation": "officer_check_passport",
+            "feedback_kr": "Good.",
+            "tts": {
+                "audio_url": "/runtime/audio/edge/history.wav",
+            },
+        }
+
+    previous_records = [
+        {
+            "session_id": session_id,
+            "turn_index": 1,
+            "node_id": "IMM_002_PURPOSE",
+            "player_text": "I'm here for tourism.",
+            "understanding": {"extracted_slots": {"visit_purpose": "tourism"}},
+            "dialogue_seed": {"surface_goal": "ask_stay_duration"},
+        },
+        {
+            "session_id": session_id,
+            "turn_index": 2,
+            "node_id": "IMM_003_DURATION",
+            "player_text": "I will stay for five days.",
+            "understanding": {"extracted_slots": {"stay_duration": "five days"}},
+            "dialogue_seed": {"surface_goal": "ask_stay_location"},
+        },
+    ]
+
+    try:
+        with jsonl_path.open("w", encoding="utf-8") as file:
+            for record in previous_records:
+                file.write(json.dumps(record) + "\n")
+
+        turn_payload = _turn_payload()
+        turn_payload["request_id"] = "req_dialogue_history_c_bridge_0001"
+        turn_payload["session"]["session_id"] = session_id
+        turn_payload["session"]["current_node_id"] = "IMM_004_STAY_LOCATION"
+        turn_payload["session"]["turn_index"] = 3
+        turn_payload["npc"]["last_npc_message"] = "Where are you staying?"
+        turn_payload["game_state"]["current_objective"] = "State the stay location"
+        turn_payload["game_state"]["assigned_visit_location"] = "Downtown Luxury Hotel"
+        turn_payload["game_state"]["assigned_visit_location_ko"] = "다운타운 럭셔리 호텔"
+        turn_payload["game_state"]["visit_location_difficulty"] = 7
+        turn_payload["game_state"]["visit_location_suspicion_reason"] = "Luxury hotel does not match a tight budget."
+        turn_payload["client_allowed_next_nodes"] = [
+            "IMM_005_RETURN_TICKET",
+            "IMM_004_RETRY_LOCATION",
+            "IMM_EXTRA_003_CLARIFY_LOCATION",
+            "END_SECONDARY_INSPECTION",
+        ]
+        request = PrePrototypeRequest(
+            turn=UnrealTurnRequest.model_validate(turn_payload),
+            audio=MockAudioInput(
+                mock_wav_path="mock://immigration/stay_location_address.wav",
+                transcript="I will stay at 123 Main Street in Queens.",
+            ),
+        )
+        orchestrator = Orchestrator()
+        orchestrator.dev_a_client = DevANpcDialogueClient(
+            settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+            voice_output_builder=capture_voice_output_builder,
+        )
+
+        response = orchestrator.run_turn(request)
+
+        assert response.next_node_id == "IMM_005_RETURN_TICKET"
+        assert builder_payloads
+        dialogue_seed = builder_payloads[0]["dialogue_seed"]
+        assert dialogue_seed["suspicion_scope"] == "location"
+        assert dialogue_seed["challenge_context"]["challenge_type"] == "visit_location"
+        assert dialogue_seed["challenge_context"]["assigned_visit_location"] == "Downtown Luxury Hotel"
+        assert dialogue_seed["dialogue_history"] == [
+            {
+                "node_id": "IMM_002_PURPOSE",
+                "player_text_preview": "I'm here for tourism.",
+                "npc_text_preview": "ask_stay_duration",
+                "filled_slots": {"visit_purpose": "tourism"},
+            },
+            {
+                "node_id": "IMM_003_DURATION",
+                "player_text_preview": "I will stay for five days.",
+                "npc_text_preview": "ask_stay_location",
+                "filled_slots": {"stay_duration": "five days"},
+            },
+        ]
+    finally:
+        _remove_openkb_session_records(runtime_dir, jsonl_path)
 
 
 def test_orchestrator_marks_alpha_final_branch_as_scoreboard_flow() -> None:
@@ -1374,6 +1477,9 @@ def test_orchestrator_passes_random_customs_item_and_routes_customs_npc_to_devel
         "difficulty": None,
         "suspicion_reason": None,
     }
+    assert payload["dialogue_seed"]["suspicion_scope"] == "declaration"
+    assert payload["dialogue_seed"]["challenge_context"]["challenge_type"] == "customs_item"
+    assert payload["dialogue_seed"]["challenge_context"]["item_name"] == "red ginseng extract"
     assert payload["understanding"]["extracted_slots"]["customs_item_explanation"] == "medicine"
 
 

@@ -68,6 +68,13 @@ ALPHA_SLOT_VALUE_KEYWORDS: dict[str, dict[str, tuple[str, ...]]] = {
         "short_trip": ("short trip", "few days", "several days"),
         "until_date": ("until monday", "until tuesday", "until wednesday", "until thursday", "until friday"),
     },
+    "stay_location": {
+        "hotel": ("hotel", "motel", "inn", "resort"),
+        "friend_house": ("friend's house", "friend house", "with my friend", "my friend's place"),
+        "family_house": ("family house", "with my family", "my uncle", "my aunt", "parents house"),
+        "airbnb": ("airbnb", "rental apartment", "rental house"),
+        "address": ("street", "st.", "avenue", "ave", "road", "rd.", "boulevard", "blvd", "drive", "lane"),
+    },
     "interaction_repair": {
         "confirmed": ("yes", "that's right", "correct", "first time"),
         "asked_clarification": ("sorry", "what do you mean", "can you repeat"),
@@ -111,6 +118,13 @@ ALPHA_SLOT_VALUE_KEYWORDS: dict[str, dict[str, tuple[str, ...]]] = {
         "gift": ("gift", "present"),
         "medicine": ("medicine", "medication", "health", "red ginseng", "pill", "vitamin"),
         "food_for_personal_use": ("food", "snack", "personal use", "eat"),
+    },
+    "item_purpose": {
+        "personal_recreation": ("personal use", "for myself", "for me", "recreation", "vacation", "enjoy"),
+        "gift": ("gift", "present", "for my friend", "for my family"),
+        "repair_part": ("repair", "fix", "replacement part", "spare part", "part for my"),
+        "hobby_use": ("hobby", "collection", "collect", "craft", "fishing", "camera"),
+        "sports_activity": ("sports", "sport", "golf", "tennis", "exercise", "activity"),
     },
     "customs_clearance_acknowledgement": {
         "acknowledged_clearance": ("thank", "thanks", "okay", "i understand"),
@@ -445,6 +459,10 @@ def _match_alpha_allowed_slot_value(
     if _has_slot_intent_mismatch(player_text, slot_name):
         return None
 
+    # 자유형 주소는 "address"라는 단어가 없어도 번지+도로명 패턴이면 주소 답변으로 봅니다.
+    if slot_name == "stay_location" and "address" in allowed_values and _looks_like_freeform_address(player_text):
+        return "address"
+
     normalized_text = _normalize_for_keyword_match(player_text)
     slot_value_keywords = ALPHA_SLOT_VALUE_KEYWORDS.get(slot_name, {})
     for allowed_value in allowed_values:
@@ -476,6 +494,38 @@ def _normalize_for_keyword_match(value: str) -> str:
     return " ".join(value.lower().replace("_", " ").replace("-", " ").split())
 
 
+def _looks_like_freeform_address(player_text: str) -> bool:
+    """번지와 도로명이 같이 나온 자유형 주소 발화를 감지합니다.
+
+    초보자용 설명:
+    플레이어가 "address"라고 직접 말하지 않아도 "123 Main Street"처럼 숫자와
+    도로명 단어가 함께 있으면 입국심사관 질문의 `stay_location=address`로
+    처리해야 합니다. 이 함수는 그 최소 패턴만 안전하게 확인합니다.
+    """
+
+    normalized = _normalize_for_keyword_match(player_text)
+    street_words = (
+        "street",
+        "st",
+        "avenue",
+        "ave",
+        "road",
+        "rd",
+        "boulevard",
+        "blvd",
+        "drive",
+        "dr",
+        "lane",
+        "ln",
+        "way",
+        "place",
+        "pl",
+    )
+    has_number = re.search(r"\b\d{1,6}[a-z]?\b", normalized) is not None
+    has_street_word = any(re.search(rf"\b{re.escape(word)}\b", normalized) for word in street_words)
+    return has_number and has_street_word
+
+
 def _visit_purpose_summary(visit_purpose: str) -> str:
     if visit_purpose == "tourism":
         return "The player said they are visiting for tourism."
@@ -484,6 +534,16 @@ def _visit_purpose_summary(visit_purpose: str) -> str:
 
 def _stay_duration_summary(stay_duration: str) -> str:
     return f"The player clearly stated a stay duration: {stay_duration}."
+
+
+def _repair_confidence(slot_name: str) -> float:
+    """규칙 기반 slot repair가 부여할 confidence를 슬롯별로 정합니다."""
+
+    if slot_name == "visit_purpose":
+        return 0.94
+    if slot_name == "stay_duration":
+        return 0.92
+    return 0.91
 
 
 def _repair_missing_allowed_slots(
@@ -530,6 +590,20 @@ def _repair_missing_allowed_slots(
                 }
             )
 
+    generic_slot = _extract_generic_required_slot(player_text, node_context)
+    if generic_slot is not None:
+        slot_name, slot_value = generic_slot
+        if extracted_slots.get(slot_name) is None:
+            extracted_slots[slot_name] = slot_value
+            repairs.append(
+                {
+                    "source": "rule_generic_slot_classifier",
+                    "slot": slot_name,
+                    "value": slot_value,
+                    "summary": f"The player clearly answered the required slot: {slot_name}.",
+                }
+            )
+
     if not repairs:
         return output, no_repair
 
@@ -542,7 +616,7 @@ def _repair_missing_allowed_slots(
             SlotEvidence(
                 slot=repair["slot"],
                 value=repair["value"],
-                confidence=0.94 if repair["slot"] == "visit_purpose" else 0.92,
+                confidence=_repair_confidence(repair["slot"]),
                 evidence_text=repair["value"],
             )
             for repair in repairs
@@ -554,7 +628,7 @@ def _repair_missing_allowed_slots(
             "intent_success": len(missing_slots) == 0,
             "confidence": max(
                 output.confidence,
-                0.94 if primary_repair["slot"] == "visit_purpose" else 0.92,
+                _repair_confidence(primary_repair["slot"]),
             ),
             "meaning_summary_kr": primary_repair["summary"],
             "answer_relevance": "on_topic",

@@ -5,7 +5,13 @@ repository state as of the latest handoff entry.
 
 ## Change Request - 2026-06-18 - [CR-B-CONV-C] 단기기억·이해·트집 스코프 (대화 복구)
 
-Status: Open.
+Status: Resolved (Developer C implementation complete - 2026-06-18).
+
+Developer C follow-up:
+- Added `TurnHistoryEntry` and `DialogueSeed.dialogue_history` as the C-owned short-term-memory payload for Developer A.
+- Developer C now reads recent B OpenKB session records, excludes the current turn, compresses the previous turns to previews + filled slots, and forwards them to A on every node with a `dialogue_seed`.
+- Understanding now recognizes `item_purpose` keyword families and free-form street-address answers as `stay_location=address`, including LLM-mode deterministic repair when the LLM leaves the required slot missing.
+- `_sync_challenge_context_to_dialogue_seed` now respects `dialogue_seed.suspicion_scope`: `location` sends only location context, `declaration` sends only item/declaration context, and `none` clears challenge metadata before A sees it.
 
 ### Requested By
 
