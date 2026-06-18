@@ -47,6 +47,9 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
     dialogue_seed = payload.get("dialogue_seed") or {}
     game_state = payload.get("game_state") or {}
 
+    suspicion_scope = dialogue_seed.get("suspicion_scope") or "none"
+    dialogue_history = list(dialogue_seed.get("dialogue_history") or [])
+
     return {
         "node_id": _optional_text(payload.get("node_id")),
         "player_text": _optional_text(payload.get("player_text")),
@@ -105,6 +108,8 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
         ),
         "transition": payload.get("transition") or {},
         "next_action": _optional_text(payload.get("next_action") or branch.get("next_action")),
+        "suspicion_scope": _optional_text(suspicion_scope),
+        "dialogue_history": dialogue_history,
     }
 
 

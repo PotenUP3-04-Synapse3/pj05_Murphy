@@ -231,6 +231,23 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
             "tone": profanity_res["tone"],
             "npc_emotion": profanity_res["npc_emotion"],
         })
+    else:
+        # retry/clarify 분기일 경우 룰베이스 대사 변주 적용
+        branch_type = normalized.get("branch_type")
+        dialogue_history = normalized.get("dialogue_history") or []
+        surface_goal = normalized.get("dialogue_seed", {}).get("surface_goal") or ""
+        
+        if branch_type in {"retry", "clarify"} and dialogue_history:
+            last_turn = dialogue_history[-1]
+            last_npc_text = last_turn.get("npc_text_preview", "")
+            if last_npc_text:
+                current_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
+                from backend.app.services.service_a.dialogue_policy_service import get_retry_variation
+                varied_text = get_retry_variation(surface_goal, last_npc_text, current_text)
+                fallback_res["npc_text"] = varied_text
+                fallback_res["text"] = varied_text
+                if "tts_text" in fallback_res:
+                    fallback_res["tts_text"] = varied_text
         
     use_llm = state.get("use_llm", False)
     surface_goal = normalized.get("dialogue_seed", {}).get("surface_goal") or ""
@@ -316,6 +333,15 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         discussed_topics = []
         past_player_utterances = []
         
+        history = normalized.get("dialogue_history") or []
+        for h in history:
+            pt = h.get("player_text_preview")
+            if pt:
+                past_player_utterances.append(pt)
+            nt = h.get("npc_text_preview")
+            if nt:
+                discussed_topics.append(nt)
+
         if purpose == "smalltalk_diagnostic":
             from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader
             reader = OpenKBFinalResultRecordReader()
@@ -329,8 +355,9 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
                 pt = r.get("player_text")
                 if pt:
                     past_player_utterances.append(pt)
-            discussed_topics = list(dict.fromkeys(discussed_topics))
-            past_player_utterances = list(dict.fromkeys(past_player_utterances))
+                    
+        discussed_topics = list(dict.fromkeys(discussed_topics))
+        past_player_utterances = list(dict.fromkeys(past_player_utterances))
 
         incivility = payload.get("incivility") or {}
         incivility_tier = int(incivility.get("tier", 0))
@@ -373,6 +400,8 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "past_player_utterances": past_player_utterances,
             
             # Eokkka / Challenge 관련 변수들
+            "suspicion_scope": normalized.get("suspicion_scope", "none"),
+            "dialogue_history": normalized.get("dialogue_history", []),
             "assigned_visit_location": normalized.get("assigned_visit_location", ""),
             "assigned_visit_location_ko": normalized.get("assigned_visit_location_ko", ""),
             "visit_location_difficulty": normalized.get("visit_location_difficulty", 0),
