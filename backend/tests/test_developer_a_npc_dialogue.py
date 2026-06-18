@@ -1039,3 +1039,98 @@ def test_dialogue_agent_no_suspicion_meta_uses_default_fallback():
     result = generate_npc_dialogue_from_level_design(payload, use_llm=False)
     assert result["npc_text"]  # 기존 동작 회귀 보호
 
+
+from typing import Any
+
+def _payload(**kwargs: Any) -> dict[str, Any]:
+    base = _eokkka_payload(
+        assigned_visit_location=kwargs.get("assigned_visit_location", ""),
+        visit_location_suspicion_reason=kwargs.get("visit_location_suspicion_reason", ""),
+        visit_location_difficulty=kwargs.get("visit_location_difficulty", 0),
+        random_customs_item=kwargs.get("random_customs_item", ""),
+    )
+    if "suspicion_scope" in kwargs:
+        base["dialogue_seed"]["suspicion_scope"] = kwargs["suspicion_scope"]
+        base["game_state"]["suspicion_scope"] = kwargs["suspicion_scope"]
+    if "dialogue_history" in kwargs:
+        base["dialogue_seed"]["dialogue_history"] = kwargs["dialogue_history"]
+        base["game_state"]["dialogue_history"] = kwargs["dialogue_history"]
+    if "dialogue_purpose" in kwargs:
+        if "dialogue_directive" not in base:
+            base["dialogue_directive"] = {}
+        base["dialogue_directive"]["purpose"] = kwargs["dialogue_purpose"]
+    if "branch_type" in kwargs:
+        base["branch"]["branch_type"] = kwargs["branch_type"]
+    if "surface_goal" in kwargs:
+        base["dialogue_seed"]["surface_goal"] = kwargs["surface_goal"]
+    return base
+
+
+def _capture_llm_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    captured: dict[str, Any] = {}
+    client = _CapturingLLMClient(captured)
+    generate_npc_dialogue_from_level_design(payload, use_llm=True, llm_client=client)
+    return captured.get("payload", {})
+
+
+def _render_system_prompt(llm_payload: dict[str, Any]) -> str:
+    from backend.app.agents.agent_a.npc_llm_client import _render_developer_instructions
+    return _render_developer_instructions(llm_payload)
+
+
+def test_suspicion_mode_active_only_when_scope_location():
+    """scope=location 일 때만 location 정보가 프롬프트에 노출."""
+    payload = _payload(suspicion_scope="location", assigned_visit_location="MGM Grand Las Vegas")
+    captured = _capture_llm_payload(payload)
+    assert captured["suspicion_scope"] == "location"
+    assert "MGM Grand Las Vegas" in str(captured)
+    
+    rendered = _render_system_prompt(captured)
+    assert "SUSPICION MODE" in rendered
+    assert "MGM Grand Las Vegas" in rendered
+
+
+def test_suspicion_mode_hidden_when_scope_none():
+    """scope=none 일 때 SUSPICION MODE 가 렌더링되지 않음."""
+    payload = _payload(suspicion_scope="none", assigned_visit_location="MGM Grand Las Vegas")
+    captured = _capture_llm_payload(payload)
+    rendered = _render_system_prompt(captured)
+    assert "SUSPICION MODE" not in rendered
+
+
+def test_dialogue_history_passed_in_all_purposes():
+    """dialogue_history 가 smalltalk 외 purpose 에서도 llm_payload 에 전달됨."""
+    history = [
+        {"turn_index": 1, "player_text_preview": "business",
+         "npc_text_preview": "How long?", "filled_slots": {"visit_purpose": "business"}}
+    ]
+    payload = _payload(dialogue_purpose="default", dialogue_history=history)
+    captured = _capture_llm_payload(payload)
+    assert captured["dialogue_history"] == history
+    assert captured["past_player_utterances"][0] == "business"
+
+
+def test_retry_paraphrase_varies_from_previous():
+    """retry 분기에서 직전 NPC 라인과 다른 표현이 폴백으로 선택됨."""
+    payload = _payload(
+        branch_type="retry",
+        dialogue_history=[{"player_text_preview": "I dunno",
+                           "npc_text_preview": "What is the purpose of your visit?"}],
+        surface_goal="ask_visit_purpose",
+    )
+    result = generate_npc_dialogue_from_level_design(payload, use_llm=False)
+    assert result["npc_text"] != "What is the purpose of your visit?"
+
+
+def test_suspicion_not_blurted_before_answer():
+    """scope=location 이지만 dialogue_history 에서 visit_purpose 슬롯 미응답이면
+    프롬프트에 'do NOT challenge preemptively' 가이드 적용 검증."""
+    payload = _payload(
+        suspicion_scope="location",
+        assigned_visit_location="MGM Grand Las Vegas",
+        dialogue_history=[],
+    )
+    captured = _capture_llm_payload(payload)
+    rendered = _render_system_prompt(captured)
+    assert "answer" in rendered.lower() and "preemptive" in rendered.lower() or "Answer-first" in rendered
+

@@ -1,5 +1,30 @@
 # Handoff
 
+## 2026-06-18 Developer A: CR-B-CONV-A 트집 게이팅·히스토리 소비·대사 변주 구현 완료
+
+Developer A 는 CR-B-CONV-A 의 A 측 4가지 항목을 완료했습니다. B 가 2026-06-18 에 emit 한 `dialogue_seed.suspicion_scope` 및 C 가 동일 날짜에 attach 한 `dialogue_seed.dialogue_history` 를 모두 소비합니다.
+
+Changed:
+- `developer_a_input_service.py`: normalize 단계에서 `suspicion_scope` (기본 "none"), `dialogue_history` 안전 추출.
+- `npc_dialogue_agent.py`: `llm_payload` 에 두 필드를 모든 purpose 에서 주입. smalltalk 전용 OpenKB 보강은 그대로 두되 dialogue_history 가 우선 활용되도록 `past_player_utterances` / `discussed_topics` 채움 로직 일반화. `node_initialize_state` 에 룰베이스 폴백 경로를 위한 대사 변주 로직 연동.
+- `prompts/npc_dialogue_prompt.md`, `prompts/npc_dialogue_prompt.short.md`:
+  - SUSPICION MODE 활성 조건을 `assigned_visit_location 존재` → `suspicion_scope != "none"` 로 변경.
+  - scope=`location` 일 때 location 만 / `declaration` 일 때 item 만 노출 및 Examples 내에서도 scope 게이팅 적용으로 키워드 누수 차단.
+  - Hard Rule 1 (answer-first): dialogue_history 확인 후 슬롯 답변 전까지 선제 블러팅 금지.
+  - Hard Rule 3 verbatim 완화: 맥락상 관련 턴에서만 자연스럽게 지칭.
+  - DIALOGUE HISTORY 블록 신설 (모든 purpose 적용): 답변된 질문 반복 금지 + 직전 턴 acknowledge + cross-turn callback 허용.
+  - RETRY/STERN VARIATION 블록 신설: 직전 NPC 라인 회피 + recommended_expression 패러프레이즈 힌트 허용.
+- `dialogue_policy_service.py`: retry 폴백을 위한 `RETRY_PARAPHRASES` 사전 및 직전 NPC 라인 회피 변주를 위한 `get_retry_variation` 헬퍼 함수 구현.
+- `test_developer_a_npc_dialogue.py`: 회귀 5종 (suspicion scope 게이팅 3종, dialogue_history 모든 purpose, retry 변주, answer-first) 및 mypy 통과를 위한 타입 선언 보강.
+
+Verification:
+- `uv run pytest backend/tests`: PASS (328 passed)
+- `uv run ruff check .`: PASS
+- `uv run mypy .`: PASS (Success: no issues found in 125 source files)
+- Jinja 렌더링 smoke 3종 테스트 통과.
+
+B/C 영역 0 수정. CR-B-CONV-A 의 Dev A 측 항목 완료.
+
 ## 2026-06-18 Developer C: CR-B-CONV-C 단기기억·이해·트집 스코프 반영
 
 Developer C completed the C-owned items requested by `[CR-B-CONV-C]`.

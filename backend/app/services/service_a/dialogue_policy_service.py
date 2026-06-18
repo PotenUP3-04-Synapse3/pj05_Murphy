@@ -131,3 +131,40 @@ def synthesize_fallback_next_question(fallback_text: str, surface_goal: str) -> 
     if not stripped.endswith((".", "!", "?")):
         stripped += "."
     return f"{stripped} {question}"
+
+
+RETRY_PARAPHRASES = {
+    "ask_visit_purpose": [
+        "What is the purpose of your visit?",
+        "Could you tell me why you're here?",
+        "What brings you to the United States?",
+    ],
+    "ask_stay_duration": [
+        "How long will you stay in the United States?",
+        "How many days do you plan to stay?",
+        "How long are you planning to remain here?",
+    ],
+    "ask_stay_location": [
+        "Where will you stay in the United States?",
+        "Could you tell me the address of your stay?",
+        "Where are you going to stay?",
+    ]
+}
+
+
+def get_retry_variation(surface_goal: str, last_npc_text: str, current_fallback_text: str) -> str:
+    """재시도(Retry) 분기에서 직전 NPC 라인과 다른 표현을 선택하여 반환합니다."""
+    import random
+    options = RETRY_PARAPHRASES.get(surface_goal, [])
+    if not options:
+        if current_fallback_text.lower().strip() == last_npc_text.lower().strip():
+            if "I need a clear answer." in current_fallback_text:
+                return current_fallback_text.replace("I need a clear answer.", "Could you say that again?")
+            return f"Pardon me? {current_fallback_text}"
+        return current_fallback_text
+
+    fresh_options = [opt for opt in options if opt.lower().strip() != last_npc_text.lower().strip()]
+    if not fresh_options:
+        fresh_options = options
+
+    return random.choice(fresh_options)
