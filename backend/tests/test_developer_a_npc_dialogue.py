@@ -1619,4 +1619,104 @@ def test_non_advance_dialogue_guard_override() -> None:
     assert "How long will you stay in the United States?" in result["npc_text"]
 
 
+def test_speaker_role_confusion_guard_blocks_giver_phrase() -> None:
+    # 직전 NPC가 "Could I borrow your pen?" 과 같은 요청을 보냈고,
+    # LLM이 플레이어의 대사 성격인 "Sure, here you are" 로 답변할 때 가드 작동 검증
+    class GiverResponseLLMClient:
+        model = "fake-giver-model"
+        def generate(self, payload: dict) -> dict:
+            return {
+                "npc_text": "Sure, here you are. What is your name?",  # 플레이어 응답 형태 + 질문 포함
+                "tts_text": "Sure, here you are. What is your name?",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "npc_emotion": "normal",
+                "llm_reason": "giving pen"
+            }
+
+    payload = {
+        "session_id": "session_confusion",
+        "npc": {"npc_id": "emily"},
+        "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+        "player_text": "Hello?",
+        "node_context": {
+            "npc_question": "Could I borrow your pen for this arrival form?",
+        },
+        "evaluation_summary": {"task_success": False},
+        "level_hint": {},
+        "in_game_feedback": {},
+        "branch": {
+            "branch_type": "clarify",
+        },
+        "dialogue_seed": {
+            "surface_goal": "estimate_user_travel_speaking_level",
+            "dialogue_history": [
+                {
+                    "turn_index": 1,
+                    "player_text_preview": "Hello.",
+                    "npc_text_preview": "Could I borrow your pen for this arrival form?",
+                    "filled_slots": {},
+                    "surface_goal": "estimate_user_travel_speaking_level"
+                }
+            ]
+        }
+    }
+
+    result = generate_npc_dialogue_from_level_design(
+        payload,
+        use_llm=True,
+        llm_client=GiverResponseLLMClient(),
+    )
+
+    # 가드에 차단되어 fallback을 타야 함
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "speaker_role_confusion"
+    assert result["fallback"]["used"] is True
+
+
+def test_speaker_role_confusion_guard_allows_legitimate_response() -> None:
+    # 직전 NPC가 요청 성격이 아닌 질문을 던졌을 때, 가드가 작동하지 않는 검증
+    class NormalResponseLLMClient:
+        model = "fake-normal-model"
+        def generate(self, payload: dict) -> dict:
+            return {
+                "npc_text": "Tourism. Got it.",
+                "tts_text": "Tourism. Got it.",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "npc_emotion": "normal",
+                "llm_reason": "coherent reply"
+            }
+
+    payload = {
+        "session_id": "session_legitimate",
+        "npc": {"npc_id": "miller"},
+        "node_id": "IMM_002_PURPOSE",
+        "player_text": "I travel.",
+        "node_context": {
+            "npc_question": "What is the purpose of your visit?",
+        },
+        "evaluation_summary": {"task_success": True},
+        "level_hint": {},
+        "in_game_feedback": {},
+        "branch": {
+            "branch_type": "success",
+        },
+        "dialogue_seed": {
+            "surface_goal": "ask_stay_duration",
+        }
+    }
+
+    result = generate_npc_dialogue_from_level_design(
+        payload,
+        use_llm=True,
+        llm_client=NormalResponseLLMClient(),
+    )
+
+    # 정상적 진행이므로 가드에 막히지 않고 LLM 결과가 유지되어야 함
+    assert result["llm"]["used"] is True
+    assert result["fallback"]["used"] is False
+    assert "Tourism. Got it." in result["npc_text"]
+
+
 

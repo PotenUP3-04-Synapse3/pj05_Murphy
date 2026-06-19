@@ -1,5 +1,24 @@
 # Handoff
 
+## 2026-06-19 Developer A: 화자 역할 혼동(Speaker Role Confusion) 방지 가드 구현 완료
+
+Developer A는 `docs/plans/dev_a_speaker_role_guard_plan.md` 작업계획서(S-1 ~ S-5)에 명시된 화자 역할 혼동 방지 가드 조치를 완료했습니다. NPC가 자신의 직전 요청에 대해 스스로 플레이어처럼 펜을 건네며 자문자답하는 현상을 차단했습니다.
+
+Changed:
+
+- `backend/app/prompts/npc_dialogue_prompt.md` / `npc_dialogue_prompt.short.md`: System 프롬프트의 `# SPEAKER DISCIPLINE` 섹션에 asker와 responder 역할을 임의로 스위칭하지 않도록 강제하고, "Sure, here you are" 등과 같은 responder 표현의 발화를 금지하는 규약을 보강했습니다.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`: `node_generate_dialogue_llm`의 대사 검증 후처리 단계에 `speaker_role_confusion` 가드를 추가했습니다. 직전 NPC 발화가 REQUEST 성격(markers 포함)인데 플레이어 성격의 응답자 표현(markers 포함)을 생성한 경우, 에러 코드를 반환하고 안전하게 대체 텍스트(Fallback) 경로로 우회하도록 제어했습니다.
+- `backend/app/services/service_a/developer_a_fallback_service.py`: `respond_to_arrival_form_help_request`에 대한 폴백 텍스트를 펜을 전달받은 상황에 자연스럽도록 `"Thanks. I'm filling out the arrival form — what brings you to New York?"`로 교정했습니다.
+- `backend/app/prompts/npc_dialogue_few_shots.md`: NPC가 질문한 직후 플레이어 답변이 모호한 경우, 스스로 질문에 답하지 않고 다시 공손하게 재요청을 던지는 대화 흐름을 묘사하는 Example 7 예시를 추가했습니다.
+- `backend/tests/test_developer_a_npc_dialogue.py`: 가드가 비정상 답변을 차단하는 테스트 및 정상적 NPC 대화 답변을 허용하는 테스트 2종(`test_speaker_role_confusion_guard_blocks_giver_phrase`, `test_speaker_role_confusion_guard_allows_legitimate_response`)을 추가했습니다.
+- `docs/contracts/change_requests.md`: 단순 인사말만으로 펜 대여 수락 슬롯이 오버라이드되는 현상을 해결하기 위한 `[CR-A-FLIGHT-A001-SLOT-STRICTNESS]` 변경 요청을 신설 및 추가했습니다.
+
+Verification:
+
+- `uv run pytest backend/tests`: PASS (A 유닛 테스트 49개 포함 전체 통과)
+- `uv run ruff check .`: PASS
+- `uv run mypy .`: PASS (Success)
+
 ## 2026-06-19 Developer C: CR-B-HISTORY-MEMORY Runtime Wiring
 
 Developer C completed the C-owned runtime work requested by

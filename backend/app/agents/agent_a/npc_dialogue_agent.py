@@ -513,6 +513,40 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             logger.error(f"Post-processing violation: NPC dialogue lacks open_hooks {open_hooks} in a brief response: '{npc_text}'")
             return {"error": "weak_followup_no_hook"}
 
+    # [신규 가드] speaker_role_confusion
+    # NPC가 직전 턴에 요청/부탁을 했을 때, 이번 응답이 응답자(=player) 표현을
+    # 포함하면 명시적으로 fallback 전환.
+    LAST_TURN_REQUEST_MARKERS = (
+        "could i borrow", "can i borrow", "may i borrow",
+        "could you help", "can you help", "would you help",
+        "could i have", "may i see", "can i get",
+    )
+    RESPONDER_PHRASE_MARKERS = (
+        "here you are", "here you go", "here it is",
+        "of course, take", "sure, take", "you can have it",
+        "take it", "no problem, take",
+    )
+
+    last_npc_text = (state.get("last_npc_intent") or "").lower()
+    # session_context_card의 recent_turns_compact 마지막 NPC 발화도 함께 확인
+    card = state.get("session_context_card") or {}
+    recent = card.get("recent_turns_compact") or []
+    prev_npc_line = ""
+    if recent:
+        # 마지막 항목에서 NPC 부분만 추출 (포맷에 맞춰)
+        prev_npc_line = str(recent[-1]).lower()
+
+    was_request = any(m in last_npc_text or m in prev_npc_line
+                      for m in LAST_TURN_REQUEST_MARKERS)
+    is_responder = any(p in npc_text.lower() for p in RESPONDER_PHRASE_MARKERS)
+
+    if was_request and is_responder:
+        logger.error(
+            "Speaker role confusion: NPC played responder role after own request. "
+            "prev=%r curr=%r", prev_npc_line[:80], npc_text[:80]
+        )
+        return {"error": "speaker_role_confusion"}
+
     # [신규 가드] 비-ADVANCE 분기 준수 가드 (CR-B-AB-DESYNC)
     next_action = normalized.get("next_action") or ""
     is_non_advance = (next_action in {"REASK", "GIVE_HINT", "WARNING"})

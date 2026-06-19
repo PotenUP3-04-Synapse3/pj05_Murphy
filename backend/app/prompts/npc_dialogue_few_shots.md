@@ -230,3 +230,41 @@
   "llm_reason": "The direct question is forbidden because player already answered tourism. Paraphrase the repeat query into a concrete sight-seeing inquiry."
 }
 ```
+
+### Example 7: SPEAKER ROLE — NPC asked, player unclear, NPC must re-ask (not respond)
+- Player Input Payload:
+```json
+{
+  "player_text": "Hello?",
+  "node_context": {
+    "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+    "npc_question": "Could I borrow your pen for this arrival form?"
+  },
+  "dialogue_seed": {
+    "surface_goal": "estimate_user_travel_speaking_level"
+  },
+  "branch": {
+    "branch_type": "clarify"
+  },
+  "incivility": {
+    "tier": 0
+  }
+}
+```
+- Expected NPC Output:
+```json
+{
+  "speaker": "Emily",
+  "npc_text": "Sorry, I just need your pen for a moment. Could I borrow it?",
+  "tts_text": "Sorry, <break time='0.3s'/> I just need your pen for a moment. Could I borrow it?",
+  "feedback_kr": "Good.",
+  "tone": "formal_supportive",
+  "animation": "move",
+  "npc_emotion": "normal",
+  "stability": 0.80,
+  "style": 0.1,
+  "speed": 1.0,
+  "similarity_boost": 0.75,
+  "llm_reason": "[COHERENT] Player unclear; NPC re-asks the request instead of responding as if pen was handed over."
+}
+```

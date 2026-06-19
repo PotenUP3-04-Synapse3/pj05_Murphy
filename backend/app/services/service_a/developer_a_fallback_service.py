@@ -18,7 +18,7 @@ SURFACE_GOAL_FALLBACK_TEXTS = {
     "close_curious_seatmate_smalltalk": "It was nice talking to you. Enjoy your time!",
     
     # Flight C (Travel Form Help)
-    "respond_to_arrival_form_help_request": "Sure, I can help you with the form. What do you need?",
+    "respond_to_arrival_form_help_request": "Thanks. I'm filling out the arrival form — what brings you to New York?",
     "ask_first_time_entry": "Is this your first time visiting the US?",
     "explain_arrival_form_address_field": "You need to write your address here. Where will you stay?",
     "repair_hotel_hostel_confusion": "Is it a hotel or a hostel? You should write the exact name.",

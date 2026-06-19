@@ -2719,3 +2719,27 @@ B-authored dialogue candidates before calling A.
 Developer C updated C-owned logging so failed C LangGraph runs and Understanding
 LLM fallback traces include structured `error_details`. C did not modify A/B
 implementation files.
+
+
+## Change Request - 2026-06-19 - [CR-A-FLIGHT-A001-SLOT-STRICTNESS] FLIGHT_A_001 polite_response 슬롯 추출 엄격성 강화 (인사말 단독 충족 차단)
+
+### Requested By
+
+Developer A
+
+### Affected Owner
+
+Developer C / Sean Han
+
+### Reason
+
+`FLIGHT_A_001_SEATMATE_SMALLTALK` 노드에서 NPC가 "Could I borrow your pen?"(펜 좀 빌려주실 수 있나요?)라고 요청했을 때, 플레이어가 "Hello?"와 같은 단순 인사말만 단독으로 응답했음에도 `polite_response` 슬롯이 충족된 것으로 채점되어 대화 분기가 SUCCESS로 잘못 타는 현상이 발견되었습니다. 이로 인해 NPC가 펜을 전달받지도 않았는데 "Sure, here you are"와 같이 스스로 펜을 건네며 응답해 버리는 화자 역할 혼동(Speaker Role Confusion) 대사 오류가 발생하게 됩니다.
+A 측에서 대사 후처리 가드로 차단하였으나, 근본적인 대화 흐름 정상화를 위해서는 단순 인사말을 펜 대여 수락으로 오인하지 않도록 슬롯 추출 기준을 엄격하게 강화해야 합니다.
+
+### Proposed Contract Change
+
+`backend/app/agents/agent_c/understanding_agent.py`의 `ALPHA_SLOT_VALUE_KEYWORDS` 또는 LLM 모드의 슬롯 증거(evidence) 정책 및 프롬프트를 보강하여, `polite_response` 슬롯 추출 시 "Hello", "Hi"와 같이 펜 빌려달라는 요청에 직접 대응하지 않는 단순 인사말 단독 발화는 수락 슬롯 충족에서 배제하고 `needs_clarification` 또는 retry/clarify 분기로 빠지게 수정해 주기를 요청합니다.
+
+### Compatibility Impact
+
+단순 인사에 대한 슬롯 채점 엄격화는 게임의 대화 타당성(Coherence)을 높이는 작업이며, 기존의 올바른 펜 대여 수락 발화에 영향을 미치지 않으므로 하위 호환성을 깨뜨리지 않습니다.
