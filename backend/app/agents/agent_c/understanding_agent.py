@@ -20,6 +20,7 @@ from backend.app.agents.agent_c.understanding_llm_client import (
     UnderstandingLLMClient,
     UnderstandingLLMUnavailable,
     build_understanding_llm_client_from_settings,
+    normalize_understanding_llm_result,
 )
 from backend.app.agents.agent_c.visit_purpose_classifier import classify_visit_purpose
 from backend.app.schemas.game_turn import NodeContext, SlotEvidence, UnderstandingOutput
@@ -274,24 +275,26 @@ class UnderstandingAgent:
         player_text: str,
         node_context: NodeContext,
     ) -> tuple[UnderstandingOutput, dict[str, Any]]:
-        result = self._get_llm_client().analyze(
-            {
-                "player_text": player_text,
-                "node_context": node_context.model_dump(),
-                "output_contract": {
-                    "allowed_output": "UnderstandingOutput only",
-                    "forbidden_authority": [
-                        "branch",
-                        "next_node_id",
-                        "next_action",
-                        "state_delta",
-                        "scores",
-                        "hints",
-                        "npc_dialogue",
-                        "unreal_commands",
-                    ],
-                },
-            }
+        result = normalize_understanding_llm_result(
+            self._get_llm_client().analyze(
+                {
+                    "player_text": player_text,
+                    "node_context": node_context.model_dump(),
+                    "output_contract": {
+                        "allowed_output": "UnderstandingOutput only",
+                        "forbidden_authority": [
+                            "branch",
+                            "next_node_id",
+                            "next_action",
+                            "state_delta",
+                            "scores",
+                            "hints",
+                            "npc_dialogue",
+                            "unreal_commands",
+                        ],
+                    },
+                }
+            )
         )
         model_usage = build_model_usage_summary(
             model_name=self._llm_model_name(),
@@ -742,18 +745,9 @@ def _apply_generic_slot_evidence(
         else:
             dropped_slots.append(evidence.slot)
 
-    extracted_slots = {
-        slot: value
-        for slot, value in output.extracted_slots.items()
-        if slot in allowed_slots
-        and value
-        and _is_supported_extracted_slot_value(
-            slot_name=slot,
-            slot_value=value,
-            player_text=player_text,
-            node_context=node_context,
-        )
-    }
+    # slot-evidence-first: LLM이 직접 준 extracted_slots는 신뢰하지 않고,
+    # 현재 노드에 맞게 검증된 evidence만 최종 슬롯으로 승격합니다.
+    extracted_slots: dict[str, str] = {}
     for evidence in accepted_evidence:
         extracted_slots.setdefault(evidence.slot, evidence.value)
 
@@ -774,17 +768,15 @@ def _apply_generic_slot_evidence(
         extracted_slots,
         node_context,
     )
+    missing_required_slot_evidence = bool(missing_slots and output.intent_success)
     answer_relevance = "off_topic" if intent_mismatch else output.answer_relevance
     confidence = _guard_confidence_for_evidence(
         output.confidence,
         intent_mismatch=intent_mismatch,
-        weak_required_slot_evidence=weak_required_slot_evidence,
+        weak_required_slot_evidence=weak_required_slot_evidence or missing_required_slot_evidence,
     )
     confidence_guard_applied = confidence != output.confidence
-    applied = bool(accepted_evidence) and (
-        any(evidence.slot not in output.extracted_slots for evidence in accepted_evidence)
-        or missing_slots != output.missing_slots
-    )
+    applied = bool(accepted_evidence)
     filtered = len(accepted_evidence) != len(output.slot_evidence)
     if (
         not applied
@@ -1059,9 +1051,28 @@ def _is_supported_slot_evidence(
     if _match_alpha_allowed_slot_value(player_text, evidence.slot, [evidence.value]) == evidence.value:
         return True
 
+    if evidence.confidence >= 0.85 and _is_evidence_text_grounded(player_text, evidence.evidence_text):
+        return True
+
     normalized_value = _normalize_for_keyword_match(evidence.value)
     normalized_text = _normalize_for_keyword_match(player_text)
     return bool(normalized_value and normalized_value in normalized_text)
+
+
+def _is_evidence_text_grounded(player_text: str, evidence_text: str) -> bool:
+    """LLM이 제시한 evidence_text가 실제 사용자 발화에 있는지 확인합니다.
+
+    Beginner guide:
+    slot-evidence-first 구조에서는 LLM의 정규화 값보다 "무슨 말을 근거로
+    그렇게 봤는가"가 더 중요합니다.  예를 들어 사용자가 "museums"라고 말했고
+    LLM이 `visit_purpose=tourism`으로 정규화했다면, 값 `tourism`은 원문에 없을 수
+    있습니다.  대신 evidence_text가 원문에 정확히 있으면 C가 현재 노드의
+    allowed value 검증과 함께 받아들입니다.
+    """
+
+    normalized_evidence = _normalize_for_keyword_match(evidence_text)
+    normalized_text = _normalize_for_keyword_match(player_text)
+    return bool(normalized_evidence and normalized_evidence in normalized_text)
 
 
 def _is_supported_extracted_slot_value(
@@ -1071,14 +1082,13 @@ def _is_supported_extracted_slot_value(
     player_text: str,
     node_context: NodeContext,
 ) -> bool:
-    """Return whether an extracted slot value is valid for the current text.
+    """slot_evidence.value가 현재 노드의 허용 범위 안에 있는지 확인합니다.
 
     Beginner guide:
-    Some slots are free text, such as a hotel name.  Some slots have allowed
-    enum values, such as `polite_response` or `visit_purpose`.  For extracted
-    slots, C keeps valid enum values because the LLM may do legitimate semantic
-    normalization such as "museums" -> "tourism".  Known mismatch phrases are
-    still blocked before they can become a success.
+    이제 LLM이 직접 준 `extracted_slots`는 쓰지 않습니다.  하지만
+    `slot_evidence.value`도 B가 정의한 enum 값과 맞아야 합니다.  이 함수는
+    evidence가 현재 노드의 allowed value 안에 있는지 확인하고, 알려진 off-topic
+    표현이 enum success로 승격되지 않게 막습니다.
     """
 
     allowed_values = node_context.allowed_slot_values.get(slot_name, [])

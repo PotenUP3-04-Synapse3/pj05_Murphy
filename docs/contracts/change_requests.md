@@ -134,14 +134,13 @@ Developer B는 `docs/workplan-dev-b-1.md` 계획에 따라 입국심사 챕터
 
 - Added rule-mode keyword coverage for all 9 new immigration slots in
   `backend/app/agents/agent_c/understanding_agent.py`.
-- Expanded the strict Understanding LLM `extracted_slots` schema so the LLM can
-  return the new Alpha immigration slot keys directly instead of being limited
-  to `visit_purpose` and `stay_duration`.
-- Kept `slot_evidence` as the preferred grounding path and retained
-  current-node filtering in `UnderstandingAgent`, so unrelated slot keys still
-  cannot leak into Developer B policy input.
-- Added regression tests for rule-mode extraction and LLM-mode schema/result
-  normalization.
+- Switched the strict Understanding LLM contract to slot-evidence-first. The
+  LLM no longer returns `extracted_slots`; Developer C derives final slots from
+  accepted `slot_evidence` and the current node metadata.
+- Retained current-node filtering in `UnderstandingAgent`, so unrelated slot
+  evidence still cannot leak into Developer B policy input.
+- Added regression tests for rule-mode extraction, LLM evidence normalization,
+  and ignoring direct LLM-provided `extracted_slots`.
 
 ### Compatibility Impact
 

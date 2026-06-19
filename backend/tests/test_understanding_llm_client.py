@@ -9,7 +9,6 @@ from backend.app.agents.agent_c.understanding_llm_client import (
     OpenAICompatibleUnderstandingLLMClient,
     OpenAIUnderstandingLLMClient,
     UnderstandingLLMUnavailable,
-    UNDERSTANDING_EXTRACTED_SLOT_NAMES,
     _extract_chat_completion_structured_json,
     _extract_structured_json,
     _understanding_schema,
@@ -20,13 +19,8 @@ def test_understanding_schema_is_openai_strict_compatible() -> None:
     schema = _understanding_schema()
 
     _assert_strict_object_schema(schema)
-    extracted_slots = schema["properties"]["extracted_slots"]
-    assert extracted_slots["additionalProperties"] is False
-    assert extracted_slots["required"] == list(UNDERSTANDING_EXTRACTED_SLOT_NAMES)
-    assert extracted_slots["properties"]["visit_purpose"]["type"] == ["string", "null"]
-    assert extracted_slots["properties"]["stay_duration"]["type"] == ["string", "null"]
-    assert extracted_slots["properties"]["occupation"]["type"] == ["string", "null"]
-    assert extracted_slots["properties"]["denied_entry_status"]["type"] == ["string", "null"]
+    assert "extracted_slots" not in schema["properties"]
+    assert "extracted_slots" not in schema["required"]
     slot_evidence = schema["properties"]["slot_evidence"]
     assert slot_evidence["type"] == "array"
     assert slot_evidence["items"]["required"] == [
@@ -37,7 +31,7 @@ def test_understanding_schema_is_openai_strict_compatible() -> None:
     ]
 
 
-def test_extract_structured_json_drops_null_optional_slot_values() -> None:
+def test_extract_structured_json_ignores_llm_extracted_slots() -> None:
     result = _extract_structured_json(
         {
             "output_text": json.dumps(
@@ -52,7 +46,8 @@ def test_extract_structured_json_drops_null_optional_slot_values() -> None:
                     "risk_delta": 0,
                     "risk_reason": "No risk expression was found.",
                     "risk_tags": [],
-                    "extracted_slots": {"visit_purpose": None, "stay_duration": None},
+                    "slot_evidence": [],
+                    "extracted_slots": {"visit_purpose": "tourism"},
                     "missing_slots": ["visit_purpose"],
                     "needs_clarification": True,
                 },
@@ -113,7 +108,7 @@ def test_extract_structured_json_builds_slots_from_generic_evidence() -> None:
     assert result["extracted_slots"] == {"stay_location": "hotel"}
 
 
-def test_extract_structured_json_preserves_new_immigration_extracted_slot() -> None:
+def test_extract_structured_json_builds_new_immigration_slot_from_evidence() -> None:
     result = _extract_structured_json(
         {
             "output_text": json.dumps(
@@ -128,8 +123,14 @@ def test_extract_structured_json_preserves_new_immigration_extracted_slot() -> N
                     "risk_delta": 0,
                     "risk_reason": "No risk expression was found.",
                     "risk_tags": [],
-                    "slot_evidence": [],
-                    "extracted_slots": {"occupation": "engineer"},
+                    "slot_evidence": [
+                        {
+                            "slot": "occupation",
+                            "value": "engineer",
+                            "confidence": 0.91,
+                            "evidence_text": "software engineer",
+                        }
+                    ],
                     "missing_slots": [],
                     "needs_clarification": False,
                 },
@@ -195,7 +196,14 @@ def test_extract_chat_completion_structured_json_preserves_usage() -> None:
                                 "risk_delta": 0,
                                 "risk_reason": "No risk expression was found.",
                                 "risk_tags": [],
-                                "extracted_slots": {"visit_purpose": "tourism"},
+                                "slot_evidence": [
+                                    {
+                                        "slot": "visit_purpose",
+                                        "value": "tourism",
+                                        "confidence": 0.9,
+                                        "evidence_text": "tourism",
+                                    }
+                                ],
                                 "missing_slots": [],
                                 "needs_clarification": False,
                             },

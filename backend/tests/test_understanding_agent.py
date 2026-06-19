@@ -55,7 +55,14 @@ def test_understanding_agent_uses_llm_client_in_llm_mode() -> None:
             "risk_delta": 0,
             "risk_reason": "위험 표현 없음.",
             "risk_tags": [],
-            "extracted_slots": {"visit_purpose": "tourism"},
+            "slot_evidence": [
+                {
+                    "slot": "visit_purpose",
+                    "value": "tourism",
+                    "confidence": 0.91,
+                    "evidence_text": "museums",
+                }
+            ],
             "missing_slots": [],
             "needs_clarification": False,
         }
@@ -69,8 +76,9 @@ def test_understanding_agent_uses_llm_client_in_llm_mode() -> None:
 
     assert output.intent == "state_visit_purpose"
     assert output.intent_success is True
-    assert output.confidence == 0.89
+    assert output.confidence == 0.91
     assert output.extracted_slots == {"visit_purpose": "tourism"}
+    assert output.slot_evidence[0].evidence_text == "museums"
     assert llm_client.calls[0]["player_text"] == "I want to visit museums."
     assert llm_client.calls[0]["node_context"]["node_id"] == "IMM_002_PURPOSE"
     assert agent.last_trace["mode"] == "llm"
@@ -79,8 +87,9 @@ def test_understanding_agent_uses_llm_client_in_llm_mode() -> None:
     assert agent.last_trace["tool_calls"][0]["tool_name"] == "understanding_llm_client.analyze"
     assert agent.last_trace["tool_calls"][0]["status"] == "completed"
     assert agent.last_trace["tool_calls"][0]["output_summary"]["intent"] == "state_visit_purpose"
-    assert agent.last_trace["postprocessing"]["confidence_evidence_guard_applied"] is True
-    assert agent.last_trace["postprocessing"]["weak_required_slot_evidence"] is True
+    assert agent.last_trace["postprocessing"]["generic_slot_evidence_applied"] is True
+    assert agent.last_trace["postprocessing"]["accepted_slot_evidence"] == ["visit_purpose"]
+    assert agent.last_trace["postprocessing"]["weak_required_slot_evidence"] is False
 
 
 def test_understanding_agent_llm_mode_attaches_rule_incivility_signal() -> None:
@@ -249,13 +258,11 @@ def test_understanding_agent_repairs_llm_missing_stay_duration_slot() -> None:
     assert output.extracted_slots == {"stay_duration": "5 days"}
     assert output.missing_slots == []
     assert output.needs_clarification is False
-    assert agent.last_trace["postprocessing"] == {
-        "slot_repair_applied": True,
-        "source": "rule_stay_duration_classifier",
-        "slot": "stay_duration",
-        "value": "5 days",
-        "reason": "llm_missing_allowed_slot",
-    }
+    assert agent.last_trace["postprocessing"]["slot_repair_applied"] is True
+    assert agent.last_trace["postprocessing"]["source"] == "rule_stay_duration_classifier"
+    assert agent.last_trace["postprocessing"]["slot"] == "stay_duration"
+    assert agent.last_trace["postprocessing"]["value"] == "5 days"
+    assert agent.last_trace["postprocessing"]["reason"] == "llm_missing_allowed_slot"
 
 
 def test_understanding_agent_accepts_generic_llm_slot_evidence_for_required_slot() -> None:
@@ -551,7 +558,7 @@ def test_understanding_agent_rule_mode_recognizes_new_immigration_slot_values() 
         assert output.missing_slots == []
 
 
-def test_understanding_agent_llm_mode_accepts_new_immigration_extracted_slot() -> None:
+def test_understanding_agent_llm_mode_builds_new_immigration_slot_from_evidence() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {
             "intent": "state_occupation",
@@ -572,7 +579,6 @@ def test_understanding_agent_llm_mode_accepts_new_immigration_extracted_slot() -
                     "evidence_text": "software engineer",
                 }
             ],
-            "extracted_slots": {"occupation": "engineer"},
             "missing_slots": [],
             "needs_clarification": False,
         }
@@ -592,6 +598,42 @@ def test_understanding_agent_llm_mode_accepts_new_immigration_extracted_slot() -
     assert output.missing_slots == []
     assert output.slot_evidence[0].slot == "occupation"
     assert output.slot_evidence[0].value == "engineer"
+
+
+def test_understanding_agent_llm_mode_ignores_extracted_slot_without_evidence() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_occupation",
+            "intent_success": True,
+            "confidence": 0.95,
+            "meaning_summary_kr": "The player said they are an engineer.",
+            "emotion": "calm",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "none",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "slot_evidence": [],
+            "extracted_slots": {"occupation": "engineer"},
+            "missing_slots": [],
+            "needs_clarification": False,
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text(
+        "I like pizza.",
+        _alpha_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_009_OCCUPATION"),
+    )
+
+    assert output.intent_success is False
+    assert output.extracted_slots == {}
+    assert output.missing_slots == ["occupation"]
+    assert output.needs_clarification is True
+    assert output.confidence == 0.89
 
 
 def test_understanding_agent_llm_mode_repairs_freeform_address_slot() -> None:

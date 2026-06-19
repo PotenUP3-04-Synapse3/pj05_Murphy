@@ -11,29 +11,28 @@ Changed:
   `hotel_reservation_status`, `hotel_choice_reason`, `itinerary_status`,
   `first_visit_status`, `occupation`, `cash_amount`, `payment_source`, and
   `denied_entry_status`.
-- `backend/app/agents/agent_c/understanding_llm_client.py`: Expanded the strict
-  LLM `extracted_slots` schema so the new Alpha immigration slots can be
-  returned directly. `slot_evidence` remains the preferred grounding path, and
-  `UnderstandingAgent` still filters all slots to the current node before
-  Developer B receives policy input.
+- `backend/app/agents/agent_c/understanding_llm_client.py`: Switched the LLM
+  contract to slot-evidence-first. The strict LLM schema no longer asks the
+  model to return `extracted_slots`; Developer C derives final slots from
+  accepted `slot_evidence` after the LLM call.
 - `backend/tests/test_understanding_agent.py`: Added rule-mode regression
-  coverage for all 9 new slots and an LLM-mode regression for direct extracted
-  slot acceptance.
+  coverage for all 9 new slots and LLM-mode regressions proving slots are built
+  from evidence while direct LLM `extracted_slots` are ignored.
 - `backend/tests/test_understanding_llm_client.py`: Added strict-schema and
-  normalization coverage for the expanded extracted-slot schema.
+  normalization coverage for the slot-evidence-first LLM contract.
 - `docs/contracts/change_requests.md`: Marked `[CR-B-IMM-SLOTS]` as resolved.
 
 Context-tightness check:
 - The rule-mode context was missing the 9 new slot keyword maps, so offline or
   LLM-fallback turns could stay stuck in retry/clarify.
 - The LLM path was also partially too tight: `slot_evidence` was already
-  flexible, but the strict `extracted_slots` schema only allowed
-  `visit_purpose` and `stay_duration`. That schema now lists the active Alpha
-  slots and asks the model to set unrelated slots to `null`.
+  flexible, but the strict `extracted_slots` schema forced Developer C to keep
+  enumerating slot keys. The LLM schema now omits `extracted_slots`; C derives
+  them from accepted evidence and current-node metadata.
 
 Verification:
-- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_understanding_llm_client.py -q`: PASS, 28 passed.
-- `uv run pytest -q`: PASS, 348 passed, 1 warning (`audioop` deprecation in A-owned audio quality service).
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_understanding_llm_client.py -q`: PASS, 29 passed.
+- `uv run pytest -q`: PASS, 349 passed, 1 warning (`audioop` deprecation in A-owned audio quality service).
 - `uv run ruff check .`: PASS.
 - `uv run mypy .`: PASS, 125 source files.
 
