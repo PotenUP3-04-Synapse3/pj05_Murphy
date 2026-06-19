@@ -1,5 +1,46 @@
 # Handoff
 
+## 2026-06-19 Developer C: CR-B-HISTORY-MEMORY Runtime Wiring
+
+Developer C completed the C-owned runtime work requested by
+`[CR-B-HISTORY-MEMORY]` and added the C-side regression requested by
+`[CR-B-AB-DESYNC]`.
+
+Changed:
+- `backend/app/services/service_c/dialogue_history_service.py`: Added a C-owned
+  sidecar history store under `backend/runtime/openkb/dev_c/dialogue_history`
+  that persists the final Developer A `npc.text` after each turn. This lets the
+  next turn's `dialogue_seed.dialogue_history` include what the NPC actually
+  said without mutating B-owned OpenKB records.
+- `backend/app/tools/tool_c/developer_c_graph_tools.py`: Joined B session
+  records with the C sidecar history records, raised the short-term history
+  window from 5 to 12 turns, and wrote the A dialogue output after generation.
+- `backend/app/schemas/game_turn.py`: Added optional
+  `GameState.arrival_form` (`full_name`, `address`, `purpose`,
+  `stay_duration`/`stay_length`, `declared_items`) and allowed the A-facing
+  dialogue input to receive the full `game_state`.
+- `backend/app/integrations/dev_a_npc_dialogue_client.py`: Forwarded
+  `game_state` to Developer A's normalized payload so A can compare NPC dialogue
+  against arrival-form facts when Unreal provides them.
+- `backend/tests/test_preprototype_flow.py`: Added regressions for final NPC
+  text history, 12-entry history windows, arrival-form forwarding, and
+  non-ADVANCE `next_action`/`purpose`/`surface_goal` delivery to A.
+- `docs/contracts/change_requests.md`: Marked the C runtime side of
+  `[CR-B-HISTORY-MEMORY]` as resolved and documented the C regression for
+  `[CR-B-AB-DESYNC]`.
+
+Verification:
+- `uv run pytest`: PASS, 357 passed, 1 warning (`audioop` deprecation in
+  A-owned `audio_quality_service.py`).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 126 source files.
+
+Remaining coordination:
+- Unreal should populate optional `GameState.arrival_form` from the
+  arrival-form UI when that screen is ready.
+- `[CR-B-AB-DESYNC]` still requires Developer A's dialogue guard; C verified the
+  needed signals already reach the A-facing payload and did not add new fields.
+
 ## 2026-06-19 Developer B: do_not_generate_npc_text 디프리케이션 정리 완료
 
 Developer B는 `[CR-2026-06-17] Deprecate and Remove do_not_generate_npc_text from Developer B Policy`(Affected Owner: Developer B, Open 상태)를 처리했습니다. 해당 필드는 C 오케스트레이터/A 대사 생성에서 사용되지 않고 어댑터 단에서 필터링되므로, B 정책에서 더 이상 emit하지 않도록 정리했습니다.

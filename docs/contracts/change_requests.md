@@ -108,6 +108,14 @@ if is_non_advance and purpose != "smalltalk_diagnostic":
 - C는 위 3개 필드가 비-ADVANCE 분기에서 누락 없이 A에 도달하는지 회귀 테스트로
   보장만 하면 된다(예: `test_preprototype_flow.py`).
 
+Developer C follow-up, 2026-06-19:
+- Added a C-owned regression in `test_preprototype_flow.py` proving
+  `branch.next_action`, `dialogue_directive.purpose`, and
+  `dialogue_seed.surface_goal` reach the A-facing payload on a non-ADVANCE
+  immigration branch.
+- No new fields were added for this CR; Developer A still owns the dialogue
+  behavior guard.
+
 ### 테스트 가이드 (Developer A)
 
 - `backend/tests/test_developer_a_npc_dialogue.py`에 회귀 추가:
@@ -138,7 +146,7 @@ Developer B는 UNCLEAR 시 hard-fail 카운터 증가를 배제하고 한도를 
 
 ## Change Request - 2026-06-19 - [CR-B-HISTORY-MEMORY] 대화 기억 및 입국신고서 컨텍스트
 
-Status: Open (Developer B 분석/제기 - 2026-06-19; Developer C 구현 영역, 일부 Unreal 연동 필요).
+Status: Resolved for Developer C runtime wiring (2026-06-19). Unreal still needs to populate optional `GameState.arrival_form` from the UI when available.
 
 ### Requested By
 
@@ -207,6 +215,19 @@ Developer C / Sean Han (일부 Unreal 연동 필요)
   요약형 영속 메모리가 더 유리하나, 본 CR은 우선 window 상향 + 신고서 전송으로 한정).
 - 슬롯 스키마/노드 정의 변경 없음. 회귀 가드: `test_developer_a_npc_dialogue.py`,
   단기기억/이해 관련 테스트.
+
+### Developer C Resolution - 2026-06-19
+
+- Added C-owned `DialogueHistoryService` under
+  `backend/runtime/openkb/dev_c/dialogue_history` so final Developer A
+  `npc.text` is persisted after a turn and joined back into the next
+  `dialogue_seed.dialogue_history` without mutating B-owned OpenKB records.
+- Raised the short-term dialogue history window from 5 to 12 entries.
+- Added optional `GameState.arrival_form` with `full_name`, `address`,
+  `purpose`, `stay_duration`/`stay_length`, and `declared_items`; C preserves
+  it in the Unreal response and forwards `game_state` to the A-facing payload.
+- Added C-owned regression coverage for NPC text history, 12-entry history
+  windows, arrival-form forwarding, and the `[CR-B-AB-DESYNC]` signal path.
 
 ## Change Request - 2026-06-19 - [CR-B-IMM-SLOTS] 입국심사 신규 노드 슬롯 이해 인식
 

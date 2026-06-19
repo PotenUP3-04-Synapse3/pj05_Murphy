@@ -42,6 +42,7 @@ from backend.app.schemas.game_turn import (
     UnrealResponse,
 )
 from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader
+from backend.app.services.service_c.dialogue_history_service import DialogueHistoryService
 from backend.app.services.service_c.logging_service import LoggingService
 from backend.app.services.service_c.openkb_service import OpenKBService
 from backend.app.services.service_c.response_builder import ResponseBuilder
@@ -129,6 +130,7 @@ class DeveloperCGraphTools:
         validator: Validator | None = None,
         agent_run_middleware: DeveloperCAgentRunMiddleware | None = None,
         session_record_reader: OpenKBFinalResultRecordReader | None = None,
+        dialogue_history_service: DialogueHistoryService | None = None,
         agent_run_root: Path | None = None,
     ) -> None:
         self.stt_service = stt_service or WhisperLargeV3TurboSttService()
@@ -141,6 +143,7 @@ class DeveloperCGraphTools:
         self.validator = validator or Validator()
         self.agent_run_middleware = agent_run_middleware or DeveloperCAgentRunMiddleware(agent_run_root)
         self.session_record_reader = session_record_reader or OpenKBFinalResultRecordReader()
+        self.dialogue_history_service = dialogue_history_service or DialogueHistoryService()
         self.active_agent_run: dict[str, Any] | None = None
         self.structured_tools: dict[str, StructuredTool] = self._build_structured_tools()
 
@@ -428,6 +431,7 @@ class DeveloperCGraphTools:
         )
         dialogue_history = _sync_dialogue_history_to_dialogue_seed(
             self.session_record_reader.read_session_records(request.turn.session.session_id),
+            self.dialogue_history_service.read_session_records(request.turn.session.session_id),
             dev_b_output.dialogue_seed,
             current_request_id=request.turn.request_id,
             current_turn_index=request.turn.session.turn_index,
@@ -554,7 +558,15 @@ class DeveloperCGraphTools:
                 developer_b_policy=dev_b_output,
                 transition=transition,
                 random_customs_item=request.turn.game_state.random_customs_item,
+                game_state=request.turn.game_state,
             )
+        )
+        dialogue_history_summary = self.dialogue_history_service.write_turn_dialogue(
+            request=request,
+            normalized_input=normalized_input,
+            understanding=understanding,
+            dev_b_output=dev_b_output,
+            dev_a_output=dev_a_output,
         )
         timing_ms["developer_a_ms"] = _elapsed_ms(stage_started)
         self.agent_run_middleware.record_event(
@@ -567,7 +579,10 @@ class DeveloperCGraphTools:
                 "branch_type": dev_b_output.branch.branch_type,
                 "dialogue_directive": _dialogue_directive_summary(dev_b_output),
             },
-            output_summary=_dev_a_output_summary(dev_a_output),
+            output_summary={
+                **_dev_a_output_summary(dev_a_output),
+                "dialogue_history": dialogue_history_summary,
+            },
         )
         self.agent_run_middleware.record_data_flow(
             agent_run,
@@ -845,11 +860,12 @@ def _clear_dialogue_seed_challenge_fields(dialogue_seed: DialogueSeed) -> None:
 
 def _sync_dialogue_history_to_dialogue_seed(
     records: list[dict[str, Any]],
+    npc_history_records: list[dict[str, Any]],
     dialogue_seed: DialogueSeed | None,
     *,
     current_request_id: str,
     current_turn_index: int,
-    max_entries: int = 5,
+    max_entries: int = 12,
 ) -> list[TurnHistoryEntry]:
     """OpenKB 세션 레코드에서 최근 대화 요약을 만들어 DialogueSeed에 붙입니다.
 
@@ -862,9 +878,10 @@ def _sync_dialogue_history_to_dialogue_seed(
     if dialogue_seed is None:
         return []
 
+    enriched_records = _merge_npc_history_records(records, npc_history_records)
     history_records = [
         record
-        for record in records
+        for record in enriched_records
         if _is_previous_history_record(
             record,
             current_request_id=current_request_id,
@@ -874,6 +891,53 @@ def _sync_dialogue_history_to_dialogue_seed(
     entries = [_turn_history_entry(record) for record in history_records[-max_entries:]]
     dialogue_seed.dialogue_history = entries
     return entries
+
+
+def _merge_npc_history_records(
+    records: list[dict[str, Any]],
+    npc_history_records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """B 기록에 C sidecar의 최종 NPC 대사를 붙인 복사본을 만듭니다.
+
+    Beginner guide:
+    B OpenKB record는 플레이어 답변과 B 평가를 가진 기본 history입니다.  C
+    sidecar는 A가 만든 최종 NPC 대사만 압니다.  이 함수는 두 소스를 합쳐서 A가
+    다음 턴에서 "내가 직전에 뭐라고 물었는지"까지 볼 수 있게 하되, 원본 B record
+    파일은 절대 수정하지 않습니다.
+    """
+
+    npc_by_request_id: dict[str, dict[str, Any]] = {}
+    npc_by_turn_node: dict[tuple[int, str], dict[str, Any]] = {}
+    for sidecar_record in npc_history_records:
+        request_id = str(sidecar_record.get("request_id") or "")
+        if request_id:
+            npc_by_request_id[request_id] = sidecar_record
+
+        turn_index = _int_or_none(sidecar_record.get("turn_index"))
+        node_id = str(sidecar_record.get("node_id") or "")
+        if turn_index is not None and node_id:
+            npc_by_turn_node[(turn_index, node_id)] = sidecar_record
+
+    merged: list[dict[str, Any]] = []
+    for record in records:
+        copied = dict(record)
+        npc_record: dict[str, Any] | None = npc_by_request_id.get(str(record.get("request_id") or ""))
+        if npc_record is None:
+            turn_index = _int_or_none(record.get("turn_index"))
+            node_id = str(record.get("node_id") or "")
+            npc_record = npc_by_turn_node.get((turn_index, node_id)) if turn_index is not None else None
+
+        npc_text = _history_npc_text(npc_record or {})
+        if npc_text:
+            existing_npc = copied.get("npc")
+            npc = dict(existing_npc) if isinstance(existing_npc, dict) else {}
+            npc["text"] = npc_text
+            copied["npc"] = npc
+            copied["npc_text"] = npc_text
+
+        merged.append(copied)
+
+    return merged
 
 
 def _is_previous_history_record(
