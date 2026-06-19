@@ -346,6 +346,32 @@ Developer B coordination requests are recorded in
   and treat `IMM_007_FINAL_DECISION` as an immigration-clearance transition.
 - A/C still need Alpha scene support for flight small talk, cutscene/skip,
   baggage, final scoreboard, and tier-aware NPC dialogue/TTS consumption.
+- C should persist A's final NPC text into the history source and carry an
+  `arrival_form` fact object (`[CR-B-HISTORY-MEMORY]`).
+- A must enforce B's non-ADVANCE branch in NPC generation (`[CR-B-AB-DESYNC]`).
+
+### Adaptive retry tolerance & cross-team desync diagnosis
+
+A reported play log showed a valid answer ("13 days") leading to a forced
+secondary-inspection ending. Root-cause analysis traced two independent faults
+across the A/B/C boundary:
+
+1. **Over-strict retry policy (B-owned, fixed).** `_clarify` (UNCLEAR) counted
+   toward the same hard-fail counter as genuine `FAIL`, so two clarifications
+   plus one hint hit the limit and forced a bad ending. Fix: UNCLEAR no longer
+   increments the hard-fail counter (`retry_count_delta = 0`), and the limit was
+   raised to `MAX_HARD_FAIL_RETRIES = 5`; endless clarification is still bounded
+   by the existing `patience <= 0` floor. This separates "ambiguous but engaged"
+   from "wrong/risky" so the player is not penalized for rephrasing.
+2. **A/B turn-level desync (A-owned, filed as `[CR-B-AB-DESYNC]`).** On a
+   non-`ADVANCE` branch B re-asks the current question, but A's LLM dialogue path
+   advanced to the next question, so the player's answer and B's scored slot
+   diverged. The CR specifies the exact gap (the LLM path lacks the
+   branch-obedience guard the rule-based path already has) and a deterministic
+   re-ask override, with B's retry change as the interim mitigation.
+
+This shows B owning the deterministic policy fix while precisely scoping the
+remaining work to the correct owner instead of absorbing cross-team logic.
 
 ## Testing
 
@@ -353,7 +379,7 @@ Developer B added `backend/tests/dev_b/test_developer_b_policy_engine.py`, `back
 
 Covered scenarios:
 
-- State machine exits loop to BAD_END or ADVANCE when retry limit (3) or patience floor (<= 0) is met.
+- State machine exits loop to BAD_END or ADVANCE when retry limit (5, `MAX_HARD_FAIL_RETRIES`) or patience floor (<= 0) is met; UNCLEAR (clarify) turns are excluded from the hard-fail counter.
 - Hint check is reordered before unclear check when retry count is 2 or higher to prevent deadlocks.
 - Dynamic scenario node override on question and recommended expression is applied when `random_customs_item` is present.
 - Referral integrity checks guarantee all allowed next nodes and branch candidates in `scenario_nodes.json` exist.
