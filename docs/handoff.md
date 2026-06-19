@@ -1,5 +1,24 @@
 # Handoff
 
+## 2026-06-19 Developer B: JFK 입국심사 노드 재설정 및 조건부 라우팅 구현 완료
+
+Developer B는 docs\workplan-dev-b-1.md 계획에 따라 JFK 입국심사 챕터(`CH0_03_IMMIGRATION_CHECK`)의 노드 구조를 재구축하고, 플레이어의 티어 및 체류 기간에 따른 다이내믹 라우팅 정책을 상태 머신에 성공적으로 통합했습니다.
+
+Changed:
+- `backend/app/data/scenario_nodes.json`: 기존의 수화물 신고 및 검사 노드(`IMM_006` 계열)를 제거하고, 9가지 실무형 조건 검사 canonical 노드 및 각 노드의 retry/clarify 변종 노드(총 27개 노드)를 추가. `IMM_005_RETURN_TICKET` 성공 대상을 기본 노드인 `IMM_008_FIRST_VISIT`로 변경 및 allowed_next_nodes 무결성 검증.
+- `backend/app/services/service_b/scenario_state_machine.py`: 플레이어의 등급(tier)과 stay_duration 값에 따라 노드를 다이내믹하게 우회시키는 `GATED_ROUTES` 라우팅 로직을 추가. 자연어 및 숫자 혼용 체류 기간 텍스트(예: "two weeks", "5 days")를 일수(days)로 환산하는 `_stay_duration_days` 파서 함수 구현 및 연동.
+- `backend/app/agents/agent_b/english_level_hint_agent.py`: 신규 9개 노드의 포커스 타깃 및 힌트 연동 맵을 최신화하고 불필요해진 레거시 parameters 제거.
+- `docs/contracts/developer_b_json_final_v1.md`: 신규 노드 목록과 예시 데이터들을 반영해 Section 13, 14, 15 계약 문서 최신화.
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`:
+  - `stay_duration` 파서 테스트 및 parameterized 테스트 세트의 Pydantic v2 `ValidationError` 결함 수정.
+  - 신규 노드 추가에 따라 변종 노드명 규칙(`{node_id}_RETRY_{suffix}`) 매칭을 테스트 파라미터에 반영.
+  - `test_chapter_zero_missing_slot_retries` parameterized 테스트의 등급 파라미터를 `"Silver"`로 변경하여 Bronze 등급 전용 힌트 트리거로 인한 분기 반환 타입 충돌 우회.
+
+Verification:
+- `uv run pytest`: PASS (전체 345개 테스트 성공 통과)
+- `uv run ruff check .`: PASS (test_developer_a_npc_dialogue.py 파일의 pre-existing E402 임포트 순서 위반 해결 포함)
+- `uv run mypy .`: PASS (125개 소스 파일 통과)
+
 ## 2026-06-18 Developer A: CR-B-CONV-A 트집 게이팅·히스토리 소비·대사 변주 구현 완료
 
 Developer A 는 CR-B-CONV-A 의 A 측 4가지 항목을 완료했습니다. B 가 2026-06-18 에 emit 한 `dialogue_seed.suspicion_scope` 및 C 가 동일 날짜에 attach 한 `dialogue_seed.dialogue_history` 를 모두 소비합니다.

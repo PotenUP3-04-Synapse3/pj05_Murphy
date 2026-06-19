@@ -240,31 +240,59 @@ The Alpha Dev B route now covers:
 - `BAG_007_RESOLUTION`
 - `ALPHA_999_FINAL_SCOREBOARD`
 
-The Chapter 0 immigration flow now covers:
+The Chapter 0 immigration flow was restructured (2026-06-19) away from the
+customs-declaration/baggage-inspection back half toward the probing questions a
+real U.S. immigration officer asks. The kept core is:
 
 - `IMM_001_PASSPORT`
 - `IMM_002_PURPOSE`
 - `IMM_003_DURATION`
 - `IMM_004_STAY_LOCATION`
 - `IMM_005_RETURN_TICKET`
-- `IMM_006_DECLARATION_CHECK`
-- `IMM_006B_PACKED_BAG_CHECK`
 - `IMM_007_FINAL_DECISION`
+- `IMM_999_CLEARED`
 
-Alpha-oriented B-owned extensions include the five flight diagnostic nodes, the
-Gold-only `IMM_ALPHA_GOLD_BAG_CONTENT_CHECK` challenge, the
-`BAGGAGE_MISSING` node set from `BAG_001_NOTICE_BAG_MISSING` through
-`BAG_007_RESOLUTION`, and `ALPHA_999_FINAL_SCOREBOARD`. In B policy,
-`IMM_007_FINAL_DECISION` is now an immigration-clearance transition into
-baggage claim, while `ALPHA_999_FINAL_SCOREBOARD` is the Alpha scenario-end
-final branch node. These remain B policy/scenario assets until Developer C,
+The removed `IMM_006_DECLARATION_CHECK`, `IMM_006B_PACKED_BAG_CHECK`, and the
+Gold-only `IMM_ALPHA_GOLD_BAG_CONTENT_CHECK` (plus all their retry/clarify
+variants) were replaced with nine new question nodes, each with a full
+`_RETRY_`/`_CLARIFY_` set (27 nodes total): first-visit, occupation, cash on
+hand (and a who-paid follow-up), prior-denial history, long-stay reason, hotel
+reservation, why-this-hotel, and travel itinerary.
+
+### Adaptive gated routing
+
+The biggest design change is that several of these questions are not asked of
+everyone. They are gated by player **tier** (`Bronze`/`Silver`/`Gold`) and by
+**answer content**, so the interview adapts its pressure to the learner's level:
+
+- Stay duration ≥ 14 days → ask `IMM_003B_LONG_STAY_REASON`.
+- `Silver`+ → ask `IMM_004B_HOTEL_RESERVATION`, `IMM_005B_TRAVEL_ITINERARY`, and
+  the cash → who-paid → prior-denial chain.
+- `Gold` → additionally ask `IMM_004C_WHY_THIS_HOTEL`.
+- `Bronze` skips every gate and runs only the core questions.
+
+Previously this kind of branching was a single hard-coded special case (the Gold
+bag challenge). It was generalized into a declarative `GATED_ROUTES` table in
+`scenario_state_machine.py`: each entry is a `(target_node, condition)` pair, and
+`_preferred_success_node` returns the first gated target that is both present in
+the node's `allowed_next_nodes` and satisfies its condition, otherwise it falls
+through to the normal `success_next_node`. A `_stay_duration_days` parser
+converts mixed natural-language/numeric durations ("two weeks", "5 days") to a
+day count to drive the long-stay gate. The same gated target is also listed in
+the source node's retry/clarify variants so gating still fires when the player
+succeeds after a retry.
+
+In B policy, `IMM_007_FINAL_DECISION` is an immigration-clearance transition into
+baggage claim, while `ALPHA_999_FINAL_SCOREBOARD` is the Alpha scenario-end final
+branch node. The five flight diagnostic nodes, the `BAG_001`–`BAG_007` baggage
+set, and the scoreboard remain B policy/scenario assets until Developer C,
 Developer A, and Unreal adopt the broader Alpha scene orchestration.
 
 Each node defines required intents, required slots, optional slots, critical
 slots, allowed slot values, risk keywords, a recommended expression, Korean hint
 base text, hint policy candidates, branch candidates, and allowed next nodes.
 
-To guarantee referential integrity across the scenario nodes database, Developer B defined terminal ending nodes (`END_SECONDARY_INSPECTION`, `END_BAGGAGE_REPORT_INCOMPLETE`, and `END_ALPHA_SCENARIO`) and duplicated 32 retry/clarify nodes dynamically in `scenario_nodes.json`. This ensures that all transition allowed next nodes and branch candidates are fully resolved in the database instead of pointing to missing/ghost nodes. Additionally, the customs declaration (`IMM_006`) and baggage reveal (`BAG_006`) checks are generalized, and static references (like the legacy "small boat motor") are dynamically replaced by placeholders filled from `random_customs_item`.
+To guarantee referential integrity across the scenario nodes database, Developer B defined terminal ending nodes (`END_SECONDARY_INSPECTION`, `END_BAGGAGE_REPORT_INCOMPLETE`, and `END_ALPHA_SCENARIO`) and kept every node's retry/clarify variants resolvable in `scenario_nodes.json`. This ensures that all transition allowed next nodes and branch candidates are fully resolved in the database instead of pointing to missing/ghost nodes. The baggage reveal (`BAG_006`) check is generalized, and static references are dynamically replaced by placeholders filled from `random_customs_item`. (Inappropriate/risky answers on the new nodes route to the existing `END_SECONDARY_INSPECTION` ending rather than a new bad-end node.)
 
 ## Reliability Design
 

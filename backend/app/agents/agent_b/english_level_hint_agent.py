@@ -740,7 +740,7 @@ class _EnglishLevelHintPolicyCore:
         suspicion_scope: Literal["location", "declaration", "none"] = "none"
         if "location" in node_id.lower() or "stay" in node_id.lower():
             suspicion_scope = "location"
-        elif "declaration" in node_id.lower() or "bag_content" in node_id.lower() or "customs" in node_id.lower() or "item" in node_id.lower() or node_id.startswith("BAG_006") or node_id.startswith("IMM_006"):
+        elif "declaration" in node_id.lower() or "bag_content" in node_id.lower() or "customs" in node_id.lower() or "item" in node_id.lower() or node_id.startswith("BAG_006"):
             suspicion_scope = "declaration"
 
         return DialogueSeed(
@@ -1114,16 +1114,11 @@ class EnglishLevelHintAgent:
         Returns:
             최종 레벨 판정, 피드백 가이드, 힌트 내용 및 다음 분기 노드가 포함된 DevBPolicyOutput 객체
         """
-        # Dynamic node context override for IMM_006 and BAG_006 when random_customs_item is present
+        # Dynamic node context override for BAG_006 when random_customs_item is present
         item = getattr(payload, "random_customs_item", None)
         if item and item.item_name:
             curr_node = payload.current_node_id or ""
-            if curr_node in {"IMM_006_DECLARATION_CHECK", "IMM_006_RETRY_DECLARATION", "IMM_EXTRA_005_CLARIFY_DECLARATION"}:
-                if payload.node_context and payload.node_context.npc_question:
-                    payload.node_context.npc_question = payload.node_context.npc_question.replace("{declared_item}", item.item_name)
-                if payload.node_context and payload.node_context.recommended_expression:
-                    payload.node_context.recommended_expression = payload.node_context.recommended_expression.replace("{declared_item}", item.item_name)
-            elif curr_node in {"BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM", "BAG_006_RETRY_EXPLAIN_RANDOM_CUSTOMS_ITEM", "BAG_006_CLARIFY_EXPLAIN_RANDOM_CUSTOMS_ITEM"}:
+            if curr_node in {"BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM", "BAG_006_RETRY_EXPLAIN_RANDOM_CUSTOMS_ITEM", "BAG_006_CLARIFY_EXPLAIN_RANDOM_CUSTOMS_ITEM"}:
                 if payload.node_context and payload.node_context.npc_question:
                     payload.node_context.npc_question = payload.node_context.npc_question.replace("this item", f"this {item.item_name}")
 
@@ -1421,11 +1416,17 @@ def _immigration_focus_target(node_id: str) -> str | None:
     return {
         "IMM_002_PURPOSE": "purpose_statement",
         "IMM_003_DURATION": "duration_statement",
+        "IMM_003B_LONG_STAY_REASON": "long_stay_reason_statement",
         "IMM_004_STAY_LOCATION": "stay_location_statement",
+        "IMM_004B_HOTEL_RESERVATION": "hotel_reservation_statement",
+        "IMM_004C_WHY_THIS_HOTEL": "hotel_choice_reason",
         "IMM_005_RETURN_TICKET": "return_ticket_statement",
-        "IMM_006_DECLARATION_CHECK": "declaration_explanation",
-        "IMM_006B_PACKED_BAG_CHECK": "bag_content_explanation",
-        "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK": "bag_content_explanation",
+        "IMM_005B_TRAVEL_ITINERARY": "travel_itinerary_statement",
+        "IMM_008_FIRST_VISIT": "first_visit_statement",
+        "IMM_009_OCCUPATION": "occupation_statement",
+        "IMM_010_CASH": "cash_amount_statement",
+        "IMM_010B_WHO_PAID": "sponsor_statement",
+        "IMM_011_DENIED_ENTRY": "denied_entry_statement",
         "BAG_001_REPORT_MISSING_AT_DESK": "problem_statement",
         "BAG_002_PROVIDE_CLAIM_TAG": "flight_or_tag_statement",
         "BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM": "customs_item_explanation",

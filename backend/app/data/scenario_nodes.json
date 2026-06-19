@@ -326,6 +326,7 @@
       },
       "allowed_next_nodes": [
         "IMM_004_STAY_LOCATION",
+        "IMM_003B_LONG_STAY_REASON",
         "IMM_003_RETRY_DURATION",
         "IMM_EXTRA_002_CLARIFY_DURATION",
         "END_SECONDARY_INSPECTION"
@@ -392,6 +393,8 @@
       },
       "allowed_next_nodes": [
         "IMM_005_RETURN_TICKET",
+        "IMM_004C_WHY_THIS_HOTEL",
+        "IMM_004B_HOTEL_RESERVATION",
         "IMM_004_RETRY_LOCATION",
         "IMM_EXTRA_003_CLARIFY_LOCATION",
         "END_SECONDARY_INSPECTION"
@@ -446,7 +449,7 @@
         "action_hint": "Answer yes/no first, then add the return date if possible."
       },
       "branch_candidates": {
-        "success": "IMM_006_DECLARATION_CHECK",
+        "success": "IMM_008_FIRST_VISIT",
         "retry": "IMM_005_RETRY_RETURN_TICKET",
         "clarify": "IMM_EXTRA_004_CLARIFY_RETURN_TICKET",
         "hint": "IMM_005_RETRY_RETURN_TICKET",
@@ -454,214 +457,10 @@
         "bad_end": "END_SECONDARY_INSPECTION"
       },
       "allowed_next_nodes": [
-        "IMM_006_DECLARATION_CHECK",
-        "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK",
+        "IMM_008_FIRST_VISIT",
+        "IMM_005B_TRAVEL_ITINERARY",
         "IMM_005_RETRY_RETURN_TICKET",
         "IMM_EXTRA_004_CLARIFY_RETURN_TICKET",
-        "END_SECONDARY_INSPECTION"
-      ],
-      "node_type": "dialogue"
-    },
-    "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK": {
-      "node_id": "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK",
-      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
-      "npc_question": "I'm going to ask about your bags. What did you pack, and are you carrying anything you need to declare?",
-      "npc_question_goal": "ask_gold_bag_contents_and_declaration",
-      "objective_kr": "짐의 내용물과 신고 여부를 구체적으로 설명하기",
-      "required_intents": [
-        "explain_bag_contents"
-      ],
-      "required_slots": [
-        "bag_contents_summary"
-      ],
-      "optional_slots": [
-        "declaration_status",
-        "valuable_items",
-        "medication",
-        "electronics"
-      ],
-      "critical_slots": [
-        "unknown_contents",
-        "received_from_stranger",
-        "undeclared_restricted_items",
-        "inconsistent_explanation"
-      ],
-      "allowed_slot_values": {
-        "bag_contents_summary": [
-          "clothes",
-          "personal_items",
-          "electronics",
-          "toiletries",
-          "mixed_personal_items"
-        ],
-        "declaration_status": [
-          "nothing_to_declare",
-          "declared_items",
-          "personal_use_items"
-        ]
-      },
-      "risk_keywords": [
-        "do not know inside",
-        "someone gave",
-        "stranger",
-        "secret",
-        "not declare"
-      ],
-      "recommended_expression": "I packed clothes, toiletries, and my laptop. I have nothing else to declare.",
-      "base_hint_kr": "짐 안에 무엇이 있는지와 신고할 물건이 있는지 구체적으로 말하세요.",
-      "hint_policy": {
-        "keyword": [
-          "clothes",
-          "toiletries",
-          "laptop",
-          "nothing to declare"
-        ],
-        "sentence_pattern": "I packed ___, and I have nothing else to declare.",
-        "situation_hint": "The officer is asking whether you know your bag contents and declaration status.",
-        "action_hint": "List the main bag contents first, then clearly say whether you have anything to declare."
-      },
-      "branch_candidates": {
-        "success": "IMM_006_DECLARATION_CHECK",
-        "retry": "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK",
-        "clarify": "IMM_ALPHA_GOLD_CLARIFY_BAG_CONTENT_CHECK",
-        "hint": "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK",
-        "warning": "END_SECONDARY_INSPECTION",
-        "bad_end": "END_SECONDARY_INSPECTION"
-      },
-      "allowed_next_nodes": [
-        "IMM_006_DECLARATION_CHECK",
-        "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK",
-        "IMM_ALPHA_GOLD_CLARIFY_BAG_CONTENT_CHECK",
-        "END_SECONDARY_INSPECTION"
-      ],
-      "node_type": "dialogue"
-    },
-    "IMM_006_DECLARATION_CHECK": {
-      "node_id": "IMM_006_DECLARATION_CHECK",
-      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
-      "npc_question": "You declared a {declared_item}. What is it for?",
-      "npc_question_goal": "ask_declared_item_purpose",
-      "objective_kr": "신고 물품 용도 설명하기",
-      "required_intents": [
-        "explain_declared_item"
-      ],
-      "required_slots": [
-        "item_purpose"
-      ],
-      "optional_slots": [
-        "ownership",
-        "personal_use",
-        "destination_context",
-        "non_commercial_use"
-      ],
-      "critical_slots": [
-        "unknown_item",
-        "commercial_resale",
-        "dangerous_use",
-        "inconsistent_explanation"
-      ],
-      "allowed_slot_values": {
-        "item_purpose": [
-          "personal_recreation",
-          "gift",
-          "repair_part",
-          "hobby_use",
-          "sports_activity"
-        ]
-      },
-      "risk_keywords": [
-        "sell",
-        "secret",
-        "do not know",
-        "someone gave",
-        "dangerous"
-      ],
-      "recommended_expression": "It's for personal use.",
-      "base_hint_kr": "Explain what the declared item is for.",
-      "hint_policy": {
-        "keyword": [
-          "personal use",
-          "fishing",
-          "gift"
-        ],
-        "sentence_pattern": "It's for personal use.",
-        "situation_hint": "The officer needs a clear reason for the item you declared.",
-        "action_hint": "Explain the item purpose and say it is for personal use."
-      },
-      "branch_candidates": {
-        "success": "IMM_006B_PACKED_BAG_CHECK",
-        "retry": "IMM_006_RETRY_DECLARATION",
-        "clarify": "IMM_EXTRA_005_CLARIFY_DECLARATION",
-        "hint": "IMM_006_RETRY_DECLARATION",
-        "warning": "END_SECONDARY_INSPECTION",
-        "bad_end": "END_SECONDARY_INSPECTION"
-      },
-      "allowed_next_nodes": [
-        "IMM_006B_PACKED_BAG_CHECK",
-        "IMM_006_RETRY_DECLARATION",
-        "IMM_EXTRA_005_CLARIFY_DECLARATION",
-        "END_SECONDARY_INSPECTION"
-      ],
-      "node_type": "dialogue"
-    },
-    "IMM_006B_PACKED_BAG_CHECK": {
-      "node_id": "IMM_006B_PACKED_BAG_CHECK",
-      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
-      "npc_question": "Did you pack your bag yourself?",
-      "npc_question_goal": "ask_packed_bag_ownership",
-      "objective_kr": "짐을 직접 쌌는지 답하기",
-      "required_intents": [
-        "confirm_packed_by_self"
-      ],
-      "required_slots": [
-        "packed_by_self"
-      ],
-      "optional_slots": [
-        "bag_content_awareness",
-        "ownership_confirmation"
-      ],
-      "critical_slots": [
-        "packed_by_other",
-        "unknown_contents",
-        "received_from_stranger"
-      ],
-      "allowed_slot_values": {
-        "packed_by_self": [
-          "yes_self_packed",
-          "yes_knows_contents",
-          "assisted_but_knows_contents"
-        ]
-      },
-      "risk_keywords": [
-        "friend packed",
-        "do not know inside",
-        "someone gave",
-        "stranger"
-      ],
-      "recommended_expression": "Yes, I packed it myself, and I know everything inside.",
-      "base_hint_kr": "Say whether you packed the bag yourself.",
-      "hint_policy": {
-        "keyword": [
-          "yes",
-          "packed myself",
-          "checked everything"
-        ],
-        "sentence_pattern": "Yes, I packed it myself.",
-        "situation_hint": "The officer is checking whether you know your bag contents.",
-        "action_hint": "Answer yes/no first, then say you checked the contents."
-      },
-      "branch_candidates": {
-        "success": "IMM_007_FINAL_DECISION",
-        "retry": "IMM_006B_RETRY_PACKED_BAG",
-        "clarify": "IMM_EXTRA_006_CLARIFY_PACKED_BAG",
-        "hint": "IMM_006B_RETRY_PACKED_BAG",
-        "warning": "END_SECONDARY_INSPECTION",
-        "bad_end": "END_SECONDARY_INSPECTION"
-      },
-      "allowed_next_nodes": [
-        "IMM_007_FINAL_DECISION",
-        "IMM_006B_RETRY_PACKED_BAG",
-        "IMM_EXTRA_006_CLARIFY_PACKED_BAG",
         "END_SECONDARY_INSPECTION"
       ],
       "node_type": "dialogue"
@@ -1872,6 +1671,7 @@
       },
       "allowed_next_nodes": [
         "IMM_004_STAY_LOCATION",
+        "IMM_003B_LONG_STAY_REASON",
         "IMM_003_RETRY_DURATION",
         "IMM_EXTRA_002_CLARIFY_DURATION",
         "END_SECONDARY_INSPECTION"
@@ -1936,6 +1736,7 @@
       },
       "allowed_next_nodes": [
         "IMM_004_STAY_LOCATION",
+        "IMM_003B_LONG_STAY_REASON",
         "IMM_003_RETRY_DURATION",
         "IMM_EXTRA_002_CLARIFY_DURATION",
         "END_SECONDARY_INSPECTION"
@@ -2002,6 +1803,8 @@
       },
       "allowed_next_nodes": [
         "IMM_005_RETURN_TICKET",
+        "IMM_004C_WHY_THIS_HOTEL",
+        "IMM_004B_HOTEL_RESERVATION",
         "IMM_004_RETRY_LOCATION",
         "IMM_EXTRA_003_CLARIFY_LOCATION",
         "END_SECONDARY_INSPECTION"
@@ -2068,6 +1871,8 @@
       },
       "allowed_next_nodes": [
         "IMM_005_RETURN_TICKET",
+        "IMM_004C_WHY_THIS_HOTEL",
+        "IMM_004B_HOTEL_RESERVATION",
         "IMM_004_RETRY_LOCATION",
         "IMM_EXTRA_003_CLARIFY_LOCATION",
         "END_SECONDARY_INSPECTION"
@@ -2122,7 +1927,7 @@
         "action_hint": "Answer yes/no first, then add the return date if possible."
       },
       "branch_candidates": {
-        "success": "IMM_006_DECLARATION_CHECK",
+        "success": "IMM_008_FIRST_VISIT",
         "retry": "IMM_005_RETRY_RETURN_TICKET",
         "clarify": "IMM_EXTRA_004_CLARIFY_RETURN_TICKET",
         "hint": "IMM_005_RETRY_RETURN_TICKET",
@@ -2130,8 +1935,8 @@
         "bad_end": "END_SECONDARY_INSPECTION"
       },
       "allowed_next_nodes": [
-        "IMM_006_DECLARATION_CHECK",
-        "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK",
+        "IMM_008_FIRST_VISIT",
+        "IMM_005B_TRAVEL_ITINERARY",
         "IMM_005_RETRY_RETURN_TICKET",
         "IMM_EXTRA_004_CLARIFY_RETURN_TICKET",
         "END_SECONDARY_INSPECTION"
@@ -2186,7 +1991,7 @@
         "action_hint": "Answer yes/no first, then add the return date if possible."
       },
       "branch_candidates": {
-        "success": "IMM_006_DECLARATION_CHECK",
+        "success": "IMM_008_FIRST_VISIT",
         "retry": "IMM_005_RETRY_RETURN_TICKET",
         "clarify": "IMM_EXTRA_004_CLARIFY_RETURN_TICKET",
         "hint": "IMM_005_RETRY_RETURN_TICKET",
@@ -2194,270 +1999,10 @@
         "bad_end": "END_SECONDARY_INSPECTION"
       },
       "allowed_next_nodes": [
-        "IMM_006_DECLARATION_CHECK",
-        "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK",
+        "IMM_008_FIRST_VISIT",
+        "IMM_005B_TRAVEL_ITINERARY",
         "IMM_005_RETRY_RETURN_TICKET",
         "IMM_EXTRA_004_CLARIFY_RETURN_TICKET",
-        "END_SECONDARY_INSPECTION"
-      ],
-      "node_type": "dialogue"
-    },
-    "IMM_006_RETRY_DECLARATION": {
-      "node_id": "IMM_006_RETRY_DECLARATION",
-      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
-      "npc_question": "You declared a {declared_item}. What is it for?",
-      "npc_question_goal": "ask_declared_item_purpose",
-      "objective_kr": "신고 물품 용도 설명하기",
-      "required_intents": [
-        "explain_declared_item"
-      ],
-      "required_slots": [
-        "item_purpose"
-      ],
-      "optional_slots": [
-        "ownership",
-        "personal_use",
-        "destination_context",
-        "non_commercial_use"
-      ],
-      "critical_slots": [
-        "unknown_item",
-        "commercial_resale",
-        "dangerous_use",
-        "inconsistent_explanation"
-      ],
-      "allowed_slot_values": {
-        "item_purpose": [
-          "personal_recreation",
-          "gift",
-          "repair_part",
-          "hobby_use",
-          "sports_activity"
-        ]
-      },
-      "risk_keywords": [
-        "sell",
-        "secret",
-        "do not know",
-        "someone gave",
-        "dangerous"
-      ],
-      "recommended_expression": "It's for personal use.",
-      "base_hint_kr": "Explain what the declared item is for.",
-      "hint_policy": {
-        "keyword": [
-          "personal use",
-          "fishing",
-          "gift"
-        ],
-        "sentence_pattern": "It's for personal use.",
-        "situation_hint": "The officer needs a clear reason for the item you declared.",
-        "action_hint": "Explain the item purpose and say it is for personal use."
-      },
-      "branch_candidates": {
-        "success": "IMM_006B_PACKED_BAG_CHECK",
-        "retry": "IMM_006_RETRY_DECLARATION",
-        "clarify": "IMM_EXTRA_005_CLARIFY_DECLARATION",
-        "hint": "IMM_006_RETRY_DECLARATION",
-        "warning": "END_SECONDARY_INSPECTION",
-        "bad_end": "END_SECONDARY_INSPECTION"
-      },
-      "allowed_next_nodes": [
-        "IMM_006B_PACKED_BAG_CHECK",
-        "IMM_006_RETRY_DECLARATION",
-        "IMM_EXTRA_005_CLARIFY_DECLARATION",
-        "END_SECONDARY_INSPECTION"
-      ],
-      "node_type": "dialogue"
-    },
-    "IMM_EXTRA_005_CLARIFY_DECLARATION": {
-      "node_id": "IMM_EXTRA_005_CLARIFY_DECLARATION",
-      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
-      "npc_question": "You declared a {declared_item}. What is it for?",
-      "npc_question_goal": "ask_declared_item_purpose",
-      "objective_kr": "신고 물품 용도 설명하기",
-      "required_intents": [
-        "explain_declared_item"
-      ],
-      "required_slots": [
-        "item_purpose"
-      ],
-      "optional_slots": [
-        "ownership",
-        "personal_use",
-        "destination_context",
-        "non_commercial_use"
-      ],
-      "critical_slots": [
-        "unknown_item",
-        "commercial_resale",
-        "dangerous_use",
-        "inconsistent_explanation"
-      ],
-      "allowed_slot_values": {
-        "item_purpose": [
-          "personal_recreation",
-          "gift",
-          "repair_part",
-          "hobby_use",
-          "sports_activity"
-        ]
-      },
-      "risk_keywords": [
-        "sell",
-        "secret",
-        "do not know",
-        "someone gave",
-        "dangerous"
-      ],
-      "recommended_expression": "It's for personal use.",
-      "base_hint_kr": "Explain what the declared item is for.",
-      "hint_policy": {
-        "keyword": [
-          "personal use",
-          "fishing",
-          "gift"
-        ],
-        "sentence_pattern": "It's for personal use.",
-        "situation_hint": "The officer needs a clear reason for the item you declared.",
-        "action_hint": "Explain the item purpose and say it is for personal use."
-      },
-      "branch_candidates": {
-        "success": "IMM_006B_PACKED_BAG_CHECK",
-        "retry": "IMM_006_RETRY_DECLARATION",
-        "clarify": "IMM_EXTRA_005_CLARIFY_DECLARATION",
-        "hint": "IMM_006_RETRY_DECLARATION",
-        "warning": "END_SECONDARY_INSPECTION",
-        "bad_end": "END_SECONDARY_INSPECTION"
-      },
-      "allowed_next_nodes": [
-        "IMM_006B_PACKED_BAG_CHECK",
-        "IMM_006_RETRY_DECLARATION",
-        "IMM_EXTRA_005_CLARIFY_DECLARATION",
-        "END_SECONDARY_INSPECTION"
-      ],
-      "node_type": "dialogue"
-    },
-    "IMM_006B_RETRY_PACKED_BAG": {
-      "node_id": "IMM_006B_RETRY_PACKED_BAG",
-      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
-      "npc_question": "Did you pack your bag yourself?",
-      "npc_question_goal": "ask_packed_bag_ownership",
-      "objective_kr": "짐을 직접 쌌는지 답하기",
-      "required_intents": [
-        "confirm_packed_by_self"
-      ],
-      "required_slots": [
-        "packed_by_self"
-      ],
-      "optional_slots": [
-        "bag_content_awareness",
-        "ownership_confirmation"
-      ],
-      "critical_slots": [
-        "packed_by_other",
-        "unknown_contents",
-        "received_from_stranger"
-      ],
-      "allowed_slot_values": {
-        "packed_by_self": [
-          "yes_self_packed",
-          "yes_knows_contents",
-          "assisted_but_knows_contents"
-        ]
-      },
-      "risk_keywords": [
-        "friend packed",
-        "do not know inside",
-        "someone gave",
-        "stranger"
-      ],
-      "recommended_expression": "Yes, I packed it myself, and I know everything inside.",
-      "base_hint_kr": "Say whether you packed the bag yourself.",
-      "hint_policy": {
-        "keyword": [
-          "yes",
-          "packed myself",
-          "checked everything"
-        ],
-        "sentence_pattern": "Yes, I packed it myself.",
-        "situation_hint": "The officer is checking whether you know your bag contents.",
-        "action_hint": "Answer yes/no first, then say you checked the contents."
-      },
-      "branch_candidates": {
-        "success": "IMM_007_FINAL_DECISION",
-        "retry": "IMM_006B_RETRY_PACKED_BAG",
-        "clarify": "IMM_EXTRA_006_CLARIFY_PACKED_BAG",
-        "hint": "IMM_006B_RETRY_PACKED_BAG",
-        "warning": "END_SECONDARY_INSPECTION",
-        "bad_end": "END_SECONDARY_INSPECTION"
-      },
-      "allowed_next_nodes": [
-        "IMM_007_FINAL_DECISION",
-        "IMM_006B_RETRY_PACKED_BAG",
-        "IMM_EXTRA_006_CLARIFY_PACKED_BAG",
-        "END_SECONDARY_INSPECTION"
-      ],
-      "node_type": "dialogue"
-    },
-    "IMM_EXTRA_006_CLARIFY_PACKED_BAG": {
-      "node_id": "IMM_EXTRA_006_CLARIFY_PACKED_BAG",
-      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
-      "npc_question": "Did you pack your bag yourself?",
-      "npc_question_goal": "ask_packed_bag_ownership",
-      "objective_kr": "짐을 직접 쌌는지 답하기",
-      "required_intents": [
-        "confirm_packed_by_self"
-      ],
-      "required_slots": [
-        "packed_by_self"
-      ],
-      "optional_slots": [
-        "bag_content_awareness",
-        "ownership_confirmation"
-      ],
-      "critical_slots": [
-        "packed_by_other",
-        "unknown_contents",
-        "received_from_stranger"
-      ],
-      "allowed_slot_values": {
-        "packed_by_self": [
-          "yes_self_packed",
-          "yes_knows_contents",
-          "assisted_but_knows_contents"
-        ]
-      },
-      "risk_keywords": [
-        "friend packed",
-        "do not know inside",
-        "someone gave",
-        "stranger"
-      ],
-      "recommended_expression": "Yes, I packed it myself, and I know everything inside.",
-      "base_hint_kr": "Say whether you packed the bag yourself.",
-      "hint_policy": {
-        "keyword": [
-          "yes",
-          "packed myself",
-          "checked everything"
-        ],
-        "sentence_pattern": "Yes, I packed it myself.",
-        "situation_hint": "The officer is checking whether you know your bag contents.",
-        "action_hint": "Answer yes/no first, then say you checked the contents."
-      },
-      "branch_candidates": {
-        "success": "IMM_007_FINAL_DECISION",
-        "retry": "IMM_006B_RETRY_PACKED_BAG",
-        "clarify": "IMM_EXTRA_006_CLARIFY_PACKED_BAG",
-        "hint": "IMM_006B_RETRY_PACKED_BAG",
-        "warning": "END_SECONDARY_INSPECTION",
-        "bad_end": "END_SECONDARY_INSPECTION"
-      },
-      "allowed_next_nodes": [
-        "IMM_007_FINAL_DECISION",
-        "IMM_006B_RETRY_PACKED_BAG",
-        "IMM_EXTRA_006_CLARIFY_PACKED_BAG",
         "END_SECONDARY_INSPECTION"
       ],
       "node_type": "dialogue"
@@ -2576,154 +2121,6 @@
         "IMM_999_CLEARED",
         "IMM_007_RETRY_FINAL_DECISION",
         "IMM_EXTRA_007_CLARIFY_FINAL_DECISION",
-        "END_SECONDARY_INSPECTION"
-      ],
-      "node_type": "dialogue"
-    },
-    "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK": {
-      "node_id": "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK",
-      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
-      "npc_question": "I'm going to ask about your bags. What did you pack, and are you carrying anything you need to declare?",
-      "npc_question_goal": "ask_gold_bag_contents_and_declaration",
-      "objective_kr": "짐의 내용물과 신고 여부를 구체적으로 설명하기",
-      "required_intents": [
-        "explain_bag_contents"
-      ],
-      "required_slots": [
-        "bag_contents_summary"
-      ],
-      "optional_slots": [
-        "declaration_status",
-        "valuable_items",
-        "medication",
-        "electronics"
-      ],
-      "critical_slots": [
-        "unknown_contents",
-        "received_from_stranger",
-        "undeclared_restricted_items",
-        "inconsistent_explanation"
-      ],
-      "allowed_slot_values": {
-        "bag_contents_summary": [
-          "clothes",
-          "personal_items",
-          "electronics",
-          "toiletries",
-          "mixed_personal_items"
-        ],
-        "declaration_status": [
-          "nothing_to_declare",
-          "declared_items",
-          "personal_use_items"
-        ]
-      },
-      "risk_keywords": [
-        "do not know inside",
-        "someone gave",
-        "stranger",
-        "secret",
-        "not declare"
-      ],
-      "recommended_expression": "I packed clothes, toiletries, and my laptop. I have nothing else to declare.",
-      "base_hint_kr": "짐 안에 무엇이 있는지와 신고할 물건이 있는지 구체적으로 말하세요.",
-      "hint_policy": {
-        "keyword": [
-          "clothes",
-          "toiletries",
-          "laptop",
-          "nothing to declare"
-        ],
-        "sentence_pattern": "I packed ___, and I have nothing else to declare.",
-        "situation_hint": "The officer is asking whether you know your bag contents and declaration status.",
-        "action_hint": "List the main bag contents first, then clearly say whether you have anything to declare."
-      },
-      "branch_candidates": {
-        "success": "IMM_006_DECLARATION_CHECK",
-        "retry": "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK",
-        "clarify": "IMM_ALPHA_GOLD_CLARIFY_BAG_CONTENT_CHECK",
-        "hint": "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK",
-        "warning": "END_SECONDARY_INSPECTION",
-        "bad_end": "END_SECONDARY_INSPECTION"
-      },
-      "allowed_next_nodes": [
-        "IMM_006_DECLARATION_CHECK",
-        "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK",
-        "IMM_ALPHA_GOLD_CLARIFY_BAG_CONTENT_CHECK",
-        "END_SECONDARY_INSPECTION"
-      ],
-      "node_type": "dialogue"
-    },
-    "IMM_ALPHA_GOLD_CLARIFY_BAG_CONTENT_CHECK": {
-      "node_id": "IMM_ALPHA_GOLD_CLARIFY_BAG_CONTENT_CHECK",
-      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
-      "npc_question": "I'm going to ask about your bags. What did you pack, and are you carrying anything you need to declare?",
-      "npc_question_goal": "ask_gold_bag_contents_and_declaration",
-      "objective_kr": "짐의 내용물과 신고 여부를 구체적으로 설명하기",
-      "required_intents": [
-        "explain_bag_contents"
-      ],
-      "required_slots": [
-        "bag_contents_summary"
-      ],
-      "optional_slots": [
-        "declaration_status",
-        "valuable_items",
-        "medication",
-        "electronics"
-      ],
-      "critical_slots": [
-        "unknown_contents",
-        "received_from_stranger",
-        "undeclared_restricted_items",
-        "inconsistent_explanation"
-      ],
-      "allowed_slot_values": {
-        "bag_contents_summary": [
-          "clothes",
-          "personal_items",
-          "electronics",
-          "toiletries",
-          "mixed_personal_items"
-        ],
-        "declaration_status": [
-          "nothing_to_declare",
-          "declared_items",
-          "personal_use_items"
-        ]
-      },
-      "risk_keywords": [
-        "do not know inside",
-        "someone gave",
-        "stranger",
-        "secret",
-        "not declare"
-      ],
-      "recommended_expression": "I packed clothes, toiletries, and my laptop. I have nothing else to declare.",
-      "base_hint_kr": "짐 안에 무엇이 있는지와 신고할 물건이 있는지 구체적으로 말하세요.",
-      "hint_policy": {
-        "keyword": [
-          "clothes",
-          "toiletries",
-          "laptop",
-          "nothing to declare"
-        ],
-        "sentence_pattern": "I packed ___, and I have nothing else to declare.",
-        "situation_hint": "The officer is asking whether you know your bag contents and declaration status.",
-        "action_hint": "List the main bag contents first, then clearly say whether you have anything to declare."
-      },
-      "branch_candidates": {
-        "success": "IMM_006_DECLARATION_CHECK",
-        "retry": "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK",
-        "clarify": "IMM_ALPHA_GOLD_CLARIFY_BAG_CONTENT_CHECK",
-        "hint": "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK",
-        "warning": "END_SECONDARY_INSPECTION",
-        "bad_end": "END_SECONDARY_INSPECTION"
-      },
-      "allowed_next_nodes": [
-        "IMM_006_DECLARATION_CHECK",
-        "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK",
-        "IMM_ALPHA_GOLD_CLARIFY_BAG_CONTENT_CHECK",
         "END_SECONDARY_INSPECTION"
       ],
       "node_type": "dialogue"
@@ -3589,6 +2986,1674 @@
         "BAG_007_RETRY_CUSTOMS_CLEARANCE",
         "BAG_999_COMPLETE",
         "END_BAGGAGE_REPORT_INCOMPLETE"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_003B_LONG_STAY_REASON": {
+      "node_id": "IMM_003B_LONG_STAY_REASON",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Why are you staying for so long?",
+      "npc_question_goal": "ask_long_stay_reason",
+      "objective_kr": "장기 체류 사유 설명하기",
+      "required_intents": [
+        "explain_long_stay_reason"
+      ],
+      "required_slots": [
+        "long_stay_reason"
+      ],
+      "optional_slots": [
+        "duration",
+        "visit_purpose"
+      ],
+      "critical_slots": [
+        "illegal_work_intent",
+        "overstay_intent"
+      ],
+      "allowed_slot_values": {
+        "long_stay_reason": [
+          "tourism",
+          "study",
+          "family_visit",
+          "remote_work",
+          "long_vacation"
+        ]
+      },
+      "risk_keywords": [
+        "work",
+        "job",
+        "money",
+        "earn",
+        "live here",
+        "forever"
+      ],
+      "recommended_expression": "I want to travel across the country.",
+      "base_hint_kr": "장기 체류에 대한 합당한 이유를 말하세요.",
+      "hint_policy": {
+        "keyword": [
+          "travel",
+          "vacation",
+          "visit"
+        ],
+        "sentence_pattern": "I'm staying long because ___.",
+        "situation_hint": "The officer wants to know why you need to stay so long.",
+        "action_hint": "Explain your travel plans or family visit purpose clearly."
+      },
+      "branch_candidates": {
+        "success": "IMM_004_STAY_LOCATION",
+        "retry": "IMM_003B_LONG_STAY_REASON_RETRY_REASON",
+        "clarify": "IMM_003B_LONG_STAY_REASON_CLARIFY_REASON",
+        "hint": "IMM_003B_LONG_STAY_REASON_RETRY_REASON",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_004_STAY_LOCATION",
+        "IMM_003B_LONG_STAY_REASON_RETRY_REASON",
+        "IMM_003B_LONG_STAY_REASON_CLARIFY_REASON",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_003B_LONG_STAY_REASON_RETRY_REASON": {
+      "node_id": "IMM_003B_LONG_STAY_REASON_RETRY_REASON",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Why are you staying for so long?",
+      "npc_question_goal": "ask_long_stay_reason",
+      "objective_kr": "장기 체류 사유 설명하기",
+      "required_intents": [
+        "explain_long_stay_reason"
+      ],
+      "required_slots": [
+        "long_stay_reason"
+      ],
+      "optional_slots": [
+        "duration",
+        "visit_purpose"
+      ],
+      "critical_slots": [
+        "illegal_work_intent",
+        "overstay_intent"
+      ],
+      "allowed_slot_values": {
+        "long_stay_reason": [
+          "tourism",
+          "study",
+          "family_visit",
+          "remote_work",
+          "long_vacation"
+        ]
+      },
+      "risk_keywords": [
+        "work",
+        "job",
+        "money",
+        "earn",
+        "live here",
+        "forever"
+      ],
+      "recommended_expression": "I want to travel across the country.",
+      "base_hint_kr": "장기 체류에 대한 합당한 이유를 말하세요.",
+      "hint_policy": {
+        "keyword": [
+          "travel",
+          "vacation",
+          "visit"
+        ],
+        "sentence_pattern": "I'm staying long because ___.",
+        "situation_hint": "The officer wants to know why you need to stay so long.",
+        "action_hint": "Explain your travel plans or family visit purpose clearly."
+      },
+      "branch_candidates": {
+        "success": "IMM_004_STAY_LOCATION",
+        "retry": "IMM_003B_LONG_STAY_REASON_RETRY_REASON",
+        "clarify": "IMM_003B_LONG_STAY_REASON_CLARIFY_REASON",
+        "hint": "IMM_003B_LONG_STAY_REASON_RETRY_REASON",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_004_STAY_LOCATION",
+        "IMM_003B_LONG_STAY_REASON_RETRY_REASON",
+        "IMM_003B_LONG_STAY_REASON_CLARIFY_REASON",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_003B_LONG_STAY_REASON_CLARIFY_REASON": {
+      "node_id": "IMM_003B_LONG_STAY_REASON_CLARIFY_REASON",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Why are you staying for so long?",
+      "npc_question_goal": "ask_long_stay_reason",
+      "objective_kr": "장기 체류 사유 설명하기",
+      "required_intents": [
+        "explain_long_stay_reason"
+      ],
+      "required_slots": [
+        "long_stay_reason"
+      ],
+      "optional_slots": [
+        "duration",
+        "visit_purpose"
+      ],
+      "critical_slots": [
+        "illegal_work_intent",
+        "overstay_intent"
+      ],
+      "allowed_slot_values": {
+        "long_stay_reason": [
+          "tourism",
+          "study",
+          "family_visit",
+          "remote_work",
+          "long_vacation"
+        ]
+      },
+      "risk_keywords": [
+        "work",
+        "job",
+        "money",
+        "earn",
+        "live here",
+        "forever"
+      ],
+      "recommended_expression": "I want to travel across the country.",
+      "base_hint_kr": "장기 체류에 대한 합당한 이유를 말하세요.",
+      "hint_policy": {
+        "keyword": [
+          "travel",
+          "vacation",
+          "visit"
+        ],
+        "sentence_pattern": "I'm staying long because ___.",
+        "situation_hint": "The officer wants to know why you need to stay so long.",
+        "action_hint": "Explain your travel plans or family visit purpose clearly."
+      },
+      "branch_candidates": {
+        "success": "IMM_004_STAY_LOCATION",
+        "retry": "IMM_003B_LONG_STAY_REASON_RETRY_REASON",
+        "clarify": "IMM_003B_LONG_STAY_REASON_CLARIFY_REASON",
+        "hint": "IMM_003B_LONG_STAY_REASON_RETRY_REASON",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_004_STAY_LOCATION",
+        "IMM_003B_LONG_STAY_REASON_RETRY_REASON",
+        "IMM_003B_LONG_STAY_REASON_CLARIFY_REASON",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_004B_HOTEL_RESERVATION": {
+      "node_id": "IMM_004B_HOTEL_RESERVATION",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Can you show me your hotel reservation?",
+      "npc_question_goal": "ask_hotel_reservation",
+      "objective_kr": "호텔 예약 증명 제시하기",
+      "required_intents": [
+        "confirm_hotel_reservation"
+      ],
+      "required_slots": [
+        "hotel_reservation_status"
+      ],
+      "optional_slots": [
+        "hotel_name",
+        "hotel_address"
+      ],
+      "critical_slots": [
+        "no_accommodation",
+        "unknown_location"
+      ],
+      "allowed_slot_values": {
+        "hotel_reservation_status": [
+          "has_reservation",
+          "has_digital_confirmation",
+          "has_address"
+        ]
+      },
+      "risk_keywords": [
+        "no booking",
+        "nowhere",
+        "lost booking",
+        "no reservation"
+      ],
+      "recommended_expression": "Yes, here is my hotel reservation confirmation.",
+      "base_hint_kr": "호텔 예약 증명서나 확정 메일이 있다고 답하세요.",
+      "hint_policy": {
+        "keyword": [
+          "yes",
+          "reservation",
+          "booking",
+          "hotel"
+        ],
+        "sentence_pattern": "Yes, here is my hotel ___.",
+        "situation_hint": "The officer needs proof of your hotel reservation.",
+        "action_hint": "Present the reservation details or confirmation."
+      },
+      "branch_candidates": {
+        "success": "IMM_005_RETURN_TICKET",
+        "retry": "IMM_004B_HOTEL_RESERVATION_RETRY_RESERVATION",
+        "clarify": "IMM_004B_HOTEL_RESERVATION_CLARIFY_RESERVATION",
+        "hint": "IMM_004B_HOTEL_RESERVATION_RETRY_RESERVATION",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_005_RETURN_TICKET",
+        "IMM_004B_HOTEL_RESERVATION_RETRY_RESERVATION",
+        "IMM_004B_HOTEL_RESERVATION_CLARIFY_RESERVATION",
+        "END_SECONDARY_INSPECTION",
+        "IMM_004C_WHY_THIS_HOTEL"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_004B_HOTEL_RESERVATION_RETRY_RESERVATION": {
+      "node_id": "IMM_004B_HOTEL_RESERVATION_RETRY_RESERVATION",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Can you show me your hotel reservation?",
+      "npc_question_goal": "ask_hotel_reservation",
+      "objective_kr": "호텔 예약 증명 제시하기",
+      "required_intents": [
+        "confirm_hotel_reservation"
+      ],
+      "required_slots": [
+        "hotel_reservation_status"
+      ],
+      "optional_slots": [
+        "hotel_name",
+        "hotel_address"
+      ],
+      "critical_slots": [
+        "no_accommodation",
+        "unknown_location"
+      ],
+      "allowed_slot_values": {
+        "hotel_reservation_status": [
+          "has_reservation",
+          "has_digital_confirmation",
+          "has_address"
+        ]
+      },
+      "risk_keywords": [
+        "no booking",
+        "nowhere",
+        "lost booking",
+        "no reservation"
+      ],
+      "recommended_expression": "Yes, here is my hotel reservation confirmation.",
+      "base_hint_kr": "호텔 예약 증명서나 확정 메일이 있다고 답하세요.",
+      "hint_policy": {
+        "keyword": [
+          "yes",
+          "reservation",
+          "booking",
+          "hotel"
+        ],
+        "sentence_pattern": "Yes, here is my hotel ___.",
+        "situation_hint": "The officer needs proof of your hotel reservation.",
+        "action_hint": "Present the reservation details or confirmation."
+      },
+      "branch_candidates": {
+        "success": "IMM_005_RETURN_TICKET",
+        "retry": "IMM_004B_HOTEL_RESERVATION_RETRY_RESERVATION",
+        "clarify": "IMM_004B_HOTEL_RESERVATION_CLARIFY_RESERVATION",
+        "hint": "IMM_004B_HOTEL_RESERVATION_RETRY_RESERVATION",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_005_RETURN_TICKET",
+        "IMM_004B_HOTEL_RESERVATION_RETRY_RESERVATION",
+        "IMM_004B_HOTEL_RESERVATION_CLARIFY_RESERVATION",
+        "END_SECONDARY_INSPECTION",
+        "IMM_004C_WHY_THIS_HOTEL"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_004B_HOTEL_RESERVATION_CLARIFY_RESERVATION": {
+      "node_id": "IMM_004B_HOTEL_RESERVATION_CLARIFY_RESERVATION",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Can you show me your hotel reservation?",
+      "npc_question_goal": "ask_hotel_reservation",
+      "objective_kr": "호텔 예약 증명 제시하기",
+      "required_intents": [
+        "confirm_hotel_reservation"
+      ],
+      "required_slots": [
+        "hotel_reservation_status"
+      ],
+      "optional_slots": [
+        "hotel_name",
+        "hotel_address"
+      ],
+      "critical_slots": [
+        "no_accommodation",
+        "unknown_location"
+      ],
+      "allowed_slot_values": {
+        "hotel_reservation_status": [
+          "has_reservation",
+          "has_digital_confirmation",
+          "has_address"
+        ]
+      },
+      "risk_keywords": [
+        "no booking",
+        "nowhere",
+        "lost booking",
+        "no reservation"
+      ],
+      "recommended_expression": "Yes, here is my hotel reservation confirmation.",
+      "base_hint_kr": "호텔 예약 증명서나 확정 메일이 있다고 답하세요.",
+      "hint_policy": {
+        "keyword": [
+          "yes",
+          "reservation",
+          "booking",
+          "hotel"
+        ],
+        "sentence_pattern": "Yes, here is my hotel ___.",
+        "situation_hint": "The officer needs proof of your hotel reservation.",
+        "action_hint": "Present the reservation details or confirmation."
+      },
+      "branch_candidates": {
+        "success": "IMM_005_RETURN_TICKET",
+        "retry": "IMM_004B_HOTEL_RESERVATION_RETRY_RESERVATION",
+        "clarify": "IMM_004B_HOTEL_RESERVATION_CLARIFY_RESERVATION",
+        "hint": "IMM_004B_HOTEL_RESERVATION_RETRY_RESERVATION",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_005_RETURN_TICKET",
+        "IMM_004B_HOTEL_RESERVATION_RETRY_RESERVATION",
+        "IMM_004B_HOTEL_RESERVATION_CLARIFY_RESERVATION",
+        "END_SECONDARY_INSPECTION",
+        "IMM_004C_WHY_THIS_HOTEL"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_004C_WHY_THIS_HOTEL": {
+      "node_id": "IMM_004C_WHY_THIS_HOTEL",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Why did you choose this hotel?",
+      "npc_question_goal": "ask_hotel_choice_reason",
+      "objective_kr": "해당 호텔을 선택한 이유 설명하기",
+      "required_intents": [
+        "explain_hotel_choice_reason"
+      ],
+      "required_slots": [
+        "hotel_choice_reason"
+      ],
+      "optional_slots": [
+        "hotel_location",
+        "price",
+        "recommendation"
+      ],
+      "critical_slots": [
+        "illegal_work_intent"
+      ],
+      "allowed_slot_values": {
+        "hotel_choice_reason": [
+          "location",
+          "price",
+          "reviews",
+          "recommended",
+          "near_tourist_spots"
+        ]
+      },
+      "risk_keywords": [
+        "work there",
+        "job",
+        "owner is friend"
+      ],
+      "recommended_expression": "It is close to the main tourist attractions.",
+      "base_hint_kr": "호텔 위치나 가격 등 선택 이유를 말하세요.",
+      "hint_policy": {
+        "keyword": [
+          "location",
+          "price",
+          "close",
+          "cheap"
+        ],
+        "sentence_pattern": "I chose it because ___.",
+        "situation_hint": "The officer is asking why you decided to stay at this hotel.",
+        "action_hint": "State a simple reason like convenient location or reasonable price."
+      },
+      "branch_candidates": {
+        "success": "IMM_005_RETURN_TICKET",
+        "retry": "IMM_004C_WHY_THIS_HOTEL_RETRY_HOTEL",
+        "clarify": "IMM_004C_WHY_THIS_HOTEL_CLARIFY_HOTEL",
+        "hint": "IMM_004C_WHY_THIS_HOTEL_RETRY_HOTEL",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_005_RETURN_TICKET",
+        "IMM_004C_WHY_THIS_HOTEL_RETRY_HOTEL",
+        "IMM_004C_WHY_THIS_HOTEL_CLARIFY_HOTEL",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_004C_WHY_THIS_HOTEL_RETRY_HOTEL": {
+      "node_id": "IMM_004C_WHY_THIS_HOTEL_RETRY_HOTEL",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Why did you choose this hotel?",
+      "npc_question_goal": "ask_hotel_choice_reason",
+      "objective_kr": "해당 호텔을 선택한 이유 설명하기",
+      "required_intents": [
+        "explain_hotel_choice_reason"
+      ],
+      "required_slots": [
+        "hotel_choice_reason"
+      ],
+      "optional_slots": [
+        "hotel_location",
+        "price",
+        "recommendation"
+      ],
+      "critical_slots": [
+        "illegal_work_intent"
+      ],
+      "allowed_slot_values": {
+        "hotel_choice_reason": [
+          "location",
+          "price",
+          "reviews",
+          "recommended",
+          "near_tourist_spots"
+        ]
+      },
+      "risk_keywords": [
+        "work there",
+        "job",
+        "owner is friend"
+      ],
+      "recommended_expression": "It is close to the main tourist attractions.",
+      "base_hint_kr": "호텔 위치나 가격 등 선택 이유를 말하세요.",
+      "hint_policy": {
+        "keyword": [
+          "location",
+          "price",
+          "close",
+          "cheap"
+        ],
+        "sentence_pattern": "I chose it because ___.",
+        "situation_hint": "The officer is asking why you decided to stay at this hotel.",
+        "action_hint": "State a simple reason like convenient location or reasonable price."
+      },
+      "branch_candidates": {
+        "success": "IMM_005_RETURN_TICKET",
+        "retry": "IMM_004C_WHY_THIS_HOTEL_RETRY_HOTEL",
+        "clarify": "IMM_004C_WHY_THIS_HOTEL_CLARIFY_HOTEL",
+        "hint": "IMM_004C_WHY_THIS_HOTEL_RETRY_HOTEL",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_005_RETURN_TICKET",
+        "IMM_004C_WHY_THIS_HOTEL_RETRY_HOTEL",
+        "IMM_004C_WHY_THIS_HOTEL_CLARIFY_HOTEL",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_004C_WHY_THIS_HOTEL_CLARIFY_HOTEL": {
+      "node_id": "IMM_004C_WHY_THIS_HOTEL_CLARIFY_HOTEL",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Why did you choose this hotel?",
+      "npc_question_goal": "ask_hotel_choice_reason",
+      "objective_kr": "해당 호텔을 선택한 이유 설명하기",
+      "required_intents": [
+        "explain_hotel_choice_reason"
+      ],
+      "required_slots": [
+        "hotel_choice_reason"
+      ],
+      "optional_slots": [
+        "hotel_location",
+        "price",
+        "recommendation"
+      ],
+      "critical_slots": [
+        "illegal_work_intent"
+      ],
+      "allowed_slot_values": {
+        "hotel_choice_reason": [
+          "location",
+          "price",
+          "reviews",
+          "recommended",
+          "near_tourist_spots"
+        ]
+      },
+      "risk_keywords": [
+        "work there",
+        "job",
+        "owner is friend"
+      ],
+      "recommended_expression": "It is close to the main tourist attractions.",
+      "base_hint_kr": "호텔 위치나 가격 등 선택 이유를 말하세요.",
+      "hint_policy": {
+        "keyword": [
+          "location",
+          "price",
+          "close",
+          "cheap"
+        ],
+        "sentence_pattern": "I chose it because ___.",
+        "situation_hint": "The officer is asking why you decided to stay at this hotel.",
+        "action_hint": "State a simple reason like convenient location or reasonable price."
+      },
+      "branch_candidates": {
+        "success": "IMM_005_RETURN_TICKET",
+        "retry": "IMM_004C_WHY_THIS_HOTEL_RETRY_HOTEL",
+        "clarify": "IMM_004C_WHY_THIS_HOTEL_CLARIFY_HOTEL",
+        "hint": "IMM_004C_WHY_THIS_HOTEL_RETRY_HOTEL",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_005_RETURN_TICKET",
+        "IMM_004C_WHY_THIS_HOTEL_RETRY_HOTEL",
+        "IMM_004C_WHY_THIS_HOTEL_CLARIFY_HOTEL",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_005B_TRAVEL_ITINERARY": {
+      "node_id": "IMM_005B_TRAVEL_ITINERARY",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Can I see your travel itinerary?",
+      "npc_question_goal": "ask_travel_itinerary",
+      "objective_kr": "여행 일정표 제시하기",
+      "required_intents": [
+        "confirm_travel_itinerary"
+      ],
+      "required_slots": [
+        "itinerary_status"
+      ],
+      "optional_slots": [
+        "travel_plans",
+        "places_to_visit"
+      ],
+      "critical_slots": [
+        "no_travel_plans"
+      ],
+      "allowed_slot_values": {
+        "itinerary_status": [
+          "has_itinerary",
+          "has_plans",
+          "has_list"
+        ]
+      },
+      "risk_keywords": [
+        "no plan",
+        "don't know what to do",
+        "nowhere"
+      ],
+      "recommended_expression": "Yes, here is my travel itinerary.",
+      "base_hint_kr": "여행 일정표나 계획이 준비되어 있다고 답하세요.",
+      "hint_policy": {
+        "keyword": [
+          "yes",
+          "itinerary",
+          "plans",
+          "schedule"
+        ],
+        "sentence_pattern": "Yes, here is my ___.",
+        "situation_hint": "The officer wants to see your travel schedule or itinerary.",
+        "action_hint": "Confirm you have an itinerary and present the plans."
+      },
+      "branch_candidates": {
+        "success": "IMM_008_FIRST_VISIT",
+        "retry": "IMM_005B_TRAVEL_ITINERARY_RETRY_ITINERARY",
+        "clarify": "IMM_005B_TRAVEL_ITINERARY_CLARIFY_ITINERARY",
+        "hint": "IMM_005B_TRAVEL_ITINERARY_RETRY_ITINERARY",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_008_FIRST_VISIT",
+        "IMM_005B_TRAVEL_ITINERARY_RETRY_ITINERARY",
+        "IMM_005B_TRAVEL_ITINERARY_CLARIFY_ITINERARY",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_005B_TRAVEL_ITINERARY_RETRY_ITINERARY": {
+      "node_id": "IMM_005B_TRAVEL_ITINERARY_RETRY_ITINERARY",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Can I see your travel itinerary?",
+      "npc_question_goal": "ask_travel_itinerary",
+      "objective_kr": "여행 일정표 제시하기",
+      "required_intents": [
+        "confirm_travel_itinerary"
+      ],
+      "required_slots": [
+        "itinerary_status"
+      ],
+      "optional_slots": [
+        "travel_plans",
+        "places_to_visit"
+      ],
+      "critical_slots": [
+        "no_travel_plans"
+      ],
+      "allowed_slot_values": {
+        "itinerary_status": [
+          "has_itinerary",
+          "has_plans",
+          "has_list"
+        ]
+      },
+      "risk_keywords": [
+        "no plan",
+        "don't know what to do",
+        "nowhere"
+      ],
+      "recommended_expression": "Yes, here is my travel itinerary.",
+      "base_hint_kr": "여행 일정표나 계획이 준비되어 있다고 답하세요.",
+      "hint_policy": {
+        "keyword": [
+          "yes",
+          "itinerary",
+          "plans",
+          "schedule"
+        ],
+        "sentence_pattern": "Yes, here is my ___.",
+        "situation_hint": "The officer wants to see your travel schedule or itinerary.",
+        "action_hint": "Confirm you have an itinerary and present the plans."
+      },
+      "branch_candidates": {
+        "success": "IMM_008_FIRST_VISIT",
+        "retry": "IMM_005B_TRAVEL_ITINERARY_RETRY_ITINERARY",
+        "clarify": "IMM_005B_TRAVEL_ITINERARY_CLARIFY_ITINERARY",
+        "hint": "IMM_005B_TRAVEL_ITINERARY_RETRY_ITINERARY",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_008_FIRST_VISIT",
+        "IMM_005B_TRAVEL_ITINERARY_RETRY_ITINERARY",
+        "IMM_005B_TRAVEL_ITINERARY_CLARIFY_ITINERARY",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_005B_TRAVEL_ITINERARY_CLARIFY_ITINERARY": {
+      "node_id": "IMM_005B_TRAVEL_ITINERARY_CLARIFY_ITINERARY",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Can I see your travel itinerary?",
+      "npc_question_goal": "ask_travel_itinerary",
+      "objective_kr": "여행 일정표 제시하기",
+      "required_intents": [
+        "confirm_travel_itinerary"
+      ],
+      "required_slots": [
+        "itinerary_status"
+      ],
+      "optional_slots": [
+        "travel_plans",
+        "places_to_visit"
+      ],
+      "critical_slots": [
+        "no_travel_plans"
+      ],
+      "allowed_slot_values": {
+        "itinerary_status": [
+          "has_itinerary",
+          "has_plans",
+          "has_list"
+        ]
+      },
+      "risk_keywords": [
+        "no plan",
+        "don't know what to do",
+        "nowhere"
+      ],
+      "recommended_expression": "Yes, here is my travel itinerary.",
+      "base_hint_kr": "여행 일정표나 계획이 준비되어 있다고 답하세요.",
+      "hint_policy": {
+        "keyword": [
+          "yes",
+          "itinerary",
+          "plans",
+          "schedule"
+        ],
+        "sentence_pattern": "Yes, here is my ___.",
+        "situation_hint": "The officer wants to see your travel schedule or itinerary.",
+        "action_hint": "Confirm you have an itinerary and present the plans."
+      },
+      "branch_candidates": {
+        "success": "IMM_008_FIRST_VISIT",
+        "retry": "IMM_005B_TRAVEL_ITINERARY_RETRY_ITINERARY",
+        "clarify": "IMM_005B_TRAVEL_ITINERARY_CLARIFY_ITINERARY",
+        "hint": "IMM_005B_TRAVEL_ITINERARY_RETRY_ITINERARY",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_008_FIRST_VISIT",
+        "IMM_005B_TRAVEL_ITINERARY_RETRY_ITINERARY",
+        "IMM_005B_TRAVEL_ITINERARY_CLARIFY_ITINERARY",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_008_FIRST_VISIT": {
+      "node_id": "IMM_008_FIRST_VISIT",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Is this your first visit to the U.S.?",
+      "npc_question_goal": "ask_first_visit",
+      "objective_kr": "미국 첫 방문 여부 답변하기",
+      "required_intents": [
+        "confirm_first_visit"
+      ],
+      "required_slots": [
+        "first_visit_status"
+      ],
+      "optional_slots": [
+        "previous_visits",
+        "visit_purpose"
+      ],
+      "critical_slots": [],
+      "allowed_slot_values": {
+        "first_visit_status": [
+          "yes_first_time",
+          "no_visited_before"
+        ]
+      },
+      "risk_keywords": [],
+      "recommended_expression": "Yes, this is my first time.",
+      "base_hint_kr": "첫 방문인지 아니면 이전에 방문한 적이 있는지 답하세요.",
+      "hint_policy": {
+        "keyword": [
+          "yes",
+          "first time",
+          "no",
+          "visited before"
+        ],
+        "sentence_pattern": "Yes, it is my first time. / No, I have visited ___.",
+        "situation_hint": "The officer asks if you have been to the U.S. before.",
+        "action_hint": "Answer yes or no, and add details about past visits if applicable."
+      },
+      "branch_candidates": {
+        "success": "IMM_009_OCCUPATION",
+        "retry": "IMM_008_FIRST_VISIT_RETRY_VISIT",
+        "clarify": "IMM_008_FIRST_VISIT_CLARIFY_VISIT",
+        "hint": "IMM_008_FIRST_VISIT_RETRY_VISIT",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_009_OCCUPATION",
+        "IMM_008_FIRST_VISIT_RETRY_VISIT",
+        "IMM_008_FIRST_VISIT_CLARIFY_VISIT",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_008_FIRST_VISIT_RETRY_VISIT": {
+      "node_id": "IMM_008_FIRST_VISIT_RETRY_VISIT",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Is this your first visit to the U.S.?",
+      "npc_question_goal": "ask_first_visit",
+      "objective_kr": "미국 첫 방문 여부 답변하기",
+      "required_intents": [
+        "confirm_first_visit"
+      ],
+      "required_slots": [
+        "first_visit_status"
+      ],
+      "optional_slots": [
+        "previous_visits",
+        "visit_purpose"
+      ],
+      "critical_slots": [],
+      "allowed_slot_values": {
+        "first_visit_status": [
+          "yes_first_time",
+          "no_visited_before"
+        ]
+      },
+      "risk_keywords": [],
+      "recommended_expression": "Yes, this is my first time.",
+      "base_hint_kr": "첫 방문인지 아니면 이전에 방문한 적이 있는지 답하세요.",
+      "hint_policy": {
+        "keyword": [
+          "yes",
+          "first time",
+          "no",
+          "visited before"
+        ],
+        "sentence_pattern": "Yes, it is my first time. / No, I have visited ___.",
+        "situation_hint": "The officer asks if you have been to the U.S. before.",
+        "action_hint": "Answer yes or no, and add details about past visits if applicable."
+      },
+      "branch_candidates": {
+        "success": "IMM_009_OCCUPATION",
+        "retry": "IMM_008_FIRST_VISIT_RETRY_VISIT",
+        "clarify": "IMM_008_FIRST_VISIT_CLARIFY_VISIT",
+        "hint": "IMM_008_FIRST_VISIT_RETRY_VISIT",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_009_OCCUPATION",
+        "IMM_008_FIRST_VISIT_RETRY_VISIT",
+        "IMM_008_FIRST_VISIT_CLARIFY_VISIT",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_008_FIRST_VISIT_CLARIFY_VISIT": {
+      "node_id": "IMM_008_FIRST_VISIT_CLARIFY_VISIT",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Is this your first visit to the U.S.?",
+      "npc_question_goal": "ask_first_visit",
+      "objective_kr": "미국 첫 방문 여부 답변하기",
+      "required_intents": [
+        "confirm_first_visit"
+      ],
+      "required_slots": [
+        "first_visit_status"
+      ],
+      "optional_slots": [
+        "previous_visits",
+        "visit_purpose"
+      ],
+      "critical_slots": [],
+      "allowed_slot_values": {
+        "first_visit_status": [
+          "yes_first_time",
+          "no_visited_before"
+        ]
+      },
+      "risk_keywords": [],
+      "recommended_expression": "Yes, this is my first time.",
+      "base_hint_kr": "첫 방문인지 아니면 이전에 방문한 적이 있는지 답하세요.",
+      "hint_policy": {
+        "keyword": [
+          "yes",
+          "first time",
+          "no",
+          "visited before"
+        ],
+        "sentence_pattern": "Yes, it is my first time. / No, I have visited ___.",
+        "situation_hint": "The officer asks if you have been to the U.S. before.",
+        "action_hint": "Answer yes or no, and add details about past visits if applicable."
+      },
+      "branch_candidates": {
+        "success": "IMM_009_OCCUPATION",
+        "retry": "IMM_008_FIRST_VISIT_RETRY_VISIT",
+        "clarify": "IMM_008_FIRST_VISIT_CLARIFY_VISIT",
+        "hint": "IMM_008_FIRST_VISIT_RETRY_VISIT",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_009_OCCUPATION",
+        "IMM_008_FIRST_VISIT_RETRY_VISIT",
+        "IMM_008_FIRST_VISIT_CLARIFY_VISIT",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_009_OCCUPATION": {
+      "node_id": "IMM_009_OCCUPATION",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "What do you do for a living?",
+      "npc_question_goal": "ask_occupation",
+      "objective_kr": "직업 말하기",
+      "required_intents": [
+        "state_occupation"
+      ],
+      "required_slots": [
+        "occupation"
+      ],
+      "optional_slots": [
+        "company_name",
+        "job_title"
+      ],
+      "critical_slots": [
+        "no_job",
+        "illegal_work_intent"
+      ],
+      "allowed_slot_values": {
+        "occupation": [
+          "student",
+          "office_worker",
+          "engineer",
+          "designer",
+          "teacher",
+          "business_owner",
+          "unemployed"
+        ]
+      },
+      "risk_keywords": [
+        "no job",
+        "looking for work",
+        "work here"
+      ],
+      "recommended_expression": "I'm an office worker. I work for a tech company.",
+      "base_hint_kr": "현재 직업이나 하시는 일을 설명하세요.",
+      "hint_policy": {
+        "keyword": [
+          "office worker",
+          "student",
+          "engineer",
+          "teacher"
+        ],
+        "sentence_pattern": "I'm a ___.",
+        "situation_hint": "The officer is asking about your current job or occupation.",
+        "action_hint": "State your profession and briefly mention your company or field."
+      },
+      "branch_candidates": {
+        "success": "IMM_007_FINAL_DECISION",
+        "retry": "IMM_009_OCCUPATION_RETRY_OCCUPATION",
+        "clarify": "IMM_009_OCCUPATION_CLARIFY_OCCUPATION",
+        "hint": "IMM_009_OCCUPATION_RETRY_OCCUPATION",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_007_FINAL_DECISION",
+        "IMM_009_OCCUPATION_RETRY_OCCUPATION",
+        "IMM_009_OCCUPATION_CLARIFY_OCCUPATION",
+        "END_SECONDARY_INSPECTION",
+        "IMM_010_CASH"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_009_OCCUPATION_RETRY_OCCUPATION": {
+      "node_id": "IMM_009_OCCUPATION_RETRY_OCCUPATION",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "What do you do for a living?",
+      "npc_question_goal": "ask_occupation",
+      "objective_kr": "직업 말하기",
+      "required_intents": [
+        "state_occupation"
+      ],
+      "required_slots": [
+        "occupation"
+      ],
+      "optional_slots": [
+        "company_name",
+        "job_title"
+      ],
+      "critical_slots": [
+        "no_job",
+        "illegal_work_intent"
+      ],
+      "allowed_slot_values": {
+        "occupation": [
+          "student",
+          "office_worker",
+          "engineer",
+          "designer",
+          "teacher",
+          "business_owner",
+          "unemployed"
+        ]
+      },
+      "risk_keywords": [
+        "no job",
+        "looking for work",
+        "work here"
+      ],
+      "recommended_expression": "I'm an office worker. I work for a tech company.",
+      "base_hint_kr": "현재 직업이나 하시는 일을 설명하세요.",
+      "hint_policy": {
+        "keyword": [
+          "office worker",
+          "student",
+          "engineer",
+          "teacher"
+        ],
+        "sentence_pattern": "I'm a ___.",
+        "situation_hint": "The officer is asking about your current job or occupation.",
+        "action_hint": "State your profession and briefly mention your company or field."
+      },
+      "branch_candidates": {
+        "success": "IMM_007_FINAL_DECISION",
+        "retry": "IMM_009_OCCUPATION_RETRY_OCCUPATION",
+        "clarify": "IMM_009_OCCUPATION_CLARIFY_OCCUPATION",
+        "hint": "IMM_009_OCCUPATION_RETRY_OCCUPATION",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_007_FINAL_DECISION",
+        "IMM_009_OCCUPATION_RETRY_OCCUPATION",
+        "IMM_009_OCCUPATION_CLARIFY_OCCUPATION",
+        "END_SECONDARY_INSPECTION",
+        "IMM_010_CASH"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_009_OCCUPATION_CLARIFY_OCCUPATION": {
+      "node_id": "IMM_009_OCCUPATION_CLARIFY_OCCUPATION",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "What do you do for a living?",
+      "npc_question_goal": "ask_occupation",
+      "objective_kr": "직업 말하기",
+      "required_intents": [
+        "state_occupation"
+      ],
+      "required_slots": [
+        "occupation"
+      ],
+      "optional_slots": [
+        "company_name",
+        "job_title"
+      ],
+      "critical_slots": [
+        "no_job",
+        "illegal_work_intent"
+      ],
+      "allowed_slot_values": {
+        "occupation": [
+          "student",
+          "office_worker",
+          "engineer",
+          "designer",
+          "teacher",
+          "business_owner",
+          "unemployed"
+        ]
+      },
+      "risk_keywords": [
+        "no job",
+        "looking for work",
+        "work here"
+      ],
+      "recommended_expression": "I'm an office worker. I work for a tech company.",
+      "base_hint_kr": "현재 직업이나 하시는 일을 설명하세요.",
+      "hint_policy": {
+        "keyword": [
+          "office worker",
+          "student",
+          "engineer",
+          "teacher"
+        ],
+        "sentence_pattern": "I'm a ___.",
+        "situation_hint": "The officer is asking about your current job or occupation.",
+        "action_hint": "State your profession and briefly mention your company or field."
+      },
+      "branch_candidates": {
+        "success": "IMM_007_FINAL_DECISION",
+        "retry": "IMM_009_OCCUPATION_RETRY_OCCUPATION",
+        "clarify": "IMM_009_OCCUPATION_CLARIFY_OCCUPATION",
+        "hint": "IMM_009_OCCUPATION_RETRY_OCCUPATION",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_007_FINAL_DECISION",
+        "IMM_009_OCCUPATION_RETRY_OCCUPATION",
+        "IMM_009_OCCUPATION_CLARIFY_OCCUPATION",
+        "END_SECONDARY_INSPECTION",
+        "IMM_010_CASH"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_010_CASH": {
+      "node_id": "IMM_010_CASH",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "How much cash are you carrying?",
+      "npc_question_goal": "ask_cash_amount",
+      "objective_kr": "소지 현금 액수 말하기",
+      "required_intents": [
+        "state_cash_amount"
+      ],
+      "required_slots": [
+        "cash_amount"
+      ],
+      "optional_slots": [
+        "credit_cards",
+        "currency"
+      ],
+      "critical_slots": [
+        "no_money",
+        "over_limit"
+      ],
+      "allowed_slot_values": {
+        "cash_amount": [
+          "under_10k",
+          "over_10k",
+          "zero",
+          "specific_amount"
+        ]
+      },
+      "risk_keywords": [
+        "no money",
+        "poor",
+        "million",
+        "limit"
+      ],
+      "recommended_expression": "I have about five hundred dollars in cash.",
+      "base_hint_kr": "소지하고 있는 현금 액수를 말하세요.",
+      "hint_policy": {
+        "keyword": [
+          "dollars",
+          "cash",
+          "about",
+          "hundred"
+        ],
+        "sentence_pattern": "I have about ___ dollars.",
+        "situation_hint": "The officer wants to know how much cash you have on you.",
+        "action_hint": "State the approximate amount of cash you are carrying."
+      },
+      "branch_candidates": {
+        "success": "IMM_010B_WHO_PAID",
+        "retry": "IMM_010_CASH_RETRY_CASH",
+        "clarify": "IMM_010_CASH_CLARIFY_CASH",
+        "hint": "IMM_010_CASH_RETRY_CASH",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_010B_WHO_PAID",
+        "IMM_010_CASH_RETRY_CASH",
+        "IMM_010_CASH_CLARIFY_CASH",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_010_CASH_RETRY_CASH": {
+      "node_id": "IMM_010_CASH_RETRY_CASH",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "How much cash are you carrying?",
+      "npc_question_goal": "ask_cash_amount",
+      "objective_kr": "소지 현금 액수 말하기",
+      "required_intents": [
+        "state_cash_amount"
+      ],
+      "required_slots": [
+        "cash_amount"
+      ],
+      "optional_slots": [
+        "credit_cards",
+        "currency"
+      ],
+      "critical_slots": [
+        "no_money",
+        "over_limit"
+      ],
+      "allowed_slot_values": {
+        "cash_amount": [
+          "under_10k",
+          "over_10k",
+          "zero",
+          "specific_amount"
+        ]
+      },
+      "risk_keywords": [
+        "no money",
+        "poor",
+        "million",
+        "limit"
+      ],
+      "recommended_expression": "I have about five hundred dollars in cash.",
+      "base_hint_kr": "소지하고 있는 현금 액수를 말하세요.",
+      "hint_policy": {
+        "keyword": [
+          "dollars",
+          "cash",
+          "about",
+          "hundred"
+        ],
+        "sentence_pattern": "I have about ___ dollars.",
+        "situation_hint": "The officer wants to know how much cash you have on you.",
+        "action_hint": "State the approximate amount of cash you are carrying."
+      },
+      "branch_candidates": {
+        "success": "IMM_010B_WHO_PAID",
+        "retry": "IMM_010_CASH_RETRY_CASH",
+        "clarify": "IMM_010_CASH_CLARIFY_CASH",
+        "hint": "IMM_010_CASH_RETRY_CASH",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_010B_WHO_PAID",
+        "IMM_010_CASH_RETRY_CASH",
+        "IMM_010_CASH_CLARIFY_CASH",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_010_CASH_CLARIFY_CASH": {
+      "node_id": "IMM_010_CASH_CLARIFY_CASH",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "How much cash are you carrying?",
+      "npc_question_goal": "ask_cash_amount",
+      "objective_kr": "소지 현금 액수 말하기",
+      "required_intents": [
+        "state_cash_amount"
+      ],
+      "required_slots": [
+        "cash_amount"
+      ],
+      "optional_slots": [
+        "credit_cards",
+        "currency"
+      ],
+      "critical_slots": [
+        "no_money",
+        "over_limit"
+      ],
+      "allowed_slot_values": {
+        "cash_amount": [
+          "under_10k",
+          "over_10k",
+          "zero",
+          "specific_amount"
+        ]
+      },
+      "risk_keywords": [
+        "no money",
+        "poor",
+        "million",
+        "limit"
+      ],
+      "recommended_expression": "I have about five hundred dollars in cash.",
+      "base_hint_kr": "소지하고 있는 현금 액수를 말하세요.",
+      "hint_policy": {
+        "keyword": [
+          "dollars",
+          "cash",
+          "about",
+          "hundred"
+        ],
+        "sentence_pattern": "I have about ___ dollars.",
+        "situation_hint": "The officer wants to know how much cash you have on you.",
+        "action_hint": "State the approximate amount of cash you are carrying."
+      },
+      "branch_candidates": {
+        "success": "IMM_010B_WHO_PAID",
+        "retry": "IMM_010_CASH_RETRY_CASH",
+        "clarify": "IMM_010_CASH_CLARIFY_CASH",
+        "hint": "IMM_010_CASH_RETRY_CASH",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_010B_WHO_PAID",
+        "IMM_010_CASH_RETRY_CASH",
+        "IMM_010_CASH_CLARIFY_CASH",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_010B_WHO_PAID": {
+      "node_id": "IMM_010B_WHO_PAID",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Who paid for this trip?",
+      "npc_question_goal": "ask_trip_payment_source",
+      "objective_kr": "여행 경비 지불 주체 밝히기",
+      "required_intents": [
+        "state_trip_payment_source"
+      ],
+      "required_slots": [
+        "payment_source"
+      ],
+      "optional_slots": [
+        "parents",
+        "company",
+        "myself"
+      ],
+      "critical_slots": [
+        "unknown_sponsor",
+        "illegal_work_intent"
+      ],
+      "allowed_slot_values": {
+        "payment_source": [
+          "myself",
+          "parents",
+          "company",
+          "sponsor",
+          "family"
+        ]
+      },
+      "risk_keywords": [
+        "stranger paid",
+        "secret boss",
+        "don't know"
+      ],
+      "recommended_expression": "I paid for the trip myself.",
+      "base_hint_kr": "누가 여행 경비를 지불했는지 말하세요.",
+      "hint_policy": {
+        "keyword": [
+          "myself",
+          "parents",
+          "company",
+          "family"
+        ],
+        "sentence_pattern": "I paid for it ___.",
+        "situation_hint": "The officer is asking who funded your travel expenses.",
+        "action_hint": "State whether you, your parents, or your company paid for the trip."
+      },
+      "branch_candidates": {
+        "success": "IMM_011_DENIED_ENTRY",
+        "retry": "IMM_010B_WHO_PAID_RETRY_PAID",
+        "clarify": "IMM_010B_WHO_PAID_CLARIFY_PAID",
+        "hint": "IMM_010B_WHO_PAID_RETRY_PAID",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_011_DENIED_ENTRY",
+        "IMM_010B_WHO_PAID_RETRY_PAID",
+        "IMM_010B_WHO_PAID_CLARIFY_PAID",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_010B_WHO_PAID_RETRY_PAID": {
+      "node_id": "IMM_010B_WHO_PAID_RETRY_PAID",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Who paid for this trip?",
+      "npc_question_goal": "ask_trip_payment_source",
+      "objective_kr": "여행 경비 지불 주체 밝히기",
+      "required_intents": [
+        "state_trip_payment_source"
+      ],
+      "required_slots": [
+        "payment_source"
+      ],
+      "optional_slots": [
+        "parents",
+        "company",
+        "myself"
+      ],
+      "critical_slots": [
+        "unknown_sponsor",
+        "illegal_work_intent"
+      ],
+      "allowed_slot_values": {
+        "payment_source": [
+          "myself",
+          "parents",
+          "company",
+          "sponsor",
+          "family"
+        ]
+      },
+      "risk_keywords": [
+        "stranger paid",
+        "secret boss",
+        "don't know"
+      ],
+      "recommended_expression": "I paid for the trip myself.",
+      "base_hint_kr": "누가 여행 경비를 지불했는지 말하세요.",
+      "hint_policy": {
+        "keyword": [
+          "myself",
+          "parents",
+          "company",
+          "family"
+        ],
+        "sentence_pattern": "I paid for it ___.",
+        "situation_hint": "The officer is asking who funded your travel expenses.",
+        "action_hint": "State whether you, your parents, or your company paid for the trip."
+      },
+      "branch_candidates": {
+        "success": "IMM_011_DENIED_ENTRY",
+        "retry": "IMM_010B_WHO_PAID_RETRY_PAID",
+        "clarify": "IMM_010B_WHO_PAID_CLARIFY_PAID",
+        "hint": "IMM_010B_WHO_PAID_RETRY_PAID",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_011_DENIED_ENTRY",
+        "IMM_010B_WHO_PAID_RETRY_PAID",
+        "IMM_010B_WHO_PAID_CLARIFY_PAID",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_010B_WHO_PAID_CLARIFY_PAID": {
+      "node_id": "IMM_010B_WHO_PAID_CLARIFY_PAID",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Who paid for this trip?",
+      "npc_question_goal": "ask_trip_payment_source",
+      "objective_kr": "여행 경비 지불 주체 밝히기",
+      "required_intents": [
+        "state_trip_payment_source"
+      ],
+      "required_slots": [
+        "payment_source"
+      ],
+      "optional_slots": [
+        "parents",
+        "company",
+        "myself"
+      ],
+      "critical_slots": [
+        "unknown_sponsor",
+        "illegal_work_intent"
+      ],
+      "allowed_slot_values": {
+        "payment_source": [
+          "myself",
+          "parents",
+          "company",
+          "sponsor",
+          "family"
+        ]
+      },
+      "risk_keywords": [
+        "stranger paid",
+        "secret boss",
+        "don't know"
+      ],
+      "recommended_expression": "I paid for the trip myself.",
+      "base_hint_kr": "누가 여행 경비를 지불했는지 말하세요.",
+      "hint_policy": {
+        "keyword": [
+          "myself",
+          "parents",
+          "company",
+          "family"
+        ],
+        "sentence_pattern": "I paid for it ___.",
+        "situation_hint": "The officer is asking who funded your travel expenses.",
+        "action_hint": "State whether you, your parents, or your company paid for the trip."
+      },
+      "branch_candidates": {
+        "success": "IMM_011_DENIED_ENTRY",
+        "retry": "IMM_010B_WHO_PAID_RETRY_PAID",
+        "clarify": "IMM_010B_WHO_PAID_CLARIFY_PAID",
+        "hint": "IMM_010B_WHO_PAID_RETRY_PAID",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_011_DENIED_ENTRY",
+        "IMM_010B_WHO_PAID_RETRY_PAID",
+        "IMM_010B_WHO_PAID_CLARIFY_PAID",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_011_DENIED_ENTRY": {
+      "node_id": "IMM_011_DENIED_ENTRY",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Have you ever been denied entry to the U.S.?",
+      "npc_question_goal": "ask_denied_entry_history",
+      "objective_kr": "입국 거절 이력 답변하기",
+      "required_intents": [
+        "confirm_denied_entry_history"
+      ],
+      "required_slots": [
+        "denied_entry_status"
+      ],
+      "optional_slots": [
+        "denial_reason",
+        "denial_date"
+      ],
+      "critical_slots": [
+        "past_deportation"
+      ],
+      "allowed_slot_values": {
+        "denied_entry_status": [
+          "never_denied",
+          "has_denial_history"
+        ]
+      },
+      "risk_keywords": [
+        "deported",
+        "kick out",
+        "arrested"
+      ],
+      "recommended_expression": "No, I have never been denied entry.",
+      "base_hint_kr": "과거 미국 입국이 거절된 경험이 있는지 답하세요.",
+      "hint_policy": {
+        "keyword": [
+          "no",
+          "never",
+          "yes",
+          "once"
+        ],
+        "sentence_pattern": "No, I have never been denied entry. / Yes, I was once ___.",
+        "situation_hint": "The officer is checking if you have any history of immigration refusal.",
+        "action_hint": "Answer clearly with no (or yes, if you have a history, though it raises risk)."
+      },
+      "branch_candidates": {
+        "success": "IMM_007_FINAL_DECISION",
+        "retry": "IMM_011_DENIED_ENTRY_RETRY_ENTRY",
+        "clarify": "IMM_011_DENIED_ENTRY_CLARIFY_ENTRY",
+        "hint": "IMM_011_DENIED_ENTRY_RETRY_ENTRY",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_007_FINAL_DECISION",
+        "IMM_011_DENIED_ENTRY_RETRY_ENTRY",
+        "IMM_011_DENIED_ENTRY_CLARIFY_ENTRY",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_011_DENIED_ENTRY_RETRY_ENTRY": {
+      "node_id": "IMM_011_DENIED_ENTRY_RETRY_ENTRY",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Have you ever been denied entry to the U.S.?",
+      "npc_question_goal": "ask_denied_entry_history",
+      "objective_kr": "입국 거절 이력 답변하기",
+      "required_intents": [
+        "confirm_denied_entry_history"
+      ],
+      "required_slots": [
+        "denied_entry_status"
+      ],
+      "optional_slots": [
+        "denial_reason",
+        "denial_date"
+      ],
+      "critical_slots": [
+        "past_deportation"
+      ],
+      "allowed_slot_values": {
+        "denied_entry_status": [
+          "never_denied",
+          "has_denial_history"
+        ]
+      },
+      "risk_keywords": [
+        "deported",
+        "kick out",
+        "arrested"
+      ],
+      "recommended_expression": "No, I have never been denied entry.",
+      "base_hint_kr": "과거 미국 입국이 거절된 경험이 있는지 답하세요.",
+      "hint_policy": {
+        "keyword": [
+          "no",
+          "never",
+          "yes",
+          "once"
+        ],
+        "sentence_pattern": "No, I have never been denied entry. / Yes, I was once ___.",
+        "situation_hint": "The officer is checking if you have any history of immigration refusal.",
+        "action_hint": "Answer clearly with no (or yes, if you have a history, though it raises risk)."
+      },
+      "branch_candidates": {
+        "success": "IMM_007_FINAL_DECISION",
+        "retry": "IMM_011_DENIED_ENTRY_RETRY_ENTRY",
+        "clarify": "IMM_011_DENIED_ENTRY_CLARIFY_ENTRY",
+        "hint": "IMM_011_DENIED_ENTRY_RETRY_ENTRY",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_007_FINAL_DECISION",
+        "IMM_011_DENIED_ENTRY_RETRY_ENTRY",
+        "IMM_011_DENIED_ENTRY_CLARIFY_ENTRY",
+        "END_SECONDARY_INSPECTION"
+      ],
+      "node_type": "dialogue"
+    },
+    "IMM_011_DENIED_ENTRY_CLARIFY_ENTRY": {
+      "node_id": "IMM_011_DENIED_ENTRY_CLARIFY_ENTRY",
+      "chapter_id": "CH0_03_IMMIGRATION_CHECK",
+      "npc_question": "Have you ever been denied entry to the U.S.?",
+      "npc_question_goal": "ask_denied_entry_history",
+      "objective_kr": "입국 거절 이력 답변하기",
+      "required_intents": [
+        "confirm_denied_entry_history"
+      ],
+      "required_slots": [
+        "denied_entry_status"
+      ],
+      "optional_slots": [
+        "denial_reason",
+        "denial_date"
+      ],
+      "critical_slots": [
+        "past_deportation"
+      ],
+      "allowed_slot_values": {
+        "denied_entry_status": [
+          "never_denied",
+          "has_denial_history"
+        ]
+      },
+      "risk_keywords": [
+        "deported",
+        "kick out",
+        "arrested"
+      ],
+      "recommended_expression": "No, I have never been denied entry.",
+      "base_hint_kr": "과거 미국 입국이 거절된 경험이 있는지 답하세요.",
+      "hint_policy": {
+        "keyword": [
+          "no",
+          "never",
+          "yes",
+          "once"
+        ],
+        "sentence_pattern": "No, I have never been denied entry. / Yes, I was once ___.",
+        "situation_hint": "The officer is checking if you have any history of immigration refusal.",
+        "action_hint": "Answer clearly with no (or yes, if you have a history, though it raises risk)."
+      },
+      "branch_candidates": {
+        "success": "IMM_007_FINAL_DECISION",
+        "retry": "IMM_011_DENIED_ENTRY_RETRY_ENTRY",
+        "clarify": "IMM_011_DENIED_ENTRY_CLARIFY_ENTRY",
+        "hint": "IMM_011_DENIED_ENTRY_RETRY_ENTRY",
+        "warning": "END_SECONDARY_INSPECTION",
+        "bad_end": "END_SECONDARY_INSPECTION"
+      },
+      "allowed_next_nodes": [
+        "IMM_007_FINAL_DECISION",
+        "IMM_011_DENIED_ENTRY_RETRY_ENTRY",
+        "IMM_011_DENIED_ENTRY_CLARIFY_ENTRY",
+        "END_SECONDARY_INSPECTION"
       ],
       "node_type": "dialogue"
     }
