@@ -77,7 +77,7 @@ Developer C / Sean Han (일부 Unreal 연동 필요)
 
 ## Change Request - 2026-06-19 - [CR-B-IMM-SLOTS] 입국심사 신규 노드 슬롯 이해 인식
 
-Status: Open (Developer B 노드/상태머신 구현 완료 - 2026-06-19; Developer C 이해 인식 미반영).
+Status: Resolved (Developer C implementation complete - 2026-06-19).
 
 ### Requested By
 
@@ -129,6 +129,18 @@ Developer B는 `docs/workplan-dev-b-1.md` 계획에 따라 입국심사 챕터
 `explain_long_stay_reason`, `confirm_hotel_reservation`,
 `explain_hotel_choice_reason`, `confirm_travel_itinerary`)와 슬롯을 정상 인식하는지
 회귀 확인 권장.
+
+### Developer C Resolution
+
+- Added rule-mode keyword coverage for all 9 new immigration slots in
+  `backend/app/agents/agent_c/understanding_agent.py`.
+- Switched the strict Understanding LLM contract to slot-evidence-first. The
+  LLM no longer returns `extracted_slots`; Developer C derives final slots from
+  accepted `slot_evidence` and the current node metadata.
+- Retained current-node filtering in `UnderstandingAgent`, so unrelated slot
+  evidence still cannot leak into Developer B policy input.
+- Added regression tests for rule-mode extraction, LLM evidence normalization,
+  and ignoring direct LLM-provided `extracted_slots`.
 
 ### Compatibility Impact
 

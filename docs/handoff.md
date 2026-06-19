@@ -1,5 +1,41 @@
 # Handoff
 
+## 2026-06-19 Developer C: CR-B-IMM-SLOTS 신규 입국심사 슬롯 이해 보강
+
+Developer C completed the required C-owned work for `[CR-B-IMM-SLOTS]` after
+Developer B's JFK immigration node merge.
+
+Changed:
+- `backend/app/agents/agent_c/understanding_agent.py`: Added rule-mode keyword
+  coverage for 9 new immigration slots: `long_stay_reason`,
+  `hotel_reservation_status`, `hotel_choice_reason`, `itinerary_status`,
+  `first_visit_status`, `occupation`, `cash_amount`, `payment_source`, and
+  `denied_entry_status`.
+- `backend/app/agents/agent_c/understanding_llm_client.py`: Switched the LLM
+  contract to slot-evidence-first. The strict LLM schema no longer asks the
+  model to return `extracted_slots`; Developer C derives final slots from
+  accepted `slot_evidence` after the LLM call.
+- `backend/tests/test_understanding_agent.py`: Added rule-mode regression
+  coverage for all 9 new slots and LLM-mode regressions proving slots are built
+  from evidence while direct LLM `extracted_slots` are ignored.
+- `backend/tests/test_understanding_llm_client.py`: Added strict-schema and
+  normalization coverage for the slot-evidence-first LLM contract.
+- `docs/contracts/change_requests.md`: Marked `[CR-B-IMM-SLOTS]` as resolved.
+
+Context-tightness check:
+- The rule-mode context was missing the 9 new slot keyword maps, so offline or
+  LLM-fallback turns could stay stuck in retry/clarify.
+- The LLM path was also partially too tight: `slot_evidence` was already
+  flexible, but the strict `extracted_slots` schema forced Developer C to keep
+  enumerating slot keys. The LLM schema now omits `extracted_slots`; C derives
+  them from accepted evidence and current-node metadata.
+
+Verification:
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_understanding_llm_client.py -q`: PASS, 29 passed.
+- `uv run pytest -q`: PASS, 349 passed, 1 warning (`audioop` deprecation in A-owned audio quality service).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 125 source files.
+
 ## 2026-06-19 Developer B: JFK 입국심사 노드 재설정 및 조건부 라우팅 구현 완료
 
 Developer B는 docs\workplan-dev-b-1.md 계획에 따라 JFK 입국심사 챕터(`CH0_03_IMMIGRATION_CHECK`)의 노드 구조를 재구축하고, 플레이어의 티어 및 체류 기간에 따른 다이내믹 라우팅 정책을 상태 머신에 성공적으로 통합했습니다.
