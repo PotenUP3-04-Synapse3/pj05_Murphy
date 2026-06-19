@@ -5,7 +5,7 @@ repository state as of the latest handoff entry.
 
 ## Change Request - 2026-06-19 - [CR-B-AB-DESYNC] 입국심사 비-ADVANCE 분기 준수 가드 (대화 일관성 확보)
 
-Status: Open (Developer B 제기 - 2026-06-19; **Developer A 단독 구현** 영역. Developer C는 신규 필드 불필요 — 전달 경로 확인 + 회귀만).
+Status: Resolved (Developer A 및 Developer C 구현 완료 - 2026-06-19).
 
 ### Requested By
 
@@ -143,6 +143,11 @@ Developer C follow-up, 2026-06-19:
 Developer B는 UNCLEAR 시 hard-fail 카운터 증가를 배제하고 한도를 5로 상향
 (`[CR retry 완화]`, 구현 완료)하여 조기 강제 종료 민감도만 완화함. desync로 인한
 발화-슬롯 불일치 근본 문제는 A 가드 적용 전까지 잔존한다.
+
+### Developer A & C Resolution - 2026-06-19
+
+- **Developer A**: `npc_dialogue_agent.py` 내 `node_generate_dialogue_llm`에 `[5.3단계] 비-ADVANCE 분기 준수 가드`를 구현했습니다. `next_action`이 비-ADVANCE 분기(`REASK`, `GIVE_HINT`, `WARNING`)이거나 `dialogue_purpose`가 `support_retry`, `warn_and_control_risk`인 경우, 생성된 대사의 질문부를 원래 노드의 질문(`surface_goal`)으로 강제 재합성하고 `get_retry_variation`을 통해 직전 턴 NPC의 대사와 겹치지 않도록 변주 가드를 탑재하였습니다.
+- **Developer C**: C측 어댑터 및 입력 정규화 단계에서 `next_action`, `dialogue_purpose`, `dialogue_seed.surface_goal`이 누락 없이 A-facing payload로 온전히 조립·전달됨을 검증 완료하고, `test_preprototype_flow.py` 및 신규 회귀 테스트 `test_desync_guard_overrides_llm_next_node_question`을 통해 비-ADVANCE 분기 시 강제 재질문 동작이 기대치대로 작동함을 단언했습니다.
 
 ## Change Request - 2026-06-19 - [CR-B-HISTORY-MEMORY] 대화 기억 및 입국신고서 컨텍스트
 

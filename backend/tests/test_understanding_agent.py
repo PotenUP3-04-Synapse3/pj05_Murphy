@@ -605,6 +605,7 @@ def test_understanding_agent_llm_mode_ignores_extracted_slot_without_evidence() 
         {
             "intent": "state_occupation",
             "intent_success": True,
+            "intent_satisfied": False,
             "confidence": 0.95,
             "meaning_summary_kr": "The player said they are an engineer.",
             "emotion": "calm",
@@ -718,3 +719,30 @@ def test_understanding_agent_rule_mode_rejects_visit_purpose_in_flight_diagnosti
     assert output.extracted_slots == {}
     assert output.missing_slots == []
     assert output.needs_clarification is False
+
+
+def test_understanding_agent_rule_mode_recognizes_hotel_brands() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    for brand in ["Grand Hyatt", "Hilton", "Marriott", "Sheraton", "Holiday Inn", "Westin", "hostel"]:
+        output = agent.analyze_player_text(
+            f"I will stay at the {brand}.",
+            _location_node_context(),
+        )
+        assert output.intent == "state_stay_location"
+        assert output.intent_success is True
+        assert output.extracted_slots == {"stay_location": "hotel"}
+
+
+def test_understanding_agent_rule_mode_rejects_meta_talk_stay_location() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    for phrase in ["I said hotel", "I told you hotel", "already told you hotel", "as I said hotel"]:
+        output = agent.analyze_player_text(
+            phrase,
+            _location_node_context(),
+        )
+        # Should detect mismatch/off-topic due to ALPHA_SLOT_OFF_TOPIC_PHRASES stay_location
+        assert output.intent_success is False
+        assert output.confidence < 0.9 or output.answer_relevance == "off_topic"
+

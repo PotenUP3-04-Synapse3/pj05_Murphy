@@ -207,6 +207,9 @@ def _developer_instructions() -> str:
         "intent_success=false, answer_relevance=off_topic or partially_related, "
         "keep required slots missing, and do not normalize a loose phrase into "
         "an allowed slot value."
+        " You must also set intent_satisfied=true if the player text satisfies the "
+        "immigration officer's question intent, or false otherwise. Provide a short "
+        "description of the judgment in judgment_reason."
         " Put every understood slot in slot_evidence using the slot names from "
         "node_context.required_slots, node_context.optional_slots, or "
         "node_context.critical_slots. Each evidence item must include the slot "
@@ -241,6 +244,8 @@ def _understanding_schema() -> dict[str, Any]:
             "slot_evidence",
             "missing_slots",
             "needs_clarification",
+            "intent_satisfied",
+            "judgment_reason",
         ],
         "properties": {
             "intent": {"type": "string"},
@@ -272,6 +277,8 @@ def _understanding_schema() -> dict[str, Any]:
             },
             "missing_slots": {"type": "array", "items": {"type": "string"}},
             "needs_clarification": {"type": "boolean"},
+            "intent_satisfied": {"type": "boolean"},
+            "judgment_reason": {"type": "string"},
         },
     }
 

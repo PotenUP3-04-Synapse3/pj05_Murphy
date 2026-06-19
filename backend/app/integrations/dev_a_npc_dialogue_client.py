@@ -16,7 +16,7 @@ from typing import Any
 from backend.app.schemas.game_turn import DevADialogueInput, DevADialogueOutput, NpcContext, UnderstandingOutput
 from backend.app.services.service_c.incivility_classifier import default_incivility_classification
 from backend.app.services.service_a.voice_output_service import build_voice_output_from_level_design
-from backend.app.services.service_c.openkb_service import OpenKBService
+from backend.app.services.service_c.openkb_service import OpenKBService, public_node_context
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
 
 VoiceOutputBuilder = Callable[..., dict[str, Any]]
@@ -112,7 +112,10 @@ class DevANpcDialogueClient:
         evaluation = policy.evaluation
         feedback = policy.in_game_feedback.model_dump()
         level_hint = policy.level_hint.model_dump()
-        node_context = payload.node_context.model_dump()
+        
+        public_context = public_node_context(payload.node_context)
+        node_context = public_context.model_dump()
+        
         branch = policy.branch.model_dump()
         dialogue_directive = policy.dialogue_directive.model_dump() if policy.dialogue_directive else {}
 
@@ -127,6 +130,29 @@ class DevANpcDialogueClient:
         npc = expected_npc.model_dump()
         npc["emotion"] = policy.npc_emotion
 
+        random_customs_item_dump = (
+            payload.random_customs_item.model_dump()
+            if payload.random_customs_item is not None
+            else None
+        )
+        game_state_dump = (
+            payload.game_state.model_dump()
+            if payload.game_state is not None
+            else None
+        )
+        dialogue_seed_dump = (
+            policy.dialogue_seed.model_dump()
+            if policy.dialogue_seed is not None
+            else None
+        )
+
+        game_state_dump, random_customs_item_dump, dialogue_seed_dump = _filter_suspicion_data(
+            required_slots=payload.node_context.required_slots,
+            game_state=game_state_dump,
+            top_customs_item=random_customs_item_dump,
+            dialogue_seed=dialogue_seed_dump,
+        )
+
         return {
             "node_id": payload.current_node_id,
             "player_text": payload.player_text,
@@ -135,11 +161,9 @@ class DevANpcDialogueClient:
             "understanding": payload.understanding.model_dump(),
             "incivility": _a_facing_incivility(payload.understanding),
             "transition": payload.transition.model_dump() if payload.transition is not None else None,
-            "game_state": payload.game_state.model_dump() if payload.game_state is not None else None,
-            "random_customs_item": (
-                payload.random_customs_item.model_dump() if payload.random_customs_item is not None else None
-            ),
-            "dialogue_seed": policy.dialogue_seed.model_dump() if policy.dialogue_seed is not None else None,
+            "game_state": game_state_dump,
+            "random_customs_item": random_customs_item_dump,
+            "dialogue_seed": dialogue_seed_dump,
             "evaluation_summary": {
                 "feedback_note": evaluation.feedback_note or "",
                 "main_feedback_tag": evaluation.feedback_tags[0] if evaluation.feedback_tags else "",
@@ -167,11 +191,7 @@ class DevANpcDialogueClient:
             return payload.node_context.npc_question
 
         next_question = self._next_node_question(payload)
-        recast = _second_person_recast(
-            feedback.npc_recast_line_candidate
-            or feedback.recommended_expression
-            or policy.level_hint.recommended_expression
-        )
+        recast = _second_person_recast(feedback.npc_recast_line_candidate)
         if recast and next_question:
             return f"{recast} {next_question}"
         if next_question:
@@ -354,3 +374,50 @@ def _identity_tokens(value: str) -> set[str]:
         for token in normalized.split()
         if len(token) >= 3 and not token.isdigit() and token not in generic_tokens
     }
+
+
+def _filter_suspicion_data(
+    required_slots: list[str],
+    game_state: dict[str, Any] | None,
+    top_customs_item: dict[str, Any] | None,
+    dialogue_seed: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]:
+    """노드의 required_slots에 따라 A가 보아야 할 suspicion 데이터를 일원화하여 필터링합니다.
+    
+    비-세관 노드에서는 세관 데이터가 유출되지 않게 game_state, top-level, dialogue_seed 경로에서 지우며,
+    비-장소 노드에서는 location suspicion 정보가 유출되지 않게 지웁니다.
+    """
+    is_declaration_node = "customs_item_explanation" in required_slots
+    is_location_node = "stay_location" in required_slots or "visit_purpose" in required_slots
+
+    # 1. Declaration suspicion filtering
+    if not is_declaration_node:
+        top_customs_item = None
+        if game_state is not None:
+            game_state["random_customs_item"] = None
+        if dialogue_seed is not None:
+            dialogue_seed["random_customs_item"] = None
+            dialogue_seed["item_id"] = None
+            dialogue_seed["item_name"] = None
+            dialogue_seed["item_category"] = None
+            dialogue_seed["item_difficulty"] = None
+            dialogue_seed["item_suspicion_reason"] = None
+            if dialogue_seed.get("suspicion_scope") == "declaration":
+                dialogue_seed["suspicion_scope"] = "none"
+
+    # 2. Location suspicion filtering
+    if not is_location_node:
+        if game_state is not None:
+            game_state["assigned_visit_location"] = None
+            game_state["assigned_visit_location_ko"] = None
+            game_state["visit_location_difficulty"] = None
+            game_state["visit_location_suspicion_reason"] = None
+        if dialogue_seed is not None:
+            dialogue_seed["assigned_visit_location"] = None
+            dialogue_seed["assigned_visit_location_ko"] = None
+            dialogue_seed["visit_location_difficulty"] = None
+            dialogue_seed["visit_location_suspicion_reason"] = None
+            if dialogue_seed.get("suspicion_scope") == "location":
+                dialogue_seed["suspicion_scope"] = "none"
+
+    return game_state, top_customs_item, dialogue_seed

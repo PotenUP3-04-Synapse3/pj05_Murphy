@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal, cast, TypedDict, NotRequired
 import json
+import re
 
 import httpx
 
@@ -87,8 +88,6 @@ def generate_npc_dialogue(payload: NPCDialogueInput) -> NPCDialogueResult:
     """
     # 입력 데이터에서 현재 판정된 분기 유형(Branch Type)을 획득합니다.
     branch_type = _branch_type(payload)
-    # 개발자 B로부터 플레이어가 사용해야 할 추천 표현(Recommended Expression)을 획득합니다.
-    recommended_expression = str(payload.level_hint.get("recommended_expression", "")).strip()
 
     # 분기 결과가 성공(Success)인 경우의 처리 흐름입니다.
     if branch_type == "success":
@@ -97,7 +96,7 @@ def generate_npc_dialogue(payload: NPCDialogueInput) -> NPCDialogueResult:
             text=_success_text(payload),
             tone="formal_neutral",
             animation="move",
-            feedback_kr=_success_feedback(recommended_expression),
+            feedback_kr=_success_feedback(),
         )
 
     # 분기 결과가 재시도(Retry)인 경우의 처리 흐름입니다.
@@ -107,7 +106,7 @@ def generate_npc_dialogue(payload: NPCDialogueInput) -> NPCDialogueResult:
             text=_retry_text(payload),
             tone="formal_firm",
             animation="move",
-            feedback_kr=_retry_feedback(recommended_expression),
+            feedback_kr=_retry_feedback(),
         )
 
     # 기본값 또는 중립(Neutral) 분기일 경우의 예외적(Fallback) 처리 흐름입니다.
@@ -116,7 +115,7 @@ def generate_npc_dialogue(payload: NPCDialogueInput) -> NPCDialogueResult:
         text="Please answer the question clearly.",
         tone="formal_supportive",
         animation="move",
-        feedback_kr=_retry_feedback(recommended_expression),
+        feedback_kr=_retry_feedback(),
     )
 
 
@@ -147,18 +146,54 @@ def _retry_text(payload: NPCDialogueInput) -> str:
     return "I need a clear answer."
 
 
-def _success_feedback(recommended_expression: str) -> str:
-    """성공 시 플레이어에게 전달할 격려 및 추천 표현 기반의 피드백 메시지를 빌드합니다."""
-    if recommended_expression:
-        return f"좋아요. 더 자연스럽게는: {recommended_expression}"
+def _success_feedback() -> str:
+    """성공 시 플레이어에게 전달할 격려 및 피드백 메시지를 빌드합니다."""
     return "좋아요. 짧고 분명하게 전달했어요."
 
 
-def _retry_feedback(recommended_expression: str) -> str:
+def _retry_feedback() -> str:
     """답변 재시도(Retry) 시 플레이어의 학습을 돕기 위한 힌트 피드백 메시지를 빌드합니다."""
-    if recommended_expression:
-        return f"괜찮아요. 짧게 이렇게 말해보세요: {recommended_expression}"
     return "괜찮아요. 짧고 분명한 문장으로 다시 말해보세요."
+
+
+def _normalize_for_echo_match(value: str) -> str:
+    """추천 표현 누출(Echo) 비교를 위해 텍스트를 정규화합니다.
+
+    초보자용 설명:
+    "Thank you, officer."처럼 플레이어용 모범 답안(recommended_expression)이
+    NPC 대사에 그대로 새는지 검사할 때, 대소문자/구두점/공백/SSML 차이 때문에
+    놓치는 일이 없도록 비교 직전에 한 번 정규화합니다. 즉 단순 substring 매칭이
+    아니라 "의미상 같은 문장"인지 보기 위한 사전 처리입니다.
+    """
+
+    # tts_text에는 <break time="0.4s"/> 같은 SSML 태그가 섞일 수 있으므로 먼저 제거합니다.
+    without_ssml = re.sub(r"<[^>]+>", " ", value)
+    lowered = without_ssml.lower()
+    # 영문/숫자/공백만 남겨서 구두점 차이를 흡수합니다.
+    stripped = re.sub(r"[^a-z0-9\s]", " ", lowered)
+    return " ".join(stripped.split())
+
+
+def _is_recommended_expression_echoed(recommended_expression: str, *texts: str) -> bool:
+    """추천 표현이 NPC 대사(또는 TTS)에 verbatim에 가깝게 새어 들어갔는지 판정합니다.
+
+    초보자용 설명:
+    recommended_expression은 플레이어가 배워야 할 모범 답안이라 NPC가 자기
+    입으로 말하면 안 됩니다. npc_text뿐 아니라 tts_text도 함께 검사하고,
+    구두점/대소문자/공백 차이를 무시한 정규화 후 substring으로 비교합니다.
+    너무 짧은 추천 표현(예: "Yes.")은 일반 대사와 우연히 겹쳐 오탐을 낼 수
+    있으므로 2단어 이상일 때만 검사합니다.
+    """
+
+    normalized_expression = _normalize_for_echo_match(recommended_expression)
+    # 1단어짜리 추천 표현은 정상 NPC 리액션과 겹칠 수 있어 검사 대상에서 제외합니다.
+    if len(normalized_expression.split()) < 2:
+        return False
+    return any(
+        normalized_expression in _normalize_for_echo_match(text)
+        for text in texts
+        if text
+    )
 
 
 # LangGraph 에이전트의 내부 공유 상태(Shared State) 명세를 정의하는 TypedDict 클래스입니다.
@@ -401,6 +436,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             
             # Eokkka / Challenge 관련 변수들
             "suspicion_scope": normalized.get("suspicion_scope", "none"),
+            "required_slots": payload.get("node_context", {}).get("required_slots", []),
             "dialogue_history": normalized.get("dialogue_history", []),
             "assigned_visit_location": normalized.get("assigned_visit_location", ""),
             "assigned_visit_location_ko": normalized.get("assigned_visit_location_ko", ""),
@@ -436,6 +472,76 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     npc_text = str(llm_result.get("npc_text") or "").strip()
     tts_text = str(llm_result.get("tts_text") or "").strip()
     
+    # [5.2단계] retry/clarify 분기일 경우 긍정 리액션 차단, 톤 보정 및 피드백 보정 가드 적용
+    branch_type = normalized.get("branch_type")
+    next_action = normalized.get("next_action") or ""
+    if branch_type in {"retry", "clarify", "warning"} or next_action in {"REASK", "GIVE_HINT", "WARNING"}:
+        if llm_result.get("tone") not in {"formal_firm", "formal_stern", "formal_warning"}:
+            llm_result["tone"] = "formal_firm"
+
+        feedback_kr = str(llm_result.get("feedback_kr") or "").strip()
+        if "좋아요" in feedback_kr or "잘했" in feedback_kr or "성공" in feedback_kr or "훌륭" in feedback_kr:
+            llm_result["feedback_kr"] = "괜찮아요. 짧고 분명한 문장으로 다시 말해보세요."
+
+        positive_patterns = [
+            r"^good\b[.,!\s]*",
+            r"^great\b[.,!\s]*",
+            r"^nice\b[.,!\s]*",
+            r"^thank\s+you\b[.,!\s]*",
+            r"^thanks\b[.,!\s]*",
+            r"^excellent\b[.,!\s]*",
+            r"^perfect\b[.,!\s]*",
+            r"^wonderful\b[.,!\s]*",
+            r"^awesome\b[.,!\s]*",
+        ]
+        import re
+        for pat in positive_patterns:
+            if re.match(pat, npc_text, re.IGNORECASE):
+                npc_text = re.sub(pat, "", npc_text, flags=re.IGNORECASE).strip()
+                if npc_text:
+                    npc_text = npc_text[0].upper() + npc_text[1:]
+            if re.match(pat, tts_text, re.IGNORECASE):
+                tts_text = re.sub(pat, "", tts_text, flags=re.IGNORECASE).strip()
+                if tts_text:
+                    tts_text = tts_text[0].upper() + tts_text[1:]
+    
+    # [5.3단계] 비-ADVANCE 분기 준수 가드 (대화 일관성 확보, CR-B-AB-DESYNC)
+    next_action = normalized.get("next_action") or ""
+    purpose = normalized.get("dialogue_purpose") or ""
+    surface_goal = normalized.get("dialogue_seed", {}).get("surface_goal") or ""
+    is_non_advance = (next_action in {"REASK", "GIVE_HINT", "WARNING"}) or (purpose in {"support_retry", "warn_and_control_risk"})
+    
+    if is_non_advance and purpose != "smalltalk_diagnostic" and surface_goal:
+        def _extract_reaction_part(text: str) -> str:
+            import re
+            sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+            reaction_sentences = []
+            for s in sentences:
+                if "?" in s:
+                    break
+                reaction_sentences.append(s)
+            return " ".join(reaction_sentences)
+
+        reaction_part = _extract_reaction_part(npc_text)
+        if not reaction_part:
+            reaction_part = "Pardon me?"
+
+        synthesized = synthesize_fallback_next_question(reaction_part, surface_goal)
+        dialogue_history = normalized.get("dialogue_history") or []
+        if dialogue_history:
+            last_turn = dialogue_history[-1]
+            last_npc_text = last_turn.get("npc_text_preview", "")
+            if last_npc_text:
+                from backend.app.services.service_a.dialogue_policy_service import get_retry_variation
+                npc_text = get_retry_variation(surface_goal, last_npc_text, synthesized)
+            else:
+                npc_text = synthesized
+        else:
+            npc_text = synthesized
+
+        # tts_text도 npc_text와 동일하게 맞춤
+        tts_text = npc_text
+    
     # [5.5단계] 비속어 및 욕설 후처리 검증 (ALWAYS_BLOCKED 및 허용되지 않은 비속어 감지 시 fallback 처리)
     # 1. ALWAYS_BLOCKED 감지 시 차단
     blocked_found = contains_blocked(npc_text) or contains_blocked(tts_text)
@@ -462,9 +568,15 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     if not _is_safe_english_dialogue_text(npc_text) or not _is_safe_english_dialogue_text(tts_text):
         return {"error": "invalid_llm_dialogue_language"}
 
-    # 추천 표현(Recommended Expression)이 NPC 대사에 그대로 에코되는지 검사합니다.
+    # 추천 표현(Recommended Expression)이 NPC 대사/TTS에 그대로 에코되는지 검사합니다.
+    # 대소문자/구두점/공백/SSML 차이를 무시하고 npc_text와 tts_text를 함께 검사합니다.
     rec_exp = normalized.get("recommended_expression", "").strip()
-    if rec_exp and rec_exp in npc_text:
+    if rec_exp and _is_recommended_expression_echoed(rec_exp, npc_text, tts_text):
+        logger.error(
+            "Recommended expression echoed into NPC dialogue. rec_exp=%r npc_text=%r",
+            rec_exp,
+            npc_text,
+        )
         return {"error": "recommended_expression_echo"}
 
     # surface_goal이 존재할 때 물음표 질문이 누락되었는지 검사합니다. (diagnostic 목적 하에서는 해제)
@@ -632,12 +744,8 @@ def generate_npc_dialogue_from_level_design(
     return final_state["result"]
 
 
-def _level_design_feedback(feedback_note: str, recommended_expression: str) -> str:
+def _level_design_feedback(feedback_note: str) -> str:
     """피드백 노트와 추천 표현을 조합하여 플레이어 대상 한글 학습 가이드를 생성하는 헬퍼 함수(Helper Function)입니다."""
-    if feedback_note and recommended_expression:
-        return f"{feedback_note} 더 자연스럽게는: {recommended_expression}"
-    if recommended_expression:
-        return f"더 자연스럽게는: {recommended_expression}"
     if feedback_note:
         return feedback_note
     return "의미는 전달됐습니다. 짧고 분명하게 이어가면 됩니다."

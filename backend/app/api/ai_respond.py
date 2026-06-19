@@ -248,7 +248,6 @@ def session_agent_run_usage(
         request_ids=request_ids,
     )
 
-
 @router.get("/demo/node/{node_id}")
 def demo_node_context(node_id: str) -> dict[str, Any]:
     try:
@@ -264,8 +263,6 @@ def demo_node_context(node_id: str) -> dict[str, Any]:
         "recommended_expression": node_context.recommended_expression,
         "allowed_next_nodes": node_context.allowed_next_nodes,
     }
-
-
 @router.get("/demo/npc-roster")
 def demo_npc_roster() -> dict[str, list[dict[str, Any]]]:
     """임시 데모 페이지용으로, 챕터별 선택 가능한 NPC 프로필 목록을 반환합니다.

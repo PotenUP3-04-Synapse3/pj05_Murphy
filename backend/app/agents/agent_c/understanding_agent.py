@@ -24,6 +24,7 @@ from backend.app.agents.agent_c.understanding_llm_client import (
 )
 from backend.app.agents.agent_c.visit_purpose_classifier import classify_visit_purpose
 from backend.app.schemas.game_turn import NodeContext, SlotEvidence, UnderstandingOutput
+from backend.app.schemas.slot_policy import get_slot_policy
 from backend.app.services.service_c.incivility_classifier import classify_incivility_rule
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
 
@@ -70,7 +71,11 @@ ALPHA_SLOT_VALUE_KEYWORDS: dict[str, dict[str, tuple[str, ...]]] = {
         "until_date": ("until monday", "until tuesday", "until wednesday", "until thursday", "until friday"),
     },
     "stay_location": {
-        "hotel": ("hotel", "motel", "inn", "resort"),
+        "hotel": (
+            "hotel", "motel", "inn", "resort",
+            "hyatt", "hilton", "marriott", "sheraton", "holiday inn", "westin",
+            "wyndham", "ramada", "ritz", "four seasons", "plaza", "palace", "hostel"
+        ),
         "friend_house": ("friend's house", "friend house", "with my friend", "my friend's place"),
         "family_house": ("family house", "with my family", "my uncle", "my aunt", "parents house"),
         "airbnb": ("airbnb", "rental apartment", "rental house"),
@@ -197,6 +202,13 @@ ALPHA_SLOT_OFF_TOPIC_PHRASES: dict[str, tuple[str, ...]] = {
         "it's a bet",
         "deal with it",
     ),
+    "stay_location": (
+        "i said",
+        "i told you",
+        "already told",
+        "already said",
+        "as i said",
+    ),
 }
 
 
@@ -249,6 +261,11 @@ class UnderstandingAgent:
                 player_text,
                 node_context,
             )
+            # If any required slot is open, align intent_success with intent_satisfied
+            has_open_required = any(get_slot_policy(slot) == "open" for slot in node_context.required_slots)
+            if has_open_required:
+                output = output.model_copy(update={"intent_success": output.intent_satisfied})
+
             output = _attach_incivility_classification(output, player_text)
             postprocessing = _merge_postprocessing(
                 slot_evidence_postprocessing,
@@ -342,6 +359,8 @@ class UnderstandingAgent:
                 extracted_slots={},
                 missing_slots=node_context.required_slots,
                 needs_clarification=False,
+                intent_satisfied=False,
+                judgment_reason="Risk keyword found in player answer.",
             )
 
         if _is_flight_smalltalk_diagnostic_node(node_context):
@@ -366,6 +385,8 @@ class UnderstandingAgent:
                     extracted_slots={"stay_duration": stay_duration},
                     missing_slots=[],
                     needs_clarification=False,
+                    intent_satisfied=True,
+                    judgment_reason="The stay duration is clear.",
                 )
 
             return UnderstandingOutput(
@@ -382,6 +403,8 @@ class UnderstandingAgent:
                 extracted_slots={},
                 missing_slots=["stay_duration"],
                 needs_clarification=True,
+                intent_satisfied=False,
+                judgment_reason="The player answer did not clearly state a stay duration.",
             )
 
         # 방문 목적 분류기는 해당 노드가 visit_purpose 슬롯을 요구할 때만 성공으로 사용합니다.
@@ -400,6 +423,8 @@ class UnderstandingAgent:
                 extracted_slots={"visit_purpose": visit_purpose},
                 missing_slots=[],
                 needs_clarification=False,
+                intent_satisfied=True,
+                judgment_reason="The purpose is clear.",
             )
 
         generic_slot = _extract_generic_required_slot(player_text, node_context)
@@ -427,6 +452,8 @@ class UnderstandingAgent:
                 extracted_slots={slot_name: slot_value},
                 missing_slots=[],
                 needs_clarification=False,
+                intent_satisfied=True,
+                judgment_reason=f"The required slot {slot_name} is clear.",
             )
 
         return UnderstandingOutput(
@@ -443,6 +470,8 @@ class UnderstandingAgent:
             extracted_slots={},
             missing_slots=node_context.required_slots,
             needs_clarification=True,
+            intent_satisfied=False,
+            judgment_reason="The player answer did not clearly fill the required slot.",
         )
 
 
@@ -539,7 +568,6 @@ def _matched_generic_evidence_text(
     candidates = [
         *node_context.hint_policy.keyword,
         node_context.hint_policy.sentence_pattern,
-        node_context.recommended_expression,
     ]
     for candidate in candidates:
         normalized_candidate = _normalize_for_keyword_match(candidate)
@@ -684,6 +712,7 @@ def _repair_missing_allowed_slots(
         update={
             "intent": _required_intent_for_slot(node_context, primary_repair["slot"]),
             "intent_success": len(missing_slots) == 0,
+            "intent_satisfied": len(missing_slots) == 0,
             "confidence": max(
                 output.confidence,
                 _repair_confidence(primary_repair["slot"]),
@@ -949,6 +978,8 @@ def _flight_smalltalk_diagnostic_output(
         extracted_slots={},
         missing_slots=[],
         needs_clarification=False,
+        intent_satisfied=not intent_mismatch,
+        judgment_reason="Diagnostic free speech.",
     )
 
 
@@ -983,6 +1014,7 @@ def _normalize_flight_smalltalk_diagnostic_output(
             "extracted_slots": {},
             "missing_slots": [],
             "needs_clarification": False,
+            "intent_satisfied": output.intent_satisfied and not intent_mismatch,
         }
     )
     return normalized, {
@@ -1020,6 +1052,8 @@ def _off_topic_required_slot_output(player_text: str, node_context: NodeContext)
         extracted_slots={},
         missing_slots=node_context.required_slots,
         needs_clarification=True,
+        intent_satisfied=False,
+        judgment_reason="The player used an off-topic idiom instead of answering the current request.",
     )
 
 
@@ -1044,6 +1078,9 @@ def _is_supported_slot_evidence(
         node_context=node_context,
     ):
         return False
+
+    if get_slot_policy(evidence.slot) == "open":
+        return True
 
     allowed_values = node_context.allowed_slot_values.get(evidence.slot, [])
     if not allowed_values:
@@ -1090,6 +1127,11 @@ def _is_supported_extracted_slot_value(
     evidence가 현재 노드의 allowed value 안에 있는지 확인하고, 알려진 off-topic
     표현이 enum success로 승격되지 않게 막습니다.
     """
+
+    if get_slot_policy(slot_name) == "open":
+        if _has_slot_intent_mismatch(player_text, slot_name):
+            return False
+        return True
 
     allowed_values = node_context.allowed_slot_values.get(slot_name, [])
     if not allowed_values:

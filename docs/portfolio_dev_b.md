@@ -81,6 +81,8 @@ developers' runtime logs do not distort the visible demo usage.
 
 On 2026-06-18, Developer B resolved dialogue loop and node desync issues (Dialogue Recovery). Implemented scenario loop-exit policies inside `scenario_state_machine.py` to prevent infinite clarify/retry loops by checking patience floor (`<= 0`) and max retries (`>= 3`) at the top of `decide()`, and reordered hint checks before unclear checks when `retry_count >= 2`. Resolved scenario nodes referential integrity issues in `scenario_nodes.json` by defining three terminal endings (`END_SECONDARY_INSPECTION`, `END_BAGGAGE_REPORT_INCOMPLETE`, `END_ALPHA_SCENARIO`) and duplicating 32 retry/clarify nodes dynamically. Generalised customs declaration (`IMM_006`) and baggage reveal (`BAG_006`) checks dynamically based on `random_customs_item`, and resolved off-by-one desync of `DialogueSeed.surface_goal` by looking up the goal of the next transition node. Also set B-side `suspicion_scope` dynamically on the dialogue seed to control Developer A's NPC suspicion mode behavior.
 
+On 2026-06-19, Developer B collaborated on the Turn Acceptance Restructure and Remediation. Added the `"closed"` slot policy classification to the registry for strict enum matching on `cash_amount` and refactored the scenario state machine required slot validator (`_has_invalid_required_slot_value`) into clear, policy-driven verification paths (bypassing open/system slots, evaluating numeric parser logic, and strictly matching enum candidates for closed slots). Integrated Developer C's holistic `intent_satisfied` signal into the success evaluation path (`_is_success`) for open slots, ensuring player answers bypass substring grounding restrictions while maintaining core rule-based cash/duration checking and critical risk guards.
+
 ## Architecture
 
 The Developer B implementation is split into a small public agent and focused
@@ -433,9 +435,9 @@ Covered scenarios:
 
 Latest recorded verification:
 
-- `uv run pytest`: 321 passed, 1 warning (100% success)
+- `uv run pytest`: 371 passed, 1 warning (100% success)
 - `uv run ruff check .`: All checks passed!
-- `uv run mypy .`: Success: no issues found in 125 source files
+- `uv run mypy .`: Success: no issues found in 129 source files
 
 ## Demo Scenarios
 
@@ -486,6 +488,8 @@ Latest recorded verification:
   a running-only stopwatch indicator, and request-scoped AgentRun token/cost
   totals.
 - Resolved dialogue and node desync bugs by dynamically mapping customs declaration (`IMM_006`) and baggage reveal (`BAG_006`) to the random customs item, and aligning `surface_goal` looking up node configurations.
+- Collaborated on the Turn Acceptance Restructure, defining the `"closed"` slot policy for strict enum matching on `cash_amount` and refactoring the scenario state machine validation rules (`_has_invalid_required_slot_value`) into a policy-driven branching structure.
+- Integrated the LLM-driven semantic intent matching (`intent_satisfied`) into the state machine's success path for open slots, bypassing restrictive grounding checks to enable flexible natural language acceptance while maintaining safety validations.
 - Added focused pytest coverage for broken English, branch safety, loop-exit behaviors, node spec referential integrity, risk handling, feedback/report payload generation, and OpenKB write behavior.
 - Documented cross-owner integration requirements for the remaining Alpha scene
   runtime, final out-game report exposure, and tier-aware A/C consumption.

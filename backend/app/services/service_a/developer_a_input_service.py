@@ -17,6 +17,7 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
     ld_emotion = payload.get("npc_emotion") or npc.get("npc_emotion") or npc.get("emotion") or ""
 
     # 플레이어에게 제시할 추천 표현(Recommended Expression)은 피드백 페이로드, 레벨 힌트, 노드 컨텍스트 순으로 우선순위(Priority)를 부여해 파싱합니다.
+    # 단, 오케스트레이션 단계에서 A/C로 넘어가기 전에 blank 처리되므로 실제 운영시에는 비어 있으며, 테스트 환경 등 명시적 제공 시에만 검출용으로 작동합니다.
     recommended_expression = (
         in_game_feedback.get("recommended_expression")
         or level_hint.get("recommended_expression")
