@@ -1,0 +1,77 @@
+- id: flight_a001_arabella_pen_normal
+  npc_id: arabella
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "펜을 빌려줄 수 있는지 묻는 정상적인 스몰토크. 긍정 응답 시 다음 단계 전환 준비."
+  player_inputs:
+    - "Sure, here is my pen. You can borrow it."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["thank", "nice", "kind", "appreciate", "borrow", "pen", "arrival", "form"]
+    must_not_include_any: ["here you go", "here is the pen"]
+
+- id: flight_a001_arabella_pen_unclear_response
+  npc_id: arabella
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "펜 부탁에 모호한 답변을 하는 경우. NPC는 재요청(retry) 해야 한다."
+  payload_overrides:
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "What?"
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["pen", "borrow", "clear", "answer", "arrival", "form"]
+    must_not_include_any: ["here you are", "here you go", "take it"]
+    branch_type_in: ["retry", "clarify"]
+
+- id: flight_a001_arabella_topic_detour
+  npc_id: arabella
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "플레이어가 이름을 물어보는 등 토픽을 전환했을 때, 간단히 답하고 다시 펜 빌리기로 복귀하는지 검증."
+  payload_overrides:
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "By the way, what is your name?"
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["Arabella", "pen", "borrow", "clear", "answer", "arrival", "form", "name"]
+    must_not_include_any: ["here is my pen"]
+
+- id: flight_a001_arabella_refusal
+  npc_id: arabella
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "펜이 없거나 거절하는 대답. 정중하게 다른 대안이나 아쉬움을 표시하는지 검사."
+  player_inputs:
+    - "I'm sorry, I don't have a pen either."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["ok", "fine", "worry", "find", "continue", "clear", "answer", "borrow", "pen"]
+    must_not_include_any: ["here you are"]
+
+- id: flight_a001_arabella_topic_return_from_detour
+  npc_id: arabella
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "여행지에 대해 묻는 스몰토크 도중 펜 요청이 미해결 상태라면 다시 언급하는지 검증."
+  payload_overrides:
+    dialogue_directive:
+      purpose: smalltalk_diagnostic
+  player_inputs:
+    - "I am going to New York."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["pen", "see", "interesting", "really", "understand", "talking", "mean", "forward"]
+    must_not_include_any: ["here you go"]
+
+- id: flight_a001_arabella_polite_response_gating
+  npc_id: arabella
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "공손함 슬롯이 만족되었을 때 성공적으로 넘어가는지 검증."
+  payload_overrides:
+    branch:
+      branch_type: "success"
+  player_inputs:
+    - "Yes, of course you can use my pen."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["thank", "kind", "continue", "okay", "borrow", "pen"]

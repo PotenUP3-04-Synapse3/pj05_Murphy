@@ -1,0 +1,120 @@
+- id: immigration_hale_passport_normal
+  npc_id: hale
+  node_id: IMM_001_PASSPORT
+  description: "여권을 제출하라는 요구에 정상 대답했을 때."
+  player_inputs:
+    - "Here is my passport."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["purpose", "visit", "why", "continue", "okay", "passport", "see"]
+    must_not_include_any: ["passport please"]
+
+- id: immigration_hale_passport_retry
+  npc_id: hale
+  node_id: IMM_001_PASSPORT
+  description: "여권 요구에 엉뚱한 대답을 했을 때 다시 강경하게 묻는지 검증."
+  payload_overrides:
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "No, I don't want to show it."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["passport", "need", "show", "clear", "answer", "see"]
+    must_not_include_any: ["okay", "please"]
+    branch_type_in: ["retry", "fail"]
+
+- id: immigration_hale_purpose_tourism
+  npc_id: hale
+  node_id: IMM_002_PURPOSE
+  description: "방문 목적 질문에 관광이라고 명확히 대답했을 때."
+  payload_overrides:
+    branch:
+      branch_type: "success"
+      next_node_id: "IMM_003_DURATION"
+  player_inputs:
+    - "I am here for tourism and sightseeing."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["how long", "stay", "duration", "continue", "okay", "purpose", "visit", "what"]
+    must_not_include_any: []
+
+- id: immigration_hale_purpose_evasion
+  npc_id: hale
+  node_id: IMM_002_PURPOSE
+  description: "방문 목적 질문을 회피했을 때 단호하게 재질문하는지 검증."
+  payload_overrides:
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "I just want to walk around."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["clear", "purpose", "why", "visit", "answer"]
+    must_not_include_any: ["welcome"]
+
+- id: immigration_hale_duration_normal
+  npc_id: hale
+  node_id: IMM_003_DURATION
+  description: "체류 기간 질문에 5일이라고 정상 대답했을 때."
+  payload_overrides:
+    branch:
+      branch_type: "success"
+      next_node_id: "IMM_004_STAY_LOCATION"
+  player_inputs:
+    - "I will stay for five days."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["where", "stay", "hotel", "location", "continue", "okay", "how long", "united states"]
+    must_not_include_any: []
+
+- id: immigration_hale_stay_location_challenge
+  npc_id: hale
+  node_id: IMM_004_STAY_LOCATION
+  description: "체류 위치 질문 시 에스컬레이션(트집) 발동 조건 검사. (MGM 그랜드 호텔)"
+  payload_overrides:
+    suspicion_scope: "location"
+    assigned_visit_location: "MGM Grand Las Vegas"
+    branch:
+      branch_type: "success"
+      next_node_id: "IMM_005_RETURN_TICKET"
+  player_inputs:
+    - "I am staying at the MGM Grand Las Vegas."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["MGM", "hotel", "expensive", "money", "who", "Las Vegas", "Grand", "tell", "more", "where", "stay", "united states"]
+    must_not_include_any: ["welcome", "enjoy"]
+
+- id: immigration_hale_profanity_mirror
+  npc_id: hale
+  node_id: IMM_002_PURPOSE
+  description: "욕설이 섞인 입력에 대해 거친 경고를 내보내는지 검증 (mirror 모드, tier 2)"
+  payload_overrides:
+    incivility:
+      tier: 2
+    profanity_mode: "mirror"
+    allowed_mild: ["damn", "hell"]
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "Mind your own damn business."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["damn", "hell", "mouth", "warning", "procedural", "purpose", "visit"]
+
+- id: immigration_hale_cross_turn_callback
+  npc_id: hale
+  node_id: IMM_003_DURATION
+  description: "세션 카드의 정보를 이용해서 교차 질문을 하는지 확인."
+  payload_overrides:
+    session_context_card:
+      confirmed_facts:
+        - "player_visit_purpose: business"
+    branch:
+      branch_type: "success"
+      next_node_id: "IMM_003_DURATION"
+  player_inputs:
+    - "I will stay for ten days."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["business", "ten days", "stay", "how long", "duration"]

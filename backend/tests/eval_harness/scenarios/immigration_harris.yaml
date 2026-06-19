@@ -1,0 +1,54 @@
+- id: immigration_harris_passport_normal
+  npc_id: harris
+  node_id: IMM_001_PASSPORT
+  description: "여권을 요청하는 꼼꼼한 Harris 심사관의 대사 및 검증."
+  player_inputs:
+    - "Here is my passport, please."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["purpose", "visit", "welcome", "passport", "see", "continue", "okay"]
+    must_not_include_any: ["passport please"]
+
+- id: immigration_harris_unclear_clarify
+  npc_id: harris
+  node_id: IMM_002_PURPOSE
+  description: "방문 목적에 대해 모호하게 말할 때 정중하게 재질문하는지 검증."
+  payload_overrides:
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "Just for fun."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["purpose", "tourism", "sightseeing", "clarify", "visit"]
+    must_not_include_any: ["get out"]
+
+- id: immigration_harris_supportive_hint
+  npc_id: harris
+  node_id: IMM_003_DURATION
+  description: "학습자를 도우며 친근하지만 꼼꼼하게 일정을 캐묻는 상황 검증."
+  payload_overrides:
+    branch:
+      branch_type: "success"
+      next_node_id: "IMM_004_STAY_LOCATION"
+  player_inputs:
+    - "Maybe 3 or 4 weeks?"
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["weeks", "exactly", "stay", "where", "continue", "okay", "how long", "united states"]
+    must_not_include_any: ["bad response"]
+
+- id: immigration_harris_location_check
+  npc_id: harris
+  node_id: IMM_004_STAY_LOCATION
+  description: "체류지를 명확히 질문하는 Harris 심사관의 반응."
+  payload_overrides:
+    branch:
+      branch_type: "success"
+      next_node_id: "IMM_005_RETURN_TICKET"
+  player_inputs:
+    - "I will stay at Hilton Hotel in New York."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["Hilton", "New York", "enjoy", "continue", "okay", "where", "stay", "united states"]
+    must_not_include_any: ["passport"]

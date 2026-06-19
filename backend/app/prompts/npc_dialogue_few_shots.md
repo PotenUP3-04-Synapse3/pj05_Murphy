@@ -268,3 +268,43 @@
   "llm_reason": "[COHERENT] Player unclear; NPC re-asks the request instead of responding as if pen was handed over."
 }
 ```
+
+### Example 8: Topic detour + return to pending request (Smalltalk)
+- Player Input Payload:
+```json
+{
+  "player_text": "What's your name?",
+  "node_context": {
+    "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+    "npc_question": "Could I borrow your pen for this arrival form?"
+  },
+  "dialogue_seed": {
+    "surface_goal": "estimate_user_travel_speaking_level"
+  },
+  "branch": {
+    "branch_type": "retry"
+  },
+  "incivility": {
+    "tier": 0
+  },
+  "purpose": "smalltalk_diagnostic"
+}
+```
+- Expected NPC Output:
+```json
+{
+  "speaker": "Arabella",
+  "npc_text": "I'm Arabella, by the way. So — that pen? I just need it for a minute.",
+  "tts_text": "I'm Arabella, by the way. <break time='0.4s'/> So — that pen? I just need it for a minute.",
+  "feedback_kr": "Good.",
+  "tone": "formal_neutral",
+  "animation": "move",
+  "npc_emotion": "normal",
+  "stability": 0.75,
+  "style": 0.1,
+  "speed": 1.0,
+  "similarity_boost": 0.75,
+  "llm_reason": "[COHERENT] Player off-topic; brief reaction then circle back to pen request per Arabella's persona."
+}
+```
+
