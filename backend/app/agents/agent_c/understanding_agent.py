@@ -126,6 +126,61 @@ ALPHA_SLOT_VALUE_KEYWORDS: dict[str, dict[str, tuple[str, ...]]] = {
         "hobby_use": ("hobby", "collection", "collect", "craft", "fishing", "camera"),
         "sports_activity": ("sports", "sport", "golf", "tennis", "exercise", "activity"),
     },
+    # B가 추가한 입국심사 압박 질문도 로컬 룰 모드에서 멈추지 않도록 대표 표현을 연결합니다.
+    "long_stay_reason": {
+        "tourism": ("tourism", "travel", "sightseeing", "visit places", "see new york"),
+        "study": ("study", "school", "class", "course", "academy", "university"),
+        "family_visit": ("family", "parents", "uncle", "aunt", "cousin", "relative"),
+        "remote_work": ("remote work", "work remotely", "online work", "work online"),
+        "long_vacation": ("long vacation", "long holiday", "take a break", "rest", "vacation"),
+    },
+    "hotel_reservation_status": {
+        "has_reservation": ("yes", "reservation", "booked", "booking", "reserved", "i have a reservation"),
+        "has_digital_confirmation": ("digital confirmation", "confirmation email", "booking app", "on my phone"),
+        "has_address": ("hotel address", "address", "street", "avenue", "road"),
+    },
+    "hotel_choice_reason": {
+        "location": ("location", "near", "close to", "convenient", "good area"),
+        "price": ("price", "cheap", "affordable", "budget", "not expensive"),
+        "reviews": ("reviews", "rating", "good review", "high rated", "stars"),
+        "recommended": ("recommended", "recommendation", "friend told me", "family recommended"),
+        "near_tourist_spots": ("near tourist", "near attractions", "near museum", "near times square", "sightseeing"),
+    },
+    "itinerary_status": {
+        "has_itinerary": ("yes", "itinerary", "travel itinerary", "schedule", "planned itinerary"),
+        "has_plans": ("plans", "i have plans", "planned", "plan to visit"),
+        "has_list": ("list", "a list", "places list", "list of places"),
+    },
+    "first_visit_status": {
+        "yes_first_time": ("yes", "first time", "my first visit", "first visit", "never been"),
+        "no_visited_before": ("no", "visited before", "been here before", "second time", "third time", "not my first"),
+    },
+    "occupation": {
+        "student": ("student", "university student", "college student", "school student"),
+        "office_worker": ("office worker", "company employee", "employee", "work at a company"),
+        "engineer": ("engineer", "developer", "programmer", "software engineer"),
+        "designer": ("designer", "graphic designer", "product designer", "ui designer"),
+        "teacher": ("teacher", "instructor", "professor", "teach"),
+        "business_owner": ("business owner", "own a business", "self employed", "run a business"),
+        "unemployed": ("unemployed", "no job", "between jobs", "not working"),
+    },
+    "cash_amount": {
+        "under_10k": ("under 10000", "under 10,000", "under $10,000", "less than 10000", "less than 10,000"),
+        "over_10k": ("over 10000", "over 10,000", "over $10,000", "more than 10000", "more than 10,000"),
+        "zero": ("no cash", "zero cash", "i don't have cash", "only card", "none"),
+        "specific_amount": ("dollars", "usd", "$", "cash", "hundred", "thousand"),
+    },
+    "payment_source": {
+        "myself": ("myself", "by myself", "i paid", "my money", "from my savings"),
+        "parents": ("parents", "my parents", "mother", "father", "mom", "dad"),
+        "company": ("company", "my company", "employer", "work paid", "business trip"),
+        "sponsor": ("sponsor", "sponsored", "scholarship", "host paid"),
+        "family": ("family", "my family", "relative", "uncle", "aunt"),
+    },
+    "denied_entry_status": {
+        "never_denied": ("no", "never", "never denied", "never been denied", "no denial", "no, never", "not denied"),
+        "has_denial_history": ("denied before", "was denied", "entry denied", "refused entry", "once denied"),
+    },
     "customs_clearance_acknowledgement": {
         "acknowledged_clearance": ("thank", "thanks", "okay", "i understand"),
         "will_exit_airport": ("exit", "leave the airport", "go out"),

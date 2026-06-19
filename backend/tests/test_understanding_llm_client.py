@@ -9,6 +9,7 @@ from backend.app.agents.agent_c.understanding_llm_client import (
     OpenAICompatibleUnderstandingLLMClient,
     OpenAIUnderstandingLLMClient,
     UnderstandingLLMUnavailable,
+    UNDERSTANDING_EXTRACTED_SLOT_NAMES,
     _extract_chat_completion_structured_json,
     _extract_structured_json,
     _understanding_schema,
@@ -21,9 +22,11 @@ def test_understanding_schema_is_openai_strict_compatible() -> None:
     _assert_strict_object_schema(schema)
     extracted_slots = schema["properties"]["extracted_slots"]
     assert extracted_slots["additionalProperties"] is False
-    assert extracted_slots["required"] == ["visit_purpose", "stay_duration"]
+    assert extracted_slots["required"] == list(UNDERSTANDING_EXTRACTED_SLOT_NAMES)
     assert extracted_slots["properties"]["visit_purpose"]["type"] == ["string", "null"]
     assert extracted_slots["properties"]["stay_duration"]["type"] == ["string", "null"]
+    assert extracted_slots["properties"]["occupation"]["type"] == ["string", "null"]
+    assert extracted_slots["properties"]["denied_entry_status"]["type"] == ["string", "null"]
     slot_evidence = schema["properties"]["slot_evidence"]
     assert slot_evidence["type"] == "array"
     assert slot_evidence["items"]["required"] == [
@@ -108,6 +111,34 @@ def test_extract_structured_json_builds_slots_from_generic_evidence() -> None:
         }
     ]
     assert result["extracted_slots"] == {"stay_location": "hotel"}
+
+
+def test_extract_structured_json_preserves_new_immigration_extracted_slot() -> None:
+    result = _extract_structured_json(
+        {
+            "output_text": json.dumps(
+                {
+                    "intent": "state_occupation",
+                    "intent_success": True,
+                    "confidence": 0.86,
+                    "meaning_summary_kr": "The player said they are an engineer.",
+                    "emotion": "calm",
+                    "answer_relevance": "on_topic",
+                    "ambiguity_type": "none",
+                    "risk_delta": 0,
+                    "risk_reason": "No risk expression was found.",
+                    "risk_tags": [],
+                    "slot_evidence": [],
+                    "extracted_slots": {"occupation": "engineer"},
+                    "missing_slots": [],
+                    "needs_clarification": False,
+                },
+                ensure_ascii=False,
+            )
+        }
+    )
+
+    assert result["extracted_slots"] == {"occupation": "engineer"}
 
 
 def test_extract_structured_json_preserves_llm_usage() -> None:

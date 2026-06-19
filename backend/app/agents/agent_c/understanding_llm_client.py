@@ -20,6 +20,23 @@ import httpx
 from backend.app.agents.agent_c.visit_purpose_classifier import VISIT_PURPOSE_VALUES
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
 
+UNDERSTANDING_EXTRACTED_SLOT_NAMES = (
+    "visit_purpose",
+    "stay_duration",
+    "stay_location",
+    "customs_item_explanation",
+    "item_purpose",
+    "long_stay_reason",
+    "hotel_reservation_status",
+    "hotel_choice_reason",
+    "itinerary_status",
+    "first_visit_status",
+    "occupation",
+    "cash_amount",
+    "payment_source",
+    "denied_entry_status",
+)
+
 
 class UnderstandingLLMClient(Protocol):
     @property
@@ -226,6 +243,13 @@ def _developer_instructions() -> str:
         "such as 5 days, five days, one week, two weeks, three months, or "
         "until Friday when the current node asks for stay duration; otherwise "
         "return null."
+        " For all other extracted_slots keys, fill only the current node's "
+        "required, optional, or critical slots when clearly supported by "
+        "player_text; set unrelated slots to null. Prefer slot_evidence as "
+        "the source of truth for new Alpha immigration slots such as "
+        "long_stay_reason, hotel_reservation_status, hotel_choice_reason, "
+        "itinerary_status, first_visit_status, occupation, cash_amount, "
+        "payment_source, and denied_entry_status."
     )
 
 
@@ -280,19 +304,34 @@ def _understanding_schema() -> dict[str, Any]:
             "extracted_slots": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["visit_purpose", "stay_duration"],
-                "properties": {
-                    "visit_purpose": {
-                        "type": ["string", "null"],
-                        "enum": [*VISIT_PURPOSE_VALUES, None],
-                    },
-                    "stay_duration": {"type": ["string", "null"]},
-                },
+                "required": list(UNDERSTANDING_EXTRACTED_SLOT_NAMES),
+                "properties": _extracted_slot_properties(),
             },
             "missing_slots": {"type": "array", "items": {"type": "string"}},
             "needs_clarification": {"type": "boolean"},
         },
     }
+
+
+def _extracted_slot_properties() -> dict[str, dict[str, Any]]:
+    """LLM이 Alpha 신규 슬롯을 직접 채울 수 있도록 strict schema 항목을 만듭니다.
+
+    Beginner guide:
+    OpenAI strict JSON schema는 `additionalProperties=False`일 때 선언되지 않은
+    키를 허용하지 않습니다.  그래서 신규 시나리오 슬롯이 생기면 여기에서 안전한
+    `string | null` 필드로 열어 두고, 실제로 쓸 수 있는 슬롯인지 여부는
+    `UnderstandingAgent`의 현재 노드 필터가 다시 확인합니다.
+    """
+
+    properties: dict[str, dict[str, Any]] = {
+        slot_name: {"type": ["string", "null"]}
+        for slot_name in UNDERSTANDING_EXTRACTED_SLOT_NAMES
+    }
+    properties["visit_purpose"] = {
+        "type": ["string", "null"],
+        "enum": [*VISIT_PURPOSE_VALUES, None],
+    }
+    return properties
 
 
 def _extract_structured_json(data: dict[str, Any]) -> dict[str, Any]:

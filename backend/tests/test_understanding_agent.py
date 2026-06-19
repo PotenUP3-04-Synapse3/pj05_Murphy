@@ -481,6 +481,119 @@ def test_understanding_agent_rule_mode_recognizes_alpha_flight_and_baggage_slot_
         assert output.missing_slots == []
 
 
+def test_understanding_agent_rule_mode_recognizes_new_immigration_slot_values() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    cases = [
+        (
+            "IMM_003B_LONG_STAY_REASON",
+            "I will study at an academy.",
+            "long_stay_reason",
+            "study",
+        ),
+        (
+            "IMM_004B_HOTEL_RESERVATION",
+            "I have a digital confirmation email.",
+            "hotel_reservation_status",
+            "has_digital_confirmation",
+        ),
+        (
+            "IMM_004C_WHY_THIS_HOTEL",
+            "I chose it because the price is cheap.",
+            "hotel_choice_reason",
+            "price",
+        ),
+        (
+            "IMM_005B_TRAVEL_ITINERARY",
+            "Yes, I have a travel itinerary and schedule.",
+            "itinerary_status",
+            "has_itinerary",
+        ),
+        (
+            "IMM_008_FIRST_VISIT",
+            "No, I have visited before.",
+            "first_visit_status",
+            "no_visited_before",
+        ),
+        (
+            "IMM_009_OCCUPATION",
+            "I'm a software engineer.",
+            "occupation",
+            "engineer",
+        ),
+        (
+            "IMM_010_CASH",
+            "I have 500 dollars in cash.",
+            "cash_amount",
+            "specific_amount",
+        ),
+        (
+            "IMM_010B_WHO_PAID",
+            "My parents paid for the trip.",
+            "payment_source",
+            "parents",
+        ),
+        (
+            "IMM_011_DENIED_ENTRY",
+            "No, I have never been denied entry.",
+            "denied_entry_status",
+            "never_denied",
+        ),
+    ]
+    for node_id, player_text, slot_name, slot_value in cases:
+        output = agent.analyze_player_text(
+            player_text,
+            _alpha_node_context("CH0_03_IMMIGRATION_CHECK", node_id),
+        )
+
+        assert output.intent_success is True
+        assert output.extracted_slots == {slot_name: slot_value}
+        assert output.missing_slots == []
+
+
+def test_understanding_agent_llm_mode_accepts_new_immigration_extracted_slot() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_occupation",
+            "intent_success": True,
+            "confidence": 0.9,
+            "meaning_summary_kr": "The player said they are an engineer.",
+            "emotion": "calm",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "none",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "slot_evidence": [
+                {
+                    "slot": "occupation",
+                    "value": "engineer",
+                    "confidence": 0.91,
+                    "evidence_text": "software engineer",
+                }
+            ],
+            "extracted_slots": {"occupation": "engineer"},
+            "missing_slots": [],
+            "needs_clarification": False,
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text(
+        "I'm a software engineer.",
+        _alpha_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_009_OCCUPATION"),
+    )
+
+    assert output.intent_success is True
+    assert output.extracted_slots == {"occupation": "engineer"}
+    assert output.missing_slots == []
+    assert output.slot_evidence[0].slot == "occupation"
+    assert output.slot_evidence[0].value == "engineer"
+
+
 def test_understanding_agent_llm_mode_repairs_freeform_address_slot() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {
