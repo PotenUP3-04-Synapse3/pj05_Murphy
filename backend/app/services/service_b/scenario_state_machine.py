@@ -12,6 +12,7 @@ Verdict = Literal["SUCCESS", "PARTIAL", "UNCLEAR", "FAIL", "CRITICAL_FAIL"]
 
 ALPHA_FINAL_SCOREBOARD_NODE_ID = "ALPHA_999_FINAL_SCOREBOARD"
 CHAPTER_COMPLETE_NODE_IDS = {"FLIGHT_999_COMPLETE", "IMM_999_CLEARED", "BAG_999_COMPLETE"}
+MAX_HARD_FAIL_RETRIES = 5
 
 
 @dataclass(frozen=True)
@@ -156,9 +157,9 @@ class ScenarioStateMachine:
         # 1. Check if the user successfully completed the turn
         is_success = self._is_success(payload)
 
-        # 2. Enforce retry limit (3) and patience floor (<= 0) to transition to bad endings or force ADVANCE
+        # 2. Enforce retry limit (MAX_HARD_FAIL_RETRIES) and patience floor (<= 0) to transition to bad endings or force ADVANCE
         if not is_success:
-            if payload.scenario_state.retry_count >= 3 or payload.scenario_state.patience <= 0:
+            if payload.scenario_state.retry_count >= MAX_HARD_FAIL_RETRIES or payload.scenario_state.patience <= 0:
                 # If they are out of retries or patience, force bad ending
                 return self._force_bad_end(
                     payload,
@@ -353,7 +354,7 @@ class ScenarioStateMachine:
             branch_reason="Meaning is unclear or needs clarification.",
             patience_delta=-5,
             suspicion_delta=max(payload.understanding.risk_delta, 0),
-            retry_count_delta=1,
+            retry_count_delta=0,
             hint_count_delta=0,
         )
 

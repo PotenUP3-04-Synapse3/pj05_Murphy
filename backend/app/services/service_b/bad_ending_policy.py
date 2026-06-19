@@ -118,7 +118,6 @@ def build_bad_ending_output(payload: DevBPolicyInput, reason: str) -> DevBPolicy
             purpose="closing_eviction",
             tone_hint=tone_hint,
             target_slot=None,
-            do_not_generate_npc_text=False,
         ),
         rubric_scores=RubricScores(
             comprehension=0,

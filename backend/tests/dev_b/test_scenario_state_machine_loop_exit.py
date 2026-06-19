@@ -124,12 +124,12 @@ def test_patience_exhausted_forces_bad_end() -> None:
 def test_retry_limit_exceeded_forces_bad_end() -> None:
     sm = ScenarioStateMachine()
     
-    # retry_count is 3, answer is not successful (missing slot)
+    # retry_count is 5, answer is not successful (missing slot)
     payload = _policy_input(
         intent_success=False,
         missing_slots=["visit_purpose"],
         patience=40,
-        retry_count=3,
+        retry_count=5,
     )
     
     decision = sm.decide(payload)

@@ -3,6 +3,139 @@
 Cross-owner change requests are listed below. Status lines describe the current
 repository state as of the latest handoff entry.
 
+## Change Request - 2026-06-19 - [CR-B-AB-DESYNC] 입국심사 비-ADVANCE 분기 준수 가드 (대화 일관성 확보)
+
+Status: Open (Developer B 제기 - 2026-06-19; **Developer A 단독 구현** 영역. Developer C는 신규 필드 불필요 — 전달 경로 확인 + 회귀만).
+
+### Requested By
+
+Developer B
+
+### Affected Owner
+
+- **Developer A / kimyonghee — 구현 주체** (`npc_dialogue_agent.py` 가드 추가).
+- Developer C / Sean Han — **신규 작업 없음**. 아래 §C 전달 경로(이미 충족) 확인 + 회귀 테스트만.
+
+### Reason (재현 로그)
+
+실제 플레이 로그에서 같은 턴에 A 대사와 B 분기가 어긋났다:
+
+```
+You: maybe 13days
+Officer Hale: "Thirteen days. Good. Next, tell me where you will stay."  ← A: 숙소(다음 질문)로 진행
+log:  IMM_003_DURATION -> IMM_EXTRA_002_CLARIFY_DURATION | REASK | UNCLEAR ← B: 체류기간 재질문(비-ADVANCE)
+You: 133, kings street, manhatten...   ← 플레이어는 A가 말한 '숙소'에 답함
+log:  IMM_003_DURATION -> ... | UNCLEAR ← B는 여전히 '체류기간'을 채점 → 계속 실패
+... → 결국 END_SECONDARY_INSPECTION (강제 탈락)
+```
+
+B가 `next_action != "ADVANCE"`(재질문/힌트/경고)를 반환하면 플레이어는 **직전 질문**에 다시 답해야 한다. 그러나 A의 LLM 대사 생성기가 임의로 **다음 노드 질문**으로 진행하면, 플레이어 발화와 B가 채점하는 슬롯이 영구히 어긋나 무한 retry·조기 탈락이 발생한다. 이는 치명적 UX 결함이다.
+
+### 정확한 코드 갭 (구현 위치 특정)
+
+A가 받는 정규화 페이로드에는 가드에 필요한 신호가 **이미 모두 존재**한다
+(`backend/app/services/service_a/developer_a_input_service.py`,
+`normalize_level_design_payload`):
+
+| 신호 | normalized 키 | 라인 | 값 예시 |
+| --- | --- | --- | --- |
+| 다음 행동 | `next_action` | :110 | `ADVANCE` / `REASK` / `GIVE_HINT` / `WARNING` / `FAIL_END` |
+| 분기 타입 | `branch_type` | :82 | `success` / `retry` / `clarify` / `hint` / `warning` |
+| 대사 목적 | `dialogue_purpose` | :84 | `continue_to_next_question` / `support_retry` / `warn_and_control_risk` |
+| 질문 목표 | `dialogue_seed.surface_goal` | :88 | 비-ADVANCE 시 **현재 노드 질문의 goal**(예: `ask_stay_duration`) |
+
+문제는 **A의 두 생성 경로 중 LLM 경로에만 가드가 없다**:
+
+- **fallback(룰베이스) 경로** `node_generate_dialogue`(`npc_dialogue_agent.py:235-266`):
+  retry/clarify일 때 `get_retry_variation(...)`(:240-250)와
+  `synthesize_fallback_next_question(original, surface_goal)`(:260-266)로
+  현재 질문을 재질문하도록 이미 처리됨. → 정상.
+- **LLM 경로** `node_generate_dialogue_llm`(`npc_dialogue_agent.py:305-432`):
+  생성된 `npc_text`(:436~)는 profanity/safe-english/recommended-echo/
+  `missing_followup_question`(:470-477) 검사만 거친다. **질문이 "있는지"만 보고
+  "올바른 질문인지"는 검사하지 않는다.** 그리고 coherence guard(:479-501)는
+  `purpose == "smalltalk_diagnostic"` **전용**이라 입국심사/세관에는 적용되지 않는다.
+  → 여기서 desync가 발생한다. **이 경로에 가드를 추가하는 것이 본 CR의 핵심.**
+
+### Proposed Contract Change (Developer A)
+
+**A1. 비-ADVANCE 분기 준수 가드 (`node_generate_dialogue_llm`, 핵심)**
+
+생성된 `npc_text` 후처리 단계(:462~501 부근, smalltalk 가드와 동일 위치)에 다음을 추가:
+
+```
+is_non_advance = (next_action in {"REASK", "GIVE_HINT", "WARNING"})
+                 # 또는 dialogue_purpose in {"support_retry", "warn_and_control_risk"}
+if is_non_advance and purpose != "smalltalk_diagnostic":
+    # 현재 노드 질문(surface_goal)을 재질문해야 하며 다음 질문/화제 전환 금지.
+    # 위반 시 결정형 재질문으로 override (LLM 자유 텍스트 폐기):
+    npc_text = synthesize_fallback_next_question(reaction_part, surface_goal)
+    # 또는 직전 NPC 발화 변주가 필요하면 get_retry_variation(surface_goal, last_npc_text, npc_text)
+```
+
+- **권장: 결정형 override**(판정 단순·안전). 비-ADVANCE에서는 `surface_goal`이 곧
+  현재 노드의 질문이므로, LLM의 질문 선택을 신뢰하지 말고 `surface_goal` 기반
+  재질문으로 강제 교체한다. 반응(reaction) 문장은 유지하되 "다음 질문"은 금지.
+- 대안(LLM self-tag): smalltalk coherence guard(:479-501)가 쓰는
+  `llm_reason` 태그 방식을 확장해, 비-ADVANCE인데 다음 질문을 도입하면
+  reject 후 fallback으로 조향.
+
+**A2. coherence guard 일반화**
+
+현재 `purpose == "smalltalk_diagnostic"`로 한정된 후처리 가드(:479-501)를
+입국심사/세관(비-ADVANCE) 턴에도 적용되도록 일반화한다.
+
+**재사용 가능한 기존 유틸 (신규 구현 불필요)**
+- `synthesize_fallback_next_question(original_text, surface_goal)` — `npc_dialogue_agent.py`(:262에서 이미 사용).
+- `get_retry_variation(surface_goal, last_npc_text, current_text)` — `backend/app/services/service_a/dialogue_policy_service.py`.
+- smalltalk coherence guard 패턴 — `npc_dialogue_agent.py:479-501`.
+
+### 수용 기준 (Acceptance Criteria)
+
+1. `next_action != "ADVANCE"`인 모든 입국심사/세관 턴에서, 생성된 NPC 대사는
+   **현재 노드의 질문(surface_goal)만** 재질문하고 **다음 노드 질문/화제 전환을
+   포함하지 않는다.**
+2. 위 재현 로그 입력(체류기간 노드에서 clarify 분기)에 대해, NPC가
+   "tell me where you will stay"(숙소)로 진행하지 **않고** 체류기간 재질문을 한다.
+3. `next_action == "ADVANCE"`(success/final) 턴의 기존 동작은 회귀 없이 유지.
+4. smalltalk_diagnostic 경로의 기존 coherence/ topic_switch 동작은 변화 없음.
+
+### §C — Developer C 확인 항목 (신규 작업 없음)
+
+- A가 가드에 쓰는 `branch.next_action`, `dialogue_directive.purpose`,
+  `dialogue_seed.surface_goal`은 C→A 어댑터(`dev_a_npc_dialogue_client.py`)와
+  정규화기(`developer_a_input_service.py`)에서 **이미 전달됨**. 신규 필드/스키마 불필요.
+- C는 위 3개 필드가 비-ADVANCE 분기에서 누락 없이 A에 도달하는지 회귀 테스트로
+  보장만 하면 된다(예: `test_preprototype_flow.py`).
+
+### 테스트 가이드 (Developer A)
+
+- `backend/tests/test_developer_a_npc_dialogue.py`에 회귀 추가:
+  입력 = `branch_type="clarify"`, `next_action="REASK"`,
+  `dialogue_purpose="support_retry"`, `dialogue_seed.surface_goal="ask_stay_duration"`,
+  `player_text`는 숙소/주소 발화. → 단언: 생성 NPC 대사가 숙소 질문(`where ... stay`)을
+  포함하지 않고 체류기간 재질문 의도를 유지.
+
+### Compatibility Impact
+
+- A 내부 후처리 가드 + 기존 룰베이스 폴백 재사용. 공유 스키마
+  (`DialogueDirective`, `DialogueSeed`) 변경 없음 → 하위 호환.
+- 회귀 가드: `test_developer_a_npc_dialogue.py`, `test_preprototype_flow.py`.
+
+### 범위 밖 (Deferred, 본 CR 제외)
+
+- 1차 트리거인 **false-UNCLEAR**("maybe 13days"를 B/Understanding이 UNCLEAR로 오인)는
+  본 CR 범위 밖이며 추후 Understanding/`_is_unclear` 보정 별건으로 처리한다.
+- **주의**: A 가드만 적용하면 "엉뚱한 질문에 답하다 탈락"은 막지만, false-UNCLEAR가
+  남아 있으면 NPC가 체류기간을 올바르게 재질문해도 B가 정답을 계속 UNCLEAR로 볼 수
+  있다. 완전 해소는 A 가드 + Understanding 보정이 함께 필요.
+
+### Temporary Workaround
+
+Developer B는 UNCLEAR 시 hard-fail 카운터 증가를 배제하고 한도를 5로 상향
+(`[CR retry 완화]`, 구현 완료)하여 조기 강제 종료 민감도만 완화함. desync로 인한
+발화-슬롯 불일치 근본 문제는 A 가드 적용 전까지 잔존한다.
+
 ## Change Request - 2026-06-19 - [CR-B-HISTORY-MEMORY] 대화 기억 및 입국신고서 컨텍스트
 
 Status: Open (Developer B 분석/제기 - 2026-06-19; Developer C 구현 영역, 일부 Unreal 연동 필요).
@@ -265,6 +398,8 @@ A 반영 전까지 잔존.
 
 ## Change Request - 2026-06-17 - Deprecate and Remove do_not_generate_npc_text from Developer B Policy
 
+Status: Resolved (Developer B implementation complete - 2026-06-19).
+
 ### Requested By
 
 Developer C / Sean Han
@@ -282,6 +417,23 @@ The `do_not_generate_npc_text` field in `DialogueDirective` is not used by Devel
 - Remove references to `do_not_generate_npc_text` from the system prompt guidelines in `backend/app/prompts/english_level_hint_prompt.md`.
 - Remove the `do_not_generate_npc_text` keyword argument when instantiating `DialogueDirective` in `backend/app/agents/agent_b/english_level_hint_agent.py`.
 - Developer C has made this field optional in the shared Pydantic schema to prevent immediate breaking changes, so Developer B can safely clean it up at any time.
+
+### Developer B Resolution - 2026-06-19
+
+- Removed the `do_not_generate_npc_text` keyword argument from all B-owned
+  `DialogueDirective` instantiations: `english_level_hint_agent.py`
+  (`_build_dialogue_directive`, 2 sites) and `bad_ending_policy.py`
+  (`build_bad_ending_output`).
+- Removed the `do_not_generate_npc_text` guideline from
+  `backend/app/prompts/english_level_hint_prompt.md`.
+- Updated B-owned assertion in `test_developer_b_policy_engine.py` (removed the
+  `do_not_generate_npc_text is True` check). C-owned
+  `test_preprototype_flow.py` already asserts the field is absent from the
+  A-facing payload, which now holds.
+- The shared schema field remains optional (`bool | None = None`, C-owned) and
+  C's adapter sanitizer is untouched; B simply no longer emits it.
+- Verification: `pytest` (dev_b + preprototype + dev_a) PASS, `ruff` PASS,
+  `mypy` PASS on changed B files.
 
 ### Compatibility Impact
 

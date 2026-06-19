@@ -869,7 +869,6 @@ class _EnglishLevelHintPolicyCore:
                 purpose="smalltalk_diagnostic",
                 tone_hint="neutral_passenger",
                 target_slot=target_slot,
-                do_not_generate_npc_text=False,
                 topic_switch=topic_switch,
                 length_target=length_target,
             )
@@ -888,7 +887,6 @@ class _EnglishLevelHintPolicyCore:
             purpose=purpose,
             tone_hint=tone_hint,
             target_slot=target_slot,
-            do_not_generate_npc_text=True,
         )
 
     def _build_npc_emotion(

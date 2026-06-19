@@ -87,5 +87,5 @@ Return only fields in `DevBPolicyOutput`:
 - `feedback_generation`
 - `openkb_write`
 
-`dialogue_directive.do_not_generate_npc_text` must stay `true`; Developer A owns
-final NPC text and voice output.
+Developer A owns final NPC text and voice output; Developer B only emits
+`dialogue_directive` goal/tone metadata.

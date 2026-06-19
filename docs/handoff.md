@@ -1,5 +1,45 @@
 # Handoff
 
+## 2026-06-19 Developer B: do_not_generate_npc_text 디프리케이션 정리 완료
+
+Developer B는 `[CR-2026-06-17] Deprecate and Remove do_not_generate_npc_text from Developer B Policy`(Affected Owner: Developer B, Open 상태)를 처리했습니다. 해당 필드는 C 오케스트레이터/A 대사 생성에서 사용되지 않고 어댑터 단에서 필터링되므로, B 정책에서 더 이상 emit하지 않도록 정리했습니다.
+
+Changed:
+- `backend/app/agents/agent_b/english_level_hint_agent.py`: `_build_dialogue_directive`의 두 `DialogueDirective` 생성부에서 `do_not_generate_npc_text` 인자 제거.
+- `backend/app/services/service_b/bad_ending_policy.py`: `build_bad_ending_output`의 `DialogueDirective` 생성부에서 동일 인자 제거.
+- `backend/app/prompts/english_level_hint_prompt.md`: `do_not_generate_npc_text` 관련 가이드라인 문구 제거(“Developer A owns final NPC text...”로 대체).
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`: `do_not_generate_npc_text is True` 단언 제거. (C 소유 `test_preprototype_flow.py`는 이미 해당 필드 부재를 단언하며 그대로 통과.)
+- `docs/contracts/change_requests.md`: 해당 CR을 Resolved 처리 및 Developer B Resolution 기록.
+
+비고: 공유 Pydantic 스키마의 `do_not_generate_npc_text: bool | None = None`(C 소유)과 C 어댑터 sanitizer는 그대로 유지 — B는 더 이상 값을 채우지 않을 뿐이라 하위호환.
+
+Verification:
+- `pytest` (dev_b + test_preprototype_flow + test_developer_a_npc_dialogue + test_developer_a_agent_run_logging): 250 passed.
+- `ruff check` / `mypy`: 변경된 B 파일 PASS.
+
+## 2026-06-19 Developer B: 입국심사 retry 정책 완화 및 A/B desync 변경요청 작성 완료
+
+Developer B는 docs\workplan-dev-b.md 계획에 따라 입국심사 시 플레이어 답변이 불명확한 경우(UNCLEAR/clarify)의 retry count 누적을 배제하고 강제 종료 임계치를 상향 조치하였으며, B의 재질문과 A의 NPC 발화 간 desync를 해결하기 위한 변경요청을 등록했습니다.
+
+Changed:
+- `backend/app/services/service_b/scenario_state_machine.py`:
+  - `_clarify` 반환 시 `retry_count_delta`를 `1`에서 `0`으로 하향하여 불명확(UNCLEAR) 턴을 hard-fail 횟수에서 배제.
+  - 강제 탈락 임계치를 상수 `MAX_HARD_FAIL_RETRIES = 5`로 정의하고, `decide()`의 비교식을 기존 `3`에서 `5`로 상향.
+- `docs/contracts/change_requests.md`:
+  - `[CR-B-AB-DESYNC]` 신규 Change Request 작성 및 추가. Developer A에게 `next_action != "ADVANCE"`일 때 현재 질문을 강제 재요청하는 post-generation 가드를 적용하도록 공식 요청.
+  - (2026-06-19 보강) A/C가 의도대로 구현하도록 CR을 구현 가능 수준으로 상세화: ① A가 받는 정확한 신호와 위치(`developer_a_input_service.py`의 `next_action`:110 / `branch_type`:82 / `dialogue_purpose`:84 / `dialogue_seed.surface_goal`:88), ② 정확한 코드 갭(LLM 경로 `node_generate_dialogue_llm`:305-432에는 가드 없음, smalltalk coherence guard:479-501는 smalltalk 전용 / fallback 경로:235-266에는 이미 존재), ③ 권장 결정형 override 알고리즘과 재사용 유틸(`synthesize_fallback_next_question`, `get_retry_variation`), ④ 수용 기준·재현 로그·A 테스트 가이드, ⑤ Developer C는 신규 필드 불필요(전달 경로 확인+회귀만)임을 명시.
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`:
+  - `_clarify` 시 retry count가 증가하지 않음을 검증하는 테스트 추가.
+  - clarify가 다수 발생하여도 bad_end가 트리거되지 않음을 회귀 검증.
+  - 실제 하드 페일(FAIL/hint) 횟수가 5회 누적 시에만 `_force_bad_end`로 조기 종료됨을 검증하는 경계 테스트 추가.
+- `backend/tests/dev_b/test_scenario_state_machine_loop_exit.py`:
+  - 기존 하드 페일 탈락 테스트의 retry_count 기대값을 `3`에서 `5`로 상향 업데이트.
+
+Verification:
+- `uv run pytest`: PASS (전체 354개 테스트 성공 통과)
+- `uv run ruff check .`: PASS (오류 없음)
+- `uv run mypy .`: PASS (125개 소스 파일 완수)
+
 ## 2026-06-19 Developer C: CR-B-IMM-SLOTS 신규 입국심사 슬롯 이해 보강
 
 Developer C completed the required C-owned work for `[CR-B-IMM-SLOTS]` after
