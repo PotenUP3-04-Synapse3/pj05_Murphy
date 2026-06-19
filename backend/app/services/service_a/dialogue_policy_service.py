@@ -118,7 +118,11 @@ SURFACE_GOAL_QUESTIONS = {
 }
 
 
-def synthesize_fallback_next_question(fallback_text: str, surface_goal: str) -> str:
+def synthesize_fallback_next_question(
+    fallback_text: str,
+    surface_goal: str,
+    open_hooks: list[str] | None = None,
+) -> str:
     """LLM 실패 시 사용될 폴백 텍스트(Fallback Text) 뒤에 surface_goal에 따른 룰베이스 다음 질문을 합성합니다."""
     question = SURFACE_GOAL_QUESTIONS.get(surface_goal)
     if not question:
@@ -130,7 +134,16 @@ def synthesize_fallback_next_question(fallback_text: str, surface_goal: str) -> 
     stripped = fallback_text.strip()
     if not stripped.endswith((".", "!", "?")):
         stripped += "."
-    return f"{stripped} {question}"
+        
+    # open_hooks 가 있고 영어 1단어 이상일 때 hook prefix 합성
+    prefix = ""
+    if open_hooks and len(open_hooks) > 0:
+        first_hook = open_hooks[0]
+        # ASCII 영문 및 단어 형태 검증
+        if first_hook.isascii() and first_hook.isalpha():
+            prefix = f"You mentioned {first_hook} — "
+            
+    return f"{stripped} {prefix}{question}"
 
 
 RETRY_PARAPHRASES = {
@@ -148,6 +161,21 @@ RETRY_PARAPHRASES = {
         "Where will you stay in the United States?",
         "Could you tell me the address of your stay?",
         "Where are you going to stay?",
+    ],
+    "ask_travel_purpose_smalltalk": [
+        "Are you visiting New York for a trip?",
+        "What brings you to New York?",
+        "Could you tell me the reason for your visit?",
+    ],
+    "ask_stay_plan_smalltalk": [
+        "How long are you planning to stay in the US?",
+        "How many days will you spend in New York?",
+        "Could you share your stay plan with me?",
+    ],
+    "respond_to_polite_request": [
+        "Are you visiting New York for a trip?",
+        "Is this your first time traveling to New York?",
+        "What is the main reason for your visit?",
     ]
 }
 

@@ -1,3 +1,4 @@
+from typing import Any
 from backend.app.agents.agent_a.npc_dialogue_agent import (
     NPCDialogueResult,
     generate_npc_dialogue_from_level_design,
@@ -1040,7 +1041,7 @@ def test_dialogue_agent_no_suspicion_meta_uses_default_fallback():
     assert result["npc_text"]  # 기존 동작 회귀 보호
 
 
-from typing import Any
+
 
 def _payload(**kwargs: Any) -> dict[str, Any]:
     base = _eokkka_payload(
@@ -1133,4 +1134,194 @@ def test_suspicion_not_blurted_before_answer():
     captured = _capture_llm_payload(payload)
     rendered = _render_system_prompt(captured)
     assert "answer" in rendered.lower() and "preemptive" in rendered.lower() or "Answer-first" in rendered
+
+
+def test_session_context_card_builder_logical_accumulation() -> None:
+    """세션 컨텍스트 카드 빌더가 대화 내역으로부터 확정 사실, 금지 질문, open_hooks 등을 정상 빌드하는지 검증합니다."""
+    from backend.app.services.service_a.session_context_card_service import build_session_context_card
+    from backend.app.services.service_a.npc_roster_service import NPCProfile
+
+    dummy_profile = NPCProfile(
+        npc_id="miller",
+        display_name="Officer Miller",
+        role="immigration_officer",
+        default_animation="move",
+        fallback_text="Please wait here.",
+        mock_voice_id="miller_mock",
+        persona_instruction="polite officer",
+        elevenlabs_voice_id=None
+    )
+
+    normalized_payload = {
+        "player_text": "I am staying for ten days.",
+        "dialogue_history": [
+            {
+                "player_text_preview": "I am traveling for sight-seeing.",
+                "npc_text_preview": "What is the purpose of your visit?",
+                "filled_slots": {"visit_purpose": "sight-seeing"},
+                "surface_goal": "ask_travel_purpose"
+            }
+        ],
+        "dialogue_seed": {
+            "filled_slots": {"stay_duration": "ten days"}
+        }
+    }
+
+    card = build_session_context_card(normalized_payload, dummy_profile, {})
+
+    # 1. confirmed_facts 누적 확인
+    assert "The purpose of visit is sight-seeing." in card["confirmed_facts"]
+    assert "The stay duration is ten days." in card["confirmed_facts"]
+
+    # 2. forbidden_repeat_questions 누적 확인
+    assert "what is the purpose of your visit?" in card["forbidden_repeat_questions"]
+    assert "how long will you stay?" in card["forbidden_repeat_questions"]
+
+    # 3. open_hooks 확인
+    assert "staying" in card["open_hooks"]
+    assert "days" in card["open_hooks"]
+
+    # 4. last_npc_intent 확인
+    assert card["last_npc_intent"] == "ask_travel_purpose"
+
+    # 5. recent_turns_compact 확인
+    assert len(card["recent_turns_compact"]) == 1
+    assert "T-1" in card["recent_turns_compact"][0]
+
+    # 6. topic_thread 확인
+    assert "ask_travel_purpose" in card["topic_thread"]
+
+
+def test_session_context_card_builder_empty_history() -> None:
+    """대화 내역이 비어 있을 때 세션 컨텍스트 카드 빌더가 비정상 예외 없이 안전한 기본값을 반환하는지 검증합니다."""
+    from backend.app.services.service_a.session_context_card_service import build_session_context_card
+    from backend.app.services.service_a.npc_roster_service import NPCProfile
+
+    dummy_profile = NPCProfile(
+        npc_id="miller",
+        display_name="Officer Miller",
+        role="immigration_officer",
+        default_animation="move",
+        fallback_text="Please wait here.",
+        mock_voice_id="miller_mock",
+        persona_instruction="polite officer",
+        elevenlabs_voice_id=None
+    )
+
+    normalized_payload = {
+        "player_text": "",
+        "dialogue_history": [],
+        "dialogue_seed": {}
+    }
+
+    card = build_session_context_card(normalized_payload, dummy_profile, {})
+
+    assert card["confirmed_facts"] == []
+    assert card["forbidden_repeat_questions"] == []
+    assert card["open_hooks"] == []
+    assert card["last_npc_intent"] == ""
+    assert card["recent_turns_compact"] == []
+    assert card["topic_thread"] == []
+
+
+def test_llm_post_processing_repeats_confirmed_fact_guard() -> None:
+    """LLM이 이미 대답을 획득한 금지 질문을 다시 반복할 때 repeats_confirmed_fact 에러 및 폴백 정상 수행을 검증합니다."""
+    class ForbiddenQuestionLLMClient:
+        model = "fake-forbidden-model"
+        def generate(self, payload: dict) -> dict:
+            return {
+                "npc_text": "What is the purpose of your visit?",
+                "tts_text": "What is the purpose of your visit?",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "normal",
+                "stability": 0.75,
+                "style": 0.1,
+                "speed": 1.0,
+                "similarity_boost": 0.75,
+                "llm_reason": "asking purpose"
+            }
+
+    payload = {
+        "npc": {"npc_id": "miller"},
+        "node_id": "IMM_002_PURPOSE",
+        "player_text": "I am traveling.",
+        "node_context": {
+            "npc_question": "What is the purpose of your visit?",
+            "recommended_expression": "I'm here for tourism.",
+        },
+        "evaluation_summary": {"task_success": True, "clarity": 0.9},
+        "level_hint": {"english_level": "beginner"},
+        "in_game_feedback": {"npc_recast_line_candidate": None},
+        "branch": {"branch_type": "success"},
+        "dialogue_seed": {
+            "dialogue_history": [
+                {
+                    "player_text_preview": "tourism",
+                    "npc_text_preview": "What is the purpose of your visit?",
+                    "filled_slots": {"visit_purpose": "tourism"},
+                    "surface_goal": "ask_visit_purpose"
+                }
+            ]
+        }
+    }
+
+    result = generate_npc_dialogue_from_level_design(
+        payload,
+        use_llm=True,
+        llm_client=ForbiddenQuestionLLMClient(),
+    )
+
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "repeats_confirmed_fact"
+    assert result["fallback"]["used"] is True
+
+
+def test_llm_post_processing_weak_followup_no_hook_guard() -> None:
+    """플레이어가 언급한 구체 훅 명사를 포함하지 않고 약한 후속 질문으로 넘어갈 경우 weak_followup_no_hook 에러 및 폴백 수행을 검증합니다."""
+    class NoHookLLMClient:
+        model = "fake-no-hook-model"
+        def generate(self, payload: dict) -> dict:
+            return {
+                "npc_text": "How long will you stay?",
+                "tts_text": "How long will you stay?",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "normal",
+                "stability": 0.75,
+                "style": 0.1,
+                "speed": 1.0,
+                "similarity_boost": 0.75,
+                "llm_reason": "asking duration"
+            }
+
+    payload = {
+        "npc": {"npc_id": "miller"},
+        "node_id": "IMM_002_PURPOSE",
+        "player_text": "I booked a luxury suite.",
+        "node_context": {
+            "npc_question": "Where will you stay?",
+            "recommended_expression": "I booked a luxury suite.",
+        },
+        "evaluation_summary": {"task_success": True, "clarity": 0.9},
+        "level_hint": {"english_level": "beginner"},
+        "in_game_feedback": {"npc_recast_line_candidate": None},
+        "branch": {"branch_type": "success"},
+        "dialogue_seed": {
+            "dialogue_history": []
+        }
+    }
+
+    result = generate_npc_dialogue_from_level_design(
+        payload,
+        use_llm=True,
+        llm_client=NoHookLLMClient(),
+    )
+
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "weak_followup_no_hook"
+    assert result["fallback"]["used"] is True
+
 

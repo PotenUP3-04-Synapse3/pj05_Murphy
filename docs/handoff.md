@@ -1,5 +1,34 @@
 # Handoff
 
+## 2026-06-19 Developer A: NPC 메모리 및 꼬리물기 대화 강화 완료
+
+Developer A는 `docs/plans/dev_a_memory_followup_plan.md` 작업계획서에 명시된 NPC 세션 메모리 강화 및 꼬리물기 대화 인프라 구축 작업을 성공적으로 완료했습니다.
+
+Changed:
+- `session_context_card_service.py` [NEW]:
+  - dialogue_history 및 filled_slots를 분석하여 confirmed_facts, forbidden_repeat_questions, open_hooks, last_npc_intent, recent_turns_compact, topic_thread 정보를 구조화하는 세션 카드 빌더 신설.
+- `npc_dialogue_agent.py` [MODIFY]:
+  - `node_initialize_state` 단계에서 세션 메모리 카드를 빌드 및 `state["session_context_card"]`에 주입.
+  - LLM 페이로드에 6종의 세션 메모리 변수와 3종의 정책 변수(`policy_action`, `policy_next_question_style`, `policy_max_sentence_count`)를 포함해 전달.
+  - 후처리 검증부에서 금지 질문 중복을 걸러내는 `repeats_confirmed_fact` 가드와, 꼬리물기 앵커 단어 누락을 검증하는 `weak_followup_no_hook` 가드 추가. 미충족 시 룰베이스 폴백으로 안전 우회.
+- `npc_dialogue_prompt.md` / `npc_dialogue_prompt.short.md` [MODIFY]:
+  - `## SESSION MEMORY` 섹션을 신설하여 confirmed_facts, forbidden_repeat_questions, open_hooks 등을 렌더링.
+  - 룰 엔진 기반의 정책 수신을 명시하는 `### Dialogue Policy` 섹션 추가.
+- `npc_dialogue_few_shots.md` [MODIFY]:
+  - 꼬리물기 앵커 활용, 교차 턴 회상, 금지 질문 패러프레이즈 패턴을 제시하는 Example 4, 5, 6 예시 보강.
+- `dialogue_policy_service.py` [MODIFY]:
+  - `synthesize_fallback_next_question`에 `open_hooks`를 받아 꼬리물기 접두사(`"You mentioned {hook} — "`)를 추가하는 기능 강화.
+  - `RETRY_PARAPHRASES` 맵에 기내 스몰토크용 surface_goal 3종(`ask_travel_purpose_smalltalk`, `ask_stay_plan_smalltalk`, `respond_to_polite_request`) 변주 데이터 추가.
+- `test_developer_a_npc_dialogue.py` / `test_developer_a_prompt_rendering.py` [MODIFY]:
+  - 세션 카드 빌더 로직 검증, 후처리 가드 2종의 폴백 전환 검증, 그리고 세션 카드 및 정책 변수가 프롬프트 내에 정상 렌더링되는지 렌더 단언 테스트 추가 완료.
+
+Verification:
+- `uv run pytest backend/tests`: PASS
+- `uv run ruff check .`: PASS
+- `uv run mypy .`: PASS
+
+B/C 영역의 입출력 JSON 스키마 규격(어댑터 계약) 변경 사항 없음.
+
 ## 2026-06-18 Developer A: CR-B-CONV-A 트집 게이팅·히스토리 소비·대사 변주 구현 완료
 
 Developer A 는 CR-B-CONV-A 의 A 측 4가지 항목을 완료했습니다. B 가 2026-06-18 에 emit 한 `dialogue_seed.suspicion_scope` 및 C 가 동일 날짜에 attach 한 `dialogue_seed.dialogue_history` 를 모두 소비합니다.

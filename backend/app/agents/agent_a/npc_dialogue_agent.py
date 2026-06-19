@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal, cast, TypedDict, NotRequired
 import json
+import re
 
 import httpx
 
@@ -183,6 +184,8 @@ class NPCDialogueState(TypedDict):
     llm_client: Any
     # error: LLM 호출 등 처리 중 발생한 예외 상황의 에러 종류 문자열입니다.
     error: NotRequired[str]
+    # session_context_card: NPC 세션 메모리 요약 카드를 저장하는 사전 객체입니다.
+    session_context_card: NotRequired[dict[str, Any]]
 
 
 def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
@@ -193,6 +196,9 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
     normalized = normalize_level_design_payload(payload)
     # [3단계] 페이로드 정보에 매칭되는 NPC의 프로필(Profile)을 조회합니다.
     npc_profile = resolve_npc_profile(_npc_id_from_payload(payload))
+    # 세션 메모리 요약 카드 빌드
+    from backend.app.services.service_a.session_context_card_service import build_session_context_card
+    session_context_card = build_session_context_card(normalized, npc_profile, payload)
     # [4단계] 플레이어의 언어 실력 및 응답 통계를 바탕으로 플레이어 프로필을 빌드합니다.
     profile = build_player_language_profile(normalized)
     # [5단계] 플레이어의 성공/재시도 통계 등을 통해 NPC의 현재 감정 상태(Emotion State)를 추론합니다.
@@ -259,7 +265,11 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
     # profanity_res가 없을 때만 surface_goal 질문을 합성합니다.
     if use_llm and surface_goal and not is_complete_chapter and not profanity_res and purpose != "smalltalk_diagnostic":
         original_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
-        synthesized_text = synthesize_fallback_next_question(original_text, surface_goal)
+        synthesized_text = synthesize_fallback_next_question(
+            original_text,
+            surface_goal,
+            session_context_card.get("open_hooks"),
+        )
         fallback_res["npc_text"] = synthesized_text
         fallback_res["text"] = synthesized_text
         if "tts_text" in fallback_res:
@@ -290,7 +300,8 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
         "profile": profile,
         "emotion_state": emotion_state,
         "policy": policy,
-        "result": result
+        "result": result,
+        "session_context_card": session_context_card,
     }
 
 
@@ -311,6 +322,8 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     llm_client = state.get("llm_client")
     npc_profile = state["npc_profile"]
     callbacks = state.get("callbacks")
+    session_context_card = state.get("session_context_card") or {}
+    policy = state["policy"]
 
     # [2단계] 콜백 핸들러 구성 및 RunnableConfig 설정을 초기화합니다.
     run_config = config or RunnableConfig()
@@ -409,6 +422,19 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "random_customs_item": normalized.get("random_customs_item", ""),
             "random_customs_item_difficulty": normalized.get("random_customs_item_difficulty", 0),
             "random_customs_item_suspicion_reason": normalized.get("random_customs_item_suspicion_reason", ""),
+            
+            # 세션 컨텍스트 카드 필드들
+            "confirmed_facts": session_context_card.get("confirmed_facts", []),
+            "forbidden_repeat_questions": session_context_card.get("forbidden_repeat_questions", []),
+            "open_hooks": session_context_card.get("open_hooks", []),
+            "last_npc_intent": session_context_card.get("last_npc_intent", ""),
+            "recent_turns_compact": session_context_card.get("recent_turns_compact", []),
+            "topic_thread": session_context_card.get("topic_thread", []),
+            
+            # 정책 관련 변수들
+            "policy_action": policy.action,
+            "policy_next_question_style": policy.next_question_style,
+            "policy_max_sentence_count": policy.max_sentence_count,
         }
 
         # [4단계] 랭체인 1.0+ 규격에 부합하도록 invoke 또는 generate 호출을 수행합니다.
@@ -471,14 +497,32 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     surface_goal = (payload.get("dialogue_seed") or {}).get("surface_goal")
     purpose = payload.get("dialogue_directive", {}).get("purpose", "")
     if surface_goal and purpose != "smalltalk_diagnostic":
-        import re
         sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
         if len(sentences) <= 1 and "?" not in npc_text:
             return {"error": "missing_followup_question"}
 
+    # [신규 가드] 재질문 차단 가드 (repeats_confirmed_fact)
+    forbidden_questions = session_context_card.get("forbidden_repeat_questions") or []
+    npc_text_lower = npc_text.lower().strip()
+    npc_text_clean = re.sub(r'[.!?,\'":;-]', '', npc_text_lower)
+    for fq in forbidden_questions:
+        fq_clean = re.sub(r'[.!?,\'":;-]', '', fq.lower())
+        if fq_clean in npc_text_clean or npc_text_clean in fq_clean:
+            logger.error(f"Post-processing violation: NPC dialogue repeats forbidden question: '{npc_text}' (matches: '{fq}')")
+            return {"error": "repeats_confirmed_fact"}
+
+    # [신규 가드] 꼬리물기 hook 가드 (weak_followup_no_hook)
+    branch_type = normalized.get("branch_type", "neutral")
+    open_hooks = session_context_card.get("open_hooks") or []
+    if branch_type in {"success", "neutral"} and open_hooks and purpose != "smalltalk_diagnostic":
+        sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
+        contains_hook = any(hook.lower() in npc_text_lower for hook in open_hooks)
+        if not contains_hook and len(sentences) <= 1:
+            logger.error(f"Post-processing violation: NPC dialogue lacks open_hooks {open_hooks} in a brief response: '{npc_text}'")
+            return {"error": "weak_followup_no_hook"}
+
     # coherence guard 신설 (smalltalk_diagnostic 전용)
     if purpose == "smalltalk_diagnostic":
-        import re
         sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
         
         # (a) 반응 없는 맨 질문 검사 (첫 문장이 질문이거나 전체 문장이 1개인데 질문인 경우)

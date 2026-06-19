@@ -114,3 +114,119 @@
   "llm_reason": "Player used profanity. Since mode is mirror and tier is 2, NPC responds with a mild profanity (damn) to reprimand the player."
 }
 ```
+
+### Example 4: Follow-up that hooks onto a concrete noun (Immigration - Open Hooks)
+- Player Input Payload:
+```json
+{
+  "player_text": "I will stay at MGM Grand Las Vegas.",
+  "node_context": {
+    "node_id": "IMM_004_STAY_LOCATION",
+    "npc_question": "Where will you stay in the United States?"
+  },
+  "dialogue_seed": {
+    "surface_goal": "ask_stay_duration",
+    "suspicion_scope": "location",
+    "assigned_visit_location": "MGM Grand Las Vegas"
+  },
+  "branch": {
+    "branch_type": "success"
+  },
+  "incivility": {
+    "tier": 0
+  }
+}
+```
+- Expected NPC Output:
+```json
+{
+  "speaker": "Officer Hale",
+  "npc_text": "MGM Grand Las Vegas? That is a luxury hotel. How long will you stay there?",
+  "tts_text": "MGM Grand Las Vegas? <break time='0.4s'/> That is a luxury hotel. How long will you stay there?",
+  "feedback_kr": "Good.",
+  "tone": "formal_neutral",
+  "animation": "move",
+  "npc_emotion": "suspicion",
+  "stability": 0.70,
+  "style": 0.15,
+  "speed": 1.0,
+  "similarity_boost": 0.75,
+  "llm_reason": "Player provided the stay location. Prepend a reaction utilizing the hook 'MGM Grand Las Vegas' before asking the stay duration."
+}
+```
+
+### Example 5: Cross-turn callback (Immigration - Memory Recall)
+- Player Input Payload:
+```json
+{
+  "player_text": "For two weeks.",
+  "node_context": {
+    "node_id": "IMM_003_DURATION",
+    "npc_question": "How long will you stay in the United States?"
+  },
+  "dialogue_seed": {
+    "surface_goal": "ask_stay_location"
+  },
+  "branch": {
+    "branch_type": "success"
+  },
+  "incivility": {
+    "tier": 0
+  }
+}
+```
+- Expected NPC Output:
+```json
+{
+  "speaker": "Officer Hale",
+  "npc_text": "Two weeks. You mentioned earlier that you are here for a business meeting. Where will you stay during these two weeks?",
+  "tts_text": "Two weeks. <break time='0.4s'/> You mentioned earlier that you are here for a business meeting. Where will you stay during these two weeks?",
+  "feedback_kr": "Good.",
+  "tone": "formal_neutral",
+  "animation": "move",
+  "npc_emotion": "normal",
+  "stability": 0.75,
+  "style": 0.1,
+  "speed": 1.0,
+  "similarity_boost": 0.75,
+  "llm_reason": "Player answered stay duration. Acknowledge and recall their business meeting purpose from session memory before asking stay location."
+}
+```
+
+### Example 6: Forbidden repeat avoided (Immigration - Paraphrase)
+- Player Input Payload:
+```json
+{
+  "player_text": "Yes, strictly for tourism.",
+  "node_context": {
+    "node_id": "IMM_002_PURPOSE",
+    "npc_question": "What is the purpose of your visit?"
+  },
+  "dialogue_seed": {
+    "surface_goal": "ask_visit_purpose"
+  },
+  "branch": {
+    "branch_type": "retry"
+  },
+  "incivility": {
+    "tier": 0
+  }
+}
+```
+- Expected NPC Output:
+```json
+{
+  "speaker": "Officer Hale",
+  "npc_text": "Tourism. Tell me, what sights are you planning to see?",
+  "tts_text": "Tourism. <break time='0.5s'/> Tell me, what sights are you planning to see?",
+  "feedback_kr": "Good.",
+  "tone": "formal_neutral",
+  "animation": "move",
+  "npc_emotion": "normal",
+  "stability": 0.70,
+  "style": 0.15,
+  "speed": 1.0,
+  "similarity_boost": 0.75,
+  "llm_reason": "The direct question is forbidden because player already answered tourism. Paraphrase the repeat query into a concrete sight-seeing inquiry."
+}
+```
