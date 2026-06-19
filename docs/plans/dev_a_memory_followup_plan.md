@@ -1,4 +1,11 @@
-# Developer A NPC 메모리 / 꼬리물기 강화 작업계획서
+# [DEPRECATED] Developer A NPC 메모리 / 꼬리물기 강화 작업계획서 (통합 작업계획서 `docs/contracts/dev_a_unified_memory_plan.md`로 대체됨)
+
+> ⚠️ **이 계획서는 `docs/plans/dev_a_unified_memory_plan.md`로 통합되었습니다.**
+> 신규 작업은 통합본만 참조하세요. 본 파일은 기록 보존 목적으로만 유지됩니다.
+
+---
+
+
 
 작성일: 2026-06-19
 대상 실행 에이전트: **Gemini (Developer A 페르소나)**

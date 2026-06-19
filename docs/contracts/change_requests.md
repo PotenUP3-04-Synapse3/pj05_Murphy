@@ -3,6 +3,37 @@
 Cross-owner change requests are listed below. Status lines describe the current
 repository state as of the latest handoff entry.
 
+## Change Request - 2026-06-19 - [CR-A-E2E-TEST-SYNC] E2E 테스트 단언 수정 요청 (ask_stay_duration 폴백 개선 관련)
+
+### Requested By
+
+Developer A
+
+### Affected Owner
+
+Developer C / Sean Han (E2E 테스트 소유자)
+
+### Reason
+
+Developer A의 통합 작업계획서 `docs/contracts/dev_a_unified_memory_plan.md` (M-7)에 의거하여, `ask_stay_duration`에 대한 룰베이스 폴백 텍스트가 개선되었습니다.
+- 기존: 디폴트 텍스트인 `"Okay. Please continue."`로 폴백됨.
+- 신규: `"How long will you stay in the United States?"`가 올바르게 반환됨.
+
+이 개선으로 인해 Developer C가 소유한 `backend/tests/test_preprototype_flow.py`의 E2E 테스트 `test_orchestrator_uses_repaired_llm_visit_purpose_before_developer_a_dialogue`가 기존 버그성 디폴트값인 `"Okay. Please continue."`를 단언(assert)하고 있어 테스트 실패가 발생합니다.
+
+### Proposed Contract Change
+
+`backend/tests/test_preprototype_flow.py` (line 863)의 단언문을 다음과 같이 업데이트할 것을 요청합니다.
+
+```diff
+-       assert response.npc.text == "Okay. Please continue."
++       assert response.npc.text == "How long will you stay in the United States?"
+```
+
+### Compatibility Impact
+
+E2E 흐름에서 `ask_stay_duration`에 대한 실제 NPC 대사가 더욱 자연스럽게 반환되도록 변경되는 것으로, 시나리오 정합성에 부합하며 하위 호환성을 깨뜨리지 않습니다.
+
 ## Change Request - 2026-06-19 - [CR-B-HISTORY-MEMORY] 대화 기억 및 입국신고서 컨텍스트
 
 Status: Open (Developer B 분석/제기 - 2026-06-19; Developer C 구현 영역, 일부 Unreal 연동 필요).

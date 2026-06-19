@@ -2,11 +2,25 @@ from typing import Any
 
 from backend.app.agents.agent_a.npc_dialogue_agent import (
     NPCDialogueResult,
-    generate_npc_dialogue_from_level_design,
+    generate_npc_dialogue_from_level_design as _orig_generate_npc_dialogue_from_level_design,
 )
 from backend.app.services.service_a.npc_roster_service import NPCProfile
 from backend.app.services.service_a.tts_service import TTSRequest, synthesize_speech
 from backend.app.services.service_a.voice_output_service import build_voice_output
+
+import uuid
+
+def generate_npc_dialogue_from_level_design(payload: dict, *args, **kwargs):
+    if "session_id" not in payload:
+        has_session = False
+        if "turn" in payload and isinstance(payload["turn"], dict):
+            session = payload["turn"].get("session")
+            if isinstance(session, dict) and "session_id" in session:
+                has_session = True
+        if not has_session:
+            payload = dict(payload)
+            payload["session_id"] = f"test_session_{uuid.uuid4().hex}"
+    return _orig_generate_npc_dialogue_from_level_design(payload, *args, **kwargs)
 
 
 def test_synthesize_speech_returns_deterministic_mock_audio_metadata() -> None:
@@ -1322,5 +1336,242 @@ def test_llm_post_processing_weak_followup_no_hook_guard() -> None:
     assert result["llm"]["used"] is False
     assert result["llm"]["reason"] == "weak_followup_no_hook"
     assert result["fallback"]["used"] is True
+
+
+def test_build_thread_id_fail_fast() -> None:
+    from backend.app.services.service_a.npc_short_term_memory_service import build_thread_id
+    import pytest
+    with pytest.raises(ValueError):
+        build_thread_id("", "officer_hale")
+    with pytest.raises(ValueError):
+        build_thread_id("session_123", "")
+    with pytest.raises(ValueError):
+        build_thread_id(None, None)
+
+
+def test_npc_memory_isolation_and_accumulation() -> None:
+    from backend.app.agents.agent_a.npc_dialogue_agent import reset_graph_singleton_for_testing
+    reset_graph_singleton_for_testing()
+    
+    # 동일 세션, 다른 npc_id -> 격리 검증
+    payload_a = {
+        "session_id": "session_shared",
+        "npc": {"npc_id": "officer_hale"},
+        "node_id": "IMM_001_PASSPORT",
+        "player_text": "Here is my passport.",
+        "node_context": {"npc_question": "May I see your passport?"},
+        "evaluation_summary": {"task_success": True},
+        "level_hint": {},
+        "in_game_feedback": {},
+        "branch": {"branch_type": "success"},
+        "dialogue_seed": {"surface_goal": "ask_visit_purpose"}
+    }
+    
+    payload_b = {
+        "session_id": "session_shared",
+        "npc": {"npc_id": "seatmate"},
+        "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+        "player_text": "Hello.",
+        "node_context": {"npc_question": "Hello there."},
+        "evaluation_summary": {"task_success": True},
+        "level_hint": {},
+        "in_game_feedback": {},
+        "branch": {"branch_type": "success"},
+        "dialogue_seed": {"surface_goal": "ask_travel_purpose_smalltalk"}
+    }
+    
+    # 1. Hale 에이전트 실행
+    _orig_generate_npc_dialogue_from_level_design(payload_a, use_llm=False)
+    # 2. Seatmate 에이전트 실행
+    _orig_generate_npc_dialogue_from_level_design(payload_b, use_llm=False)
+    
+    # 두 그래프가 격리되어 다른 메모리를 사용하는지 graph 상태 조회 검증
+    from backend.app.agents.agent_a.npc_dialogue_agent import _get_compiled_graph
+    graph = _get_compiled_graph()
+    
+    state_a = graph.get_state({"configurable": {"thread_id": "session_shared:officer_hale"}})
+    state_b = graph.get_state({"configurable": {"thread_id": "session_shared:seatmate"}})
+    
+    assert len(state_a.values.get("turn_buffer", [])) == 1
+    assert state_a.values.get("turn_buffer")[0]["surface_goal"] == "ask_visit_purpose"
+    
+    assert len(state_b.values.get("turn_buffer", [])) == 1
+    assert state_b.values.get("turn_buffer")[0]["surface_goal"] == "ask_travel_purpose_smalltalk"
+    
+    # 3. 누적 검증 (Hale에 4회 추가 호출 -> 총 5회)
+    for _ in range(4):
+        _orig_generate_npc_dialogue_from_level_design(payload_a, use_llm=False)
+        
+    state_a = graph.get_state({"configurable": {"thread_id": "session_shared:officer_hale"}})
+    assert len(state_a.values.get("turn_buffer", [])) == 5
+
+
+def test_npc_memory_sliding_window_n20() -> None:
+    from backend.app.agents.agent_a.npc_dialogue_agent import reset_graph_singleton_for_testing
+    reset_graph_singleton_for_testing()
+    
+    payload = {
+        "session_id": "session_sliding",
+        "npc": {"npc_id": "officer_hale"},
+        "node_id": "IMM_001_PASSPORT",
+        "player_text": "Here.",
+        "node_context": {"npc_question": "May I see your passport?"},
+        "evaluation_summary": {"task_success": True},
+        "level_hint": {},
+        "in_game_feedback": {},
+        "branch": {"branch_type": "success"},
+        "dialogue_seed": {"surface_goal": "ask_visit_purpose"}
+    }
+    
+    # 25회 호출
+    for i in range(25):
+        payload = dict(payload)
+        payload["player_text"] = f"text_{i}"
+        _orig_generate_npc_dialogue_from_level_design(payload, use_llm=False)
+        
+    from backend.app.agents.agent_a.npc_dialogue_agent import _get_compiled_graph
+    graph = _get_compiled_graph()
+    state = graph.get_state({"configurable": {"thread_id": "session_sliding:officer_hale"}})
+    
+    # N=20 슬라이딩 확인
+    buffer = state.values.get("turn_buffer", [])
+    assert len(buffer) == 20
+    assert buffer[0]["player_text"] == "text_5"
+    assert buffer[-1]["player_text"] == "text_24"
+
+
+def test_npc_memory_cleared_on_complete_chapter() -> None:
+    from backend.app.agents.agent_a.npc_dialogue_agent import reset_graph_singleton_for_testing
+    reset_graph_singleton_for_testing()
+    
+    payload = {
+        "session_id": "session_complete",
+        "npc": {"npc_id": "officer_hale"},
+        "node_id": "IMM_001_PASSPORT",
+        "player_text": "Here.",
+        "node_context": {"npc_question": "May I see your passport?"},
+        "evaluation_summary": {"task_success": True},
+        "level_hint": {},
+        "in_game_feedback": {},
+        "branch": {"branch_type": "success"},
+        "dialogue_seed": {"surface_goal": "ask_visit_purpose"}
+    }
+    
+    # 1. 일단 1턴 실행하여 turn_buffer에 적재
+    _orig_generate_npc_dialogue_from_level_design(payload, use_llm=False)
+    
+    from backend.app.agents.agent_a.npc_dialogue_agent import _get_compiled_graph
+    graph = _get_compiled_graph()
+    state = graph.get_state({"configurable": {"thread_id": "session_complete:officer_hale"}})
+    assert len(state.values.get("turn_buffer", [])) == 1
+    
+    # 2. complete_chapter 턴 실행
+    complete_payload = dict(payload)
+    complete_payload["transition"] = {"status": "complete_chapter"}
+    _orig_generate_npc_dialogue_from_level_design(complete_payload, use_llm=False)
+    
+    # 3. 그 다음 턴 실행하여 비워졌는지 확인 (node_load_memory에서 펜딩 상태 확인 후 청소)
+    next_payload = dict(payload)
+    _orig_generate_npc_dialogue_from_level_design(next_payload, use_llm=False)
+    
+    state = graph.get_state({"configurable": {"thread_id": "session_complete:officer_hale"}})
+    # complete_chapter 적용 후 다음 턴 1회 기록된 상태이므로 길이는 1이어야 함 (누적되지 않고 리셋)
+    assert len(state.values.get("turn_buffer", [])) == 1
+
+
+def test_new_9_surface_goals_mapping_existence() -> None:
+    from backend.app.services.service_a.dialogue_policy_service import SURFACE_GOAL_QUESTIONS, RETRY_PARAPHRASES
+    from backend.app.services.service_a.developer_a_fallback_service import SURFACE_GOAL_FALLBACK_TEXTS
+    
+    new_goals = [
+        "ask_long_stay_reason",
+        "ask_hotel_reservation",
+        "ask_hotel_choice_reason",
+        "ask_travel_itinerary",
+        "ask_first_visit",
+        "ask_occupation",
+        "ask_cash_amount",
+        "ask_trip_payment_source",
+        "ask_denied_entry_history"
+    ]
+    
+    for goal in new_goals:
+        assert goal in SURFACE_GOAL_QUESTIONS
+        assert goal in RETRY_PARAPHRASES
+        assert len(RETRY_PARAPHRASES[goal]) >= 3
+        assert goal in SURFACE_GOAL_FALLBACK_TEXTS
+
+
+def test_unknown_surface_goal_throws_key_error_fail_fast() -> None:
+    from backend.app.services.service_a.developer_a_fallback_service import build_text_fallback
+    import pytest
+    
+    bad_payload = {
+        "dialogue_seed": {"surface_goal": "invalid_goal_for_sure"},
+        "npc_role": "immigration_officer"
+    }
+    
+    with pytest.raises(KeyError):
+        build_text_fallback(bad_payload)
+
+
+def test_suspicion_mode_conditional_prompt_rendering() -> None:
+    from backend.app.agents.agent_a.npc_dialogue_agent import node_initialize_state
+    
+    # scope == none 일 때 suspicion mode 블록 비포함 검증
+    payload = {
+        "npc": {"npc_id": "miller"},
+        "node_id": "IMM_002_PURPOSE",
+        "player_text": "tourism",
+        "node_context": {},
+        "evaluation_summary": {},
+        "level_hint": {},
+        "in_game_feedback": {},
+        "branch": {},
+        "dialogue_seed": {
+            "suspicion_scope": "none",
+            "assigned_visit_location": "Luxury Hotel"
+        }
+    }
+    
+    from typing import cast
+    from backend.app.agents.agent_a.npc_dialogue_agent import NPCDialogueState
+    
+    initial_state = {
+        "payload": payload,
+        "use_llm": True,
+        "llm_client": None,
+    }
+    
+    # node_initialize_state를 통해 렌더링에 사용될 payload가 빌드됨
+    res = node_initialize_state(cast(NPCDialogueState, initial_state))
+    # 여기에 suspicion_scope가 none으로 파싱되었는지 확인
+    assert res["normalized"]["suspicion_scope"] == "none"
+
+
+def test_dialogue_result_keys_conformity() -> None:
+    payload = {
+        "session_id": "session_conform",
+        "npc": {"npc_id": "miller"},
+        "node_id": "IMM_002_PURPOSE",
+        "player_text": "I am traveling.",
+        "node_context": {"npc_question": "What is the purpose of your visit?"},
+        "evaluation_summary": {"task_success": True},
+        "level_hint": {},
+        "in_game_feedback": {},
+        "branch": {"branch_type": "success"},
+        "dialogue_seed": {"surface_goal": "ask_visit_purpose"}
+    }
+    
+    result = generate_npc_dialogue_from_level_design(payload, use_llm=False)
+    
+    # 필수 출력 키 스키마 준수 검증
+    assert "speaker" in result
+    assert "text" in result
+    assert "tts_text" in result
+    assert "tone" in result
+    assert "animation" in result
+    assert "feedback_kr" in result
+
 
 

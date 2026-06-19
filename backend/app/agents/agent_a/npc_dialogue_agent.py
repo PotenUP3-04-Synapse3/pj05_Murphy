@@ -186,6 +186,13 @@ class NPCDialogueState(TypedDict):
     error: NotRequired[str]
     # session_context_card: NPC 세션 메모리 요약 카드를 저장하는 사전 객체입니다.
     session_context_card: NotRequired[dict[str, Any]]
+    
+    # 단기 메모리(Short-term Memory) 관련 변수
+    turn_buffer: NotRequired[list[dict[str, Any]]]
+    accumulated_slots: NotRequired[dict[str, str]]
+    forbidden_questions: NotRequired[list[str]]
+    last_npc_intent: NotRequired[str]
+    _memory_cleanup_pending: NotRequired[bool]
 
 
 def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
@@ -198,7 +205,15 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
     npc_profile = resolve_npc_profile(_npc_id_from_payload(payload))
     # 세션 메모리 요약 카드 빌드
     from backend.app.services.service_a.session_context_card_service import build_session_context_card
-    session_context_card = build_session_context_card(normalized, npc_profile, payload)
+    npc_memory = {
+        "turn_buffer": state.get("turn_buffer") or [],
+        "accumulated_slots": state.get("accumulated_slots") or {},
+        "forbidden_questions": state.get("forbidden_questions") or [],
+        "last_npc_intent": state.get("last_npc_intent") or "",
+    }
+    session_context_card = build_session_context_card(
+        normalized, npc_profile, payload, npc_memory=npc_memory
+    )
     # [4단계] 플레이어의 언어 실력 및 응답 통계를 바탕으로 플레이어 프로필을 빌드합니다.
     profile = build_player_language_profile(normalized)
     # [5단계] 플레이어의 성공/재시도 통계 등을 통해 NPC의 현재 감정 상태(Emotion State)를 추론합니다.
@@ -319,7 +334,14 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     payload = state["payload"]
     normalized = state["normalized"]
     fallback_result = state["result"]
-    llm_client = state.get("llm_client")
+    
+    # 직렬화 방지를 위해 config에서 llm_client를 우선적으로 추출합니다.
+    llm_client = None
+    if config and "configurable" in config:
+        llm_client = config["configurable"].get("llm_client")
+    if not llm_client:
+        llm_client = state.get("llm_client")
+        
     npc_profile = state["npc_profile"]
     callbacks = state.get("callbacks")
     session_context_card = state.get("session_context_card") or {}
@@ -356,6 +378,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
                 discussed_topics.append(nt)
 
         if purpose == "smalltalk_diagnostic":
+            # TODO(dev-a): replace with internal NPC memory once verified
             from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader
             reader = OpenKBFinalResultRecordReader()
             session_id = payload.get("session_id") or ""
@@ -625,35 +648,195 @@ def node_apply_fallback(state: NPCDialogueState) -> dict[str, Any]:
     return {"result": fallback_result}
 
 
+def node_load_memory(state: NPCDialogueState) -> dict[str, Any]:
+    """체크포인터 복원 결과가 처음이거나 비어있을 때 단기 메모리를 기본값으로 채우고 정리를 보조합니다."""
+    from backend.app.services.service_a.npc_short_term_memory_service import clear_memory_state
+    
+    updates: dict[str, Any] = {}
+    
+    turn_buffer = state.get("turn_buffer")
+    accumulated_slots = state.get("accumulated_slots")
+    forbidden_questions = state.get("forbidden_questions")
+    last_npc_intent = state.get("last_npc_intent")
+    
+    if turn_buffer is None:
+        updates["turn_buffer"] = []
+    if accumulated_slots is None:
+        updates["accumulated_slots"] = {}
+    if forbidden_questions is None:
+        updates["forbidden_questions"] = []
+    if last_npc_intent is None:
+        updates["last_npc_intent"] = ""
+        
+    # 챕터 정리 펜딩 검사 및 비우기
+    if state.get("_memory_cleanup_pending", False):
+        base_state = {
+            "turn_buffer": state.get("turn_buffer") or [],
+            "accumulated_slots": state.get("accumulated_slots") or {},
+            "forbidden_questions": state.get("forbidden_questions") or [],
+            "last_npc_intent": state.get("last_npc_intent") or "",
+        }
+        cleared = clear_memory_state(base_state)
+        updates.update(cleared)
+        updates["_memory_cleanup_pending"] = False
+        
+    return updates
+
+
+def node_persist_memory(state: NPCDialogueState) -> dict[str, Any]:
+    """이번 턴의 대화 결과와 슬롯 획득 정보를 단기 메모리에 저장 및 업데이트합니다.
+    
+    Fail-fast 규칙에 따라 필수 키 누락 시 KeyError를 던집니다.
+    """
+    from backend.app.services.service_a.npc_short_term_memory_service import (
+        append_turn,
+        merge_slots,
+        derive_forbidden_questions
+    )
+    
+    result = state.get("result")
+    payload = state.get("payload")
+    normalized = state.get("normalized")
+    
+    if not result:
+        raise KeyError("result is missing in state")
+    if not payload:
+        raise KeyError("payload is missing in state")
+    if not normalized:
+        raise KeyError("normalized is missing in state")
+        
+    npc_text = result.get("npc_text") or result.get("text")
+    npc_id = normalized.get("npc_id")
+    
+    # Fail-fast 검사
+    if npc_text is None:
+        raise KeyError("npc_text is required in result")
+    if npc_id is None:
+        raise KeyError("npc_id is required in normalized payload")
+        
+    # 현재 턴에서 새로 채워진 슬롯들을 추출
+    understanding = payload.get("understanding") or {}
+    incoming_slots = understanding.get("extracted_slots") or {}
+    
+    # dialogue_seed의 filled_slots도 보조적으로 머지
+    dialogue_seed = payload.get("dialogue_seed") or {}
+    seed_slots = dialogue_seed.get("filled_slots") or {}
+    incoming_slots = merge_slots(incoming_slots, seed_slots)
+    
+    # accumulated_slots 갱신
+    current_slots = state.get("accumulated_slots") or {}
+    new_accumulated_slots = merge_slots(current_slots, incoming_slots)
+    
+    # forbidden_questions 갱신
+    new_forbidden = derive_forbidden_questions(new_accumulated_slots)
+    
+    # turn_buffer 갱신
+    node_id = normalized.get("node_id") or ""
+    surface_goal = dialogue_seed.get("surface_goal") or ""
+    branch_type = normalized.get("branch_type") or "neutral"
+    player_text = normalized.get("player_text") or ""
+    npc_emotion = result.get("npc_emotion") or ""
+    
+    base_memory = {
+        "turn_buffer": state.get("turn_buffer") or [],
+    }
+    
+    updated_memory = append_turn(
+        base_memory,
+        node_id=node_id,
+        surface_goal=surface_goal,
+        branch_type=branch_type,
+        player_text=player_text,
+        npc_text=npc_text,
+        filled_slots=incoming_slots,
+        npc_emotion=npc_emotion
+    )
+    
+    # last_npc_intent 갱신
+    new_last_npc_intent = surface_goal
+    
+    # 챕터 완료 검사
+    transition_status = normalized.get("transition", {}).get("status") or ""
+    next_action = normalized.get("next_action") or ""
+    is_complete_chapter = (transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER")
+    
+    updates: dict[str, Any] = {
+        "turn_buffer": updated_memory["turn_buffer"],
+        "accumulated_slots": new_accumulated_slots,
+        "forbidden_questions": new_forbidden,
+        "last_npc_intent": new_last_npc_intent,
+    }
+    
+    if is_complete_chapter:
+        updates["_memory_cleanup_pending"] = True
+        
+    return updates
+
+
+# 글로벌 싱글톤 캐시
+_GRAPH_SINGLETON: Any | None = None
+
+def _get_compiled_graph() -> Any:
+    """NPCDialogue 에이전트 그래프의 컴파일본을 반환하는 내부 헬퍼 함수입니다.
+    
+    싱글톤 패턴으로 컴파일하며, InMemorySaver checkpointer를 부착합니다.
+    """
+    global _GRAPH_SINGLETON
+    if _GRAPH_SINGLETON is None:
+        try:
+            from langgraph.checkpoint.memory import InMemorySaver
+            checkpointer = InMemorySaver()
+        except ImportError:
+            try:
+                from langgraph.checkpoint import MemorySaver  # type: ignore
+                checkpointer = MemorySaver()
+            except ImportError:
+                raise RuntimeError("langgraph checkpointer unavailable; required for NPC memory")
+                
+        workflow = StateGraph(NPCDialogueState)
+        
+        workflow.add_node("load_memory", node_load_memory)
+        workflow.add_node("initialize_state", node_initialize_state)
+        workflow.add_node("generate_dialogue_llm", node_generate_dialogue_llm)
+        workflow.add_node("apply_fallback", node_apply_fallback)
+        workflow.add_node("persist_memory", node_persist_memory)
+        
+        workflow.add_edge(START, "load_memory")
+        workflow.add_edge("load_memory", "initialize_state")
+        
+        workflow.add_conditional_edges(
+            "initialize_state",
+            route_after_init,
+            {
+                "generate_dialogue_llm": "generate_dialogue_llm",
+                END: "persist_memory"
+            }
+        )
+        workflow.add_conditional_edges(
+            "generate_dialogue_llm",
+            route_after_llm,
+            {
+                "apply_fallback": "apply_fallback",
+                END: "persist_memory"
+            }
+        )
+        workflow.add_edge("apply_fallback", "persist_memory")
+        workflow.add_edge("persist_memory", END)
+        
+        _GRAPH_SINGLETON = workflow.compile(checkpointer=checkpointer)
+        
+    return _GRAPH_SINGLETON
+
+
+def reset_graph_singleton_for_testing() -> None:
+    """테스트 진행 시 메모리를 깨끗하게 비운 싱글톤으로 초기화하기 위한 헬퍼 함수입니다."""
+    global _GRAPH_SINGLETON
+    _GRAPH_SINGLETON = None
+
+
 def build_npc_dialogue_graph() -> Any:
     """NPCDialogue 에이전트의 내부 LangGraph 상태 기계를 조립하여 컴파일합니다."""
-    workflow = StateGraph(NPCDialogueState)
-    
-    workflow.add_node("initialize_state", node_initialize_state)
-    workflow.add_node("generate_dialogue_llm", node_generate_dialogue_llm)
-    workflow.add_node("apply_fallback", node_apply_fallback)
-    
-    workflow.add_edge(START, "initialize_state")
-    
-    workflow.add_conditional_edges(
-        "initialize_state",
-        route_after_init,
-        {
-            "generate_dialogue_llm": "generate_dialogue_llm",
-            END: END
-        }
-    )
-    workflow.add_conditional_edges(
-        "generate_dialogue_llm",
-        route_after_llm,
-        {
-            "apply_fallback": "apply_fallback",
-            END: END
-        }
-    )
-    workflow.add_edge("apply_fallback", END)
-    
-    return workflow.compile()
+    return _get_compiled_graph()
 
 
 def generate_npc_dialogue_from_level_design(
@@ -663,15 +846,37 @@ def generate_npc_dialogue_from_level_design(
     callbacks: list[Any] | None = None,
 ) -> dict[str, Any]:
     """레벨 디자인 에이전트(Level Design Agent) JSON 데이터를 기반으로 컴파일된 LangGraph를 동작시켜 최종 대사 및 오디오 설정 사전을 도출합니다."""
-    graph = build_npc_dialogue_graph()
+    from backend.app.services.service_a.npc_short_term_memory_service import build_thread_id
+    
+    graph = _get_compiled_graph()
+    
+    # session_id 추출
+    session_id = (
+        payload.get("session_id")
+        or payload.get("turn", {}).get("session", {}).get("session_id")
+        or ""
+    )
+    # npc_id 추출 및 정규화
+    npc_id = _npc_id_from_payload(payload) or ""
+    
+    # thread_id 빌드 (fail-fast: 누락 시 ValueError)
+    thread_id = build_thread_id(session_id, npc_id)
+    
+    config = {
+        "configurable": {
+            "thread_id": thread_id,
+            "llm_client": llm_client,
+        }
+    }
+    if callbacks:
+        config["callbacks"] = callbacks  # type: ignore
+        
     initial_state = {
         "payload": payload,
         "use_llm": use_llm,
-        "llm_client": llm_client,
+        "llm_client": None,  # 직렬화 에러 방지를 위해 상태에는 None 전달
     }
-    config = {}
-    if callbacks:
-        config["callbacks"] = callbacks
+    
     final_state = graph.invoke(initial_state, config=config)
     return final_state["result"]
 

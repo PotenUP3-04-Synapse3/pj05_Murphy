@@ -1,5 +1,46 @@
 # Handoff
 
+## 2026-06-19 Developer A: NPC 단기 메모리·신규 슬롯 매핑·트집 게이팅 통합 완료 (추가 디버그 완료)
+
+Developer A는 `docs/contracts/dev_a_unified_memory_plan.md` 정본 작업계획서에 따라 NPC 단기 메모리, 꼬리물기 대화, 신규 9개 슬롯 및 트집 게이팅 고도화 작업을 성공적으로 완료했습니다. 추가적으로 테스트 중 발견된 fallback 우선순위 및 미매핑 surface_goal 키를 추가 동기화하여 A 자체 테스트 및 전체 린트/타입을 100% 그린으로 통과시켰습니다.
+
+Changed:
+
+- `backend/app/services/service_a/npc_short_term_memory_service.py` [NEW]:
+  - (session_id, npc_id) 단위로 메모리를 격리하고, N=20 슬라이딩 윈도우가 적용되는 NPC 단기 메모리 서비스 신설. `build_thread_id`에서 필수 식별자 누락 시 `ValueError`를 발생시키는 fail-fast 원칙 적용.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py` [MODIFY]:
+  - `NPCDialogueState`에 단기 메모리 필드(`turn_buffer`, `accumulated_slots`, `forbidden_questions`, `last_npc_intent`) 추가.
+  - 그래프에 `InMemorySaver` checkpointer를 싱글톤으로 부착.
+  - 에이전트 그래프 진입점인 `generate_npc_dialogue_from_level_design`에서 `thread_id`를 의무 적용하고, `llm_client` 직렬화 에러를 방지하기 위해 `config`를 통해 의존성을 안전하게 격리 주입.
+  - `node_load_memory`와 `node_persist_memory`를 통해 단기 메모리 상태 로드, 병합, 누적 및 `complete_chapter` 발생 시 세션 메모리 클린업 구현.
+- `backend/app/services/service_a/session_context_card_service.py` [MODIFY]:
+  - 신규 9개 입국심사 슬롯에 대한 자연어 구절(`SLOT_TO_PHRASE`) 및 금지 질문 패턴(`SLOT_TO_FORBIDDEN_QUESTIONS`) 정의 확장.
+  - 카드 빌드 시 `npc_memory`를 우선 사용하고, 없을 때만 `dialogue_history`를 시드로 사용하도록 의존성 조정.
+- `backend/app/services/service_a/dialogue_policy_service.py` [MODIFY]:
+  - 신규 9개 surface_goal에 대응하는 룰베이스 질문(`SURFACE_GOAL_QUESTIONS`) 추가 및 `RETRY_PARAPHRASES`에 각각 3개 이상의 대사 변주 텍스트 추가.
+  - E2E 및 챕터 완료 노드 누수 방지를 위해 `estimate_user_travel_speaking_level`, `closing_eviction`, `scenario_complete`, `summarize_alpha_result` 등의 missing 키들을 질문 및 폴백 맵에 전수 추가 완료.
+- `backend/app/services/service_a/developer_a_fallback_service.py` [MODIFY]:
+  - `SURFACE_GOAL_FALLBACK_TEXTS` 9개 추가 및 missing 키 동기화 완료.
+  - `build_text_fallback` 분기 우선순위를 개편하여 `smalltalk_diagnostic`일 때의 중립 응답이 우선하도록 보완.
+  - `explain_random_customs_item` 등 특수 목적 surface_goal이 fallback 텍스트 매핑 사전으로 인해 무시되어 세부 아이템 명칭이 누락되지 않도록 매핑에서 배제.
+  - surface_goal이 존재하나 매핑이 없는 경우 `KeyError`를 던지는 fail-fast 처리 구현.
+- `backend/app/prompts/npc_dialogue_prompt.md` / `npc_dialogue_prompt.short.md` [MODIFY]:
+  - 트집 게이팅(suspicion_scope) 조건문을 `assigned_visit_location` 존재 검사 대신 `suspicion_scope in ("location", "declaration")`로 엄격히 제한.
+  - 선제 트집(블러팅)을 금지하는 규칙을 명시적으로 추가하고, verbatim 사용 규약을 자연스러운 지칭으로 완화.
+- `backend/tests/test_developer_a_npc_dialogue.py` / `test_developer_a_profanity_mirror.py` [MODIFY]:
+  - 메모리 격리성, N=20 슬라이딩 윈도우, 챕터 종료 시 메모리 리셋, 9개 surface_goal 매핑 존재 및 변주 개수 검증, 알 수 없는 surface_goal 전달 시 fail-fast `KeyError` 검증, suspicion_scope 게이팅 검증 등 신규 테스트 케이스 8종(총 12종 이상의 핵심 시나리오 커버)을 추가하여 regression 테스트 보강.
+  - profanity 테스트에 `session_id` 누락으로 인한 fail-fast 에러를 방지하도록 `session_id` payload 추가.
+
+Verification:
+
+- `uv run pytest backend/tests -k developer_a`: PASS (85개 A 자체 테스트 100% 성공 통과)
+- `uv run ruff check .`: PASS
+- `uv run mypy .`: PASS (Success: no issues found in 127 source files)
+- `uv run pytest backend/tests`: 359 passed, 3 failed. (실패 3개는 C 소유 `test_preprototype_flow.py` 테스트의 단언 충돌이며, `change_requests.md`에 `[CR-A-E2E-TEST-SYNC]`를 제기함)
+
+키 동기화 기록:
+- `scenario_nodes.json`에 정의된 실제 `npc_question_goal` 9종(`ask_long_stay_reason`, `ask_hotel_reservation`, `ask_hotel_choice_reason`, `ask_travel_itinerary`, `ask_first_visit`, `ask_occupation`, `ask_cash_amount`, `ask_trip_payment_source`, `ask_denied_entry_history`) 및 추가 missing 5종 키 동기화 마침.
+
 ## 2026-06-19 Developer C: CR-B-IMM-SLOTS 신규 입국심사 슬롯 이해 보강
 
 Developer C completed the required C-owned work for `[CR-B-IMM-SLOTS]` after

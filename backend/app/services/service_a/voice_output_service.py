@@ -103,6 +103,12 @@ def build_voice_output_from_level_design(
     """
     root = runtime_root or Path("backend/runtime")
     run_root = agent_run_root or root / "agent_runs"
+    payload = dict(payload)
+    if session_id and "session_id" not in payload:
+        payload["session_id"] = session_id
+    if request_id and "request_id" not in payload:
+        payload["request_id"] = request_id
+
     agent_run_middleware = NPCDialogueAgentRunRecorder()
     # 에이전트 실행 추적이 가능하도록 디버그 근거 요약을 빌드합니다.
     evidence_metadata = build_npc_dialogue_evidence_summary(payload)

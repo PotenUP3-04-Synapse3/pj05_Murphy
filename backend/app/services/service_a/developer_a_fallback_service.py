@@ -24,6 +24,29 @@ SURFACE_GOAL_FALLBACK_TEXTS = {
     "repair_hotel_hostel_confusion": "Is it a hotel or a hostel? You should write the exact name.",
     "close_travel_form_help_smalltalk": "You're all set now. Have a safe flight!",
     
+    # Immigration 챕터 기존 키
+    "request_passport_submission": "May I see your passport?",
+    "ask_visit_purpose": "What is the purpose of your visit?",
+    "ask_stay_duration": "How long will you stay in the United States?",
+    "ask_stay_location": "Where will you stay in the United States?",
+    "ask_return_ticket": "Do you have a return ticket to Korea?",
+    "ask_gold_bag_contents_and_declaration": "Do you have anything to declare?",
+    "ask_declared_item_purpose": "What is the purpose of this declared item?",
+    "ask_packed_bag_ownership": "Is this your bag?",
+    "confirm_immigration_clearance_transition": "Alright, here is your passport. Enjoy your stay.",
+    "complete_immigration_clearance_transition": "All cleared.",
+
+    # 신규 입국심사 9개 키
+    "ask_long_stay_reason": "Why are you staying for so long?",
+    "ask_hotel_reservation": "Do you have a hotel reservation?",
+    "ask_hotel_choice_reason": "Why did you choose this hotel?",
+    "ask_travel_itinerary": "What is your travel itinerary?",
+    "ask_first_visit": "Is this your first visit to the United States?",
+    "ask_occupation": "What is your occupation?",
+    "ask_cash_amount": "How much cash are you carrying?",
+    "ask_trip_payment_source": "Who is paying for your trip?",
+    "ask_denied_entry_history": "Have you ever been denied entry?",
+
     # Baggage Desk 챕터
     "report_missing_bag_at_service_desk": "Hi, how can I help you today?",
     "ask_claim_tag_or_ticket": "Sure. I can look that up for you.",
@@ -37,20 +60,25 @@ SURFACE_GOAL_FALLBACK_TEXTS = {
     
     # Chapter Transition
     "complete_flight_smalltalk_transition": "Great. Have a nice trip!",
+    
+    # Extra / Missing Scenario goals
+    "estimate_user_travel_speaking_level": "Could I borrow your pen for this arrival form?",
+    "closing_eviction": "Sir, since you cannot provide the details, we cannot complete the report.",
+    "scenario_complete": "Thank you for playing Murphy's Trippin Alpha.",
+    "summarize_alpha_result": "Your airport arrival scenario is complete. Let's review your result.",
 }
 
 
 def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
     """대사 후보(Candidate Text)가 없거나 필터링 정책에 의해 차단된 경우, 안전한 기본 대화 텍스트(Text Fallback)를 빌드합니다."""
-    # dialogue_seed의 surface_goal을 가장 먼저 확인하여 대사를 다변화합니다.
     surface_goal = normalized.get("dialogue_seed", {}).get("surface_goal") or ""
     transition_status = normalized.get("transition", {}).get("status") or ""
     next_action = normalized.get("next_action") or ""
     npc_role = normalized.get("npc_role", "")
-    
     purpose = normalized.get("dialogue_purpose") or ""
     reason = "missing_or_blocked_candidate_text"
     
+    # 1. transition_status == complete_chapter 또는 next_action == COMPLETE_CHAPTER
     if transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER":
         if npc_role == "seatmate":
             text = "Enjoy your trip!"
@@ -63,6 +91,8 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
         else:
             text = "You're all set."
         reason = "complete_chapter_fallback"
+        
+    # 2. purpose == "smalltalk_diagnostic"
     elif purpose == "smalltalk_diagnostic":
         import random
         generic_neutral_responses = [
@@ -76,6 +106,13 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
         ]
         text = random.choice(generic_neutral_responses)
         reason = "smalltalk_diagnostic_fallback"
+        
+    # 3. surface_goal in SURFACE_GOAL_FALLBACK_TEXTS
+    elif surface_goal in SURFACE_GOAL_FALLBACK_TEXTS:
+        text = SURFACE_GOAL_FALLBACK_TEXTS[surface_goal]
+        reason = f"surface_goal_{surface_goal}"
+        
+    # 4. surface_goal == "explain_random_customs_item" 특수
     elif surface_goal == "explain_random_customs_item":
         random_item = normalized.get("random_customs_item") or ""
         if random_item:
@@ -83,9 +120,8 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
         else:
             text = "What is inside this package?"
         reason = "explain_random_customs_item"
-    elif surface_goal in SURFACE_GOAL_FALLBACK_TEXTS:
-        text = SURFACE_GOAL_FALLBACK_TEXTS[surface_goal]
-        reason = f"surface_goal_{surface_goal}"
+        
+    # 5. assigned_visit_location / random_customs_item seeded
     elif normalized.get("assigned_visit_location", "").strip():
         assigned_visit_location = normalized.get("assigned_visit_location", "").strip()
         text = f"{assigned_visit_location}? Tell me more about that."
@@ -94,15 +130,18 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
         random_item = normalized.get("random_customs_item", "").strip()
         text = f"{random_item}? What is this for?"
         reason = "suspicion_customs_item_seeded"
+        
+    # 6. target_slot 기반
+    elif normalized.get("target_slot") == "stay_duration":
+        text = "Okay. How long will you stay?"
+        reason = "stay_duration_fallback"
+        
+    # 7. silently default 금지: surface_goal이 비어 있지 않은데도 매핑이 없으면 KeyError
     else:
-        target_slot = normalized.get("target_slot")
-        # 대화 목표 슬롯(Target Slot)이 체류 기간(Stay Duration)인지 식별하여 템플릿(Template) 대사를 다변화합니다.
-        if target_slot == "stay_duration":
-            text = "Okay. How long will you stay?"
-            reason = "stay_duration_fallback"
-        else:
-            text = "Okay. Please continue."
-            reason = "default_text_fallback"
+        if surface_goal:
+            raise KeyError(f"unknown surface_goal: {surface_goal}")
+        text = "Okay. Please continue."
+        reason = "default_text_fallback"
 
     # 플레이어에게 제시될 한국어 피드백(Feedback) 내용을 가져오거나 기본 오류 안내 문구로 보정합니다.
     default_feedback = "의미는 전달됐습니다. 조금 더 자연스럽게 말해 봅시다."
