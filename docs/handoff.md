@@ -1,5 +1,93 @@
 # Handoff
 
+## 2026-06-19 Developer C: CR-B-HISTORY-MEMORY Runtime Wiring
+
+Developer C completed the C-owned runtime work requested by
+`[CR-B-HISTORY-MEMORY]` and added the C-side regression requested by
+`[CR-B-AB-DESYNC]`.
+
+Changed:
+
+- `backend/app/services/service_c/dialogue_history_service.py`: Added a C-owned
+  sidecar history store under `backend/runtime/openkb/dev_c/dialogue_history`
+  that persists the final Developer A `npc.text` after each turn. This lets the
+  next turn's `dialogue_seed.dialogue_history` include what the NPC actually
+  said without mutating B-owned OpenKB records.
+- `backend/app/tools/tool_c/developer_c_graph_tools.py`: Joined B session
+  records with the C sidecar history records, raised the short-term history
+  window from 5 to 12 turns, and wrote the A dialogue output after generation.
+- `backend/app/schemas/game_turn.py`: Added optional
+  `GameState.arrival_form` (`full_name`, `address`, `purpose`,
+  `stay_duration`/`stay_length`, `declared_items`) and allowed the A-facing
+  dialogue input to receive the full `game_state`.
+- `backend/app/integrations/dev_a_npc_dialogue_client.py`: Forwarded
+  `game_state` to Developer A's normalized payload so A can compare NPC dialogue
+  against arrival-form facts when Unreal provides them.
+- `backend/tests/test_preprototype_flow.py`: Added regressions for final NPC
+  text history, 12-entry history windows, arrival-form forwarding, and
+  non-ADVANCE `next_action`/`purpose`/`surface_goal` delivery to A.
+- `docs/contracts/change_requests.md`: Marked the C runtime side of
+  `[CR-B-HISTORY-MEMORY]` as resolved and documented the C regression for
+  `[CR-B-AB-DESYNC]`.
+
+Verification:
+
+- `uv run pytest`: PASS, 357 passed, 1 warning (`audioop` deprecation in
+  A-owned `audio_quality_service.py`).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 126 source files.
+
+Remaining coordination:
+
+- Unreal should populate optional `GameState.arrival_form` from the
+  arrival-form UI when that screen is ready.
+- `[CR-B-AB-DESYNC]` still requires Developer A's dialogue guard; C verified the
+  needed signals already reach the A-facing payload and did not add new fields.
+
+## 2026-06-19 Developer B: do_not_generate_npc_text 디프리케이션 정리 완료
+
+Developer B는 `[CR-2026-06-17] Deprecate and Remove do_not_generate_npc_text from Developer B Policy`(Affected Owner: Developer B, Open 상태)를 처리했습니다. 해당 필드는 C 오케스트레이터/A 대사 생성에서 사용되지 않고 어댑터 단에서 필터링되므로, B 정책에서 더 이상 emit하지 않도록 정리했습니다.
+
+Changed:
+
+- `backend/app/agents/agent_b/english_level_hint_agent.py`: `_build_dialogue_directive`의 두 `DialogueDirective` 생성부에서 `do_not_generate_npc_text` 인자 제거.
+- `backend/app/services/service_b/bad_ending_policy.py`: `build_bad_ending_output`의 `DialogueDirective` 생성부에서 동일 인자 제거.
+- `backend/app/prompts/english_level_hint_prompt.md`: `do_not_generate_npc_text` 관련 가이드라인 문구 제거(“Developer A owns final NPC text...”로 대체).
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`: `do_not_generate_npc_text is True` 단언 제거. (C 소유 `test_preprototype_flow.py`는 이미 해당 필드 부재를 단언하며 그대로 통과.)
+- `docs/contracts/change_requests.md`: 해당 CR을 Resolved 처리 및 Developer B Resolution 기록.
+
+비고: 공유 Pydantic 스키마의 `do_not_generate_npc_text: bool | None = None`(C 소유)과 C 어댑터 sanitizer는 그대로 유지 — B는 더 이상 값을 채우지 않을 뿐이라 하위호환.
+
+Verification:
+
+- `pytest` (dev_b + test_preprototype_flow + test_developer_a_npc_dialogue + test_developer_a_agent_run_logging): 250 passed.
+- `ruff check` / `mypy`: 변경된 B 파일 PASS.
+
+## 2026-06-19 Developer B: 입국심사 retry 정책 완화 및 A/B desync 변경요청 작성 완료
+
+Developer B는 docs\workplan-dev-b.md 계획에 따라 입국심사 시 플레이어 답변이 불명확한 경우(UNCLEAR/clarify)의 retry count 누적을 배제하고 강제 종료 임계치를 상향 조치하였으며, B의 재질문과 A의 NPC 발화 간 desync를 해결하기 위한 변경요청을 등록했습니다.
+
+Changed:
+
+- `backend/app/services/service_b/scenario_state_machine.py`:
+  - `_clarify` 반환 시 `retry_count_delta`를 `1`에서 `0`으로 하향하여 불명확(UNCLEAR) 턴을 hard-fail 횟수에서 배제.
+  - 강제 탈락 임계치를 상수 `MAX_HARD_FAIL_RETRIES = 5`로 정의하고, `decide()`의 비교식을 기존 `3`에서 `5`로 상향.
+- `docs/contracts/change_requests.md`:
+  - `[CR-B-AB-DESYNC]` 신규 Change Request 작성 및 추가. Developer A에게 `next_action != "ADVANCE"`일 때 현재 질문을 강제 재요청하는 post-generation 가드를 적용하도록 공식 요청.
+  - (2026-06-19 보강) A/C가 의도대로 구현하도록 CR을 구현 가능 수준으로 상세화: ① A가 받는 정확한 신호와 위치(`developer_a_input_service.py`의 `next_action`:110 / `branch_type`:82 / `dialogue_purpose`:84 / `dialogue_seed.surface_goal`:88), ② 정확한 코드 갭(LLM 경로 `node_generate_dialogue_llm`:305-432에는 가드 없음, smalltalk coherence guard:479-501는 smalltalk 전용 / fallback 경로:235-266에는 이미 존재), ③ 권장 결정형 override 알고리즘과 재사용 유틸(`synthesize_fallback_next_question`, `get_retry_variation`), ④ 수용 기준·재현 로그·A 테스트 가이드, ⑤ Developer C는 신규 필드 불필요(전달 경로 확인+회귀만)임을 명시.
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`:
+  - `_clarify` 시 retry count가 증가하지 않음을 검증하는 테스트 추가.
+  - clarify가 다수 발생하여도 bad_end가 트리거되지 않음을 회귀 검증.
+  - 실제 하드 페일(FAIL/hint) 횟수가 5회 누적 시에만 `_force_bad_end`로 조기 종료됨을 검증하는 경계 테스트 추가.
+- `backend/tests/dev_b/test_scenario_state_machine_loop_exit.py`:
+  - 기존 하드 페일 탈락 테스트의 retry_count 기대값을 `3`에서 `5`로 상향 업데이트.
+
+Verification:
+
+- `uv run pytest`: PASS (전체 354개 테스트 성공 통과)
+- `uv run ruff check .`: PASS (오류 없음)
+- `uv run mypy .`: PASS (125개 소스 파일 완수)
+
 ## 2026-06-19 Developer A: NPC 단기 메모리·신규 슬롯 매핑·트집 게이팅 통합 완료 (추가 디버그 완료)
 
 Developer A는 `docs/contracts/dev_a_unified_memory_plan.md` 정본 작업계획서에 따라 NPC 단기 메모리, 꼬리물기 대화, 신규 9개 슬롯 및 트집 게이팅 고도화 작업을 성공적으로 완료했습니다. 추가적으로 테스트 중 발견된 fallback 우선순위 및 미매핑 surface_goal 키를 추가 동기화하여 A 자체 테스트 및 전체 린트/타입을 100% 그린으로 통과시켰습니다.
@@ -39,6 +127,7 @@ Verification:
 - `uv run pytest backend/tests`: 359 passed, 3 failed. (실패 3개는 C 소유 `test_preprototype_flow.py` 테스트의 단언 충돌이며, `change_requests.md`에 `[CR-A-E2E-TEST-SYNC]`를 제기함)
 
 키 동기화 기록:
+
 - `scenario_nodes.json`에 정의된 실제 `npc_question_goal` 9종(`ask_long_stay_reason`, `ask_hotel_reservation`, `ask_hotel_choice_reason`, `ask_travel_itinerary`, `ask_first_visit`, `ask_occupation`, `ask_cash_amount`, `ask_trip_payment_source`, `ask_denied_entry_history`) 및 추가 missing 5종 키 동기화 마침.
 
 ## 2026-06-19 Developer C: CR-B-IMM-SLOTS 신규 입국심사 슬롯 이해 보강

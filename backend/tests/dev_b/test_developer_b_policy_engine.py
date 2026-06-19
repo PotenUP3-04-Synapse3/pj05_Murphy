@@ -168,7 +168,6 @@ def test_clear_purpose_answer_advances_to_duration(tmp_path: Path) -> None:
     assert result.branch.next_node_id == "IMM_003_DURATION"
     assert result.branch.next_node_id in payload.node_context.allowed_next_nodes
     assert result.dialogue_directive is not None
-    assert result.dialogue_directive.do_not_generate_npc_text is True
     assert result.openkb_write is not None
     assert result.openkb_write.attempted is True
     assert result.npc_emotion == "Nomal"
@@ -233,6 +232,7 @@ def test_first_unclear_answer_clarifies_or_retries(tmp_path: Path) -> None:
     assert result.branch.next_action == "REASK"
     assert result.in_game_feedback.feedback_strategy == "clarification_request"
     assert result.npc_emotion == "Confusion"
+    assert result.state_delta.retry_count_delta == 0
 
 
 def test_repeated_failure_uses_hint_branch(tmp_path: Path) -> None:
@@ -1411,3 +1411,101 @@ def test_freeform_slot_without_allowed_values_skips_validation(tmp_path: Path) -
     assert result.evaluation.verdict == "SUCCESS"
     assert result.branch.branch_type == "success"
     assert result.branch.next_action == "ADVANCE"
+
+
+def test_clarify_does_not_increment_retry_count(tmp_path: Path) -> None:
+    context = _node_context("IMM_002_PURPOSE")
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="Maybe travel.",
+            intent_success=False,
+            confidence=0.45,
+            extracted_slots={},
+            missing_slots=["visit_purpose"],
+            needs_clarification=True,
+            retry_count=1,
+        )
+    )
+    assert result.evaluation.verdict == "UNCLEAR"
+    assert result.branch.branch_type == "clarify"
+    assert result.state_delta.retry_count_delta == 0
+
+
+def test_repeated_clarify_does_not_force_bad_end(tmp_path: Path) -> None:
+    context = _node_context("IMM_002_PURPOSE")
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="Maybe travel.",
+            intent_success=False,
+            confidence=0.45,
+            extracted_slots={},
+            missing_slots=["visit_purpose"],
+            needs_clarification=True,
+            retry_count=0,
+            previous_fail_count=0,
+        )
+    )
+    assert result.evaluation.verdict == "UNCLEAR"
+    assert result.branch.branch_type == "clarify"
+    assert result.state_delta.retry_count_delta == 0
+
+
+def test_retry_limit_five_forces_bad_end(tmp_path: Path) -> None:
+    context = _node_context("IMM_002_PURPOSE")
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="I don't know.",
+            intent_success=False,
+            confidence=0.6,
+            extracted_slots={},
+            missing_slots=["visit_purpose"],
+            retry_count=5,
+        )
+    )
+    assert result.evaluation.verdict == "FAIL"
+    assert result.branch.branch_type == "bad_end"
+    assert result.branch.next_action == "FAIL_END"
+    assert "retry limit exceeded" in result.branch.branch_reason
+
+
+def test_retry_under_limit_does_not_force_bad_end(tmp_path: Path) -> None:
+    context = _node_context("IMM_002_PURPOSE")
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="I don't know.",
+            intent_success=False,
+            confidence=0.6,
+            extracted_slots={},
+            missing_slots=["visit_purpose"],
+            retry_count=4,
+            previous_fail_count=4,
+        )
+    )
+    assert result.evaluation.verdict == "FAIL"
+    assert result.branch.branch_type in {"hint", "retry"}
+    assert result.branch.next_action in {"GIVE_HINT", "REASK"}
+
+
+def test_patience_exhaustion_still_forces_bad_end(tmp_path: Path) -> None:
+    context = _node_context("IMM_002_PURPOSE")
+    payload = _policy_input(
+        node_context=context,
+        player_text="I don't know.",
+        intent_success=False,
+        confidence=0.6,
+        extracted_slots={},
+        missing_slots=["visit_purpose"],
+        retry_count=1,
+    )
+    payload = payload.model_copy(update={
+        "scenario_state": payload.scenario_state.model_copy(update={"patience": 0})
+    })
+    result = _agent(tmp_path).evaluate_turn(payload)
+    assert result.evaluation.verdict == "FAIL"
+    assert result.branch.branch_type == "bad_end"
+    assert result.branch.next_action == "FAIL_END"
+    assert "Patience exhausted" in result.branch.branch_reason

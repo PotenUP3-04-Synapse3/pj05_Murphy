@@ -135,6 +135,7 @@ class DevANpcDialogueClient:
             "understanding": payload.understanding.model_dump(),
             "incivility": _a_facing_incivility(payload.understanding),
             "transition": payload.transition.model_dump() if payload.transition is not None else None,
+            "game_state": payload.game_state.model_dump() if payload.game_state is not None else None,
             "random_customs_item": (
                 payload.random_customs_item.model_dump() if payload.random_customs_item is not None else None
             ),

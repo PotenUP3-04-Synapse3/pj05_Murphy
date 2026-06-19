@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 
 SttRuntimeUsed = Literal[
     "local",
@@ -103,6 +103,26 @@ class RandomCustomsItemContext(BaseModel):
     suspicion_reason: str | None = None
 
 
+class ArrivalFormContext(BaseModel):
+    """Unreal 입국신고서 UI에서 작성한 사실 정보를 담는 C-owned 계약입니다.
+
+    Beginner guide:
+    NPC가 이전 대화 전체를 길게 기억하도록 만들면 토큰 비용과 오류가 커집니다.
+    대신 입국신고서처럼 게임 안에서 명확히 작성된 사실은 `GameState`에 구조화해서
+    유지합니다.  C는 이 값을 Unreal 응답에 다시 돌려주고 Developer A payload에도
+    전달해서 NPC가 신고서 내용과 플레이어 발화를 비교할 수 있게 합니다.
+    """
+
+    full_name: str | None = None
+    address: str | None = None
+    purpose: str | None = None
+    stay_duration: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("stay_duration", "stay_length"),
+    )
+    declared_items: list[str] = Field(default_factory=list)
+
+
 class ChallengeContext(BaseModel):
     """Developer A가 억까 의도를 이해하도록 전달하는 메타데이터입니다.
 
@@ -130,6 +150,7 @@ class GameState(BaseModel):
     completed_intents: list[str] = Field(default_factory=list)
     current_objective: str
     random_customs_item: RandomCustomsItemContext | None = None
+    arrival_form: ArrivalFormContext | None = None
 
     # FLIGHT_999_COMPLETE에서 C가 배정하고 Unreal 입국신고서 UI가 표시할 장소 정보입니다.
     assigned_visit_location: str | None = None
@@ -663,6 +684,7 @@ class DevADialogueInput(BaseModel):
     developer_b_policy: DevBPolicyOutput
     transition: TransitionContext | None = None
     random_customs_item: RandomCustomsItemContext | None = None
+    game_state: GameState | None = None
 
 
 class DevADialogueOutput(BaseModel):

@@ -215,6 +215,11 @@ def _remove_openkb_session_records(runtime_dir: Path, jsonl_path: Path) -> None:
         jsonl_path.unlink()
 
 
+def _remove_dialogue_history_records(jsonl_path: Path) -> None:
+    if jsonl_path.exists():
+        jsonl_path.unlink()
+
+
 def test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response() -> None:
     response = Orchestrator().run_turn(_preprototype_request())
 
@@ -765,6 +770,13 @@ def test_orchestrator_attaches_recent_dialogue_history_to_dev_a_payload() -> Non
         turn_payload["game_state"]["assigned_visit_location_ko"] = "다운타운 럭셔리 호텔"
         turn_payload["game_state"]["visit_location_difficulty"] = 7
         turn_payload["game_state"]["visit_location_suspicion_reason"] = "Luxury hotel does not match a tight budget."
+        turn_payload["game_state"]["arrival_form"] = {
+            "full_name": "Sean Han",
+            "address": "123 Main Street, Queens",
+            "purpose": "tourism",
+            "stay_length": "five days",
+            "declared_items": ["red ginseng extract"],
+        }
         turn_payload["client_allowed_next_nodes"] = [
             "IMM_005_RETURN_TICKET",
             "IMM_004_RETRY_LOCATION",
@@ -792,6 +804,16 @@ def test_orchestrator_attaches_recent_dialogue_history_to_dev_a_payload() -> Non
         assert dialogue_seed["suspicion_scope"] == "location"
         assert dialogue_seed["challenge_context"]["challenge_type"] == "visit_location"
         assert dialogue_seed["challenge_context"]["assigned_visit_location"] == "Downtown Luxury Hotel"
+        assert builder_payloads[0]["game_state"]["arrival_form"] == {
+            "full_name": "Sean Han",
+            "address": "123 Main Street, Queens",
+            "purpose": "tourism",
+            "stay_duration": "five days",
+            "declared_items": ["red ginseng extract"],
+        }
+        assert response.game_state is not None
+        assert response.game_state.arrival_form is not None
+        assert response.game_state.arrival_form.stay_duration == "five days"
         assert dialogue_seed["dialogue_history"] == [
             {
                 "node_id": "IMM_002_PURPOSE",
@@ -808,6 +830,201 @@ def test_orchestrator_attaches_recent_dialogue_history_to_dev_a_payload() -> Non
         ]
     finally:
         _remove_openkb_session_records(runtime_dir, jsonl_path)
+
+
+def test_orchestrator_persists_dev_a_npc_text_for_next_dialogue_history() -> None:
+    session_id = "session_dialogue_history_npc_text_sidecar"
+    dev_b_runtime_dir = Path("backend/runtime/openkb/dev_b")
+    dev_c_runtime_dir = Path("backend/runtime/openkb/dev_c/dialogue_history")
+    dev_b_runtime_dir.mkdir(parents=True, exist_ok=True)
+    dev_c_runtime_dir.mkdir(parents=True, exist_ok=True)
+    dev_b_jsonl_path = dev_b_runtime_dir / f"{session_id}.jsonl"
+    dev_c_jsonl_path = dev_c_runtime_dir / f"{session_id}.jsonl"
+    _remove_openkb_session_records(dev_b_runtime_dir, dev_b_jsonl_path)
+    _remove_dialogue_history_records(dev_c_jsonl_path)
+
+    builder_payloads: list[dict[str, Any]] = []
+
+    def capture_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        npc_text = (
+            "How long will you stay?"
+            if payload["node_id"] == "IMM_002_PURPOSE"
+            else "Please confirm your return ticket."
+        )
+        return {
+            "speaker": "Officer Hale",
+            "npc_text": npc_text,
+            "tone": "formal_neutral",
+            "animation": "officer_check_passport",
+            "feedback_kr": "Good.",
+            "tts": {"audio_url": "/runtime/audio/edge/history-sidecar.wav"},
+        }
+
+    try:
+        orchestrator = Orchestrator()
+        orchestrator.dev_a_client = DevANpcDialogueClient(
+            settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+            voice_output_builder=capture_voice_output_builder,
+        )
+
+        first_turn = _turn_payload()
+        first_turn["request_id"] = "req_dialogue_history_sidecar_0001"
+        first_turn["session"]["session_id"] = session_id
+        first_turn["session"]["turn_index"] = 1
+        first_response = orchestrator.run_turn(
+            PrePrototypeRequest(
+                turn=UnrealTurnRequest.model_validate(first_turn),
+                audio=MockAudioInput(
+                    mock_wav_path="mock://immigration/purpose_tourism.wav",
+                    transcript="I'm here for tourism.",
+                ),
+            )
+        )
+
+        assert first_response.next_action == "ADVANCE"
+        assert first_response.npc.text == "How long will you stay?"
+        assert dev_c_jsonl_path.exists()
+
+        second_turn = _turn_payload()
+        second_turn["request_id"] = "req_dialogue_history_sidecar_0002"
+        second_turn["session"]["session_id"] = session_id
+        second_turn["session"]["current_node_id"] = "IMM_003_DURATION"
+        second_turn["session"]["turn_index"] = 2
+        second_turn["npc"]["last_npc_message"] = first_response.npc.text
+        second_turn["game_state"]["current_objective"] = "State the stay duration"
+        second_turn["game_state"]["completed_intents"] = ["submit_passport", "state_visit_purpose"]
+        second_turn["client_allowed_next_nodes"] = [
+            "IMM_004_STAY_LOCATION",
+            "IMM_003_RETRY_DURATION",
+            "IMM_EXTRA_002_CLARIFY_DURATION",
+            "END_SECONDARY_INSPECTION",
+        ]
+        orchestrator.run_turn(
+            PrePrototypeRequest(
+                turn=UnrealTurnRequest.model_validate(second_turn),
+                audio=MockAudioInput(
+                    mock_wav_path="mock://immigration/duration_five_days.wav",
+                    transcript="I will stay for 5 days.",
+                ),
+            )
+        )
+
+        second_payload = builder_payloads[-1]
+        assert second_payload["dialogue_seed"]["dialogue_history"][0]["npc_text_preview"] == (
+            "How long will you stay?"
+        )
+        assert second_payload["dialogue_seed"]["dialogue_history"][0]["filled_slots"] == {
+            "visit_purpose": "tourism"
+        }
+    finally:
+        _remove_openkb_session_records(dev_b_runtime_dir, dev_b_jsonl_path)
+        _remove_dialogue_history_records(dev_c_jsonl_path)
+
+
+def test_orchestrator_dialogue_history_window_keeps_last_twelve_records() -> None:
+    session_id = "session_dialogue_history_window_twelve"
+    dev_b_runtime_dir = Path("backend/runtime/openkb/dev_b")
+    dev_c_runtime_dir = Path("backend/runtime/openkb/dev_c/dialogue_history")
+    dev_b_runtime_dir.mkdir(parents=True, exist_ok=True)
+    dev_c_runtime_dir.mkdir(parents=True, exist_ok=True)
+    dev_b_jsonl_path = dev_b_runtime_dir / f"{session_id}.jsonl"
+    dev_c_jsonl_path = dev_c_runtime_dir / f"{session_id}.jsonl"
+    _remove_openkb_session_records(dev_b_runtime_dir, dev_b_jsonl_path)
+    _remove_dialogue_history_records(dev_c_jsonl_path)
+
+    builder_payloads: list[dict[str, Any]] = []
+
+    def capture_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": "Officer Hale",
+            "npc_text": "Continue.",
+            "tone": "formal_neutral",
+            "animation": "officer_check_passport",
+            "feedback_kr": "Good.",
+            "tts": {"audio_url": "/runtime/audio/edge/history-window.wav"},
+        }
+
+    try:
+        with dev_b_jsonl_path.open("w", encoding="utf-8") as dev_b_file:
+            for turn_index in range(1, 15):
+                dev_b_file.write(
+                    json.dumps(
+                        {
+                            "session_id": session_id,
+                            "request_id": f"req_history_window_{turn_index:04d}",
+                            "turn_index": turn_index,
+                            "node_id": f"IMM_TEST_{turn_index:03d}",
+                            "player_text": f"player turn {turn_index}",
+                            "understanding": {
+                                "extracted_slots": {f"slot_{turn_index}": f"value_{turn_index}"}
+                            },
+                            "dialogue_seed": {"surface_goal": f"fallback_goal_{turn_index}"},
+                        }
+                    )
+                    + "\n"
+                )
+
+        with dev_c_jsonl_path.open("w", encoding="utf-8") as dev_c_file:
+            for turn_index in range(1, 15):
+                dev_c_file.write(
+                    json.dumps(
+                        {
+                            "session_id": session_id,
+                            "request_id": f"req_history_window_{turn_index:04d}",
+                            "turn_index": turn_index,
+                            "node_id": f"IMM_TEST_{turn_index:03d}",
+                            "npc": {"text": f"npc turn {turn_index}"},
+                        }
+                    )
+                    + "\n"
+                )
+
+        turn_payload = _turn_payload()
+        turn_payload["request_id"] = "req_history_window_current"
+        turn_payload["session"]["session_id"] = session_id
+        turn_payload["session"]["current_node_id"] = "IMM_004_STAY_LOCATION"
+        turn_payload["session"]["turn_index"] = 15
+        turn_payload["npc"]["last_npc_message"] = "Where are you staying?"
+        turn_payload["game_state"]["current_objective"] = "State the stay location"
+        turn_payload["client_allowed_next_nodes"] = [
+            "IMM_005_RETURN_TICKET",
+            "IMM_004_RETRY_LOCATION",
+            "IMM_EXTRA_003_CLARIFY_LOCATION",
+            "END_SECONDARY_INSPECTION",
+        ]
+        orchestrator = Orchestrator()
+        orchestrator.dev_a_client = DevANpcDialogueClient(
+            settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+            voice_output_builder=capture_voice_output_builder,
+        )
+
+        orchestrator.run_turn(
+            PrePrototypeRequest(
+                turn=UnrealTurnRequest.model_validate(turn_payload),
+                audio=MockAudioInput(
+                    mock_wav_path="mock://immigration/stay_location_address.wav",
+                    transcript="I will stay at 123 Main Street in Queens.",
+                ),
+            )
+        )
+
+        history = builder_payloads[0]["dialogue_seed"]["dialogue_history"]
+        assert len(history) == 12
+        assert history[0]["node_id"] == "IMM_TEST_003"
+        assert history[0]["npc_text_preview"] == "npc turn 3"
+        assert history[-1]["node_id"] == "IMM_TEST_014"
+        assert history[-1]["npc_text_preview"] == "npc turn 14"
+    finally:
+        _remove_openkb_session_records(dev_b_runtime_dir, dev_b_jsonl_path)
+        _remove_dialogue_history_records(dev_c_jsonl_path)
 
 
 def test_orchestrator_marks_alpha_final_branch_as_scoreboard_flow() -> None:
@@ -1325,6 +1542,81 @@ def test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata() -> None:
     assert payload["dialogue_seed"]["surface_goal"] == "ask_claim_tag_or_ticket"
     assert "advance_to_next_prompt" in payload["dialogue_seed"]["allowed_followup_intents"]
     assert payload["dialogue_seed"]["max_turns"] == 4
+
+
+def test_orchestrator_forwards_non_advance_action_purpose_and_surface_goal_to_developer_a() -> None:
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": "Officer Hale",
+            "npc_text": "Please answer the stay duration again.",
+            "tone": "formal_neutral",
+            "animation": "officer_check_passport",
+            "feedback_kr": "Try again.",
+            "tts": {"audio_url": "/runtime/audio/edge/non-advance.wav"},
+        }
+
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = "req_ab_desync_non_advance_0001"
+    turn_payload["session"]["current_node_id"] = "IMM_003_DURATION"
+    turn_payload["session"]["turn_index"] = 3
+    turn_payload["npc"]["last_npc_message"] = "How long will you stay?"
+    turn_payload["game_state"]["current_objective"] = "State the stay duration"
+    turn_payload["game_state"]["completed_intents"] = ["submit_passport", "state_visit_purpose"]
+    turn_payload["client_allowed_next_nodes"] = [
+        "IMM_004_STAY_LOCATION",
+        "IMM_003_RETRY_DURATION",
+        "IMM_EXTRA_002_CLARIFY_DURATION",
+        "END_SECONDARY_INSPECTION",
+    ]
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://immigration/duration_unclear.wav",
+            transcript="I don't know.",
+        ),
+    )
+    orchestrator = Orchestrator()
+    orchestrator.understanding_agent = StaticUnderstandingAgent(
+        UnderstandingOutput(
+            intent="state_stay_duration",
+            intent_success=False,
+            confidence=0.55,
+            meaning_summary_kr="The player did not clearly state a stay duration.",
+            emotion="nervous",
+            answer_relevance="partially_related",
+            ambiguity_type="unclear_duration",
+            risk_delta=0,
+            risk_reason="No risk expression was found.",
+            risk_tags=[],
+            extracted_slots={},
+            missing_slots=["stay_duration"],
+            needs_clarification=True,
+        )
+    )
+    orchestrator.dev_a_client = DevANpcDialogueClient(
+        settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+        voice_output_builder=fake_voice_output_builder,
+    )
+
+    response = orchestrator.run_turn(request)
+
+    assert response.next_action != "ADVANCE"
+    assert builder_payloads
+    payload = builder_payloads[0]
+    assert payload["branch"]["next_action"] == response.next_action
+    assert payload["dialogue_directive"]["purpose"] in {
+        "support_retry",
+        "provide_hint",
+        "warn_and_control_risk",
+    }
+    assert "do_not_generate_npc_text" not in payload["dialogue_directive"]
+    assert payload["dialogue_seed"]["surface_goal"] == "ask_stay_duration"
 
 
 def test_dev_a_adapter_reports_speaker_mismatch_diagnostic() -> None:
