@@ -1,5 +1,78 @@
 # Handoff
 
+## 2026-06-19 Developer C, B: JFK Immigration Turn Acceptance Remediation (LLM Acceptance Remediation)
+
+Developer C and B completed the turn acceptance structure remediation work requested by `docs/workplan-llm-acceptance-remediation.md`.
+
+Changed:
+
+- `backend/app/agents/agent_c/understanding_agent.py`:
+  - Updated `_is_supported_slot_evidence` to return `True` for slots classified as `"open"`, bypassing any grounding (substring match) and confidence checks.
+  - Aligned `intent_success` and `intent_satisfied` in post-processing `_repair_missing_allowed_slots` by setting `intent_satisfied = len(missing_slots) == 0`.
+- `backend/app/schemas/slot_policy.py`: Added `"closed"` slot policy classification type and reclassified `cash_amount` to `"closed"`.
+- `backend/app/schemas/game_turn.py`: Added a Pydantic `model_validator` to default `intent_satisfied` to `intent_success` if not explicitly provided (resolving compatibility/fallback issues).
+- `backend/app/services/service_b/scenario_state_machine.py`:
+  - Refactored `_has_invalid_required_slot_value` to clearly branch based on the slot policy classification (`numeric` checks logic, `closed` strictly matches enum candidates, `open`/`system` bypasses validation).
+- `backend/app/integrations/dev_a_npc_dialogue_client.py`:
+  - Added a `_filter_suspicion_data` helper to clear suspicion/visit location/customs item data across three locations (`game_state`, top-level `random_customs_item`, `dialogue_seed`) for non-relevant nodes.
+  - Moved `public_node_context` import to top-level.
+- `backend/app/tools/tool_c/developer_c_graph_tools.py`: Moved `public_node_context` import to top-level.
+- `backend/tests/test_llm_acceptance.py`: Updated mock models, corrected Cash node ID to `IMM_010_CASH`, and added three new regression tests validating open slot acceptance, closed cash policy check, and suspicion data clearing.
+
+Verification:
+
+- Run `uv run pytest`: PASS, all 371 tests passed.
+- Run `uv run ruff check .` and `uv run mypy .`: PASS, all checks passed.
+
+## 2026-06-19 Developer C, B, A: JFK Immigration Turn Acceptance Restructure (LLM Acceptance)
+
+Completed the turn acceptance restructure according to `docs/workplan-llm-acceptance-restructure.md`.
+
+Changed:
+
+- `backend/app/schemas/slot_policy.py` (New): Central registry classifying slots as "open" (semantic evaluation), "numeric" (strict parsing), and "system" (computed). By default, slots are "open".
+- `backend/app/schemas/game_turn.py`: Added `intent_satisfied` and `judgment_reason` fields to `UnderstandingOutput` schema for semantic intent evaluations.
+- `backend/app/agents/agent_c/understanding_llm_client.py`: Updated LLM schema prompt and JSON instructions to output `intent_satisfied` and `judgment_reason` from the LLM.
+- `backend/app/agents/agent_c/understanding_agent.py`:
+  - Updated `_is_supported_extracted_slot_value` and `_is_supported_slot_evidence` to bypass strict enum candidate value validation for slots marked as "open".
+  - Overrode `intent_success` to `False` in `analyze_player_text` when required slots are "open" and the LLM explicitly evaluates `intent_satisfied = False`.
+  - Added `intent_satisfied=False` and failure reasons to rules/mock outputs under `_analyze_with_rules` and other diagnostic helper methods.
+- `backend/app/services/service_b/scenario_state_machine.py`:
+  - Updated `_has_invalid_required_slot_value` to skip enum matching gates for "open" slots.
+  - Updated `_is_success` to respect `intent_satisfied` when evaluating turn completion for nodes requiring "open" slots.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`: Extended positive prefix removal constraints to handle additional retry/clarify scenarios (`REASK`, `GIVE_HINT`, `WARNING`).
+- `backend/app/prompts/npc_dialogue_prompt.md` & `npc_dialogue_prompt.short.md`: Added hard grammatical constraints to preserve the question type structure (preventing Yes/No and WH question conversions).
+- `docs/contracts/developer_c_schema_contract.md`: Updated schemas to reflect the new `intent_satisfied` and `judgment_reason` properties in example objects.
+
+Verification:
+
+- Created unit tests in `backend/tests/test_slot_policy.py` and `backend/tests/test_llm_acceptance.py`.
+- Ran `uv run pytest` successfully (all 368 tests passed).
+- Ran `uv run ruff check .` and `uv run mypy .` successfully (all checks passed, no issues in 129 files).
+
+## 2026-06-19 Developer C: JFK Immigration Dialogue Naturalness Improvements
+
+Developer C completed the naturalness improvements across Developer C and Developer A components as requested by `docs/workplan-dialogue-naturalness.md`.
+
+Changed:
+
+- `backend/app/services/service_c/openkb_service.py`: Added the `public_node_context` helper function to clone `NodeContext` while setting `recommended_expression` to `""`.
+- `backend/app/tools/tool_c/developer_c_graph_tools.py`: Applied `public_node_context` to the Understanding Agent invocation to prevent recommended expression leakage.
+- `backend/app/api/ai_respond.py`: Kept the original `recommended_expression` in the `/demo/node/{node_id}` debug/demo page endpoint for developer visualization.
+- `backend/app/agents/agent_c/understanding_agent.py`: Removed `recommended_expression` from the keyword match candidates. Added major hotel brands to `ALPHA_SLOT_VALUE_KEYWORDS["stay_location"]["hotel"]` and off-topic meta-phrases (e.g., "i said", "i told you") to `ALPHA_SLOT_OFF_TOPIC_PHRASES["stay_location"]`.
+- `backend/app/services/service_a/developer_a_input_service.py`: Restored parsing of `recommended_expression` in `normalize_level_design_payload` to enable echo check validation for test payloads, while keeping it isolated in production.
+- `backend/app/integrations/dev_a_npc_dialogue_client.py`: Applied `public_node_context` in `_build_level_design_payload`. Removed `recommended_expression` references from `_candidate_text` and restricted the customs item injection to declaration nodes only.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`: Injected `required_slots` into `llm_payload`. Simplified the feedback helper functions by removing `recommended_expression` dependencies. Implemented code-level post-processing in `node_generate_dialogue_llm` to strip positive prefixes and enforce formal/firm tone/feedback during retry/clarify turns. Added the non-ADVANCE desync guard (`[CR-B-AB-DESYNC]`) to override next-node progression during retry/clarify turns.
+- `backend/app/prompts/npc_dialogue_prompt.md` and `npc_dialogue_prompt.short.md`: Added Jinja conditional rules to render the `SUSPICION MODE` block only when the suspicion scope matches the active `required_slots` (or when `required_slots` is empty for tests). Added strict constraints prohibiting positive reactions during retry/clarify turns.
+- `backend/tests/test_understanding_agent.py`: Added unit tests validating hotel brand recognition and off-topic meta-phrase rejection.
+- `backend/tests/test_developer_a_npc_dialogue.py`: Added unit tests validating the variant recommended expression echo checking and the desync guard question override behavior.
+
+Verification:
+
+- `uv run pytest`: PASS, 361 passed.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 126 source files.
+
 ## 2026-06-19 Developer A: 화자 역할 혼동(Speaker Role Confusion) 방지 가드 구현 완료
 
 Developer A는 `docs/plans/dev_a_speaker_role_guard_plan.md` 작업계획서(S-1 ~ S-5)에 명시된 화자 역할 혼동 방지 가드 조치를 완료했습니다. NPC가 자신의 직전 요청에 대해 스스로 플레이어처럼 펜을 건네며 자문자답하는 현상을 차단했습니다.

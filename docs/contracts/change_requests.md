@@ -123,6 +123,7 @@ Agent A는 LangGraph `InMemorySaver` 위에 `(session_id, npc_id)` 단위 NPC별
 ## Change Request - 2026-06-19 - [CR-B-AB-DESYNC] 입국심사 비-ADVANCE 분기 준수 가드 (대화 일관성 확보)
 
 Status: Resolved (Developer A implementation complete - 2026-06-19).
+Status: Resolved (Developer A 및 Developer C 구현 완료 - 2026-06-19).
 
 ### Requested By
 
@@ -300,6 +301,11 @@ Developer A의 통합 작업계획서 `docs/contracts/dev_a_unified_memory_plan.
 ### Compatibility Impact
 
 E2E 흐름에서 `ask_stay_duration`에 대한 실제 NPC 대사가 더욱 자연스럽게 반환되도록 변경되는 것으로, 시나리오 정합성에 부합하며 하위 호환성을 깨뜨리지 않습니다.
+
+### Developer A & C Resolution - 2026-06-19
+
+- **Developer A**: `npc_dialogue_agent.py` 내 `node_generate_dialogue_llm`에 `[5.3단계] 비-ADVANCE 분기 준수 가드`를 구현했습니다. `next_action`이 비-ADVANCE 분기(`REASK`, `GIVE_HINT`, `WARNING`)이거나 `dialogue_purpose`가 `support_retry`, `warn_and_control_risk`인 경우, 생성된 대사의 질문부를 원래 노드의 질문(`surface_goal`)으로 강제 재합성하고 `get_retry_variation`을 통해 직전 턴 NPC의 대사와 겹치지 않도록 변주 가드를 탑재하였습니다.
+- **Developer C**: C측 어댑터 및 입력 정규화 단계에서 `next_action`, `dialogue_purpose`, `dialogue_seed.surface_goal`이 누락 없이 A-facing payload로 온전히 조립·전달됨을 검증 완료하고, `test_preprototype_flow.py` 및 신규 회귀 테스트 `test_desync_guard_overrides_llm_next_node_question`을 통해 비-ADVANCE 분기 시 강제 재질문 동작이 기대치대로 작동함을 단언했습니다.
 
 ## Change Request - 2026-06-19 - [CR-B-HISTORY-MEMORY] 대화 기억 및 입국신고서 컨텍스트
 
@@ -2719,7 +2725,6 @@ B-authored dialogue candidates before calling A.
 Developer C updated C-owned logging so failed C LangGraph runs and Understanding
 LLM fallback traces include structured `error_details`. C did not modify A/B
 implementation files.
-
 
 ## Change Request - 2026-06-19 - [CR-A-FLIGHT-A001-SLOT-STRICTNESS] FLIGHT_A_001 polite_response 슬롯 추출 엄격성 강화 (인사말 단독 충족 차단)
 

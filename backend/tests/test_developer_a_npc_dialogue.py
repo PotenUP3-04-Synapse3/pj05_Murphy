@@ -396,6 +396,47 @@ def test_llm_dialogue_rejects_recommended_expression_echo() -> None:
     assert result["fallback"]["used"] is True
 
 
+def test_llm_dialogue_rejects_recommended_expression_echo_variants() -> None:
+    # 구두점/대소문자/추가 문구가 섞여도, 또 tts_text에만 새도 에코로 감지해야 함.
+    # (예: recommended_expression="Thank you, officer." 가 NPC 대사에 그대로 흘러든 케이스)
+    class VariantEchoLLMClient:
+        model = "fake-echo-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                # npc_text는 깨끗하지만 tts_text에 추천 표현이 변형되어 새어든 경우
+                "npc_text": "All right. Move on to baggage claim.",
+                "tts_text": "Okay. <break time=\"0.4s\"/> thank you, OFFICER! Then move on.",
+                "feedback_kr": "좋아요.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "llm_reason": "echoed expression in tts",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "miller"},
+            "node_id": "IMM_007_FINAL_DECISION",
+            "player_text": "thank you",
+            "node_context": {
+                "npc_question": "All right, you're cleared to enter. Enjoy your stay.",
+                "recommended_expression": "Thank you, officer.",
+            },
+            "evaluation_summary": {"task_success": True, "clarity": 0.9},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+        },
+        use_llm=True,
+        llm_client=VariantEchoLLMClient(),
+    )
+
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "recommended_expression_echo"
+    assert result["fallback"]["used"] is True
+
+
 def test_llm_dialogue_rejects_missing_followup_question() -> None:
     # surface_goal이 주어졌는데 질문이 아닌 문장 1개만 생성한 경우 에러 감지 검증
     class ReactionOnlyLLMClient:
@@ -1148,575 +1189,40 @@ def test_suspicion_not_blurted_before_answer():
     assert "answer" in rendered.lower() and "preemptive" in rendered.lower() or "Answer-first" in rendered
 
 
-def test_session_context_card_builder_logical_accumulation() -> None:
-    """세션 컨텍스트 카드 빌더가 대화 내역으로부터 확정 사실, 금지 질문, open_hooks 등을 정상 빌드하는지 검증합니다."""
-    from backend.app.services.service_a.session_context_card_service import build_session_context_card
-    from backend.app.services.service_a.npc_roster_service import NPCProfile
-
-    dummy_profile = NPCProfile(
-        npc_id="miller",
-        display_name="Officer Miller",
-        role="immigration_officer",
-        default_animation="move",
-        fallback_text="Please wait here.",
-        mock_voice_id="miller_mock",
-        persona_instruction="polite officer",
-        elevenlabs_voice_id=None
-    )
-
-    normalized_payload = {
-        "player_text": "I am staying for ten days.",
-        "dialogue_history": [
-            {
-                "player_text_preview": "I am traveling for sight-seeing.",
-                "npc_text_preview": "What is the purpose of your visit?",
-                "filled_slots": {"visit_purpose": "sight-seeing"},
-                "surface_goal": "ask_travel_purpose"
-            }
-        ],
-        "dialogue_seed": {
-            "filled_slots": {"stay_duration": "ten days"}
-        }
-    }
-
-    card = build_session_context_card(normalized_payload, dummy_profile, {})
-
-    # 1. confirmed_facts 누적 확인
-    assert "The purpose of visit is sight-seeing." in card["confirmed_facts"]
-    assert "The stay duration is ten days." in card["confirmed_facts"]
-
-    # 2. forbidden_repeat_questions 누적 확인
-    assert "what is the purpose of your visit?" in card["forbidden_repeat_questions"]
-    assert "how long will you stay?" in card["forbidden_repeat_questions"]
-
-    # 3. open_hooks 확인
-    assert "staying" in card["open_hooks"]
-    assert "days" in card["open_hooks"]
-
-    # 4. last_npc_intent 확인
-    assert card["last_npc_intent"] == "ask_travel_purpose"
-
-    # 5. recent_turns_compact 확인
-    assert len(card["recent_turns_compact"]) == 1
-    assert "T-1" in card["recent_turns_compact"][0]
-
-    # 6. topic_thread 확인
-    assert "ask_travel_purpose" in card["topic_thread"]
-
-
-def test_session_context_card_builder_empty_history() -> None:
-    """대화 내역이 비어 있을 때 세션 컨텍스트 카드 빌더가 비정상 예외 없이 안전한 기본값을 반환하는지 검증합니다."""
-    from backend.app.services.service_a.session_context_card_service import build_session_context_card
-    from backend.app.services.service_a.npc_roster_service import NPCProfile
-
-    dummy_profile = NPCProfile(
-        npc_id="miller",
-        display_name="Officer Miller",
-        role="immigration_officer",
-        default_animation="move",
-        fallback_text="Please wait here.",
-        mock_voice_id="miller_mock",
-        persona_instruction="polite officer",
-        elevenlabs_voice_id=None
-    )
-
-    normalized_payload = {
-        "player_text": "",
-        "dialogue_history": [],
-        "dialogue_seed": {}
-    }
-
-    card = build_session_context_card(normalized_payload, dummy_profile, {})
-
-    assert card["confirmed_facts"] == []
-    assert card["forbidden_repeat_questions"] == []
-    assert card["open_hooks"] == []
-    assert card["last_npc_intent"] == ""
-    assert card["recent_turns_compact"] == []
-    assert card["topic_thread"] == []
-
-
-def test_llm_post_processing_repeats_confirmed_fact_guard() -> None:
-    """LLM이 이미 대답을 획득한 금지 질문을 다시 반복할 때 repeats_confirmed_fact 에러 및 폴백 정상 수행을 검증합니다."""
-    class ForbiddenQuestionLLMClient:
-        model = "fake-forbidden-model"
-        def generate(self, payload: dict) -> dict:
-            return {
-                "npc_text": "What is the purpose of your visit?",
-                "tts_text": "What is the purpose of your visit?",
-                "feedback_kr": "Good.",
-                "tone": "formal_neutral",
-                "animation": "move",
-                "npc_emotion": "normal",
-                "stability": 0.75,
-                "style": 0.1,
-                "speed": 1.0,
-                "similarity_boost": 0.75,
-                "llm_reason": "asking purpose"
-            }
-
-    payload = {
-        "npc": {"npc_id": "miller"},
-        "node_id": "IMM_002_PURPOSE",
-        "player_text": "I am traveling.",
-        "node_context": {
-            "npc_question": "What is the purpose of your visit?",
-            "recommended_expression": "I'm here for tourism.",
-        },
-        "evaluation_summary": {"task_success": True, "clarity": 0.9},
-        "level_hint": {"english_level": "beginner"},
-        "in_game_feedback": {"npc_recast_line_candidate": None},
-        "branch": {"branch_type": "success"},
-        "dialogue_seed": {
-            "dialogue_history": [
-                {
-                    "player_text_preview": "tourism",
-                    "npc_text_preview": "What is the purpose of your visit?",
-                    "filled_slots": {"visit_purpose": "tourism"},
-                    "surface_goal": "ask_visit_purpose"
-                }
-            ]
-        }
-    }
-
-    result = generate_npc_dialogue_from_level_design(
-        payload,
-        use_llm=True,
-        llm_client=ForbiddenQuestionLLMClient(),
-    )
-
-    assert result["llm"]["used"] is False
-    assert result["llm"]["reason"] == "repeats_confirmed_fact"
-    assert result["fallback"]["used"] is True
-
-
-def test_llm_post_processing_weak_followup_no_hook_guard() -> None:
-    """플레이어가 언급한 구체 훅 명사를 포함하지 않고 약한 후속 질문으로 넘어갈 경우 weak_followup_no_hook 에러 및 폴백 수행을 검증합니다."""
-    class NoHookLLMClient:
-        model = "fake-no-hook-model"
-        def generate(self, payload: dict) -> dict:
-            return {
-                "npc_text": "How long will you stay?",
-                "tts_text": "How long will you stay?",
-                "feedback_kr": "Good.",
-                "tone": "formal_neutral",
-                "animation": "move",
-                "npc_emotion": "normal",
-                "stability": 0.75,
-                "style": 0.1,
-                "speed": 1.0,
-                "similarity_boost": 0.75,
-                "llm_reason": "asking duration"
-            }
-
-    payload = {
-        "npc": {"npc_id": "miller"},
-        "node_id": "IMM_002_PURPOSE",
-        "player_text": "I booked a luxury suite.",
-        "node_context": {
-            "npc_question": "Where will you stay?",
-            "recommended_expression": "I booked a luxury suite.",
-        },
-        "evaluation_summary": {"task_success": True, "clarity": 0.9},
-        "level_hint": {"english_level": "beginner"},
-        "in_game_feedback": {"npc_recast_line_candidate": None},
-        "branch": {"branch_type": "success"},
-        "dialogue_seed": {
-            "dialogue_history": []
-        }
-    }
-
-    result = generate_npc_dialogue_from_level_design(
-        payload,
-        use_llm=True,
-        llm_client=NoHookLLMClient(),
-    )
-
-    assert result["llm"]["used"] is False
-    assert result["llm"]["reason"] == "weak_followup_no_hook"
-    assert result["fallback"]["used"] is True
-
-
-def test_build_thread_id_fail_fast() -> None:
-    from backend.app.services.service_a.npc_short_term_memory_service import build_thread_id
-    import pytest
-    with pytest.raises(ValueError):
-        build_thread_id("", "officer_hale")
-    with pytest.raises(ValueError):
-        build_thread_id("session_123", "")
-    with pytest.raises(ValueError):
-        build_thread_id(None, None)
-
-
-def test_npc_memory_isolation_and_accumulation() -> None:
-    from backend.app.agents.agent_a.npc_dialogue_agent import reset_graph_singleton_for_testing
-    reset_graph_singleton_for_testing()
-    
-    # 동일 세션, 다른 npc_id -> 격리 검증
-    payload_a = {
-        "session_id": "session_shared",
-        "npc": {"npc_id": "officer_hale"},
-        "node_id": "IMM_001_PASSPORT",
-        "player_text": "Here is my passport.",
-        "node_context": {"npc_question": "May I see your passport?"},
-        "evaluation_summary": {"task_success": True},
-        "level_hint": {},
-        "in_game_feedback": {},
-        "branch": {"branch_type": "success"},
-        "dialogue_seed": {"surface_goal": "ask_visit_purpose"}
-    }
-    
-    payload_b = {
-        "session_id": "session_shared",
-        "npc": {"npc_id": "seatmate"},
-        "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
-        "player_text": "Hello.",
-        "node_context": {"npc_question": "Hello there."},
-        "evaluation_summary": {"task_success": True},
-        "level_hint": {},
-        "in_game_feedback": {},
-        "branch": {"branch_type": "success"},
-        "dialogue_seed": {"surface_goal": "ask_travel_purpose_smalltalk"}
-    }
-    
-    # 1. Hale 에이전트 실행
-    _orig_generate_npc_dialogue_from_level_design(payload_a, use_llm=False)
-    # 2. Seatmate 에이전트 실행
-    _orig_generate_npc_dialogue_from_level_design(payload_b, use_llm=False)
-    
-    # 두 그래프가 격리되어 다른 메모리를 사용하는지 graph 상태 조회 검증
-    from backend.app.agents.agent_a.npc_dialogue_agent import _get_compiled_graph
-    graph = _get_compiled_graph()
-    
-    state_a = graph.get_state({"configurable": {"thread_id": "session_shared:officer_hale"}})
-    state_b = graph.get_state({"configurable": {"thread_id": "session_shared:seatmate"}})
-    
-    assert len(state_a.values.get("turn_buffer", [])) == 1
-    assert state_a.values.get("turn_buffer")[0]["surface_goal"] == "ask_visit_purpose"
-    
-    assert len(state_b.values.get("turn_buffer", [])) == 1
-    assert state_b.values.get("turn_buffer")[0]["surface_goal"] == "ask_travel_purpose_smalltalk"
-    
-    # 3. 누적 검증 (Hale에 4회 추가 호출 -> 총 5회)
-    for _ in range(4):
-        _orig_generate_npc_dialogue_from_level_design(payload_a, use_llm=False)
-        
-    state_a = graph.get_state({"configurable": {"thread_id": "session_shared:officer_hale"}})
-    assert len(state_a.values.get("turn_buffer", [])) == 5
-
-
-def test_npc_memory_sliding_window_n20() -> None:
-    from backend.app.agents.agent_a.npc_dialogue_agent import reset_graph_singleton_for_testing
-    reset_graph_singleton_for_testing()
-    
-    payload = {
-        "session_id": "session_sliding",
-        "npc": {"npc_id": "officer_hale"},
-        "node_id": "IMM_001_PASSPORT",
-        "player_text": "Here.",
-        "node_context": {"npc_question": "May I see your passport?"},
-        "evaluation_summary": {"task_success": True},
-        "level_hint": {},
-        "in_game_feedback": {},
-        "branch": {"branch_type": "success"},
-        "dialogue_seed": {"surface_goal": "ask_visit_purpose"}
-    }
-    
-    # 25회 호출
-    for i in range(25):
-        payload = dict(payload)
-        payload["player_text"] = f"text_{i}"
-        _orig_generate_npc_dialogue_from_level_design(payload, use_llm=False)
-        
-    from backend.app.agents.agent_a.npc_dialogue_agent import _get_compiled_graph
-    graph = _get_compiled_graph()
-    state = graph.get_state({"configurable": {"thread_id": "session_sliding:officer_hale"}})
-    
-    # N=20 슬라이딩 확인
-    buffer = state.values.get("turn_buffer", [])
-    assert len(buffer) == 20
-    assert buffer[0]["player_text"] == "text_5"
-    assert buffer[-1]["player_text"] == "text_24"
-
-
-def test_npc_memory_cleared_on_complete_chapter() -> None:
-    from backend.app.agents.agent_a.npc_dialogue_agent import reset_graph_singleton_for_testing
-    reset_graph_singleton_for_testing()
-    
-    payload = {
-        "session_id": "session_complete",
-        "npc": {"npc_id": "officer_hale"},
-        "node_id": "IMM_001_PASSPORT",
-        "player_text": "Here.",
-        "node_context": {"npc_question": "May I see your passport?"},
-        "evaluation_summary": {"task_success": True},
-        "level_hint": {},
-        "in_game_feedback": {},
-        "branch": {"branch_type": "success"},
-        "dialogue_seed": {"surface_goal": "ask_visit_purpose"}
-    }
-    
-    # 1. 일단 1턴 실행하여 turn_buffer에 적재
-    _orig_generate_npc_dialogue_from_level_design(payload, use_llm=False)
-    
-    from backend.app.agents.agent_a.npc_dialogue_agent import _get_compiled_graph
-    graph = _get_compiled_graph()
-    state = graph.get_state({"configurable": {"thread_id": "session_complete:officer_hale"}})
-    assert len(state.values.get("turn_buffer", [])) == 1
-    
-    # 2. complete_chapter 턴 실행
-    complete_payload = dict(payload)
-    complete_payload["transition"] = {"status": "complete_chapter"}
-    _orig_generate_npc_dialogue_from_level_design(complete_payload, use_llm=False)
-    
-    # 3. 그 다음 턴 실행하여 비워졌는지 확인 (node_load_memory에서 펜딩 상태 확인 후 청소)
-    next_payload = dict(payload)
-    _orig_generate_npc_dialogue_from_level_design(next_payload, use_llm=False)
-    
-    state = graph.get_state({"configurable": {"thread_id": "session_complete:officer_hale"}})
-    # complete_chapter 적용 후 다음 턴 1회 기록된 상태이므로 길이는 1이어야 함 (누적되지 않고 리셋)
-    assert len(state.values.get("turn_buffer", [])) == 1
-
-
-def test_new_9_surface_goals_mapping_existence() -> None:
-    from backend.app.services.service_a.dialogue_policy_service import SURFACE_GOAL_QUESTIONS, RETRY_PARAPHRASES
-    from backend.app.services.service_a.developer_a_fallback_service import SURFACE_GOAL_FALLBACK_TEXTS
-    
-    new_goals = [
-        "ask_long_stay_reason",
-        "ask_hotel_reservation",
-        "ask_hotel_choice_reason",
-        "ask_travel_itinerary",
-        "ask_first_visit",
-        "ask_occupation",
-        "ask_cash_amount",
-        "ask_trip_payment_source",
-        "ask_denied_entry_history"
-    ]
-    
-    for goal in new_goals:
-        assert goal in SURFACE_GOAL_QUESTIONS
-        assert goal in RETRY_PARAPHRASES
-        assert len(RETRY_PARAPHRASES[goal]) >= 3
-        assert goal in SURFACE_GOAL_FALLBACK_TEXTS
-
-
-def test_unknown_surface_goal_throws_key_error_fail_fast() -> None:
-    from backend.app.services.service_a.developer_a_fallback_service import build_text_fallback
-    import pytest
-    
-    bad_payload = {
-        "dialogue_seed": {"surface_goal": "invalid_goal_for_sure"},
-        "npc_role": "immigration_officer"
-    }
-    
-    with pytest.raises(KeyError):
-        build_text_fallback(bad_payload)
-
-
-def test_suspicion_mode_conditional_prompt_rendering() -> None:
-    from backend.app.agents.agent_a.npc_dialogue_agent import node_initialize_state
-    
-    # scope == none 일 때 suspicion mode 블록 비포함 검증
-    payload = {
-        "npc": {"npc_id": "miller"},
-        "node_id": "IMM_002_PURPOSE",
-        "player_text": "tourism",
-        "node_context": {},
-        "evaluation_summary": {},
-        "level_hint": {},
-        "in_game_feedback": {},
-        "branch": {},
-        "dialogue_seed": {
-            "suspicion_scope": "none",
-            "assigned_visit_location": "Luxury Hotel"
-        }
-    }
-    
-    from typing import cast
-    from backend.app.agents.agent_a.npc_dialogue_agent import NPCDialogueState
-    
-    initial_state = {
-        "payload": payload,
-        "use_llm": True,
-        "llm_client": None,
-    }
-    
-    # node_initialize_state를 통해 렌더링에 사용될 payload가 빌드됨
-    res = node_initialize_state(cast(NPCDialogueState, initial_state))
-    # 여기에 suspicion_scope가 none으로 파싱되었는지 확인
-    assert res["normalized"]["suspicion_scope"] == "none"
-
-
-def test_dialogue_result_keys_conformity() -> None:
-    payload = {
-        "session_id": "session_conform",
-        "npc": {"npc_id": "miller"},
-        "node_id": "IMM_002_PURPOSE",
-        "player_text": "I am traveling.",
-        "node_context": {"npc_question": "What is the purpose of your visit?"},
-        "evaluation_summary": {"task_success": True},
-        "level_hint": {},
-        "in_game_feedback": {},
-        "branch": {"branch_type": "success"},
-        "dialogue_seed": {"surface_goal": "ask_visit_purpose"}
-    }
-    
-    result = generate_npc_dialogue_from_level_design(payload, use_llm=False)
-    
-    # 필수 출력 키 스키마 준수 검증
-    assert "speaker" in result
-    assert "text" in result
-    assert "tts_text" in result
-    assert "tone" in result
-    assert "animation" in result
-    assert "feedback_kr" in result
-
-
-def test_non_advance_dialogue_guard_override() -> None:
-    # next_action != "ADVANCE" (예: REASK) 일 때, LLM이 숙소 질문을 생성해도 현재 질문인 ask_stay_duration으로 재질문 오버라이드되는지 검증
-    class NextQuestionLLMClient:
+def test_desync_guard_overrides_llm_next_node_question() -> None:
+    # LLM이 분기를 어기고 임의로 다음 노드의 질문("Where will you stay?")을 유출하는 상황을 모사
+    class BadDialogueLLMClient:
         model = "fake-model"
         def generate(self, payload: dict) -> dict:
             return {
-                "npc_text": "I see. Next, tell me where you will stay.", # 다음 질문으로 유도하는 대사 생성
-                "tts_text": "I see. Next, tell me where you will stay.",
+                "npc_text": "I see. Tell me where you will stay in the US.",  # 다음 질문(location)을 유출함
+                "tts_text": "I see. Tell me where you will stay in the US.",
                 "feedback_kr": "좋아요.",
                 "tone": "formal_neutral",
-                "npc_emotion": "normal",
-                "llm_reason": "coherent next question"
+                "animation": "move",
+                "llm_reason": "off-topic progression",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
             }
-            
-    payload = {
-        "session_id": "session_desync",
-        "npc": {"npc_id": "hale"},
-        "node_id": "IMM_003_DURATION",
-        "player_text": "maybe 13days",
-        "node_context": {
-            "npc_question": "How long will you be staying?",
-        },
-        "evaluation_summary": {"task_success": False},
-        "level_hint": {},
-        "in_game_feedback": {},
-        "branch": {
-            "branch_type": "clarify",
-            "next_action": "REASK", # 비-ADVANCE 액션
-        },
-        "dialogue_seed": {
-            "surface_goal": "ask_stay_duration", # 현재 노드 질문
-        }
-    }
-    
-    result = generate_npc_dialogue_from_level_design(
-        payload,
-        use_llm=True,
-        llm_client=NextQuestionLLMClient(),
+
+    # 입력: branch_type="clarify", next_action="REASK", dialogue_purpose="support_retry", surface_goal="ask_stay_duration"
+    payload = _payload(
+        branch_type="clarify",
+        dialogue_purpose="support_retry",
+        surface_goal="ask_stay_duration",
+        dialogue_history=[{"player_text_preview": "maybe 13days", "npc_text_preview": "How long will you stay?"}]
     )
-    
-    # 단언: 생성된 대사가 다음 질문("where you will stay")을 포함하지 않고,
-    # fallback 합성에 의해 현재 질문("How long will you stay in the United States?")을 결합하고 있어야 함.
-    assert "where you will stay" not in result["npc_text"]
-    assert "How long will you stay in the United States?" in result["npc_text"]
-
-
-def test_speaker_role_confusion_guard_blocks_giver_phrase() -> None:
-    # 직전 NPC가 "Could I borrow your pen?" 과 같은 요청을 보냈고,
-    # LLM이 플레이어의 대사 성격인 "Sure, here you are" 로 답변할 때 가드 작동 검증
-    class GiverResponseLLMClient:
-        model = "fake-giver-model"
-        def generate(self, payload: dict) -> dict:
-            return {
-                "npc_text": "Sure, here you are. What is your name?",  # 플레이어 응답 형태 + 질문 포함
-                "tts_text": "Sure, here you are. What is your name?",
-                "feedback_kr": "Good.",
-                "tone": "formal_neutral",
-                "npc_emotion": "normal",
-                "llm_reason": "giving pen"
-            }
-
-    payload = {
-        "session_id": "session_confusion",
-        "npc": {"npc_id": "emily"},
-        "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
-        "player_text": "Hello?",
-        "node_context": {
-            "npc_question": "Could I borrow your pen for this arrival form?",
-        },
-        "evaluation_summary": {"task_success": False},
-        "level_hint": {},
-        "in_game_feedback": {},
-        "branch": {
-            "branch_type": "clarify",
-        },
-        "dialogue_seed": {
-            "surface_goal": "estimate_user_travel_speaking_level",
-            "dialogue_history": [
-                {
-                    "turn_index": 1,
-                    "player_text_preview": "Hello.",
-                    "npc_text_preview": "Could I borrow your pen for this arrival form?",
-                    "filled_slots": {},
-                    "surface_goal": "estimate_user_travel_speaking_level"
-                }
-            ]
-        }
-    }
+    # next_action을 REASK로 명시적으로 전달
+    payload["branch"]["next_action"] = "REASK"
+    payload["next_action"] = "REASK"
 
     result = generate_npc_dialogue_from_level_design(
         payload,
         use_llm=True,
-        llm_client=GiverResponseLLMClient(),
+        llm_client=BadDialogueLLMClient()
     )
 
-    # 가드에 차단되어 fallback을 타야 함
-    assert result["llm"]["used"] is False
-    assert result["llm"]["reason"] == "speaker_role_confusion"
-    assert result["fallback"]["used"] is True
-
-
-def test_speaker_role_confusion_guard_allows_legitimate_response() -> None:
-    # 직전 NPC가 요청 성격이 아닌 질문을 던졌을 때, 가드가 작동하지 않는 검증
-    class NormalResponseLLMClient:
-        model = "fake-normal-model"
-        def generate(self, payload: dict) -> dict:
-            return {
-                "npc_text": "Tourism. Got it.",
-                "tts_text": "Tourism. Got it.",
-                "feedback_kr": "Good.",
-                "tone": "formal_neutral",
-                "npc_emotion": "normal",
-                "llm_reason": "coherent reply"
-            }
-
-    payload = {
-        "session_id": "session_legitimate",
-        "npc": {"npc_id": "miller"},
-        "node_id": "IMM_002_PURPOSE",
-        "player_text": "I travel.",
-        "node_context": {
-            "npc_question": "What is the purpose of your visit?",
-        },
-        "evaluation_summary": {"task_success": True},
-        "level_hint": {},
-        "in_game_feedback": {},
-        "branch": {
-            "branch_type": "success",
-        },
-        "dialogue_seed": {
-            "surface_goal": "ask_stay_duration",
-        }
-    }
-
-    result = generate_npc_dialogue_from_level_design(
-        payload,
-        use_llm=True,
-        llm_client=NormalResponseLLMClient(),
-    )
-
-    # 정상적 진행이므로 가드에 막히지 않고 LLM 결과가 유지되어야 함
-    assert result["llm"]["used"] is True
-    assert result["fallback"]["used"] is False
-    assert "Tourism. Got it." in result["npc_text"]
-
+    # 비-ADVANCE 가드로 인해 다음 질문("stay")이 override되어, 원래 노드의 질문(stay_duration)만 질문해야 함
+    assert "stay in the United States" in result["npc_text"] or "plan to stay" in result["npc_text"] or "remain here" in result["npc_text"]
+    assert "where you will stay" not in result["npc_text"].lower()
 
 

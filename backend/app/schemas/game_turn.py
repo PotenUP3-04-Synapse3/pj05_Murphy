@@ -308,6 +308,14 @@ class UnderstandingOutput(BaseModel):
     missing_slots: list[str]
     needs_clarification: bool
     incivility: IncivilityClassification | None = None
+    intent_satisfied: bool | None = None
+    judgment_reason: str = ""
+
+    @model_validator(mode="after")
+    def default_intent_satisfied(self) -> UnderstandingOutput:
+        if self.intent_satisfied is None:
+            self.intent_satisfied = self.intent_success
+        return self
 
 
 # `Nomal` spelling follows the current external emotion enum contract.

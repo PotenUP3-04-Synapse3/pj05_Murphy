@@ -608,7 +608,9 @@ Runtime modes:
     "confidence": 0.0,
     "category": "none",
     "source": "rule"
-  }
+  },
+  "intent_satisfied": true,
+  "judgment_reason": "The purpose is clear."
 }
 ```
 
@@ -687,7 +689,9 @@ Understanding output into `dev_b_policy.v1`.
       "visit_purpose": "tourism"
     },
     "missing_slots": [],
-    "needs_clarification": false
+    "needs_clarification": false,
+    "intent_satisfied": true,
+    "judgment_reason": "The purpose is clear."
   },
   "previous_node_results": [
     {

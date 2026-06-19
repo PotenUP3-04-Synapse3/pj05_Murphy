@@ -81,6 +81,8 @@ developers' runtime logs do not distort the visible demo usage.
 
 On 2026-06-18, Developer B resolved dialogue loop and node desync issues (Dialogue Recovery). Implemented scenario loop-exit policies inside `scenario_state_machine.py` to prevent infinite clarify/retry loops by checking patience floor (`<= 0`) and max retries (`>= 3`) at the top of `decide()`, and reordered hint checks before unclear checks when `retry_count >= 2`. Resolved scenario nodes referential integrity issues in `scenario_nodes.json` by defining three terminal endings (`END_SECONDARY_INSPECTION`, `END_BAGGAGE_REPORT_INCOMPLETE`, `END_ALPHA_SCENARIO`) and duplicating 32 retry/clarify nodes dynamically. Generalised customs declaration (`IMM_006`) and baggage reveal (`BAG_006`) checks dynamically based on `random_customs_item`, and resolved off-by-one desync of `DialogueSeed.surface_goal` by looking up the goal of the next transition node. Also set B-side `suspicion_scope` dynamically on the dialogue seed to control Developer A's NPC suspicion mode behavior.
 
+On 2026-06-19, Developer B collaborated on the Turn Acceptance Restructure and Remediation. Added the `"closed"` slot policy classification to the registry for strict enum matching on `cash_amount` and refactored the scenario state machine required slot validator (`_has_invalid_required_slot_value`) into clear, policy-driven verification paths (bypassing open/system slots, evaluating numeric parser logic, and strictly matching enum candidates for closed slots). Integrated Developer C's holistic `intent_satisfied` signal into the success evaluation path (`_is_success`) for open slots, ensuring player answers bypass substring grounding restrictions while maintaining core rule-based cash/duration checking and critical risk guards.
+
 ## Architecture
 
 The Developer B implementation is split into a small public agent and focused
@@ -346,6 +348,32 @@ Developer B coordination requests are recorded in
   and treat `IMM_007_FINAL_DECISION` as an immigration-clearance transition.
 - A/C still need Alpha scene support for flight small talk, cutscene/skip,
   baggage, final scoreboard, and tier-aware NPC dialogue/TTS consumption.
+- C should persist A's final NPC text into the history source and carry an
+  `arrival_form` fact object (`[CR-B-HISTORY-MEMORY]`).
+- A must enforce B's non-ADVANCE branch in NPC generation (`[CR-B-AB-DESYNC]`).
+
+### Adaptive retry tolerance & cross-team desync diagnosis
+
+A reported play log showed a valid answer ("13 days") leading to a forced
+secondary-inspection ending. Root-cause analysis traced two independent faults
+across the A/B/C boundary:
+
+1. **Over-strict retry policy (B-owned, fixed).** `_clarify` (UNCLEAR) counted
+   toward the same hard-fail counter as genuine `FAIL`, so two clarifications
+   plus one hint hit the limit and forced a bad ending. Fix: UNCLEAR no longer
+   increments the hard-fail counter (`retry_count_delta = 0`), and the limit was
+   raised to `MAX_HARD_FAIL_RETRIES = 5`; endless clarification is still bounded
+   by the existing `patience <= 0` floor. This separates "ambiguous but engaged"
+   from "wrong/risky" so the player is not penalized for rephrasing.
+2. **A/B turn-level desync (A-owned, filed as `[CR-B-AB-DESYNC]`).** On a
+   non-`ADVANCE` branch B re-asks the current question, but A's LLM dialogue path
+   advanced to the next question, so the player's answer and B's scored slot
+   diverged. The CR specifies the exact gap (the LLM path lacks the
+   branch-obedience guard the rule-based path already has) and a deterministic
+   re-ask override, with B's retry change as the interim mitigation.
+
+This shows B owning the deterministic policy fix while precisely scoping the
+remaining work to the correct owner instead of absorbing cross-team logic.
 
 ## Testing
 
@@ -353,7 +381,7 @@ Developer B added `backend/tests/dev_b/test_developer_b_policy_engine.py`, `back
 
 Covered scenarios:
 
-- State machine exits loop to BAD_END or ADVANCE when retry limit (3) or patience floor (<= 0) is met.
+- State machine exits loop to BAD_END or ADVANCE when retry limit (5, `MAX_HARD_FAIL_RETRIES`) or patience floor (<= 0) is met; UNCLEAR (clarify) turns are excluded from the hard-fail counter.
 - Hint check is reordered before unclear check when retry count is 2 or higher to prevent deadlocks.
 - Dynamic scenario node override on question and recommended expression is applied when `random_customs_item` is present.
 - Referral integrity checks guarantee all allowed next nodes and branch candidates in `scenario_nodes.json` exist.
@@ -407,9 +435,9 @@ Covered scenarios:
 
 Latest recorded verification:
 
-- `uv run pytest`: 321 passed, 1 warning (100% success)
+- `uv run pytest`: 371 passed, 1 warning (100% success)
 - `uv run ruff check .`: All checks passed!
-- `uv run mypy .`: Success: no issues found in 125 source files
+- `uv run mypy .`: Success: no issues found in 129 source files
 
 ## Demo Scenarios
 
@@ -460,6 +488,8 @@ Latest recorded verification:
   a running-only stopwatch indicator, and request-scoped AgentRun token/cost
   totals.
 - Resolved dialogue and node desync bugs by dynamically mapping customs declaration (`IMM_006`) and baggage reveal (`BAG_006`) to the random customs item, and aligning `surface_goal` looking up node configurations.
+- Collaborated on the Turn Acceptance Restructure, defining the `"closed"` slot policy for strict enum matching on `cash_amount` and refactoring the scenario state machine validation rules (`_has_invalid_required_slot_value`) into a policy-driven branching structure.
+- Integrated the LLM-driven semantic intent matching (`intent_satisfied`) into the state machine's success path for open slots, bypassing restrictive grounding checks to enable flexible natural language acceptance while maintaining safety validations.
 - Added focused pytest coverage for broken English, branch safety, loop-exit behaviors, node spec referential integrity, risk handling, feedback/report payload generation, and OpenKB write behavior.
 - Documented cross-owner integration requirements for the remaining Alpha scene
   runtime, final out-game report exposure, and tier-aware A/C consumption.
