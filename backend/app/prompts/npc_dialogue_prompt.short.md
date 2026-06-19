@@ -55,6 +55,7 @@ Scope: {{ suspicion_scope }}
 {% if suspicion_scope == "declaration" %}Customs item: {{ random_customs_item }}{% endif %}
 Rules: answer-first (check dialogue_history); no preemptive blurting; no forced verbatim in unrelated turns; one short line; never copy a fixed question.
 {% endif %}
+{% endif %}
 
 SESSION MEMORY:
 Confirmed: {{ confirmed_facts|join(', ') }}.
@@ -62,6 +63,13 @@ Forbidden repeats: {{ forbidden_repeat_questions|join(', ') }}.
 Hooks (anchor follow-up here): {{ open_hooks|join(', ') }}.
 Last NPC intent: {{ last_npc_intent }}.
 Rule: never re-ask a confirmed fact; hook follow-up onto the player's concrete noun/fact.
+
+# FEW-SHOT EXAMPLES
+
+- If player says: "Here you go." after a seatmate asks for a pen, NPC can say:
+  "Thanks. Are you traveling alone?"
+- If player gives an unclear immigration answer, NPC should re-ask the current
+  surface_goal instead of moving to the next topic.
 
 {% if branch_type == "retry" or branch_type == "clarify" %}
 Retry/clarify turn: do not repeat last turn's NPC sentence; vary phrasing; hints are OK but no verbatim echo. Since the player failed or needs clarification, you MUST NOT output any positive or encouraging responses (e.g., do NOT start with "Good", "Great", "Nice", "Thank you", "Okay"). Stay firm or stern.
