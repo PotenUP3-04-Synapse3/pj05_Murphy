@@ -34,11 +34,23 @@ class SessionContext(BaseModel):
     current_node_id: str
     turn_index: int
 
+    @model_validator(mode="after")
+    def validate_non_empty(self) -> SessionContext:
+        if not self.session_id or not self.session_id.strip():
+            raise ValueError("session_id cannot be empty or whitespace")
+        return self
+
 
 class NpcContext(BaseModel):
     npc_id: str
     npc_role: str
     last_npc_message: str
+
+    @model_validator(mode="after")
+    def validate_non_empty(self) -> NpcContext:
+        if not self.npc_id or not self.npc_id.strip():
+            raise ValueError("npc_id cannot be empty or whitespace")
+        return self
 
 
 class AudioMetadata(BaseModel):
@@ -186,6 +198,7 @@ class UnrealTurnRequest(BaseModel):
     previous_node_results: list[PreviousNodeResult] = Field(default_factory=list)
     client_allowed_next_nodes: list[str] = Field(default_factory=list)
     client_context: ClientContext | None = None
+    skip_requested: bool = False
 
 
 class MockAudioInput(BaseModel):
@@ -355,6 +368,7 @@ class DevBPolicyInput(BaseModel):
     random_customs_item: RandomCustomsItemContext | None = None
     previous_node_results: list[PreviousNodeResult] = Field(default_factory=list)
     client_allowed_next_nodes: list[str] = Field(default_factory=list)
+    skip_requested: bool = False
 
 
 class Scores(BaseModel):
@@ -414,12 +428,10 @@ class ReportSeedSummary(BaseModel):
 
 
 class TurnHistoryEntry(BaseModel):
-    """A가 직전 대화 흐름을 복구할 수 있도록 넘기는 짧은 턴 기록입니다.
+    """[DEPRECATED] A가 직전 대화 흐름을 복구할 수 있도록 넘기는 짧은 턴 기록입니다.
 
-    초보자용 설명:
-    전체 원문을 계속 넘기면 payload가 커지고 개인정보 위험도 커집니다. 그래서 C는
-    OpenKB 세션 레코드에서 최근 턴만 읽고, 플레이어/NPC 내용을 짧은 preview와
-    이미 채워진 슬롯 목록으로 줄여서 `DialogueSeed.dialogue_history`에 담습니다.
+    이전 대화 기록(dialogue_history)을 전달하던 레거시 방식은 폐지 예정입니다.
+    현재는 NPC 자체 단기 메모리가 사용되므로, 하위 호환성을 위해서만 유지됩니다.
     """
 
     node_id: str
@@ -449,7 +461,8 @@ class DialogueSeed(BaseModel):
 
     # B가 A에게 전달하는 의도 신호 (예: 장소 억까, 수화물 억까 등)
     suspicion_scope: Literal["location", "declaration", "none"] | None = "none"
-    # A가 같은 질문을 반복하지 않도록 C가 모든 노드에서 붙여 주는 최근 대화 요약입니다.
+    # [DEPRECATED] A가 같은 질문을 반복하지 않도록 C가 모든 노드에서 붙여 주는 최근 대화 요약입니다.
+    # NPC가 자체 단기 메모리를 보유함에 따라 비활성화(Legacy) 중이며, 하위 호환성을 위해 유지됩니다.
     dialogue_history: list[TurnHistoryEntry] = Field(default_factory=list)
 
     # 기존 A/B 어댑터 호환을 위해 유지하는 펼친 형태의 억까 메타데이터입니다.

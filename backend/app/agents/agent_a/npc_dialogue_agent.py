@@ -529,7 +529,6 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     
     if is_non_advance and purpose != "smalltalk_diagnostic" and surface_goal:
         def _extract_reaction_part(text: str) -> str:
-            import re
             sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
             reaction_sentences = []
             for s in sentences:

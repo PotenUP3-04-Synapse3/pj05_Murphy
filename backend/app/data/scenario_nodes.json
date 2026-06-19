@@ -83,11 +83,12 @@
         "clarify": "FLIGHT_A_001_SEATMATE_SMALLTALK",
         "hint": "FLIGHT_A_001_SEATMATE_SMALLTALK",
         "warning": "FLIGHT_A_001_SEATMATE_SMALLTALK",
-        "bad_end": "FLIGHT_A_001_SEATMATE_SMALLTALK"
+        "bad_end": "FLIGHT_BAD_END_VERBAL_ABUSE"
       },
       "allowed_next_nodes": [
         "FLIGHT_A_001_SEATMATE_SMALLTALK",
-        "FLIGHT_999_COMPLETE"
+        "FLIGHT_999_COMPLETE",
+        "FLIGHT_BAD_END_VERBAL_ABUSE"
       ],
       "node_type": "dialogue"
     },

@@ -175,7 +175,10 @@ def test_steering_zero_never_forces_probe(tmp_path: Path, monkeypatch: pytest.Mo
     decision = policy.decide_conversational(payload)
     
     assert decision.selected_probe is not None
-    assert decision.selected_probe["probe_id"] == "TRAVEL_PURPOSE"
+    # Instead of deterministic first probe, it does a weighted choice on unmeasured competencies.
+    # We assert that the chosen probe is one of the valid configured probes.
+    probe_ids = {p["probe_id"] for p in policy.probes}
+    assert decision.selected_probe["probe_id"] in probe_ids
 
 
 def test_probe_selection_prefers_coherent_topic(tmp_path: Path) -> None:
@@ -209,9 +212,9 @@ def test_probe_selection_prefers_coherent_topic(tmp_path: Path) -> None:
     policy = FlightSmallTalkDiagnosticPolicy(runtime_root=runtime_root)
     decision = policy.decide_conversational(payload)
     
-    # Next coherent probe should be STAY_PLAN (difficulty 2, topic tag travel, coherent topics contains travel)
+    # Since topic is "travel", the selected probe should have a coherent topic tag "travel".
     assert decision.selected_probe is not None
-    assert decision.selected_probe["probe_id"] == "STAY_PLAN"
+    assert decision.selected_probe["topic_tag"] == "travel" or "travel" in decision.selected_probe["coherent_topics"]
 
 
 def test_termination_bounded_by_turns_and_confidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -242,11 +245,29 @@ def test_termination_bounded_by_turns_and_confidence(tmp_path: Path, monkeypatch
     assert decision.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
     assert decision.next_action == "ADVANCE"
     
-    # 2. 4 turns, with enough confidence -> should terminate
+    # 2. 4 turns, with enough confidence (covering distinct competencies) -> should terminate
+    history_record1 = {
+        "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+        "dialogue_seed": {"scene": "FLIGHT_A_001_SEATMATE_SMALLTALK", "npc_role": "seatmate", "surface_goal": "TRAVEL_PURPOSE"},
+        "evaluation": {"verdict": "SUCCESS"},
+        "understanding": {"confidence": 0.9}
+    }
+    history_record2 = {
+        "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+        "dialogue_seed": {"scene": "FLIGHT_A_001_SEATMATE_SMALLTALK", "npc_role": "seatmate", "surface_goal": "STAY_PLAN"},
+        "evaluation": {"verdict": "SUCCESS"},
+        "understanding": {"confidence": 0.9}
+    }
+    history_record3 = {
+        "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+        "dialogue_seed": {"scene": "FLIGHT_A_001_SEATMATE_SMALLTALK", "npc_role": "seatmate", "surface_goal": "CLARIFY_OR_ASK_BACK"},
+        "evaluation": {"verdict": "SUCCESS"},
+        "understanding": {"confidence": 0.9}
+    }
     with jsonl_path.open("w", encoding="utf-8") as f:
-        f.write(json.dumps(history_record) + "\n")
-        f.write(json.dumps(history_record) + "\n")
-        f.write(json.dumps(history_record) + "\n")
+        f.write(json.dumps(history_record1) + "\n")
+        f.write(json.dumps(history_record2) + "\n")
+        f.write(json.dumps(history_record3) + "\n")
         
     decision2 = policy.decide_conversational(payload)
     assert decision2.next_node_id == "FLIGHT_999_COMPLETE"
