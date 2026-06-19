@@ -3,6 +3,139 @@
 Cross-owner change requests are listed below. Status lines describe the current
 repository state as of the latest handoff entry.
 
+## Change Request - 2026-06-19 - [CR-B-HISTORY-MEMORY] 대화 기억 및 입국신고서 컨텍스트
+
+Status: Open (Developer B 분석/제기 - 2026-06-19; Developer C 구현 영역, 일부 Unreal 연동 필요).
+
+### Requested By
+
+Developer B
+
+### Affected Owner
+
+Developer C / Sean Han (일부 Unreal 연동 필요)
+
+### Reason
+
+메인 시나리오(flight·immigration) 대화 기억이 "잘 동작하지 않는다"는 지적의 원인을
+추적한 결과 3가지 구조 문제를 확인했다. (history 인프라는 계약상 C 영역이며,
+`[CR-B-CONV-C]`와 동일 경계.)
+
+1. **NPC 발화가 history에 누락됨 (주원인).**
+   - history가 읽는 유일한 소스는 B가 쓰는
+     `backend/runtime/openkb/dev_b/{session}.jsonl`이며, reader는
+     `final_result_score_policy.py:59` `OpenKBFinalResultRecordReader.read_session_records`.
+   - 그러나 B 레코드(`openkb_feedback_writer.py:105-135` `_build_record`)에는
+     `node_id`/`player_text`/`understanding`만 있고 **npc 텍스트 필드가 없음**
+     (파이프라인상 B는 A보다 먼저 실행되어 당 턴 NPC 대사를 모름).
+   - history 빌더 `_history_npc_text`(`developer_c_graph_tools.py:904-919`)가
+     `record["npc"][...]`/`record["npc_text"]`를 찾지만 부재 →
+     **`npc_text_preview`가 항상 공백** → A가 받는 history는 플레이어 발화만 있고
+     NPC가 직전에 뭘 물었는지가 비어, NPC가 자기 질문을 반복.
+
+2. **단기기억 window(5턴)가 시나리오 길이에 비해 너무 작음.**
+   - `_sync_dialogue_history_to_dialogue_seed`(`developer_c_graph_tools.py:846`,
+     `max_entries=5`).
+   - Alpha 1회는 flight ~5 + immigration 코어7(+게이트 최대~6) + baggage 7 ≈
+     클린 진행만 ~24턴, retry 포함 30턴+. 5턴은 한 챕터도 못 덮어 초반 발화가 유실.
+
+3. **입국신고서(arrival form) 사실 데이터 미전송.**
+   - `GameState`(`game_turn.py:127-138`)는 `assigned_visit_location`(장소)만 운반하고,
+     주석대로 입국신고서는 "Unreal UI가 표시할 장소 정보"에 한정됨.
+   - 신고서에 작성되는 이름/주소/방문목적/체류기간/신고품 등 실제 작성 내용이
+     백엔드 요청에 전혀 들어오지 않음 → NPC가 신고서 내용을 알 수 없고,
+     말한 답변과 신고서 내용의 교차검증도 불가.
+
+참고: 임의 사실마다 노드 슬롯을 만드는 방식은 확장 불가하므로 비채택.
+"NPC가 안정적으로 알아야 할 사실"은 대화 히스토리가 아니라 입국신고서를 정식
+출처로 삼는다(이름 망각 증상은 history 동작 확인용 프로브였을 뿐, nickname 의존
+방식은 채택하지 않음).
+
+### Proposed Contract Change
+
+- **C1. NPC 발화 영속.** A가 생성한 최종 `npc.text`를 history가 읽는 세션 스토어에
+  기록(턴 종료 시 C가 기록, 또는 history 엔트리 빌드 시 C-side 턴 로그의 npc text를
+  조인)해 `_history_npc_text`가 실제 값을 읽도록 한다. `last_npc_message`로 대체 시
+  한 턴 어긋남에 주의.
+- **C2. window 상향.** `max_entries`를 한 챕터를 덮는 수준(권장 10~15턴)으로 상향한다.
+  history는 대화 코히런스(반복 회피·직전 반응) 전용으로 두고, 사실 기억은 C3로 분리.
+- **C3. 입국신고서 컨텍스트 전송 (핵심).** Unreal이 신고서 작성 내용을 구조화 객체로
+  전송하고(예: `GameState.arrival_form { full_name, address, purpose, stay_length,
+  declared_items, ... }`), C가 매 턴 game_state로 유지하며 A(및 필요시
+  B/Understanding)에 전달한다. 이를 통해 슬롯·history window 의존 없이 NPC가 사실을
+  항상 참조하고, 말한 답변과 신고서 내용을 대조할 수 있다.
+
+### Compatibility Impact
+
+- C1은 additive(추가 기록)로 기존 분기/검증에 영향 없음.
+- C3는 신규 optional 필드(`GameState.arrival_form`)라 하위호환(Unreal 미전송 시
+  `None`).
+- C2의 window 상향은 A 프롬프트 토큰을 증가시키므로 비용/지연 검토 필요(긴 세션은
+  요약형 영속 메모리가 더 유리하나, 본 CR은 우선 window 상향 + 신고서 전송으로 한정).
+- 슬롯 스키마/노드 정의 변경 없음. 회귀 가드: `test_developer_a_npc_dialogue.py`,
+  단기기억/이해 관련 테스트.
+
+## Change Request - 2026-06-19 - [CR-B-IMM-SLOTS] 입국심사 신규 노드 슬롯 이해 인식
+
+Status: Open (Developer B 노드/상태머신 구현 완료 - 2026-06-19; Developer C 이해 인식 미반영).
+
+### Requested By
+
+Developer B
+
+### Affected Owner
+
+Developer C / Sean Han
+
+### Reason
+
+Developer B는 `docs/workplan-dev-b-1.md` 계획에 따라 입국심사 챕터
+(`CH0_03_IMMIGRATION_CHECK`)를 핵심 질문 중심으로 재구성하면서 신규 노드 9종
+(+ 각 retry/clarify, 총 27노드)과 tier/체류기간 기반 `GATED_ROUTES` 라우팅을
+구현했다. 그러나 신규 노드들이 요구하는 `required_slots`가 Developer C 소유의
+`agent_c/understanding_agent.py` 룰모드 추출 테이블(`ALPHA_SLOT_VALUE_KEYWORDS`,
+50-134줄)에 등록돼 있지 않다.
+
+영향:
+- **LLM 모드**: node_context 기반으로 LLM이 슬롯을 추출하므로 정상 동작 예상.
+- **룰 모드(LLM fallback·오프라인·일부 테스트 경로)**: 신규 슬롯이 미등록이라
+  추출 실패 → `missing_slots` 고정 → 해당 노드가 영원히 SUCCESS에 도달하지 못하고
+  retry/clarify 루프에 갇힌다. (B의 상태머신/노드 무결성은 이미 닫혀 있으나,
+  슬롯 인식은 C 경계다. CR-B-CONV-C 항목 #4에서 `item_purpose`를 동일 테이블에
+  추가했던 것과 같은 성격.)
+
+참고: B의 신규 라우팅/파서 단위 테스트는 `extracted_slots`를 직접 주입해
+상태머신을 검증하므로 이 갭을 잡지 못한다(설계상 이해 에이전트를 우회).
+
+### Proposed Contract Change
+
+`agent_c/understanding_agent.py`의 `ALPHA_SLOT_VALUE_KEYWORDS`에 아래 신규 슬롯의
+키워드 패밀리를 추가(허용값은 `scenario_nodes.json`의 각 노드
+`allowed_slot_values`와 정합해야 함). 예시 매핑(키워드는 C가 조정 가능):
+
+- `long_stay_reason` — tourism/study/family_visit/remote_work/long_vacation
+- `hotel_reservation_status` — has_reservation/has_digital_confirmation/has_address
+- `hotel_choice_reason` — location/price/reviews/recommended/near_tourist_spots
+- `itinerary_status` — has_itinerary/has_plans/has_list
+- `first_visit_status` — yes_first_time/no_visited_before
+- `occupation` — student/office_worker/engineer/designer/teacher/business_owner/unemployed
+- `cash_amount` — under_10k/over_10k/zero/specific_amount
+- `payment_source` — myself/parents/company/sponsor/family
+- `denied_entry_status` — never_denied/has_denial_history
+
+추가로 LLM 모드 프롬프트가 위 신규 `required_intents`
+(`confirm_first_visit`, `state_occupation`, `state_cash_amount`,
+`state_trip_payment_source`, `confirm_denied_entry_history`,
+`explain_long_stay_reason`, `confirm_hotel_reservation`,
+`explain_hotel_choice_reason`, `confirm_travel_itinerary`)와 슬롯을 정상 인식하는지
+회귀 확인 권장.
+
+### Compatibility Impact
+
+키워드 테이블 추가는 additive이며 기존 통과 케이스에 영향이 없어야 한다(회귀
+가드: `test_understanding_agent.py`). 미반영 시에도 LLM 모드 정상 동작은
+유지되나, 룰 모드/오프라인 경로에서 신규 노드 진행이 막힌다.
+
 ## Change Request - 2026-06-18 - [CR-B-CONV-C] 단기기억·이해·트집 스코프 (대화 복구)
 
 Status: Resolved (Developer C implementation complete - 2026-06-18).

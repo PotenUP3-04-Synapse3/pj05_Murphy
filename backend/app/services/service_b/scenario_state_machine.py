@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Any
+from typing import Literal, Any, Callable
 
 from backend.app.schemas.game_turn import DevBPolicyInput
 
@@ -10,10 +10,103 @@ BranchType = Literal["success", "retry", "clarify", "hint", "warning", "bad_end"
 NextAction = Literal["ADVANCE", "REASK", "GIVE_HINT", "WARNING", "FAIL_END", "FINAL_DECISION", "COMPLETE_CHAPTER"]
 Verdict = Literal["SUCCESS", "PARTIAL", "UNCLEAR", "FAIL", "CRITICAL_FAIL"]
 
-GOLD_CHALLENGE_SOURCE_NODE_ID = "IMM_005_RETURN_TICKET"
-GOLD_BAG_CONTENT_CHALLENGE_NODE_ID = "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK"
 ALPHA_FINAL_SCOREBOARD_NODE_ID = "ALPHA_999_FINAL_SCOREBOARD"
 CHAPTER_COMPLETE_NODE_IDS = {"FLIGHT_999_COMPLETE", "IMM_999_CLEARED", "BAG_999_COMPLETE"}
+
+
+@dataclass(frozen=True)
+class GatedRoute:
+    target: str
+    condition: Callable[[DevBPolicyInput], bool]
+
+
+WORD_TO_NUM = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
+    "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
+    "eighty": 80, "ninety": 90, "a": 1, "an": 1
+}
+
+
+def _stay_duration_days(payload: DevBPolicyInput) -> int:
+    extracted = payload.understanding.extracted_slots or {}
+    value = extracted.get("stay_duration")
+    if not value or not isinstance(value, str):
+        return 0
+
+    import re
+    words = re.findall(r'[a-zA-Z0-9]+', value.lower())
+    
+    total_days = 0
+    i = 0
+    while i < len(words):
+        word = words[i]
+        num = None
+        if word.isdigit():
+            num = int(word)
+        else:
+            num = WORD_TO_NUM.get(word)
+            
+        if num is not None:
+            unit = None
+            if i + 1 < len(words):
+                next_word = words[i + 1]
+                if "day" in next_word:
+                    unit = "day"
+                elif "week" in next_word:
+                    unit = "week"
+                elif "month" in next_word:
+                    unit = "month"
+            
+            if unit is None:
+                for w in words:
+                    if "day" in w:
+                        unit = "day"
+                        break
+                    elif "week" in w:
+                        unit = "week"
+                        break
+                    elif "month" in w:
+                        unit = "month"
+                        break
+                        
+            if unit == "day":
+                total_days += num * 1
+            elif unit == "week":
+                total_days += num * 7
+            elif unit == "month":
+                total_days += num * 30
+            else:
+                total_days += num * 1
+            i += 2
+        else:
+            i += 1
+            
+    return total_days
+
+
+GATED_ROUTES = [
+    GatedRoute(
+        target="IMM_003B_LONG_STAY_REASON",
+        condition=lambda payload: _stay_duration_days(payload) >= 14
+    ),
+    GatedRoute(
+        target="IMM_004B_HOTEL_RESERVATION",
+        condition=lambda payload: payload.player_profile.tier in {"Silver", "Gold"}
+    ),
+    GatedRoute(
+        target="IMM_004C_WHY_THIS_HOTEL",
+        condition=lambda payload: payload.player_profile.tier == "Gold"
+    ),
+    GatedRoute(
+        target="IMM_005B_TRAVEL_ITINERARY",
+        condition=lambda payload: payload.player_profile.tier in {"Silver", "Gold"}
+    ),
+    GatedRoute(
+        target="IMM_010_CASH",
+        condition=lambda payload: payload.player_profile.tier in {"Silver", "Gold"}
+    ),
+]
 
 
 @dataclass(frozen=True)
@@ -242,21 +335,10 @@ class ScenarioStateMachine:
         """
         정답 처리가 되었을 때 시나리오의 흐름 상 가장 알맞은 타겟 노드 ID를 결정합니다.
         """
-        if self._should_route_gold_bag_content_challenge(payload):
-            return GOLD_BAG_CONTENT_CHALLENGE_NODE_ID
+        for route in GATED_ROUTES:
+            if route.target in payload.node_context.allowed_next_nodes and route.condition(payload):
+                return route.target
         return payload.node_context.success_next_node
-
-    def _should_route_gold_bag_content_challenge(self, payload: DevBPolicyInput) -> bool:
-        """
-        골드 티어 플레이어에게 수하물 상세 검사 시나리오(Gold Bag Content Challenge)를 유도할 수 있는 특수 조건인지 검사합니다.
-        """
-        return (
-            payload.current_node_id == GOLD_CHALLENGE_SOURCE_NODE_ID
-            and payload.player_profile.tier == "Gold"
-            and payload.understanding.confidence >= 0.85
-            and not payload.understanding.missing_slots
-            and GOLD_BAG_CONTENT_CHALLENGE_NODE_ID in payload.node_context.allowed_next_nodes
-        )
 
     def _clarify(self, payload: DevBPolicyInput) -> ScenarioDecision:
         """

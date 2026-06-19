@@ -456,13 +456,6 @@ def test_understanding_agent_rule_mode_recognizes_alpha_flight_and_baggage_slot_
             "address",
         ),
         (
-            "CH0_03_IMMIGRATION_CHECK",
-            "IMM_006_DECLARATION_CHECK",
-            "It's a gift for my friend.",
-            "item_purpose",
-            "gift",
-        ),
-        (
             "CH0_04_BAGGAGE_CLAIM",
             "BAG_002_PROVIDE_CLAIM_TAG",
             "I have the tag right here.",
