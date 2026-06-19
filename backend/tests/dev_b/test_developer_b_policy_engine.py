@@ -316,11 +316,17 @@ def test_all_chapter_zero_nodes_define_branch_candidates_and_allowed_next_nodes(
         "IMM_001_PASSPORT",
         "IMM_002_PURPOSE",
         "IMM_003_DURATION",
+        "IMM_003B_LONG_STAY_REASON",
         "IMM_004_STAY_LOCATION",
+        "IMM_004B_HOTEL_RESERVATION",
+        "IMM_004C_WHY_THIS_HOTEL",
         "IMM_005_RETURN_TICKET",
-        "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK",
-        "IMM_006_DECLARATION_CHECK",
-        "IMM_006B_PACKED_BAG_CHECK",
+        "IMM_005B_TRAVEL_ITINERARY",
+        "IMM_008_FIRST_VISIT",
+        "IMM_009_OCCUPATION",
+        "IMM_010_CASH",
+        "IMM_010B_WHO_PAID",
+        "IMM_011_DENIED_ENTRY",
         "IMM_007_FINAL_DECISION",
         "IMM_999_CLEARED",
         "BAG_001_REPORT_MISSING_AT_DESK",
@@ -579,10 +585,17 @@ def test_dialogue_seed_routes_baggage_service_and_customs_roles(
         ("IMM_001_PASSPORT", "passport_submission_status", "submitted", "IMM_002_PURPOSE"),
         ("IMM_002_PURPOSE", "visit_purpose", "tourism", "IMM_003_DURATION"),
         ("IMM_003_DURATION", "stay_duration", "days", "IMM_004_STAY_LOCATION"),
+        ("IMM_003B_LONG_STAY_REASON", "long_stay_reason", "tourism", "IMM_004_STAY_LOCATION"),
         ("IMM_004_STAY_LOCATION", "stay_location", "hotel", "IMM_005_RETURN_TICKET"),
-        ("IMM_006_DECLARATION_CHECK", "item_purpose", "personal_recreation", "IMM_006B_PACKED_BAG_CHECK"),
-        ("IMM_006B_PACKED_BAG_CHECK", "packed_by_self", "yes_self_packed", "IMM_007_FINAL_DECISION"),
-        ("IMM_ALPHA_GOLD_BAG_CONTENT_CHECK", "bag_contents_summary", "mixed_personal_items", "IMM_006_DECLARATION_CHECK"),
+        ("IMM_004B_HOTEL_RESERVATION", "hotel_reservation_status", "has_reservation", "IMM_005_RETURN_TICKET"),
+        ("IMM_004C_WHY_THIS_HOTEL", "hotel_choice_reason", "location", "IMM_005_RETURN_TICKET"),
+        ("IMM_005_RETURN_TICKET", "return_ticket_status", "has_return_ticket", "IMM_008_FIRST_VISIT"),
+        ("IMM_005B_TRAVEL_ITINERARY", "itinerary_status", "has_itinerary", "IMM_008_FIRST_VISIT"),
+        ("IMM_008_FIRST_VISIT", "first_visit_status", "yes_first_time", "IMM_009_OCCUPATION"),
+        ("IMM_009_OCCUPATION", "occupation", "office_worker", "IMM_007_FINAL_DECISION"),
+        ("IMM_010_CASH", "cash_amount", "under_10k", "IMM_010B_WHO_PAID"),
+        ("IMM_010B_WHO_PAID", "payment_source", "myself", "IMM_011_DENIED_ENTRY"),
+        ("IMM_011_DENIED_ENTRY", "denied_entry_status", "never_denied", "IMM_007_FINAL_DECISION"),
         ("IMM_007_FINAL_DECISION", "immigration_transition_acknowledgement", "acknowledged", "IMM_999_CLEARED"),
         ("BAG_001_REPORT_MISSING_AT_DESK", "missing_bag_statement", "bag_not_arrived", "BAG_002_PROVIDE_CLAIM_TAG"),
         ("BAG_002_PROVIDE_CLAIM_TAG", "claim_tag_status", "has_claim_tag", "BAG_003_CONFIRM_SEARCHED_CAROUSEL"),
@@ -610,7 +623,7 @@ def test_chapter_zero_success_nodes_advance(
             confidence=0.92,
             extracted_slots={slot_name: slot_value},
             missing_slots=[],
-            tier="Silver",
+            tier="Bronze",
             client_allowed_next_nodes=context.allowed_next_nodes,
         )
     )
@@ -628,11 +641,17 @@ def test_chapter_zero_success_nodes_advance(
         ("IMM_001_PASSPORT", "passport_submission_status", "IMM_001_RETRY_PASSPORT"),
         ("IMM_002_PURPOSE", "visit_purpose", "IMM_002_RETRY_PURPOSE"),
         ("IMM_003_DURATION", "stay_duration", "IMM_003_RETRY_DURATION"),
+        ("IMM_003B_LONG_STAY_REASON", "long_stay_reason", "IMM_003B_LONG_STAY_REASON_RETRY_REASON"),
         ("IMM_004_STAY_LOCATION", "stay_location", "IMM_004_RETRY_LOCATION"),
+        ("IMM_004B_HOTEL_RESERVATION", "hotel_reservation_status", "IMM_004B_HOTEL_RESERVATION_RETRY_RESERVATION"),
+        ("IMM_004C_WHY_THIS_HOTEL", "hotel_choice_reason", "IMM_004C_WHY_THIS_HOTEL_RETRY_HOTEL"),
         ("IMM_005_RETURN_TICKET", "return_ticket_status", "IMM_005_RETRY_RETURN_TICKET"),
-        ("IMM_006_DECLARATION_CHECK", "item_purpose", "IMM_006_RETRY_DECLARATION"),
-        ("IMM_006B_PACKED_BAG_CHECK", "packed_by_self", "IMM_006B_RETRY_PACKED_BAG"),
-        ("IMM_ALPHA_GOLD_BAG_CONTENT_CHECK", "bag_contents_summary", "IMM_ALPHA_GOLD_RETRY_BAG_CONTENT_CHECK"),
+        ("IMM_005B_TRAVEL_ITINERARY", "itinerary_status", "IMM_005B_TRAVEL_ITINERARY_RETRY_ITINERARY"),
+        ("IMM_008_FIRST_VISIT", "first_visit_status", "IMM_008_FIRST_VISIT_RETRY_VISIT"),
+        ("IMM_009_OCCUPATION", "occupation", "IMM_009_OCCUPATION_RETRY_OCCUPATION"),
+        ("IMM_010_CASH", "cash_amount", "IMM_010_CASH_RETRY_CASH"),
+        ("IMM_010B_WHO_PAID", "payment_source", "IMM_010B_WHO_PAID_RETRY_PAID"),
+        ("IMM_011_DENIED_ENTRY", "denied_entry_status", "IMM_011_DENIED_ENTRY_RETRY_ENTRY"),
         ("IMM_007_FINAL_DECISION", "immigration_transition_acknowledgement", "IMM_007_RETRY_FINAL_DECISION"),
         ("BAG_001_REPORT_MISSING_AT_DESK", "missing_bag_statement", "BAG_001_RETRY_REPORT_MISSING_AT_DESK"),
         ("BAG_002_PROVIDE_CLAIM_TAG", "claim_tag_status", "BAG_002_RETRY_PROVIDE_CLAIM_TAG"),
@@ -750,11 +769,10 @@ def test_bronze_return_ticket_success_uses_baseline_immigration_route(tmp_path: 
     )
 
     assert result.evaluation.verdict == "SUCCESS"
-    assert result.branch.next_node_id == "IMM_006_DECLARATION_CHECK"
-    assert result.branch.next_node_id != "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK"
+    assert result.branch.next_node_id == "IMM_008_FIRST_VISIT"
 
 
-def test_gold_return_ticket_success_routes_to_alpha_bag_content_challenge(tmp_path: Path) -> None:
+def test_gold_return_ticket_success_routes_to_travel_itinerary(tmp_path: Path) -> None:
     context = _node_context("IMM_005_RETURN_TICKET")
 
     result = _agent(tmp_path).evaluate_turn(
@@ -772,23 +790,19 @@ def test_gold_return_ticket_success_routes_to_alpha_bag_content_challenge(tmp_pa
 
     assert result.evaluation.verdict == "SUCCESS"
     assert result.branch.branch_type == "success"
-    assert result.branch.next_node_id == "IMM_ALPHA_GOLD_BAG_CONTENT_CHECK"
-    assert result.difficulty_profile is not None
-    assert result.difficulty_profile.npc_speech_speed == "natural"
-    assert result.difficulty_profile.question_complexity == "complex"
-    assert result.difficulty_profile.pressure_level == "high"
+    assert result.branch.next_node_id == "IMM_005B_TRAVEL_ITINERARY"
 
 
-def test_gold_challenge_node_success_returns_to_declaration_route(tmp_path: Path) -> None:
-    context = _node_context("IMM_ALPHA_GOLD_BAG_CONTENT_CHECK")
+def test_gold_hotel_reservation_success_routes_to_why_this_hotel(tmp_path: Path) -> None:
+    context = _node_context("IMM_004B_HOTEL_RESERVATION")
 
     result = _agent(tmp_path).evaluate_turn(
         _policy_input(
             node_context=context,
-            player_text="I packed clothes, toiletries, and my laptop. I have nothing else to declare.",
+            player_text="Yes, here is my hotel reservation.",
             intent_success=True,
-            confidence=0.94,
-            extracted_slots={"bag_contents_summary": "mixed_personal_items"},
+            confidence=0.95,
+            extracted_slots={"hotel_reservation_status": "has_reservation"},
             missing_slots=[],
             tier="Gold",
             english_confidence="advanced",
@@ -796,7 +810,83 @@ def test_gold_challenge_node_success_returns_to_declaration_route(tmp_path: Path
     )
 
     assert result.evaluation.verdict == "SUCCESS"
-    assert result.branch.next_node_id == "IMM_006_DECLARATION_CHECK"
+    assert result.branch.next_node_id == "IMM_004C_WHY_THIS_HOTEL"
+
+
+def test_silver_hotel_reservation_success_routes_to_return_ticket(tmp_path: Path) -> None:
+    context = _node_context("IMM_004B_HOTEL_RESERVATION")
+
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="Yes, here is my hotel reservation.",
+            intent_success=True,
+            confidence=0.95,
+            extracted_slots={"hotel_reservation_status": "has_reservation"},
+            missing_slots=[],
+            tier="Silver",
+            english_confidence="intermediate",
+        )
+    )
+
+    assert result.evaluation.verdict == "SUCCESS"
+    assert result.branch.next_node_id == "IMM_005_RETURN_TICKET"
+
+
+def test_stay_duration_days_parser() -> None:
+    from backend.app.services.service_b.scenario_state_machine import _stay_duration_days
+    
+    def mock_payload(duration_str: str | None) -> DevBPolicyInput:
+        if duration_str is None:
+            return cast(DevBPolicyInput, _policy_input(extracted_slots={}))
+        return cast(DevBPolicyInput, _policy_input(extracted_slots={"stay_duration": duration_str}))
+        
+    assert _stay_duration_days(mock_payload("5 days")) == 5
+    assert _stay_duration_days(mock_payload("five days")) == 5
+    assert _stay_duration_days(mock_payload("one week")) == 7
+    assert _stay_duration_days(mock_payload("two weeks")) == 14
+    assert _stay_duration_days(mock_payload("one month")) == 30
+    assert _stay_duration_days(mock_payload("10 days and 2 weeks")) == 24
+    assert _stay_duration_days(mock_payload("until Friday")) == 0
+    assert _stay_duration_days(mock_payload(None)) == 0
+
+
+def test_long_stay_duration_routes_to_long_stay_reason(tmp_path: Path) -> None:
+    context = _node_context("IMM_003_DURATION")
+
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="I will stay for two weeks.",
+            intent_success=True,
+            confidence=0.95,
+            extracted_slots={"stay_duration": "two weeks"},
+            missing_slots=[],
+            tier="Bronze",
+        )
+    )
+
+    assert result.evaluation.verdict == "SUCCESS"
+    assert result.branch.next_node_id == "IMM_003B_LONG_STAY_REASON"
+
+
+def test_normal_stay_duration_skips_long_stay_reason(tmp_path: Path) -> None:
+    context = _node_context("IMM_003_DURATION")
+
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="I will stay for five days.",
+            intent_success=True,
+            confidence=0.95,
+            extracted_slots={"stay_duration": "five days"},
+            missing_slots=[],
+            tier="Bronze",
+        )
+    )
+
+    assert result.evaluation.verdict == "SUCCESS"
+    assert result.branch.next_node_id == "IMM_004_STAY_LOCATION"
 
 
 def test_gold_missing_return_ticket_slot_retries_without_bronze_hint(tmp_path: Path) -> None:

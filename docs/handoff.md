@@ -1,10 +1,71 @@
 # Handoff
 
+## 2026-06-19 Developer C: CR-B-IMM-SLOTS 신규 입국심사 슬롯 이해 보강
+
+Developer C completed the required C-owned work for `[CR-B-IMM-SLOTS]` after
+Developer B's JFK immigration node merge.
+
+Changed:
+
+- `backend/app/agents/agent_c/understanding_agent.py`: Added rule-mode keyword
+  coverage for 9 new immigration slots: `long_stay_reason`,
+  `hotel_reservation_status`, `hotel_choice_reason`, `itinerary_status`,
+  `first_visit_status`, `occupation`, `cash_amount`, `payment_source`, and
+  `denied_entry_status`.
+- `backend/app/agents/agent_c/understanding_llm_client.py`: Switched the LLM
+  contract to slot-evidence-first. The strict LLM schema no longer asks the
+  model to return `extracted_slots`; Developer C derives final slots from
+  accepted `slot_evidence` after the LLM call.
+- `backend/tests/test_understanding_agent.py`: Added rule-mode regression
+  coverage for all 9 new slots and LLM-mode regressions proving slots are built
+  from evidence while direct LLM `extracted_slots` are ignored.
+- `backend/tests/test_understanding_llm_client.py`: Added strict-schema and
+  normalization coverage for the slot-evidence-first LLM contract.
+- `docs/contracts/change_requests.md`: Marked `[CR-B-IMM-SLOTS]` as resolved.
+
+Context-tightness check:
+
+- The rule-mode context was missing the 9 new slot keyword maps, so offline or
+  LLM-fallback turns could stay stuck in retry/clarify.
+- The LLM path was also partially too tight: `slot_evidence` was already
+  flexible, but the strict `extracted_slots` schema forced Developer C to keep
+  enumerating slot keys. The LLM schema now omits `extracted_slots`; C derives
+  them from accepted evidence and current-node metadata.
+
+Verification:
+
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_understanding_llm_client.py -q`: PASS, 29 passed.
+- `uv run pytest -q`: PASS, 349 passed, 1 warning (`audioop` deprecation in A-owned audio quality service).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 125 source files.
+
+## 2026-06-19 Developer B: JFK 입국심사 노드 재설정 및 조건부 라우팅 구현 완료
+
+Developer B는 docs\workplan-dev-b-1.md 계획에 따라 JFK 입국심사 챕터(`CH0_03_IMMIGRATION_CHECK`)의 노드 구조를 재구축하고, 플레이어의 티어 및 체류 기간에 따른 다이내믹 라우팅 정책을 상태 머신에 성공적으로 통합했습니다.
+
+Changed:
+
+- `backend/app/data/scenario_nodes.json`: 기존의 수화물 신고 및 검사 노드(`IMM_006` 계열)를 제거하고, 9가지 실무형 조건 검사 canonical 노드 및 각 노드의 retry/clarify 변종 노드(총 27개 노드)를 추가. `IMM_005_RETURN_TICKET` 성공 대상을 기본 노드인 `IMM_008_FIRST_VISIT`로 변경 및 allowed_next_nodes 무결성 검증.
+- `backend/app/services/service_b/scenario_state_machine.py`: 플레이어의 등급(tier)과 stay_duration 값에 따라 노드를 다이내믹하게 우회시키는 `GATED_ROUTES` 라우팅 로직을 추가. 자연어 및 숫자 혼용 체류 기간 텍스트(예: "two weeks", "5 days")를 일수(days)로 환산하는 `_stay_duration_days` 파서 함수 구현 및 연동.
+- `backend/app/agents/agent_b/english_level_hint_agent.py`: 신규 9개 노드의 포커스 타깃 및 힌트 연동 맵을 최신화하고 불필요해진 레거시 parameters 제거.
+- `docs/contracts/developer_b_json_final_v1.md`: 신규 노드 목록과 예시 데이터들을 반영해 Section 13, 14, 15 계약 문서 최신화.
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`:
+  - `stay_duration` 파서 테스트 및 parameterized 테스트 세트의 Pydantic v2 `ValidationError` 결함 수정.
+  - 신규 노드 추가에 따라 변종 노드명 규칙(`{node_id}_RETRY_{suffix}`) 매칭을 테스트 파라미터에 반영.
+  - `test_chapter_zero_missing_slot_retries` parameterized 테스트의 등급 파라미터를 `"Silver"`로 변경하여 Bronze 등급 전용 힌트 트리거로 인한 분기 반환 타입 충돌 우회.
+
+Verification:
+
+- `uv run pytest`: PASS (전체 345개 테스트 성공 통과)
+- `uv run ruff check .`: PASS (test_developer_a_npc_dialogue.py 파일의 pre-existing E402 임포트 순서 위반 해결 포함)
+- `uv run mypy .`: PASS (125개 소스 파일 통과)
+
 ## 2026-06-19 Developer A: NPC 메모리 및 꼬리물기 대화 강화 완료
 
 Developer A는 `docs/plans/dev_a_memory_followup_plan.md` 작업계획서에 명시된 NPC 세션 메모리 강화 및 꼬리물기 대화 인프라 구축 작업을 성공적으로 완료했습니다.
 
 Changed:
+
 - `session_context_card_service.py` [NEW]:
   - dialogue_history 및 filled_slots를 분석하여 confirmed_facts, forbidden_repeat_questions, open_hooks, last_npc_intent, recent_turns_compact, topic_thread 정보를 구조화하는 세션 카드 빌더 신설.
 - `npc_dialogue_agent.py` [MODIFY]:
@@ -23,6 +84,7 @@ Changed:
   - 세션 카드 빌더 로직 검증, 후처리 가드 2종의 폴백 전환 검증, 그리고 세션 카드 및 정책 변수가 프롬프트 내에 정상 렌더링되는지 렌더 단언 테스트 추가 완료.
 
 Verification:
+
 - `uv run pytest backend/tests`: PASS
 - `uv run ruff check .`: PASS
 - `uv run mypy .`: PASS
@@ -34,6 +96,7 @@ B/C 영역의 입출력 JSON 스키마 규격(어댑터 계약) 변경 사항 �
 Developer A 는 CR-B-CONV-A 의 A 측 4가지 항목을 완료했습니다. B 가 2026-06-18 에 emit 한 `dialogue_seed.suspicion_scope` 및 C 가 동일 날짜에 attach 한 `dialogue_seed.dialogue_history` 를 모두 소비합니다.
 
 Changed:
+
 - `developer_a_input_service.py`: normalize 단계에서 `suspicion_scope` (기본 "none"), `dialogue_history` 안전 추출.
 - `npc_dialogue_agent.py`: `llm_payload` 에 두 필드를 모든 purpose 에서 주입. smalltalk 전용 OpenKB 보강은 그대로 두되 dialogue_history 가 우선 활용되도록 `past_player_utterances` / `discussed_topics` 채움 로직 일반화. `node_initialize_state` 에 룰베이스 폴백 경로를 위한 대사 변주 로직 연동.
 - `prompts/npc_dialogue_prompt.md`, `prompts/npc_dialogue_prompt.short.md`:
@@ -47,6 +110,7 @@ Changed:
 - `test_developer_a_npc_dialogue.py`: 회귀 5종 (suspicion scope 게이팅 3종, dialogue_history 모든 purpose, retry 변주, answer-first) 및 mypy 통과를 위한 타입 선언 보강.
 
 Verification:
+
 - `uv run pytest backend/tests`: PASS (328 passed)
 - `uv run ruff check .`: PASS
 - `uv run mypy .`: PASS (Success: no issues found in 125 source files)
@@ -59,6 +123,7 @@ B/C 영역 0 수정. CR-B-CONV-A 의 Dev A 측 항목 완료.
 Developer C completed the C-owned items requested by `[CR-B-CONV-C]`.
 
 Changed:
+
 - `backend/app/schemas/game_turn.py`: Added `TurnHistoryEntry` and `DialogueSeed.dialogue_history` for short-term conversation memory sent to Developer A.
 - `backend/app/tools/tool_c/developer_c_graph_tools.py`: Reads recent B OpenKB session records, excludes the current turn, compresses the previous turns to player/NPC previews plus `filled_slots`, and attaches them to `dialogue_seed` before the A adapter call.
 - `backend/app/tools/tool_c/developer_c_graph_tools.py`: Updated challenge sync to respect B's `dialogue_seed.suspicion_scope`. `location` sends only visit-location context, `declaration` sends only item/declaration context, and `none` clears challenge metadata so A does not enter suspicion mode on unrelated nodes.
@@ -66,6 +131,7 @@ Changed:
 - `backend/tests/test_understanding_agent.py` and `backend/tests/test_preprototype_flow.py`: Added regression coverage for address repair, `item_purpose`, dialogue history payloads, and suspicion-scope gating.
 
 Verification:
+
 - `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_preprototype_flow.py -q` passed: 53 passed, 1 warning.
 - `uv run ruff check .` passed.
 - `uv run mypy .` passed: 125 source files.
@@ -92,6 +158,7 @@ Developer B는 입국심사~세관 대화가 무너지는 QA 회귀를 진단하
 Developer C completed the implementation for improving the `respond-dialog` test page (`demo/respond-dialog/index.html`) and backend orchestration helper endpoints.
 
 Changed:
+
 - **llm_cost_estimator.py**: Registered `gpt-5.4-mini`, `fake-understanding-model`, and `unknown` in `OPENAI_TEXT_MODEL_PRICES_USD_PER_1M`. Added fallback to `gpt-4o-mini` pricing for unrecognized models to avoid returning $0.000000 costs.
 - **agent_run_summary_service.py**: Updated model usage summaries to return the `model_name` key and compile a sorted list of unique `models` used in each session.
 - **ai_respond.py**: Added new `/api/game/ai/demo/npc-roster` to return canonical NPCs by chapter, `/api/game/ai/demo/eokkka/options` to return visit location and customs item tables, and `/api/game/ai/demo/eokkka/assign` to return deterministic or random Eokkka challenge context assignment based on player level (0-12).
@@ -104,6 +171,7 @@ Changed:
 - **test_demo_ai_respond_page.py**: Added regression unit tests for all new endpoints and verified correct session usage payloads.
 
 Verification:
+
 - `uv run pytest` passed: All 314 tests passed.
 - `uv run ruff check .` passed.
 - `uv run mypy .` passed.

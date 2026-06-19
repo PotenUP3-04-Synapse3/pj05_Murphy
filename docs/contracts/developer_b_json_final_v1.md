@@ -838,11 +838,11 @@ Developer B는 CEFR를 그대로 쓰기보다 프로젝트용 Travel Speaking Le
       "verdict": "SUCCESS"
     },
     {
-      "node_id": "IMM_006_DECLARATION_CHECK",
-      "verdict": "PARTIAL"
+      "node_id": "IMM_008_FIRST_VISIT",
+      "verdict": "SUCCESS"
     },
     {
-      "node_id": "IMM_006B_PACKED_BAG_CHECK",
+      "node_id": "IMM_009_OCCUPATION",
       "verdict": "SUCCESS"
     }
   ],
@@ -890,8 +890,8 @@ Developer B는 CEFR를 그대로 쓰기보다 프로젝트용 Travel Speaking Le
   "report_summary": {
     "overall": "입국심사 핵심 질문에는 대부분 답변했지만, 일부 답변에서 구체성이 부족했습니다.",
     "best_node": "IMM_003_DURATION",
-    "weakest_node": "IMM_006_DECLARATION_CHECK",
-    "main_improvement": "돌발 질문에서는 물품의 용도와 개인 사용 목적을 더 구체적으로 설명해야 합니다."
+    "weakest_node": "IMM_004_STAY_LOCATION",
+    "main_improvement": "질문에 어울리는 정확한 숙소 위치 정보를 답변해야 합니다."
   },
   "out_game_feedback_ref": {
     "report_mode": "focus_on_form",
@@ -966,9 +966,16 @@ Recommendation thresholds:
 | `IMM_002_PURPOSE` | `state_visit_purpose` | `visit_purpose` | `IMM_003_DURATION` | 방문 목적 명확성 |
 | `IMM_003_DURATION` | `state_stay_duration` | `stay_duration` | `IMM_004_STAY_LOCATION` | 체류 기간 구체성 |
 | `IMM_004_STAY_LOCATION` | `state_stay_location` | `stay_location` | `IMM_005_RETURN_TICKET` | 숙소 유형/위치 |
-| `IMM_005_RETURN_TICKET` | `confirm_return_ticket` | `return_ticket_status` | `IMM_006_DECLARATION_CHECK` | 귀국 항공권과 귀국 의사 |
-| `IMM_006_DECLARATION_CHECK` | `explain_declared_item` | `item_purpose` | `IMM_006B_PACKED_BAG_CHECK` | 신고 물품 용도와 문제 해결력 |
-| `IMM_006B_PACKED_BAG_CHECK` | `confirm_packed_by_self` | `packed_by_self` | `IMM_007_FINAL_DECISION` | 직접 포장과 내용물 인지 |
+| `IMM_003B_LONG_STAY_REASON` | `explain_long_stay_reason` | `long_stay_reason` | `IMM_004_STAY_LOCATION` | 장기 체류 사유 설명 |
+| `IMM_004B_HOTEL_RESERVATION` | `confirm_hotel_reservation` | `hotel_reservation_status` | `IMM_005_RETURN_TICKET` | 호텔 예약 확인 |
+| `IMM_004C_WHY_THIS_HOTEL` | `explain_hotel_choice_reason` | `hotel_choice_reason` | `IMM_005_RETURN_TICKET` | 호텔 선택 사유 설명 |
+| `IMM_005_RETURN_TICKET` | `confirm_return_ticket` | `return_ticket_status` | `IMM_008_FIRST_VISIT` | 귀국 항공권과 귀국 의사 |
+| `IMM_005B_TRAVEL_ITINERARY` | `confirm_travel_itinerary` | `itinerary_status` | `IMM_008_FIRST_VISIT` | 여행 일정표 제시 |
+| `IMM_008_FIRST_VISIT` | `confirm_first_visit` | `first_visit_status` | `IMM_009_OCCUPATION` | 첫 미국 방문 여부 |
+| `IMM_009_OCCUPATION` | `state_occupation` | `occupation` | `IMM_007_FINAL_DECISION` | 직업 설명 |
+| `IMM_010_CASH` | `state_cash_amount` | `cash_amount` | `IMM_010B_WHO_PAID` | 소지 현금 액수 |
+| `IMM_010B_WHO_PAID` | `state_trip_payment_source` | `payment_source` | `IMM_011_DENIED_ENTRY` | 여행 경비 지불원 |
+| `IMM_011_DENIED_ENTRY` | `confirm_denied_entry_history` | `denied_entry_status` | `IMM_007_FINAL_DECISION` | 미국 입국 거절 이력 |
 | `IMM_007_FINAL_DECISION` | `acknowledge_immigration_clearance` | `immigration_transition_acknowledgement` | `IMM_999_CLEARED` | immigration clearance acknowledgement |
 | `IMM_999_CLEARED` | transition node | transition metadata | `BAG_001_REPORT_MISSING_AT_DESK` | immigration cleared, enter baggage claim |
 | `BAG_001_REPORT_MISSING_AT_DESK` | `report_missing_bag_at_service_desk` | `missing_bag_statement` | `BAG_002_PROVIDE_CLAIM_TAG` | report at service desk that suitcase did not arrive |

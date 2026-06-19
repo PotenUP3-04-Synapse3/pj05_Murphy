@@ -17,7 +17,6 @@ import json
 
 import httpx
 
-from backend.app.agents.agent_c.visit_purpose_classifier import VISIT_PURPOSE_VALUES
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
 
 
@@ -215,17 +214,12 @@ def _developer_instructions() -> str:
         "supports it."
         " Do not assign confidence 0.9 or higher when slot_evidence is weak, "
         "idiomatic, inferred, or only loosely related to the required intent."
-        " For extracted_slots.visit_purpose, use one of "
-        f"{', '.join(VISIT_PURPOSE_VALUES)} when the purpose is clear, or null "
-        "when the visit purpose is missing. Map family words such as uncle, "
-        "aunt, cousin, parents, family, or relative to family_visit; friend to "
-        "friend_visit; business, meeting, or conference to business; study or "
-        "school to study; transit or layover to transit; and tourism, travel, "
-        "vacation, or sightseeing to tourism."
-        " For extracted_slots.stay_duration, extract concise duration text "
-        "such as 5 days, five days, one week, two weeks, three months, or "
-        "until Friday when the current node asks for stay duration; otherwise "
-        "return null."
+        " Do not return extracted_slots. Developer C derives final "
+        "extracted_slots from accepted slot_evidence and the current "
+        "node_context after this LLM call. For enum-like slots, put the "
+        "canonical allowed value from node_context.allowed_slot_values in "
+        "slot_evidence.value, and put the exact supporting player phrase in "
+        "slot_evidence.evidence_text."
     )
 
 
@@ -245,7 +239,6 @@ def _understanding_schema() -> dict[str, Any]:
             "risk_reason",
             "risk_tags",
             "slot_evidence",
-            "extracted_slots",
             "missing_slots",
             "needs_clarification",
         ],
@@ -275,18 +268,6 @@ def _understanding_schema() -> dict[str, Any]:
                         "confidence": {"type": "number"},
                         "evidence_text": {"type": "string"},
                     },
-                },
-            },
-            "extracted_slots": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": ["visit_purpose", "stay_duration"],
-                "properties": {
-                    "visit_purpose": {
-                        "type": ["string", "null"],
-                        "enum": [*VISIT_PURPOSE_VALUES, None],
-                    },
-                    "stay_duration": {"type": ["string", "null"]},
                 },
             },
             "missing_slots": {"type": "array", "items": {"type": "string"}},
@@ -337,21 +318,27 @@ def _strip_json_fence(text: str) -> str:
     return text
 
 
-def _normalize_structured_result(result: dict[str, Any]) -> dict[str, Any]:
+def normalize_understanding_llm_result(result: dict[str, Any]) -> dict[str, Any]:
+    """LLM 원문을 slot_evidence-first 내부 결과로 정리합니다.
+
+    Beginner guide:
+    LLM은 슬롯 최종값을 직접 확정하지 않습니다.  여기서는 LLM이 준
+    `slot_evidence`만 정리하고, `extracted_slots`는 그 evidence에서 만든 임시
+    값으로 채웁니다.  이후 `UnderstandingAgent`가 현재 노드의
+    `required_slots`와 `allowed_slot_values`로 다시 필터링합니다.  구버전 LLM이나
+    fallback 서버가 `extracted_slots`를 보내더라도 신뢰하지 않고 무시합니다.
+    """
+
     slot_evidence = _normalize_slot_evidence(result.get("slot_evidence"))
     result["slot_evidence"] = slot_evidence
-    extracted_slots = result.get("extracted_slots")
-    if isinstance(extracted_slots, dict):
-        result["extracted_slots"] = {
-            str(key): str(value)
-            for key, value in extracted_slots.items()
-            if value is not None
-        }
-    else:
-        result["extracted_slots"] = {}
+    result["extracted_slots"] = {}
     for evidence in slot_evidence:
         result["extracted_slots"].setdefault(evidence["slot"], evidence["value"])
     return result
+
+
+def _normalize_structured_result(result: dict[str, Any]) -> dict[str, Any]:
+    return normalize_understanding_llm_result(result)
 
 
 def _normalize_slot_evidence(value: Any) -> list[dict[str, Any]]:

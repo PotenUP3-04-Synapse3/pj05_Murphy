@@ -1,4 +1,5 @@
 from typing import Any
+
 from backend.app.agents.agent_a.npc_dialogue_agent import (
     NPCDialogueResult,
     generate_npc_dialogue_from_level_design,
@@ -1039,8 +1040,6 @@ def test_dialogue_agent_no_suspicion_meta_uses_default_fallback():
     payload = _eokkka_payload()
     result = generate_npc_dialogue_from_level_design(payload, use_llm=False)
     assert result["npc_text"]  # 기존 동작 회귀 보호
-
-
 
 
 def _payload(**kwargs: Any) -> dict[str, Any]:
