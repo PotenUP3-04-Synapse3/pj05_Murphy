@@ -248,3 +248,55 @@ def _preprototype_request(transcript: str = "I'm here for tourism.") -> PreProto
             transcript=transcript,
         ),
     )
+
+
+def test_session_id_and_npc_id_required_validation() -> None:
+    from pydantic import ValidationError as PydanticValidationError
+    from fastapi import HTTPException
+    from backend.app.schemas.game_turn import SessionContext, NpcContext, DevADialogueInput
+    from backend.app.integrations.dev_a_npc_dialogue_client import DevANpcDialogueClient
+
+    # 1. Pydantic level validation checks for empty/whitespace
+    with pytest.raises(PydanticValidationError) as exc_info:
+        SessionContext(
+            session_id="   ",
+            chapter_id="CH0_03_IMMIGRATION_CHECK",
+            scene_id="JFK_IMMIGRATION_HALL",
+            current_node_id="IMM_002_PURPOSE",
+            turn_index=2,
+        )
+    assert "session_id cannot be empty or whitespace" in str(exc_info.value)
+
+    with pytest.raises(PydanticValidationError) as exc_info:
+        NpcContext(
+            npc_id="",
+            npc_role="immigration_officer",
+            last_npc_message="Passport please.",
+        )
+    assert "npc_id cannot be empty or whitespace" in str(exc_info.value)
+
+    # 2. C adapter level validation checks
+    client = DevANpcDialogueClient()
+    
+    # Construct a payload where session_id is empty (bypassing Pydantic validation via model_construct)
+    bad_payload = DevADialogueInput.model_construct(
+        contract_version="dev_a_dialogue.v1",
+        request_id="req_test",
+        session_id=" ",
+        current_node_id="IMM_002_PURPOSE",
+        player_text="I'm here for tourism.",
+        npc=NpcContext.model_construct(
+            npc_id="miller",
+            npc_role="immigration_officer",
+            last_npc_message="What is the purpose of your visit?"
+        ),
+        node_context=None,
+        understanding=None,
+        developer_b_policy=None,
+    )
+    
+    with pytest.raises(HTTPException) as http_exc_info:
+        client.generate_dialogue(bad_payload)
+    assert http_exc_info.value.status_code == 400
+    assert "session_id and npc_id are required for memory isolation" in http_exc_info.value.detail
+

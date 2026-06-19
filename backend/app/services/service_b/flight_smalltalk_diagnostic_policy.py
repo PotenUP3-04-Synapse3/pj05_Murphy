@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -13,7 +14,7 @@ MINIMUM_PLAYER_TURNS = 3
 SKIP_ELIGIBLE_PLAYER_TURNS = 3
 
 MIN_TURNS = 3
-MAX_TURNS = 7
+MAX_TURNS = 30
 CONFIDENCE_THRESHOLD = 0.7
 STEERING = 0.4
 
@@ -86,9 +87,128 @@ class FlightSmallTalkDiagnosticPolicy:
         if state_machine._is_critical_risk(payload, risk_total):
             return state_machine._critical_fail(payload, risk_total)
 
-        # 2. 되묻기 최소화: needs_repeat이거나 confidence < 0.3인 경우 가벼운 clarify
+        # 2. 부적절 언행 제재 (tier >= 2 즉시 bad_end, tier == 1 경고 후 bad_end)
+        incivility = getattr(payload.understanding, "incivility", None)
+        if incivility is not None:
+            if incivility.tier >= 2:
+                return ScenarioDecision(
+                    verdict="CRITICAL_FAIL",
+                    branch_type="bad_end",
+                    next_action="COMPLETE_CHAPTER",
+                    next_node_id="FLIGHT_BAD_END_VERBAL_ABUSE",
+                    branch_reason=f"verbal_abuse_t{incivility.tier}",
+                    patience_delta=-20,
+                    suspicion_delta=0,
+                    retry_count_delta=0,
+                    hint_count_delta=0,
+                )
+            elif incivility.tier == 1:
+                reader = OpenKBFinalResultRecordReader(runtime_root=self.runtime_root)
+                records = reader.read_session_records(payload.session_id)
+                flight_records = [r for r in records if str(r.get("node_id", "")).startswith("FLIGHT_")]
+                
+                past_rudeness = 0
+                for r in flight_records:
+                    under = r.get("understanding") or {}
+                    inciv_record = under.get("incivility") or {}
+                    if inciv_record.get("tier", 0) >= 1:
+                        past_rudeness += 1
+                        
+                if past_rudeness >= 1:
+                    return ScenarioDecision(
+                        verdict="CRITICAL_FAIL",
+                        branch_type="bad_end",
+                        next_action="COMPLETE_CHAPTER",
+                        next_node_id="FLIGHT_BAD_END_VERBAL_ABUSE",
+                        branch_reason="verbal_abuse_t1_repeated",
+                        patience_delta=-20,
+                        suspicion_delta=0,
+                        retry_count_delta=0,
+                        hint_count_delta=0,
+                    )
+                else:
+                    return ScenarioDecision(
+                        verdict="FAIL",
+                        branch_type="warning",
+                        next_action="WARNING",
+                        next_node_id=SCENE_ID,
+                        branch_reason="verbal_abuse_t1_warning",
+                        patience_delta=-10,
+                        suspicion_delta=0,
+                        retry_count_delta=0,
+                        hint_count_delta=0,
+                    )
+
+        # 3. Load session history from OpenKB
+        reader = OpenKBFinalResultRecordReader(runtime_root=self.runtime_root)
+        records = reader.read_session_records(payload.session_id)
+        flight_records = [r for r in records if str(r.get("node_id", "")).startswith("FLIGHT_")]
+
+        turns = len(flight_records) + 1
+
+        # Identify covered competencies from history early
+        covered_competencies = set()
+        for r in flight_records:
+            dseed = r.get("dialogue_seed")
+            if dseed and isinstance(dseed, dict):
+                goal = dseed.get("surface_goal", "")
+                for p in self.probes:
+                    if p["probe_id"] == goal or f"{p['target_competency']}_{p['topic_tag']}" == goal:
+                        covered_competencies.add(p["target_competency"])
+
+        # 4. 스킵(Skip) 신호 처리
+        if getattr(payload, "skip_requested", False):
+            # 조기 스킵 폴백: MIN_TURNS 미만인 경우 신뢰도 0.1 부여
+            final_conf = 0.1 if turns < MIN_TURNS else min(1.0, len(covered_competencies) / 5.0)
+            return ScenarioDecision(
+                verdict="SUCCESS",
+                branch_type="success",
+                next_action="COMPLETE_CHAPTER",
+                next_node_id="FLIGHT_999_COMPLETE",
+                branch_reason="flight_smalltalk_skip_requested",
+                patience_delta=0,
+                suspicion_delta=0,
+                retry_count_delta=0,
+                hint_count_delta=0,
+                cumulative_confidence=final_conf,
+            )
+
+        # 4.5 클라이언트 측 허용 노드 제한으로 인한 강제 완료 처리
+        if payload.client_allowed_next_nodes and SCENE_ID not in payload.client_allowed_next_nodes and "FLIGHT_999_COMPLETE" in payload.client_allowed_next_nodes:
+            final_conf = 0.1 if turns < MIN_TURNS else min(1.0, len(covered_competencies) / 5.0)
+            return ScenarioDecision(
+                verdict="SUCCESS",
+                branch_type="success",
+                next_action="COMPLETE_CHAPTER",
+                next_node_id="FLIGHT_999_COMPLETE",
+                branch_reason="flight_smalltalk_forced_complete_by_client",
+                patience_delta=0,
+                suspicion_delta=0,
+                retry_count_delta=0,
+                hint_count_delta=0,
+                cumulative_confidence=final_conf,
+            )
+
+        # 5. 되묻기 최소화: needs_repeat이거나 confidence < 0.3인 경우 가벼운 clarify
         if payload.input_source.needs_repeat or payload.understanding.confidence < 0.3:
             next_node_id = state_machine._checked_next_node(payload.node_context.clarify_next_node, payload)
+            
+            # 대화 흐름의 일관성을 위해 직전 turn의 selected_probe를 찾아서 유지합니다.
+            last_probe = None
+            if flight_records:
+                for r in reversed(flight_records):
+                    dseed = r.get("dialogue_seed")
+                    if dseed and isinstance(dseed, dict):
+                        goal = dseed.get("surface_goal", "")
+                        for p in self.probes:
+                            if p["probe_id"] == goal or f"{p['target_competency']}_{p['topic_tag']}" == goal:
+                                last_probe = p
+                                break
+                    if last_probe:
+                        break
+            if not last_probe and self.probes:
+                last_probe = self.probes[0]
+                
             return ScenarioDecision(
                 verdict="UNCLEAR",
                 branch_type="clarify",
@@ -99,40 +219,11 @@ class FlightSmallTalkDiagnosticPolicy:
                 suspicion_delta=0,
                 retry_count_delta=0,
                 hint_count_delta=0,
+                selected_probe=last_probe,
+                cumulative_confidence=0.1,
             )
 
-        # Load session history from OpenKB
-        reader = OpenKBFinalResultRecordReader(runtime_root=self.runtime_root)
-        records = reader.read_session_records(payload.session_id)
-        flight_records = [r for r in records if str(r.get("node_id", "")).startswith("FLIGHT_")]
-
-        turns = len(flight_records) + 1
-
-        # Calculate cumulative confidence (and standard error equivalents)
-        base_conf = 0.1
-        if payload.player_profile.english_confidence == "intermediate":
-            base_conf = 0.2
-        elif payload.player_profile.english_confidence == "advanced":
-            base_conf = 0.3
-
-        incr_conf = 0.0
-        for r in flight_records:
-            under = r.get("understanding") or {}
-            conf = under.get("confidence", 0.8)
-            verdict = r.get("evaluation", {}).get("verdict", "")
-            if verdict == "SUCCESS":
-                incr_conf += 0.15 * conf + 0.05
-            elif verdict in {"UNCLEAR", "PARTIAL"}:
-                incr_conf += 0.10 * conf
-            else:
-                incr_conf += 0.05 * conf
-
-        # Include current turn information
-        current_conf = payload.understanding.confidence
-        current_incr = 0.15 * current_conf + 0.05
-        cumulative_confidence = min(1.0, base_conf + incr_conf + current_incr)
-
-        # Identify used probes and current topic from history
+        # 6. Identify used probes and current topic from history
         used_probes = set()
         current_topic = "travel"
         for r in flight_records:
@@ -144,44 +235,77 @@ class FlightSmallTalkDiagnosticPolicy:
                         used_probes.add(p["probe_id"])
                         current_topic = p["topic_tag"]
 
-        # Opportunistic probe selection based on steering knob
+        # 민감주제 차단 필터
+        def is_probe_sensitive(probe: dict) -> bool:
+            text = (probe.get("seed_text", "") + " " + probe.get("probe_id", "") + " " + probe.get("target_competency", "")).lower()
+            sensitive_keywords = {
+                "politics", "election", "president", "religion", "church", "god", "bible", "jesus", "buddha", "sex", "sexual", "gender", "health", "disease", "illness", "hospital", "cancer", "medical", "money", "salary", "wage", "income", "marriage", "divorce", "politics", "policymaker",
+                "정치", "선거", "대통령", "종교", "교회", "성경", "하느님", "하나님", "예수", "불교", "부처", "섹스", "성별", "건강", "질병", "병원", "암", "의료", "돈", "월급", "소득", "결혼", "이혼", "정치인", "예배", "절"
+            }
+            for kw in sensitive_keywords:
+                if kw in text:
+                    return True
+            return False
+
+        # 7. 숨은-목표 기반 확률적 토픽 스티어링 (가중 랜덤 선택)
+        unused_probes = [p for p in self.probes if p["probe_id"] not in used_probes and not is_probe_sensitive(p)]
+        candidates = unused_probes if unused_probes else [p for p in self.probes if not is_probe_sensitive(p)]
+
         selected_probe = None
-
-        unused_probes = [p for p in self.probes if p["probe_id"] not in used_probes]
-
-        if STEERING > 0.0 and unused_probes:
-            # Pick a probe matching current topic/coherent topics first
-            coherent_probes = [
-                p for p in unused_probes
-                if p["topic_tag"] == current_topic or current_topic in p["coherent_topics"]
-            ]
-            if coherent_probes:
-                selected_probe = coherent_probes[0]
+        if candidates:
+            use_coherence = random.random() < STEERING
+            if use_coherence:
+                coherent_candidates = [
+                    p for p in candidates
+                    if p["topic_tag"] == current_topic or current_topic in p["coherent_topics"]
+                ]
+                chosen_pool = coherent_candidates if coherent_candidates else candidates
             else:
-                selected_probe = unused_probes[0]
-        else:
-            # pure follow or no unused probes left
-            if self.probes:
-                selected_probe = self.probes[0]
+                unmeasured_candidates = [
+                    p for p in candidates
+                    if p["target_competency"] not in covered_competencies
+                ]
+                chosen_pool = unmeasured_candidates if unmeasured_candidates else candidates
+
+            # 가중치 산출 (미커버 competency 우선권 부여)
+            weights = []
+            for p in chosen_pool:
+                w = 1.0
+                if p["target_competency"] not in covered_competencies:
+                    w *= 5.0
+                if p["topic_tag"] == current_topic or current_topic in p["coherent_topics"]:
+                    w *= 2.0
+                weights.append(w)
+
+            selected_probe = random.choices(chosen_pool, weights=weights, k=1)[0]
 
         if not selected_probe and self.probes:
             selected_probe = self.probes[0]
 
         self.current_selected_probe = selected_probe
 
-        # Determine next node and action
-        # Bounded termination conditions
+        # 8. 실시간 신뢰도(Confidence) 산출: 턴 수 누적이 아닌 커버된 competency 다양성으로 계산
+        all_covered_competencies = set(covered_competencies)
+        if selected_probe:
+            all_covered_competencies.add(selected_probe["target_competency"])
+        
+        cumulative_confidence = min(1.0, len(all_covered_competencies) / 5.0)
+
+        # 9. 종료 판정 조건 (turns >= 30 상한선 또는 (turns >= 3 & 핵심 competency 2개 이상 커버 & confidence >= 0.7))
+        core_competencies = {"travel_purpose", "stay_duration", "stay_location"}
+        covered_cores = all_covered_competencies.intersection(core_competencies)
+
         should_terminate = False
-        if turns >= MIN_TURNS and cumulative_confidence >= CONFIDENCE_THRESHOLD:
+        if turns >= MAX_TURNS:
             should_terminate = True
-        elif turns >= MAX_TURNS:
+        elif turns >= MIN_TURNS and len(covered_cores) >= 2 and cumulative_confidence >= CONFIDENCE_THRESHOLD:
             should_terminate = True
 
+        next_action: NextAction
         if should_terminate:
             next_node_id = "FLIGHT_999_COMPLETE"
-            next_action: NextAction = "COMPLETE_CHAPTER"
+            next_action = "COMPLETE_CHAPTER"
         else:
-            # Self loop
             next_node_id = SCENE_ID
             next_action = "ADVANCE"
 

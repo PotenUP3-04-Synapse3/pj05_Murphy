@@ -55,6 +55,7 @@ Scope: {{ suspicion_scope }}
 {% if suspicion_scope == "declaration" %}Customs item: {{ random_customs_item }}{% endif %}
 Rules: answer-first (check dialogue_history); no preemptive blurting; no forced verbatim in unrelated turns; one short line; never copy a fixed question.
 {% endif %}
+{% endif %}
 
 SESSION MEMORY:
 Confirmed: {{ confirmed_facts|join(', ') }}.

@@ -76,6 +76,15 @@ class DevANpcDialogueClient:
         self.voice_output_builder = voice_output_builder
 
     def generate_dialogue(self, payload: DevADialogueInput) -> DevADialogueOutput:
+        session_id = payload.session_id
+        npc_id = payload.npc.npc_id if payload.npc else ""
+        if not session_id or not session_id.strip() or not npc_id or not npc_id.strip():
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail="session_id and npc_id are required for memory isolation",
+            )
+
         expected_npc = _a_facing_npc_context(payload)
         level_design_payload = self._build_level_design_payload(payload, expected_npc)
         result = self.voice_output_builder(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
 from backend.app.schemas.game_turn import DevBPolicyInput
@@ -27,10 +28,36 @@ class LevelAdaptationController:
     플레이어의 게임 진행 등급(Bronze, Silver, Gold 티어)과 상황에 맞춰 어떤 유형의 힌트(키워드, 문장 패턴 등)와 
     어떤 방식의 피드백(재진술, 명료화 요구 등)을 줄 것인지 세부 정책을 결정합니다.
     """
+    def __init__(self, runtime_root: Path | None = None) -> None:
+        self.runtime_root = runtime_root
+
     def english_level(self, payload: DevBPolicyInput) -> EnglishLevel:
         """
         플레이어의 입력 정보나 발화 길이를 통해 영어 실력 등급(beginner, intermediate, advanced)을 판단합니다.
         """
+        is_flight = (payload.scene_id == "FLIGHT_A_001_SEATMATE_SMALLTALK" or payload.current_node_id.startswith("FLIGHT_"))
+        if is_flight:
+            from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader
+            root = self.runtime_root or Path("backend/runtime/openkb/dev_b")
+            reader = OpenKBFinalResultRecordReader(runtime_root=root)
+            records = reader.read_session_records(payload.session_id)
+            flight_records = [r for r in records if str(r.get("node_id", "")).startswith("FLIGHT_")]
+            
+            totals = []
+            for r in flight_records:
+                rubric = r.get("rubric_scores")
+                if rubric and isinstance(rubric, dict) and "total" in rubric:
+                    totals.append(rubric["total"])
+            
+            if totals:
+                avg_total = sum(totals) / len(totals)
+                if avg_total >= 8.0:
+                    return "advanced"
+                elif avg_total >= 4.0:
+                    return "intermediate"
+                else:
+                    return "beginner"
+
         if payload.player_profile.english_confidence:
             return payload.player_profile.english_confidence
 

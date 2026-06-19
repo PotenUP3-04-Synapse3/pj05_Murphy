@@ -430,13 +430,19 @@ class DeveloperCGraphTools:
             game_state,
             dev_b_output.dialogue_seed,
         )
-        dialogue_history = _sync_dialogue_history_to_dialogue_seed(
-            self.session_record_reader.read_session_records(request.turn.session.session_id),
-            self.dialogue_history_service.read_session_records(request.turn.session.session_id),
-            dev_b_output.dialogue_seed,
-            current_request_id=request.turn.request_id,
-            current_turn_index=request.turn.session.turn_index,
-        )
+        import os
+        if os.environ.get("MURPHY_C_LEGACY_HISTORY") == "1":
+            dialogue_history = _sync_dialogue_history_to_dialogue_seed(
+                self.session_record_reader.read_session_records(request.turn.session.session_id),
+                self.dialogue_history_service.read_session_records(request.turn.session.session_id),
+                dev_b_output.dialogue_seed,
+                current_request_id=request.turn.request_id,
+                current_turn_index=request.turn.session.turn_index,
+            )
+        else:
+            if dev_b_output.dialogue_seed is not None:
+                dev_b_output.dialogue_seed.dialogue_history = []
+            dialogue_history = []
 
         self.agent_run_middleware.record_event(
             agent_run,
@@ -783,6 +789,7 @@ class DeveloperCGraphTools:
             random_customs_item=request.turn.game_state.random_customs_item,
             previous_node_results=request.turn.previous_node_results,
             client_allowed_next_nodes=request.turn.client_allowed_next_nodes,
+            skip_requested=request.turn.skip_requested,
         )
 
 

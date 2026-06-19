@@ -1,5 +1,6 @@
 from collections.abc import Generator
 import json
+import random
 from pathlib import Path
 from typing import Any
 
@@ -229,7 +230,7 @@ def test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response() -> N
     assert response.next_node_id == "IMM_003_DURATION"
     assert response.next_action == "ADVANCE"
     assert response.npc.speaker == "Officer Hale"
-    assert response.npc.text == "Okay. Please continue."
+    assert response.npc.text == "How long will you stay in the United States?"
     assert response.npc.emotion == "Nomal"
     assert response.evaluation.verdict == "SUCCESS"
     assert response.ui.in_game_feedback.feedback_strategy == "recast"
@@ -588,7 +589,9 @@ def test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition() -> N
             jsonl_path.unlink()
 
 
-def test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller() -> None:
+def test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(random, "random", lambda: 0.9)
+    monkeypatch.setattr(random, "choices", lambda pop, weights=None, cum_weights=None, k=1: [pop[0]])
     session_id = "session_flight_smalltalk_openkb_accumulation"
     runtime_dir = Path("backend/runtime/openkb/dev_b")
     runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -710,7 +713,8 @@ def test_orchestrator_marks_immigration_clearance_as_baggage_scene_transition() 
     assert builder_payloads[0]["dialogue_seed"]["challenge_context"] is None
 
 
-def test_orchestrator_attaches_recent_dialogue_history_to_dev_a_payload() -> None:
+def test_orchestrator_attaches_recent_dialogue_history_to_dev_a_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MURPHY_C_LEGACY_HISTORY", "1")
     session_id = "session_dialogue_history_c_bridge"
     runtime_dir = Path("backend/runtime/openkb/dev_b")
     runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -832,7 +836,8 @@ def test_orchestrator_attaches_recent_dialogue_history_to_dev_a_payload() -> Non
         _remove_openkb_session_records(runtime_dir, jsonl_path)
 
 
-def test_orchestrator_persists_dev_a_npc_text_for_next_dialogue_history() -> None:
+def test_orchestrator_persists_dev_a_npc_text_for_next_dialogue_history(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MURPHY_C_LEGACY_HISTORY", "1")
     session_id = "session_dialogue_history_npc_text_sidecar"
     dev_b_runtime_dir = Path("backend/runtime/openkb/dev_b")
     dev_c_runtime_dir = Path("backend/runtime/openkb/dev_c/dialogue_history")
@@ -925,7 +930,8 @@ def test_orchestrator_persists_dev_a_npc_text_for_next_dialogue_history() -> Non
         _remove_dialogue_history_records(dev_c_jsonl_path)
 
 
-def test_orchestrator_dialogue_history_window_keeps_last_twelve_records() -> None:
+def test_orchestrator_dialogue_history_window_keeps_last_twelve_records(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MURPHY_C_LEGACY_HISTORY", "1")
     session_id = "session_dialogue_history_window_twelve"
     dev_b_runtime_dir = Path("backend/runtime/openkb/dev_b")
     dev_c_runtime_dir = Path("backend/runtime/openkb/dev_c/dialogue_history")
@@ -1077,7 +1083,7 @@ def test_orchestrator_uses_repaired_llm_visit_purpose_before_developer_a_dialogu
     assert response.evaluation.verdict == "SUCCESS"
     assert response.debug.understanding_confidence == pytest.approx(0.94)
     assert response.npc.text != "All right. Let's continue."
-    assert response.npc.text == "Okay. Please continue."
+    assert response.npc.text == "How long will you stay in the United States?"
 
 
 def test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings() -> None:
@@ -1478,7 +1484,9 @@ def _dev_a_payload_for_request(request: PrePrototypeRequest) -> tuple[DevADialog
     return output, builder_payloads[0]
 
 
-def test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata() -> None:
+def test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(random, "random", lambda: 0.9)
+    monkeypatch.setattr(random, "choices", lambda pop, weights=None, cum_weights=None, k=1: [pop[0]])
     output, payload = _dev_a_payload_for_request(
         _chapter_boundary_request(
             request_id="req_alpha_flight_seed_0001",
@@ -1848,7 +1856,7 @@ def test_api_accepts_multipart_turn_json_and_sample_wav() -> None:
     assert body["stt"]["runtime_used"] == "local"
     assert body["stt"]["player_text"] == "I'm here for tourism."
     assert body["next_node_id"] == "IMM_003_DURATION"
-    assert body["npc"]["text"] == "Okay. Please continue."
+    assert body["npc"]["text"] == "How long will you stay in the United States?"
     assert body["npc"]["audio_url"].startswith("/runtime/audio/edge/")
 
     audio_response = client.get(body["npc"]["audio_url"])
