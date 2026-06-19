@@ -116,7 +116,7 @@ SURFACE_GOAL_QUESTIONS = {
     "ask_cash_amount": "How much cash are you carrying?",
     "ask_trip_payment_source": "Who is paying for your trip?",
     "ask_denied_entry_history": "Have you ever been denied entry?",
-
+    
     # Baggage 챕터
     "report_missing_bag_at_service_desk": "Do you have your baggage claim tag or ticket?",
     "ask_claim_tag_or_ticket": "May I see your baggage claim tag?",

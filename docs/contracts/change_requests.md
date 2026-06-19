@@ -3,9 +3,126 @@
 Cross-owner change requests are listed below. Status lines describe the current
 repository state as of the latest handoff entry.
 
+## Change Request - 2026-06-19 - [CR-A-SESSION-ID-REQUIRED] 페이로드 session_id 의무화
+
+Status: Open (Developer A 제기 - 2026-06-19; Developer C 구현 영역).
+
+### Requested By
+
+Developer A / kimyonghee
+
+### Affected Owner
+
+Developer C / Sean Han
+
+### Reason
+
+Developer A는 통합 작업계획서 `docs/plans/dev_a_unified_memory_plan.md`
+(M-1 ~ M-5) 에 따라 NPC별 단기 메모리를 LangGraph 1.2 `InMemorySaver`
+checkpointer 위에 구축했다. 메모리 격리 키는 다음과 같다:
+
+```
+thread_id = f"{session_id}:{npc_id}"
+```
+
+A 측 코드(`backend/app/services/service_a/npc_short_term_memory_service.py`
+의 `build_thread_id`)는 §0.4 fail-fast 원칙에 따라 `session_id` 또는
+`npc_id`가 빈 값(`None` / `""` / 공백)일 때 즉시 `ValueError("session_id and
+npc_id are required for memory isolation")` 를 던진다. 폴백 키(`"anon"`/
+`"unknown"`)를 만들지 않는다.
+
+현재 페이로드 계약상 `turn.session.session_id`가 optional처럼 취급되는
+경로가 있다. Unreal 또는 테스트 호출에서 누락이 발생하면 A가 호출
+시점에 예외로 떨어진다. 이는 동작 자체는 의도된 fail-fast지만,
+호출자(C 어댑터)에서 보다 명확한 4xx로 사전 차단되는 편이 운영상
+디버깅이 단순하다.
+
+### Proposed Contract Change
+
+1. 페이로드 스키마에서 `turn.session.session_id`를 **required**로 명시.
+   참고: `backend/app/schemas/game_turn.py` (`Session` 모델 부근).
+2. C 어댑터(`backend/app/integrations/dev_a_npc_dialogue_client.py`)가
+   A 호출 직전에 `session_id`/`npc_id` 빈 값을 검증해, 빈 경우 명시적인
+   4xx 응답으로 사전 차단.
+3. C-side 회귀 테스트에 누락 케이스 1종 추가.
+
+### Compatibility Impact
+
+- A의 fail-fast 동작은 변경 없음. C-side 검증만 추가되는 additive 변경.
+- Unreal 측 페이로드는 이미 session_id를 채워 보내고 있으므로 운영 영향
+  최소. 테스트 픽스처/예시 페이로드에서만 누락이 있을 가능성.
+- 회귀 가드:
+  - `backend/tests/test_developer_a_npc_dialogue.py::test_build_thread_id_fail_fast`
+    (A 자체 가드 — 변경 없음)
+  - C-side 신규 테스트 1종 (4xx 응답 검증)
+
+---
+
+## Change Request - 2026-06-19 - [CR-A-HISTORY-DEPRECATION] dialogue_history 의무 전송 폐지 검토
+
+Status: Open (Developer A 제기 - 2026-06-19; Developer C 구현 영역).
+
+### Requested By
+
+Developer A / kimyonghee
+
+### Affected Owner
+
+Developer C / Sean Han
+
+### Reason
+
+`docs/plans/dev_a_unified_memory_plan.md` (M-1 ~ M-6, M-14) 적용 이후
+Agent A는 LangGraph `InMemorySaver` 위에 `(session_id, npc_id)` 단위 NPC별
+단기 메모리(`turn_buffer`, `accumulated_slots`, `forbidden_questions`,
+`last_npc_intent`)를 자체 보유한다.
+
+세션 컨텍스트 카드(`backend/app/services/service_a/session_context_card_service.py`)
+는 다음 우선순위로 입력 소스를 선택한다:
+
+1. **운영 경로(현재):** Agent A가 보유한 NPC 메모리(`npc_memory`).
+2. **Cold-start fallback:** A 메모리가 비어 있을 때만 C가 보내주는
+   `dialogue_seed.dialogue_history`.
+
+이 구조에서 C가 매 호출마다 `_sync_dialogue_history_to_dialogue_seed`
+(`backend/app/tools/tool_c/developer_c_graph_tools.py` 약 846줄,
+`max_entries=5`)를 통해 OpenKB 세션 레코드를 읽어 history를 만드는 작업이
+대부분 사용되지 않는다. 페이로드 사이즈와 C-side 처리 비용을 절감할 수
+있다.
+
+추가로, 현재 history는 **세션 단위 누적**(여러 NPC가 같은 history 공유)이라
+기내 승객(seatmate)과 입국심사관(immigration_officer)이 같은 컨텍스트를
+보는 비현실적 상황이 발생해 왔다. A의 자체 메모리는 NPC별로 격리되어 있어
+이 문제가 이미 해결된 상태다.
+
+### Proposed Contract Change
+
+1. **단계 1 (검증):** A 메모리 운영 경로가 cold-start fallback과 동등하거나
+   더 풍부한 컨텍스트를 제공함을 공동 회귀로 확인.
+   - 참고 테스트: `backend/tests/test_developer_a_npc_dialogue.py` 의
+     세션 컨텍스트 카드/메모리 격리 관련 테스트군.
+2. **단계 2 (점진 폐지):** C 그래프에서 `_sync_dialogue_history_to_dialogue_seed`
+   호출을 옵션 처리(예: 환경 변수 `MURPHY_C_LEGACY_HISTORY=1` 일 때만
+   동작)하여 운영 기본값에서 비활성화.
+3. **단계 3 (제거):** 안정 기간 경과 후 함수와 관련 OpenKB 읽기 코드 제거.
+   `TurnHistoryEntry`, `DialogueSeed.dialogue_history` 필드는 호환성을 위해
+   당분간 schema에 남겨두고 deprecation 주석 추가.
+
+### Compatibility Impact
+
+- A 측 변경 없음 (cold-start fallback 경로는 그대로 유지하되 점진적으로
+  비활성화).
+- C 측 페이로드 사이즈 감소 및 OpenKB 읽기 호출 감소로 latency 개선 기대.
+- 호환성: A는 `dialogue_history`가 비어 있어도 정상 동작하므로 단계 2까지
+  하위 호환.
+- 관련 CR: `[CR-B-HISTORY-MEMORY]` (입국신고서 컨텍스트는 별개 경로로
+  유지). A 자체 메모리와 arrival_form은 보완 관계이며 충돌하지 않는다.
+
+---
+
 ## Change Request - 2026-06-19 - [CR-B-AB-DESYNC] 입국심사 비-ADVANCE 분기 준수 가드 (대화 일관성 확보)
 
-Status: Open (Developer B 제기 - 2026-06-19; **Developer A 단독 구현** 영역. Developer C는 신규 필드 불필요 — 전달 경로 확인 + 회귀만).
+Status: Resolved (Developer A implementation complete - 2026-06-19).
 
 ### Requested By
 
@@ -15,6 +132,12 @@ Developer B
 
 - **Developer A / kimyonghee — 구현 주체** (`npc_dialogue_agent.py` 가드 추가).
 - Developer C / Sean Han — **신규 작업 없음**. 아래 §C 전달 경로(이미 충족) 확인 + 회귀 테스트만.
+
+### Developer A Resolution - 2026-06-19
+
+- `npc_dialogue_agent.py`의 `node_generate_dialogue_llm` 후처리 부분에 비-ADVANCE 분기 준수 가드(`is_non_advance`)를 추가하여, `next_action in {"REASK", "GIVE_HINT", "WARNING"}` 일 때 다음 질문 대신 현재 노드 질문(`surface_goal`)을 재질문하도록 오버라이드 조치했습니다.
+- `test_non_advance_dialogue_guard_override` 유닛 테스트를 추가하여 비-ADVANCE 제어 동작을 검증했습니다.
+- A-owned 테스트 87종 모두 100% 그린으로 통과 완료했습니다.
 
 ### Reason (재현 로그)
 

@@ -365,35 +365,6 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             logger.warning("dialogue_seed is missing from payload in node_generate_dialogue_llm.")
 
         purpose = payload.get("dialogue_directive", {}).get("purpose", "")
-        discussed_topics = []
-        past_player_utterances = []
-        
-        history = normalized.get("dialogue_history") or []
-        for h in history:
-            pt = h.get("player_text_preview")
-            if pt:
-                past_player_utterances.append(pt)
-            nt = h.get("npc_text_preview")
-            if nt:
-                discussed_topics.append(nt)
-
-        if purpose == "smalltalk_diagnostic":
-            # TODO(dev-a): replace with internal NPC memory once verified
-            from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader
-            reader = OpenKBFinalResultRecordReader()
-            session_id = payload.get("session_id") or ""
-            records = reader.read_session_records(session_id) if session_id else []
-            for r in records:
-                d_seed = r.get("dialogue_seed") or {}
-                sg = d_seed.get("surface_goal")
-                if sg:
-                    discussed_topics.append(sg)
-                pt = r.get("player_text")
-                if pt:
-                    past_player_utterances.append(pt)
-                    
-        discussed_topics = list(dict.fromkeys(discussed_topics))
-        past_player_utterances = list(dict.fromkeys(past_player_utterances))
 
         incivility = payload.get("incivility") or {}
         incivility_tier = int(incivility.get("tier", 0))
@@ -432,8 +403,6 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "purpose": purpose,
             "topic_switch": payload.get("dialogue_directive", {}).get("topic_switch", False),
             "length_target": payload.get("dialogue_directive", {}).get("length_target"),
-            "discussed_topics": discussed_topics,
-            "past_player_utterances": past_player_utterances,
             
             # Eokkka / Challenge 관련 변수들
             "suspicion_scope": normalized.get("suspicion_scope", "none"),
@@ -543,6 +512,22 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         if not contains_hook and len(sentences) <= 1:
             logger.error(f"Post-processing violation: NPC dialogue lacks open_hooks {open_hooks} in a brief response: '{npc_text}'")
             return {"error": "weak_followup_no_hook"}
+
+    # [신규 가드] 비-ADVANCE 분기 준수 가드 (CR-B-AB-DESYNC)
+    next_action = normalized.get("next_action") or ""
+    is_non_advance = (next_action in {"REASK", "GIVE_HINT", "WARNING"})
+    if is_non_advance and purpose != "smalltalk_diagnostic":
+        logger.info(f"Non-ADVANCE action '{next_action}' detected. Overriding LLM next question with current surface_goal '{surface_goal}'")
+        sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
+        reaction_part = sentences[0] if sentences else ""
+        from backend.app.services.service_a.dialogue_policy_service import synthesize_fallback_next_question
+        overridden_text = synthesize_fallback_next_question(
+            reaction_part,
+            str(surface_goal),
+            session_context_card.get("open_hooks"),
+        )
+        npc_text = overridden_text
+        tts_text = overridden_text
 
     # coherence guard 신설 (smalltalk_diagnostic 전용)
     if purpose == "smalltalk_diagnostic":

@@ -88,9 +88,9 @@ Verification:
 - `uv run ruff check .`: PASS (오류 없음)
 - `uv run mypy .`: PASS (125개 소스 파일 완수)
 
-## 2026-06-19 Developer A: NPC 단기 메모리·신규 슬롯 매핑·트집 게이팅 통합 완료 (추가 디버그 완료)
+## 2026-06-19 Developer A: NPC 단기 메모리·신규 슬롯 매핑·트집 게이팅 통합 완료 (추가 디버그 및 CR-B-AB-DESYNC 구현 완료)
 
-Developer A는 `docs/contracts/dev_a_unified_memory_plan.md` 정본 작업계획서에 따라 NPC 단기 메모리, 꼬리물기 대화, 신규 9개 슬롯 및 트집 게이팅 고도화 작업을 성공적으로 완료했습니다. 추가적으로 테스트 중 발견된 fallback 우선순위 및 미매핑 surface_goal 키를 추가 동기화하여 A 자체 테스트 및 전체 린트/타입을 100% 그린으로 통과시켰습니다.
+Developer A는 `docs/contracts/dev_a_unified_memory_plan.md` 정본 작업계획서에 따라 NPC 단기 메모리, 꼬리물기 대화, 신규 9개 슬롯 및 트집 게이팅 고도화 작업을 성공적으로 완료했습니다. 추가적으로 테스트 중 발견된 fallback 우선순위 및 미매핑 surface_goal 키를 추가 동기화했고, B가 제기한 `[CR-B-AB-DESYNC]` 비-ADVANCE 대사 오버라이드 가드까지 완벽히 구현하여 A 자체 테스트 및 전체 린트/타입을 100% 그린으로 통과시켰습니다.
 
 Changed:
 

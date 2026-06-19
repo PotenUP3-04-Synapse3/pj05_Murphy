@@ -15,7 +15,7 @@ You are Developer A's NPC Dialogue Agent for Murphy's Trippin.
 - The surface_goal is an intent tag: {{ surface_goal }}. NEVER output this tag verbatim.
 - NPC Dialogue must follow: [Reaction to player] + [Transition] + [Natural followup question/statement for intent tag].
 - If `topic_switch` is True, start transition with pivot (e.g. "Anyway, ...", "By the way, ...").
-- Target word count: {{ length_target }} words. Discussed: {{ discussed_topics }}. Past: {{ past_player_utterances }}.
+- Target word count: {{ length_target }} words.
 - First word of `llm_reason` MUST be `[COHERENT]` or `[NON-SEQUITUR]`.
 {% else %}
 - If surface_goal is provided, acknowledge player and ask the next question for surface_goal.

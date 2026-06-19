@@ -1121,7 +1121,6 @@ def test_dialogue_history_passed_in_all_purposes():
     payload = _payload(dialogue_purpose="default", dialogue_history=history)
     captured = _capture_llm_payload(payload)
     assert captured["dialogue_history"] == history
-    assert captured["past_player_utterances"][0] == "business"
 
 
 def test_retry_paraphrase_varies_from_previous():
@@ -1572,6 +1571,52 @@ def test_dialogue_result_keys_conformity() -> None:
     assert "tone" in result
     assert "animation" in result
     assert "feedback_kr" in result
+
+
+def test_non_advance_dialogue_guard_override() -> None:
+    # next_action != "ADVANCE" (예: REASK) 일 때, LLM이 숙소 질문을 생성해도 현재 질문인 ask_stay_duration으로 재질문 오버라이드되는지 검증
+    class NextQuestionLLMClient:
+        model = "fake-model"
+        def generate(self, payload: dict) -> dict:
+            return {
+                "npc_text": "I see. Next, tell me where you will stay.", # 다음 질문으로 유도하는 대사 생성
+                "tts_text": "I see. Next, tell me where you will stay.",
+                "feedback_kr": "좋아요.",
+                "tone": "formal_neutral",
+                "npc_emotion": "normal",
+                "llm_reason": "coherent next question"
+            }
+            
+    payload = {
+        "session_id": "session_desync",
+        "npc": {"npc_id": "hale"},
+        "node_id": "IMM_003_DURATION",
+        "player_text": "maybe 13days",
+        "node_context": {
+            "npc_question": "How long will you be staying?",
+        },
+        "evaluation_summary": {"task_success": False},
+        "level_hint": {},
+        "in_game_feedback": {},
+        "branch": {
+            "branch_type": "clarify",
+            "next_action": "REASK", # 비-ADVANCE 액션
+        },
+        "dialogue_seed": {
+            "surface_goal": "ask_stay_duration", # 현재 노드 질문
+        }
+    }
+    
+    result = generate_npc_dialogue_from_level_design(
+        payload,
+        use_llm=True,
+        llm_client=NextQuestionLLMClient(),
+    )
+    
+    # 단언: 생성된 대사가 다음 질문("where you will stay")을 포함하지 않고,
+    # fallback 합성에 의해 현재 질문("How long will you stay in the United States?")을 결합하고 있어야 함.
+    assert "where you will stay" not in result["npc_text"]
+    assert "How long will you stay in the United States?" in result["npc_text"]
 
 
 
