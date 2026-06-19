@@ -218,6 +218,15 @@ class NPCDialogueState(TypedDict):
     llm_client: Any
     # error: LLM 호출 등 처리 중 발생한 예외 상황의 에러 종류 문자열입니다.
     error: NotRequired[str]
+    # session_context_card: NPC 세션 메모리 요약 카드를 저장하는 사전 객체입니다.
+    session_context_card: NotRequired[dict[str, Any]]
+    
+    # 단기 메모리(Short-term Memory) 관련 변수
+    turn_buffer: NotRequired[list[dict[str, Any]]]
+    accumulated_slots: NotRequired[dict[str, str]]
+    forbidden_questions: NotRequired[list[str]]
+    last_npc_intent: NotRequired[str]
+    _memory_cleanup_pending: NotRequired[bool]
 
 
 def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
@@ -228,6 +237,17 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
     normalized = normalize_level_design_payload(payload)
     # [3단계] 페이로드 정보에 매칭되는 NPC의 프로필(Profile)을 조회합니다.
     npc_profile = resolve_npc_profile(_npc_id_from_payload(payload))
+    # 세션 메모리 요약 카드 빌드
+    from backend.app.services.service_a.session_context_card_service import build_session_context_card
+    npc_memory = {
+        "turn_buffer": state.get("turn_buffer") or [],
+        "accumulated_slots": state.get("accumulated_slots") or {},
+        "forbidden_questions": state.get("forbidden_questions") or [],
+        "last_npc_intent": state.get("last_npc_intent") or "",
+    }
+    session_context_card = build_session_context_card(
+        normalized, npc_profile, payload, npc_memory=npc_memory
+    )
     # [4단계] 플레이어의 언어 실력 및 응답 통계를 바탕으로 플레이어 프로필을 빌드합니다.
     profile = build_player_language_profile(normalized)
     # [5단계] 플레이어의 성공/재시도 통계 등을 통해 NPC의 현재 감정 상태(Emotion State)를 추론합니다.
@@ -294,7 +314,11 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
     # profanity_res가 없을 때만 surface_goal 질문을 합성합니다.
     if use_llm and surface_goal and not is_complete_chapter and not profanity_res and purpose != "smalltalk_diagnostic":
         original_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
-        synthesized_text = synthesize_fallback_next_question(original_text, surface_goal)
+        synthesized_text = synthesize_fallback_next_question(
+            original_text,
+            surface_goal,
+            session_context_card.get("open_hooks"),
+        )
         fallback_res["npc_text"] = synthesized_text
         fallback_res["text"] = synthesized_text
         if "tts_text" in fallback_res:
@@ -325,7 +349,8 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
         "profile": profile,
         "emotion_state": emotion_state,
         "policy": policy,
-        "result": result
+        "result": result,
+        "session_context_card": session_context_card,
     }
 
 
@@ -343,9 +368,18 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     payload = state["payload"]
     normalized = state["normalized"]
     fallback_result = state["result"]
-    llm_client = state.get("llm_client")
+    
+    # 직렬화 방지를 위해 config에서 llm_client를 우선적으로 추출합니다.
+    llm_client = None
+    if config and "configurable" in config:
+        llm_client = config["configurable"].get("llm_client")
+    if not llm_client:
+        llm_client = state.get("llm_client")
+        
     npc_profile = state["npc_profile"]
     callbacks = state.get("callbacks")
+    session_context_card = state.get("session_context_card") or {}
+    policy = state["policy"]
 
     # [2단계] 콜백 핸들러 구성 및 RunnableConfig 설정을 초기화합니다.
     run_config = config or RunnableConfig()
@@ -365,34 +399,6 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             logger.warning("dialogue_seed is missing from payload in node_generate_dialogue_llm.")
 
         purpose = payload.get("dialogue_directive", {}).get("purpose", "")
-        discussed_topics = []
-        past_player_utterances = []
-        
-        history = normalized.get("dialogue_history") or []
-        for h in history:
-            pt = h.get("player_text_preview")
-            if pt:
-                past_player_utterances.append(pt)
-            nt = h.get("npc_text_preview")
-            if nt:
-                discussed_topics.append(nt)
-
-        if purpose == "smalltalk_diagnostic":
-            from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader
-            reader = OpenKBFinalResultRecordReader()
-            session_id = payload.get("session_id") or ""
-            records = reader.read_session_records(session_id) if session_id else []
-            for r in records:
-                d_seed = r.get("dialogue_seed") or {}
-                sg = d_seed.get("surface_goal")
-                if sg:
-                    discussed_topics.append(sg)
-                pt = r.get("player_text")
-                if pt:
-                    past_player_utterances.append(pt)
-                    
-        discussed_topics = list(dict.fromkeys(discussed_topics))
-        past_player_utterances = list(dict.fromkeys(past_player_utterances))
 
         incivility = payload.get("incivility") or {}
         incivility_tier = int(incivility.get("tier", 0))
@@ -431,8 +437,6 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "purpose": purpose,
             "topic_switch": payload.get("dialogue_directive", {}).get("topic_switch", False),
             "length_target": payload.get("dialogue_directive", {}).get("length_target"),
-            "discussed_topics": discussed_topics,
-            "past_player_utterances": past_player_utterances,
             
             # Eokkka / Challenge 관련 변수들
             "suspicion_scope": normalized.get("suspicion_scope", "none"),
@@ -445,6 +449,19 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "random_customs_item": normalized.get("random_customs_item", ""),
             "random_customs_item_difficulty": normalized.get("random_customs_item_difficulty", 0),
             "random_customs_item_suspicion_reason": normalized.get("random_customs_item_suspicion_reason", ""),
+            
+            # 세션 컨텍스트 카드 필드들
+            "confirmed_facts": session_context_card.get("confirmed_facts", []),
+            "forbidden_repeat_questions": session_context_card.get("forbidden_repeat_questions", []),
+            "open_hooks": session_context_card.get("open_hooks", []),
+            "last_npc_intent": session_context_card.get("last_npc_intent", ""),
+            "recent_turns_compact": session_context_card.get("recent_turns_compact", []),
+            "topic_thread": session_context_card.get("topic_thread", []),
+            
+            # 정책 관련 변수들
+            "policy_action": policy.action,
+            "policy_next_question_style": policy.next_question_style,
+            "policy_max_sentence_count": policy.max_sentence_count,
         }
 
         # [4단계] 랭체인 1.0+ 규격에 부합하도록 invoke 또는 generate 호출을 수행합니다.
@@ -583,14 +600,82 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     surface_goal = (payload.get("dialogue_seed") or {}).get("surface_goal")
     purpose = payload.get("dialogue_directive", {}).get("purpose", "")
     if surface_goal and purpose != "smalltalk_diagnostic":
-        import re
         sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
         if len(sentences) <= 1 and "?" not in npc_text:
             return {"error": "missing_followup_question"}
 
+    # [신규 가드] 재질문 차단 가드 (repeats_confirmed_fact)
+    forbidden_questions = session_context_card.get("forbidden_repeat_questions") or []
+    npc_text_lower = npc_text.lower().strip()
+    npc_text_clean = re.sub(r'[.!?,\'":;-]', '', npc_text_lower)
+    for fq in forbidden_questions:
+        fq_clean = re.sub(r'[.!?,\'":;-]', '', fq.lower())
+        if fq_clean in npc_text_clean or npc_text_clean in fq_clean:
+            logger.error(f"Post-processing violation: NPC dialogue repeats forbidden question: '{npc_text}' (matches: '{fq}')")
+            return {"error": "repeats_confirmed_fact"}
+
+    # [신규 가드] 꼬리물기 hook 가드 (weak_followup_no_hook)
+    branch_type = normalized.get("branch_type", "neutral")
+    open_hooks = session_context_card.get("open_hooks") or []
+    if branch_type in {"success", "neutral"} and open_hooks and purpose != "smalltalk_diagnostic":
+        sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
+        contains_hook = any(hook.lower() in npc_text_lower for hook in open_hooks)
+        if not contains_hook and len(sentences) <= 1:
+            logger.error(f"Post-processing violation: NPC dialogue lacks open_hooks {open_hooks} in a brief response: '{npc_text}'")
+            return {"error": "weak_followup_no_hook"}
+
+    # [신규 가드] speaker_role_confusion
+    # NPC가 직전 턴에 요청/부탁을 했을 때, 이번 응답이 응답자(=player) 표현을
+    # 포함하면 명시적으로 fallback 전환.
+    LAST_TURN_REQUEST_MARKERS = (
+        "could i borrow", "can i borrow", "may i borrow",
+        "could you help", "can you help", "would you help",
+        "could i have", "may i see", "can i get",
+    )
+    RESPONDER_PHRASE_MARKERS = (
+        "here you are", "here you go", "here it is",
+        "of course, take", "sure, take", "you can have it",
+        "take it", "no problem, take",
+    )
+
+    last_npc_text = (state.get("last_npc_intent") or "").lower()
+    # session_context_card의 recent_turns_compact 마지막 NPC 발화도 함께 확인
+    card = state.get("session_context_card") or {}
+    recent = card.get("recent_turns_compact") or []
+    prev_npc_line = ""
+    if recent:
+        # 마지막 항목에서 NPC 부분만 추출 (포맷에 맞춰)
+        prev_npc_line = str(recent[-1]).lower()
+
+    was_request = any(m in last_npc_text or m in prev_npc_line
+                      for m in LAST_TURN_REQUEST_MARKERS)
+    is_responder = any(p in npc_text.lower() for p in RESPONDER_PHRASE_MARKERS)
+
+    if was_request and is_responder:
+        logger.error(
+            "Speaker role confusion: NPC played responder role after own request. "
+            "prev=%r curr=%r", prev_npc_line[:80], npc_text[:80]
+        )
+        return {"error": "speaker_role_confusion"}
+
+    # [신규 가드] 비-ADVANCE 분기 준수 가드 (CR-B-AB-DESYNC)
+    next_action = normalized.get("next_action") or ""
+    is_non_advance = (next_action in {"REASK", "GIVE_HINT", "WARNING"})
+    if is_non_advance and purpose != "smalltalk_diagnostic":
+        logger.info(f"Non-ADVANCE action '{next_action}' detected. Overriding LLM next question with current surface_goal '{surface_goal}'")
+        sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
+        reaction_part = sentences[0] if sentences else ""
+        from backend.app.services.service_a.dialogue_policy_service import synthesize_fallback_next_question
+        overridden_text = synthesize_fallback_next_question(
+            reaction_part,
+            str(surface_goal),
+            session_context_card.get("open_hooks"),
+        )
+        npc_text = overridden_text
+        tts_text = overridden_text
+
     # coherence guard 신설 (smalltalk_diagnostic 전용)
     if purpose == "smalltalk_diagnostic":
-        import re
         sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
         
         # (a) 반응 없는 맨 질문 검사 (첫 문장이 질문이거나 전체 문장이 1개인데 질문인 경우)
@@ -693,35 +778,195 @@ def node_apply_fallback(state: NPCDialogueState) -> dict[str, Any]:
     return {"result": fallback_result}
 
 
+def node_load_memory(state: NPCDialogueState) -> dict[str, Any]:
+    """체크포인터 복원 결과가 처음이거나 비어있을 때 단기 메모리를 기본값으로 채우고 정리를 보조합니다."""
+    from backend.app.services.service_a.npc_short_term_memory_service import clear_memory_state
+    
+    updates: dict[str, Any] = {}
+    
+    turn_buffer = state.get("turn_buffer")
+    accumulated_slots = state.get("accumulated_slots")
+    forbidden_questions = state.get("forbidden_questions")
+    last_npc_intent = state.get("last_npc_intent")
+    
+    if turn_buffer is None:
+        updates["turn_buffer"] = []
+    if accumulated_slots is None:
+        updates["accumulated_slots"] = {}
+    if forbidden_questions is None:
+        updates["forbidden_questions"] = []
+    if last_npc_intent is None:
+        updates["last_npc_intent"] = ""
+        
+    # 챕터 정리 펜딩 검사 및 비우기
+    if state.get("_memory_cleanup_pending", False):
+        base_state = {
+            "turn_buffer": state.get("turn_buffer") or [],
+            "accumulated_slots": state.get("accumulated_slots") or {},
+            "forbidden_questions": state.get("forbidden_questions") or [],
+            "last_npc_intent": state.get("last_npc_intent") or "",
+        }
+        cleared = clear_memory_state(base_state)
+        updates.update(cleared)
+        updates["_memory_cleanup_pending"] = False
+        
+    return updates
+
+
+def node_persist_memory(state: NPCDialogueState) -> dict[str, Any]:
+    """이번 턴의 대화 결과와 슬롯 획득 정보를 단기 메모리에 저장 및 업데이트합니다.
+    
+    Fail-fast 규칙에 따라 필수 키 누락 시 KeyError를 던집니다.
+    """
+    from backend.app.services.service_a.npc_short_term_memory_service import (
+        append_turn,
+        merge_slots,
+        derive_forbidden_questions
+    )
+    
+    result = state.get("result")
+    payload = state.get("payload")
+    normalized = state.get("normalized")
+    
+    if not result:
+        raise KeyError("result is missing in state")
+    if not payload:
+        raise KeyError("payload is missing in state")
+    if not normalized:
+        raise KeyError("normalized is missing in state")
+        
+    npc_text = result.get("npc_text") or result.get("text")
+    npc_id = normalized.get("npc_id")
+    
+    # Fail-fast 검사
+    if npc_text is None:
+        raise KeyError("npc_text is required in result")
+    if npc_id is None:
+        raise KeyError("npc_id is required in normalized payload")
+        
+    # 현재 턴에서 새로 채워진 슬롯들을 추출
+    understanding = payload.get("understanding") or {}
+    incoming_slots = understanding.get("extracted_slots") or {}
+    
+    # dialogue_seed의 filled_slots도 보조적으로 머지
+    dialogue_seed = payload.get("dialogue_seed") or {}
+    seed_slots = dialogue_seed.get("filled_slots") or {}
+    incoming_slots = merge_slots(incoming_slots, seed_slots)
+    
+    # accumulated_slots 갱신
+    current_slots = state.get("accumulated_slots") or {}
+    new_accumulated_slots = merge_slots(current_slots, incoming_slots)
+    
+    # forbidden_questions 갱신
+    new_forbidden = derive_forbidden_questions(new_accumulated_slots)
+    
+    # turn_buffer 갱신
+    node_id = normalized.get("node_id") or ""
+    surface_goal = dialogue_seed.get("surface_goal") or ""
+    branch_type = normalized.get("branch_type") or "neutral"
+    player_text = normalized.get("player_text") or ""
+    npc_emotion = result.get("npc_emotion") or ""
+    
+    base_memory = {
+        "turn_buffer": state.get("turn_buffer") or [],
+    }
+    
+    updated_memory = append_turn(
+        base_memory,
+        node_id=node_id,
+        surface_goal=surface_goal,
+        branch_type=branch_type,
+        player_text=player_text,
+        npc_text=npc_text,
+        filled_slots=incoming_slots,
+        npc_emotion=npc_emotion
+    )
+    
+    # last_npc_intent 갱신
+    new_last_npc_intent = surface_goal
+    
+    # 챕터 완료 검사
+    transition_status = normalized.get("transition", {}).get("status") or ""
+    next_action = normalized.get("next_action") or ""
+    is_complete_chapter = (transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER")
+    
+    updates: dict[str, Any] = {
+        "turn_buffer": updated_memory["turn_buffer"],
+        "accumulated_slots": new_accumulated_slots,
+        "forbidden_questions": new_forbidden,
+        "last_npc_intent": new_last_npc_intent,
+    }
+    
+    if is_complete_chapter:
+        updates["_memory_cleanup_pending"] = True
+        
+    return updates
+
+
+# 글로벌 싱글톤 캐시
+_GRAPH_SINGLETON: Any | None = None
+
+def _get_compiled_graph() -> Any:
+    """NPCDialogue 에이전트 그래프의 컴파일본을 반환하는 내부 헬퍼 함수입니다.
+    
+    싱글톤 패턴으로 컴파일하며, InMemorySaver checkpointer를 부착합니다.
+    """
+    global _GRAPH_SINGLETON
+    if _GRAPH_SINGLETON is None:
+        try:
+            from langgraph.checkpoint.memory import InMemorySaver
+            checkpointer = InMemorySaver()
+        except ImportError:
+            try:
+                from langgraph.checkpoint import MemorySaver  # type: ignore
+                checkpointer = MemorySaver()
+            except ImportError:
+                raise RuntimeError("langgraph checkpointer unavailable; required for NPC memory")
+                
+        workflow = StateGraph(NPCDialogueState)
+        
+        workflow.add_node("load_memory", node_load_memory)
+        workflow.add_node("initialize_state", node_initialize_state)
+        workflow.add_node("generate_dialogue_llm", node_generate_dialogue_llm)
+        workflow.add_node("apply_fallback", node_apply_fallback)
+        workflow.add_node("persist_memory", node_persist_memory)
+        
+        workflow.add_edge(START, "load_memory")
+        workflow.add_edge("load_memory", "initialize_state")
+        
+        workflow.add_conditional_edges(
+            "initialize_state",
+            route_after_init,
+            {
+                "generate_dialogue_llm": "generate_dialogue_llm",
+                END: "persist_memory"
+            }
+        )
+        workflow.add_conditional_edges(
+            "generate_dialogue_llm",
+            route_after_llm,
+            {
+                "apply_fallback": "apply_fallback",
+                END: "persist_memory"
+            }
+        )
+        workflow.add_edge("apply_fallback", "persist_memory")
+        workflow.add_edge("persist_memory", END)
+        
+        _GRAPH_SINGLETON = workflow.compile(checkpointer=checkpointer)
+        
+    return _GRAPH_SINGLETON
+
+
+def reset_graph_singleton_for_testing() -> None:
+    """테스트 진행 시 메모리를 깨끗하게 비운 싱글톤으로 초기화하기 위한 헬퍼 함수입니다."""
+    global _GRAPH_SINGLETON
+    _GRAPH_SINGLETON = None
+
+
 def build_npc_dialogue_graph() -> Any:
     """NPCDialogue 에이전트의 내부 LangGraph 상태 기계를 조립하여 컴파일합니다."""
-    workflow = StateGraph(NPCDialogueState)
-    
-    workflow.add_node("initialize_state", node_initialize_state)
-    workflow.add_node("generate_dialogue_llm", node_generate_dialogue_llm)
-    workflow.add_node("apply_fallback", node_apply_fallback)
-    
-    workflow.add_edge(START, "initialize_state")
-    
-    workflow.add_conditional_edges(
-        "initialize_state",
-        route_after_init,
-        {
-            "generate_dialogue_llm": "generate_dialogue_llm",
-            END: END
-        }
-    )
-    workflow.add_conditional_edges(
-        "generate_dialogue_llm",
-        route_after_llm,
-        {
-            "apply_fallback": "apply_fallback",
-            END: END
-        }
-    )
-    workflow.add_edge("apply_fallback", END)
-    
-    return workflow.compile()
+    return _get_compiled_graph()
 
 
 def generate_npc_dialogue_from_level_design(
@@ -731,15 +976,37 @@ def generate_npc_dialogue_from_level_design(
     callbacks: list[Any] | None = None,
 ) -> dict[str, Any]:
     """레벨 디자인 에이전트(Level Design Agent) JSON 데이터를 기반으로 컴파일된 LangGraph를 동작시켜 최종 대사 및 오디오 설정 사전을 도출합니다."""
-    graph = build_npc_dialogue_graph()
+    from backend.app.services.service_a.npc_short_term_memory_service import build_thread_id
+    
+    graph = _get_compiled_graph()
+    
+    # session_id 추출
+    session_id = (
+        payload.get("session_id")
+        or payload.get("turn", {}).get("session", {}).get("session_id")
+        or ""
+    )
+    # npc_id 추출 및 정규화
+    npc_id = _npc_id_from_payload(payload) or ""
+    
+    # thread_id 빌드 (fail-fast: 누락 시 ValueError)
+    thread_id = build_thread_id(session_id, npc_id)
+    
+    config = {
+        "configurable": {
+            "thread_id": thread_id,
+            "llm_client": llm_client,
+        }
+    }
+    if callbacks:
+        config["callbacks"] = callbacks  # type: ignore
+        
     initial_state = {
         "payload": payload,
         "use_llm": use_llm,
-        "llm_client": llm_client,
+        "llm_client": None,  # 직렬화 에러 방지를 위해 상태에는 None 전달
     }
-    config = {}
-    if callbacks:
-        config["callbacks"] = callbacks
+    
     final_state = graph.invoke(initial_state, config=config)
     return final_state["result"]
 

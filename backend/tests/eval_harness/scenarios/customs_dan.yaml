@@ -1,0 +1,24 @@
+- id: customs_dan_security_check
+  npc_id: dan
+  node_id: IMM_001_PASSPORT
+  description: "Dan 보안 요원의 여권 확인 요청 시 정상 대응 검사."
+  player_inputs:
+    - "Yes, here is my passport. Please check it."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["purpose", "visit", "why", "passport", "see", "continue", "okay"]
+    must_not_include_any: ["passport please"]
+
+- id: customs_dan_strict_reask
+  npc_id: dan
+  node_id: IMM_002_PURPOSE
+  description: "Dan 요원의 엄격한 목적 심사 중 플레이어의 모호한 답변에 대해 강압적으로 재질문하는지 검증."
+  payload_overrides:
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "I just want to look around or maybe something else."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["clear", "purpose", "why", "directly", "visit"]
+    must_not_include_any: ["enjoy"]

@@ -1,0 +1,46 @@
+- id: flight_a003_emily_polite_interaction
+  npc_id: emily
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "Emily에게 펜을 건네주는 상황 검증."
+  player_inputs:
+    - "Yes, here is a pen. Feel free to use it."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["thank", "kind", "helpful", "continue", "okay", "borrow", "pen"]
+    must_not_include_any: ["here you are", "take it"]
+
+- id: flight_a003_emily_distracted_player
+  npc_id: emily
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "플레이어가 딴소리를 할 때 폼 작성 펜에 대해 부드럽게 복기 시키는지 검증."
+  player_inputs:
+    - "Do you like watching movies?"
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["movie", "pen", "borrow", "continue", "okay", "arrival", "form"]
+    must_not_include_any: ["here is my pen"]
+
+- id: flight_a003_emily_unclear_reask
+  npc_id: emily
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "모호한 대답 시 Emily가 친절하게 펜 요청을 반복하는지 검사."
+  payload_overrides:
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "I have something else."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["pen", "borrow", "write", "clear", "answer", "arrival", "form"]
+    must_not_include_any: ["take this"]
+
+- id: flight_a003_emily_no_pen
+  npc_id: emily
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "펜이 없어 못 빌려준다는 답변에 아쉬워하며 수긍하는지 검증."
+  player_inputs:
+    - "Sorry, I lost my pen."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["okay", "worry", "fine", "find", "continue", "borrow", "pen", "arrival", "form"]
+    must_not_include_any: ["here is a pen"]

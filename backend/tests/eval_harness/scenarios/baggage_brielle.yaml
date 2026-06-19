@@ -1,0 +1,24 @@
+- id: baggage_brielle_report_missing
+  npc_id: brielle
+  node_id: BAG_001_REPORT_MISSING_AT_DESK
+  description: "수하물 분실 신고 상황에서 정상적인 지원 반응 검사."
+  player_inputs:
+    - "Excuse me, I can't find my baggage. It hasn't come out yet."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["claim", "tag", "ticket", "number", "sorry", "help", "today"]
+    must_not_include_any: ["passport"]
+
+- id: baggage_brielle_wrong_interaction
+  npc_id: brielle
+  node_id: BAG_001_REPORT_MISSING_AT_DESK
+  description: "분실 신고 카운터에서 플레이어가 엉뚱하게 말을 걸 때 재차 물어보는지 검증."
+  payload_overrides:
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "Can I buy some water here?"
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["water", "baggage", "claim", "sorry", "assist", "help", "today"]
+    must_not_include_any: ["here is your water"]

@@ -1,0 +1,46 @@
+- id: flight_a002_novak_polite_interaction
+  npc_id: novak
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "Novak에게 펜을 빌려주는 공손한 인터랙션."
+  player_inputs:
+    - "Sure, you can borrow my pen."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["thank", "appreciate", "helpful", "continue", "okay", "borrow", "pen"]
+    must_not_include_any: ["take it", "here is the pen"]
+
+- id: flight_a002_novak_quiet_chat
+  npc_id: novak
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "Novak의 조용한 성향을 고려하여, 플레이어가 날씨나 비행 상황을 질문했을 때 본론(펜)으로 복귀하는지 검증."
+  player_inputs:
+    - "The flight is long, isn't it?"
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["long", "pen", "borrow", "continue", "okay", "arrival", "form"]
+    must_not_include_any: ["here you are"]
+
+- id: flight_a002_novak_unclear_reask
+  npc_id: novak
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "Novak에게 모호하게 대답할 때 얌전하게 다시 물어보는지 확인."
+  payload_overrides:
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "Maybe later."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["pen", "borrow", "clear", "answer", "arrival", "form"]
+    must_not_include_any: ["here is my pen"]
+
+- id: flight_a002_novak_declined
+  npc_id: novak
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "펜이 없다고 대답했을 때의 Novak 반응."
+  player_inputs:
+    - "No, I don't have one."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["okay", "worry", "problem", "continue", "borrow", "pen", "arrival", "form"]
+    must_not_include_any: ["here you go"]

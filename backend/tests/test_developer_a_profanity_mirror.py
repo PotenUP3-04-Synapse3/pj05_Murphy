@@ -46,6 +46,7 @@ def test_dialogue_agent_rule_profanity(monkeypatch):
     # 환경 변수를 mirror 로 조작하고, T2 인격모독 신호를 보내서 룰베이스 반응 검증 (LLM 미사용 경로)
     monkeypatch.setenv("MURPHY_NPC_PROFANITY_MIRROR_MODE", "mirror")
     payload = {
+        "session_id": "test_session_profanity",
         "player_text": "you idiot",
         "npc": {"npc_id": "hale"},
         "node_context": {

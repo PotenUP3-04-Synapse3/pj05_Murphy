@@ -106,19 +106,41 @@ SURFACE_GOAL_QUESTIONS = {
     "confirm_immigration_clearance_transition": "Alright, here is your passport. Enjoy your stay.",
     "complete_immigration_clearance_transition": "All cleared.",
     
+    # 신규 입국심사 9개 surface_goal
+    "ask_long_stay_reason": "Why are you staying for so long?",
+    "ask_hotel_reservation": "Do you have a hotel reservation?",
+    "ask_hotel_choice_reason": "Why did you choose this hotel?",
+    "ask_travel_itinerary": "What is your travel itinerary?",
+    "ask_first_visit": "Is this your first visit to the United States?",
+    "ask_occupation": "What is your occupation?",
+    "ask_cash_amount": "How much cash are you carrying?",
+    "ask_trip_payment_source": "Who is paying for your trip?",
+    "ask_denied_entry_history": "Have you ever been denied entry?",
+    
     # Baggage 챕터
     "report_missing_bag_at_service_desk": "Do you have your baggage claim tag or ticket?",
     "ask_claim_tag_or_ticket": "May I see your baggage claim tag?",
     "confirm_carousel_search": "Let me search the carousel. Can you describe your bag?",
     "redirect_to_customs_hold_area": "Please go to the customs hold area. Understood?",
     "customs_hold_explanation_before_unlock": "What brings you to the customs hold area?",
-    "explain_random_customs_item": "",
-    "complete_customs_baggage_clearance": "",
-    "complete_baggage_claim_transition": ""
+    "explain_random_customs_item": "Can you explain what this item is and why it is in your suitcase?",
+    "complete_customs_baggage_clearance": "You're cleared now. You may take your suitcase and exit the airport.",
+    "complete_baggage_claim_transition": "Chapter complete.",
+    
+    # Extra / Missing
+    "complete_flight_smalltalk_transition": "Chapter complete.",
+    "estimate_user_travel_speaking_level": "Could I borrow your pen for this arrival form?",
+    "closing_eviction": "Sir, since you cannot provide the details, we cannot complete the report.",
+    "scenario_complete": "Thank you for playing Murphy's Trippin Alpha.",
+    "summarize_alpha_result": "Your airport arrival scenario is complete. Let's review your result."
 }
 
 
-def synthesize_fallback_next_question(fallback_text: str, surface_goal: str) -> str:
+def synthesize_fallback_next_question(
+    fallback_text: str,
+    surface_goal: str,
+    open_hooks: list[str] | None = None,
+) -> str:
     """LLM 실패 시 사용될 폴백 텍스트(Fallback Text) 뒤에 surface_goal에 따른 룰베이스 다음 질문을 합성합니다."""
     question = SURFACE_GOAL_QUESTIONS.get(surface_goal)
     if not question:
@@ -130,7 +152,16 @@ def synthesize_fallback_next_question(fallback_text: str, surface_goal: str) -> 
     stripped = fallback_text.strip()
     if not stripped.endswith((".", "!", "?")):
         stripped += "."
-    return f"{stripped} {question}"
+        
+    # open_hooks 가 있고 영어 1단어 이상일 때 hook prefix 합성
+    prefix = ""
+    if open_hooks and len(open_hooks) > 0:
+        first_hook = open_hooks[0]
+        # ASCII 영문 및 단어 형태 검증
+        if first_hook.isascii() and first_hook.isalpha():
+            prefix = f"You mentioned {first_hook} — "
+            
+    return f"{stripped} {prefix}{question}"
 
 
 RETRY_PARAPHRASES = {
@@ -148,6 +179,66 @@ RETRY_PARAPHRASES = {
         "Where will you stay in the United States?",
         "Could you tell me the address of your stay?",
         "Where are you going to stay?",
+    ],
+    "ask_travel_purpose_smalltalk": [
+        "Are you visiting New York for a trip?",
+        "What brings you to New York?",
+        "Could you tell me the reason for your visit?",
+    ],
+    "ask_stay_plan_smalltalk": [
+        "How long are you planning to stay in the US?",
+        "How many days will you spend in New York?",
+        "Could you share your stay plan with me?",
+    ],
+    "respond_to_polite_request": [
+        "Are you visiting New York for a trip?",
+        "Is this your first time traveling to New York?",
+        "What is the main reason for your visit?",
+    ],
+    "ask_long_stay_reason": [
+        "Why are you staying for so long?",
+        "What is the reason for your extended stay?",
+        "Why do you need to stay that long?",
+    ],
+    "ask_hotel_reservation": [
+        "Do you have a hotel reservation?",
+        "Is your hotel booking confirmed?",
+        "Can you show me your hotel booking?",
+    ],
+    "ask_hotel_choice_reason": [
+        "Why did you choose this hotel?",
+        "What is the reason for selecting this hotel?",
+        "Why stay at this specific hotel?",
+    ],
+    "ask_travel_itinerary": [
+        "What is your travel itinerary?",
+        "Do you have a confirmed travel plan?",
+        "What is your schedule for the trip?",
+    ],
+    "ask_first_visit": [
+        "Is this your first visit to the United States?",
+        "Have you visited the United States before?",
+        "Is this your first time visiting?",
+    ],
+    "ask_occupation": [
+        "What is your occupation?",
+        "What do you do for a living?",
+        "What is your job?",
+    ],
+    "ask_cash_amount": [
+        "How much cash are you carrying?",
+        "How much money do you have with you?",
+        "What is the amount of cash you have?",
+    ],
+    "ask_trip_payment_source": [
+        "Who is paying for your trip?",
+        "What is your source of funding?",
+        "How are you funding this trip?",
+    ],
+    "ask_denied_entry_history": [
+        "Have you ever been denied entry?",
+        "Have you been refused entry to the United States?",
+        "Is there any history of denied entry?",
     ]
 }
 

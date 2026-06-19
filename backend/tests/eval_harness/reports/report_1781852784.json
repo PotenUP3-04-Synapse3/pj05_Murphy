@@ -1,0 +1,828 @@
+{
+  "timestamp": 1781852784,
+  "total_checks": 89,
+  "passed_checks": 84,
+  "pass_rate": 0.9438202247191011,
+  "results": [
+    {
+      "scenario_id": "baggage_brielle_report_missing",
+      "npc_id": "brielle",
+      "node_id": "BAG_001_REPORT_MISSING_AT_DESK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Excuse me, I can't find my baggage. It hasn't come out yet.",
+          "npc_text": "Hi, how can I help you today?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "baggage_brielle_wrong_interaction",
+      "npc_id": "brielle",
+      "node_id": "BAG_001_REPORT_MISSING_AT_DESK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Can I buy some water here?",
+          "npc_text": "Hi, how can I help you today?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "customs_dan_security_check",
+      "npc_id": "dan",
+      "node_id": "IMM_001_PASSPORT",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Yes, here is my passport. Please check it.",
+          "npc_text": "May I see your passport?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "customs_dan_strict_reask",
+      "npc_id": "dan",
+      "node_id": "IMM_002_PURPOSE",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "I just want to look around or maybe something else.",
+          "npc_text": "What is the purpose of your visit?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "flight_a001_arabella_pen_normal",
+      "npc_id": "arabella",
+      "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Sure, here is my pen. You can borrow it.",
+          "npc_text": "Could I borrow your pen for this arrival form?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "flight_a001_arabella_pen_unclear_response",
+      "npc_id": "arabella",
+      "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "What?",
+          "npc_text": "Could I borrow your pen for this arrival form?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        },
+        {
+          "turn_index": -1,
+          "player_text": "[SYSTEM_BRANCH_CHECK]",
+          "npc_text": "",
+          "checks": {
+            "branch_type_in": {
+              "passed": true,
+              "details": "기대 분기 리스트: ['retry', 'clarify'], 실제 인입 분기: 'retry'"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "flight_a001_arabella_topic_detour",
+      "npc_id": "arabella",
+      "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "By the way, what is your name?",
+          "npc_text": "Could I borrow your pen for this arrival form?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "flight_a001_arabella_refusal",
+      "npc_id": "arabella",
+      "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "I'm sorry, I don't have a pen either.",
+          "npc_text": "Could I borrow your pen for this arrival form?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "flight_a001_arabella_topic_return_from_detour",
+      "npc_id": "arabella",
+      "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "I am going to New York.",
+          "npc_text": "I see. Tell me more about that.",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "flight_a001_arabella_polite_response_gating",
+      "npc_id": "arabella",
+      "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Yes, of course you can use my pen.",
+          "npc_text": "Could I borrow your pen for this arrival form?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "flight_a003_emily_polite_interaction",
+      "npc_id": "emily",
+      "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Yes, here is a pen. Feel free to use it.",
+          "npc_text": "Could I borrow your pen for this arrival form?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "flight_a003_emily_distracted_player",
+      "npc_id": "emily",
+      "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Do you like watching movies?",
+          "npc_text": "Could I borrow your pen for this arrival form?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "flight_a003_emily_unclear_reask",
+      "npc_id": "emily",
+      "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "I have something else.",
+          "npc_text": "Could I borrow your pen for this arrival form?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "flight_a003_emily_no_pen",
+      "npc_id": "emily",
+      "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Sorry, I lost my pen.",
+          "npc_text": "Could I borrow your pen for this arrival form?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "flight_a002_novak_polite_interaction",
+      "npc_id": "novak",
+      "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Sure, you can borrow my pen.",
+          "npc_text": "Could I borrow your pen for this arrival form?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "flight_a002_novak_quiet_chat",
+      "npc_id": "novak",
+      "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "The flight is long, isn't it?",
+          "npc_text": "Could I borrow your pen for this arrival form?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "flight_a002_novak_unclear_reask",
+      "npc_id": "novak",
+      "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Maybe later.",
+          "npc_text": "Could I borrow your pen for this arrival form?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "flight_a002_novak_declined",
+      "npc_id": "novak",
+      "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "No, I don't have one.",
+          "npc_text": "Could I borrow your pen for this arrival form?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "immigration_hale_passport_normal",
+      "npc_id": "hale",
+      "node_id": "IMM_001_PASSPORT",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Here is my passport.",
+          "npc_text": "May I see your passport?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "immigration_hale_passport_retry",
+      "npc_id": "hale",
+      "node_id": "IMM_001_PASSPORT",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "No, I don't want to show it.",
+          "npc_text": "May I see your passport?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        },
+        {
+          "turn_index": -1,
+          "player_text": "[SYSTEM_BRANCH_CHECK]",
+          "npc_text": "",
+          "checks": {
+            "branch_type_in": {
+              "passed": true,
+              "details": "기대 분기 리스트: ['retry', 'fail'], 실제 인입 분기: 'retry'"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "immigration_hale_purpose_tourism",
+      "npc_id": "hale",
+      "node_id": "IMM_002_PURPOSE",
+      "passed": false,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "I am here for tourism and sightseeing.",
+          "npc_text": "What is the purpose of your visit?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": false,
+              "details": "NPC 대사에 필수 패턴 중 하나도 포함되지 않았습니다. 기대 패턴: ['how long', 'stay', 'duration', 'continue', 'okay'], 실제 대사: 'what is the purpose of your visit?'"
+            },
+            "must_not_include_any": {
+              "passed": false,
+              "details": "NPC 대사에 금지된 패턴이 포함되었습니다: ['purpose'], 실제 대사: 'what is the purpose of your visit?'"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "immigration_hale_purpose_evasion",
+      "npc_id": "hale",
+      "node_id": "IMM_002_PURPOSE",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "I just want to walk around.",
+          "npc_text": "What is the purpose of your visit?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "immigration_hale_duration_normal",
+      "npc_id": "hale",
+      "node_id": "IMM_003_DURATION",
+      "passed": false,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "I will stay for five days.",
+          "npc_text": "How long will you stay in the United States?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": false,
+              "details": "NPC 대사에 금지된 패턴이 포함되었습니다: ['how long'], 실제 대사: 'how long will you stay in the united states?'"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "immigration_hale_stay_location_challenge",
+      "npc_id": "hale",
+      "node_id": "IMM_004_STAY_LOCATION",
+      "passed": false,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "I am staying at the MGM Grand Las Vegas.",
+          "npc_text": "Where will you stay in the United States?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": false,
+              "details": "NPC 대사에 필수 패턴 중 하나도 포함되지 않았습니다. 기대 패턴: ['MGM', 'hotel', 'expensive', 'money', 'who', 'Las Vegas', 'Grand', 'tell', 'more'], 실제 대사: 'where will you stay in the united states?'"
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "immigration_hale_profanity_mirror",
+      "npc_id": "hale",
+      "node_id": "IMM_002_PURPOSE",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Mind your own damn business.",
+          "npc_text": "What is the purpose of your visit?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "immigration_hale_cross_turn_callback",
+      "npc_id": "hale",
+      "node_id": "IMM_003_DURATION",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "I will stay for ten days.",
+          "npc_text": "How long will you stay in the United States?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "immigration_harris_passport_normal",
+      "npc_id": "harris",
+      "node_id": "IMM_001_PASSPORT",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Here is my passport, please.",
+          "npc_text": "May I see your passport?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "immigration_harris_unclear_clarify",
+      "npc_id": "harris",
+      "node_id": "IMM_002_PURPOSE",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Just for fun.",
+          "npc_text": "What is the purpose of your visit?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "immigration_harris_supportive_hint",
+      "npc_id": "harris",
+      "node_id": "IMM_003_DURATION",
+      "passed": true,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "Maybe 3 or 4 weeks?",
+          "npc_text": "How long will you stay in the United States?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": true,
+              "details": "필수 패턴이 정상 매칭되었습니다."
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "immigration_harris_location_check",
+      "npc_id": "harris",
+      "node_id": "IMM_004_STAY_LOCATION",
+      "passed": false,
+      "scores": [
+        {
+          "turn_index": 0,
+          "player_text": "I will stay at Hilton Hotel in New York.",
+          "npc_text": "Where will you stay in the United States?",
+          "checks": {
+            "npc_role_must_not_be_giver": {
+              "passed": true,
+              "details": "NPC가 Giver 역할을 모방하지 않았습니다."
+            },
+            "must_include_any": {
+              "passed": false,
+              "details": "NPC 대사에 필수 패턴 중 하나도 포함되지 않았습니다. 기대 패턴: ['Hilton', 'New York', 'enjoy', 'continue', 'okay'], 실제 대사: 'where will you stay in the united states?'"
+            },
+            "must_not_include_any": {
+              "passed": true,
+              "details": "금지된 패턴이 검출되지 않았습니다."
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

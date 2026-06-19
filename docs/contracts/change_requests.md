@@ -3,8 +3,126 @@
 Cross-owner change requests are listed below. Status lines describe the current
 repository state as of the latest handoff entry.
 
+## Change Request - 2026-06-19 - [CR-A-SESSION-ID-REQUIRED] 페이로드 session_id 의무화
+
+Status: Open (Developer A 제기 - 2026-06-19; Developer C 구현 영역).
+
+### Requested By
+
+Developer A / kimyonghee
+
+### Affected Owner
+
+Developer C / Sean Han
+
+### Reason
+
+Developer A는 통합 작업계획서 `docs/plans/dev_a_unified_memory_plan.md`
+(M-1 ~ M-5) 에 따라 NPC별 단기 메모리를 LangGraph 1.2 `InMemorySaver`
+checkpointer 위에 구축했다. 메모리 격리 키는 다음과 같다:
+
+```
+thread_id = f"{session_id}:{npc_id}"
+```
+
+A 측 코드(`backend/app/services/service_a/npc_short_term_memory_service.py`
+의 `build_thread_id`)는 §0.4 fail-fast 원칙에 따라 `session_id` 또는
+`npc_id`가 빈 값(`None` / `""` / 공백)일 때 즉시 `ValueError("session_id and
+npc_id are required for memory isolation")` 를 던진다. 폴백 키(`"anon"`/
+`"unknown"`)를 만들지 않는다.
+
+현재 페이로드 계약상 `turn.session.session_id`가 optional처럼 취급되는
+경로가 있다. Unreal 또는 테스트 호출에서 누락이 발생하면 A가 호출
+시점에 예외로 떨어진다. 이는 동작 자체는 의도된 fail-fast지만,
+호출자(C 어댑터)에서 보다 명확한 4xx로 사전 차단되는 편이 운영상
+디버깅이 단순하다.
+
+### Proposed Contract Change
+
+1. 페이로드 스키마에서 `turn.session.session_id`를 **required**로 명시.
+   참고: `backend/app/schemas/game_turn.py` (`Session` 모델 부근).
+2. C 어댑터(`backend/app/integrations/dev_a_npc_dialogue_client.py`)가
+   A 호출 직전에 `session_id`/`npc_id` 빈 값을 검증해, 빈 경우 명시적인
+   4xx 응답으로 사전 차단.
+3. C-side 회귀 테스트에 누락 케이스 1종 추가.
+
+### Compatibility Impact
+
+- A의 fail-fast 동작은 변경 없음. C-side 검증만 추가되는 additive 변경.
+- Unreal 측 페이로드는 이미 session_id를 채워 보내고 있으므로 운영 영향
+  최소. 테스트 픽스처/예시 페이로드에서만 누락이 있을 가능성.
+- 회귀 가드:
+  - `backend/tests/test_developer_a_npc_dialogue.py::test_build_thread_id_fail_fast`
+    (A 자체 가드 — 변경 없음)
+  - C-side 신규 테스트 1종 (4xx 응답 검증)
+
+---
+
+## Change Request - 2026-06-19 - [CR-A-HISTORY-DEPRECATION] dialogue_history 의무 전송 폐지 검토
+
+Status: Open (Developer A 제기 - 2026-06-19; Developer C 구현 영역).
+
+### Requested By
+
+Developer A / kimyonghee
+
+### Affected Owner
+
+Developer C / Sean Han
+
+### Reason
+
+`docs/plans/dev_a_unified_memory_plan.md` (M-1 ~ M-6, M-14) 적용 이후
+Agent A는 LangGraph `InMemorySaver` 위에 `(session_id, npc_id)` 단위 NPC별
+단기 메모리(`turn_buffer`, `accumulated_slots`, `forbidden_questions`,
+`last_npc_intent`)를 자체 보유한다.
+
+세션 컨텍스트 카드(`backend/app/services/service_a/session_context_card_service.py`)
+는 다음 우선순위로 입력 소스를 선택한다:
+
+1. **운영 경로(현재):** Agent A가 보유한 NPC 메모리(`npc_memory`).
+2. **Cold-start fallback:** A 메모리가 비어 있을 때만 C가 보내주는
+   `dialogue_seed.dialogue_history`.
+
+이 구조에서 C가 매 호출마다 `_sync_dialogue_history_to_dialogue_seed`
+(`backend/app/tools/tool_c/developer_c_graph_tools.py` 약 846줄,
+`max_entries=5`)를 통해 OpenKB 세션 레코드를 읽어 history를 만드는 작업이
+대부분 사용되지 않는다. 페이로드 사이즈와 C-side 처리 비용을 절감할 수
+있다.
+
+추가로, 현재 history는 **세션 단위 누적**(여러 NPC가 같은 history 공유)이라
+기내 승객(seatmate)과 입국심사관(immigration_officer)이 같은 컨텍스트를
+보는 비현실적 상황이 발생해 왔다. A의 자체 메모리는 NPC별로 격리되어 있어
+이 문제가 이미 해결된 상태다.
+
+### Proposed Contract Change
+
+1. **단계 1 (검증):** A 메모리 운영 경로가 cold-start fallback과 동등하거나
+   더 풍부한 컨텍스트를 제공함을 공동 회귀로 확인.
+   - 참고 테스트: `backend/tests/test_developer_a_npc_dialogue.py` 의
+     세션 컨텍스트 카드/메모리 격리 관련 테스트군.
+2. **단계 2 (점진 폐지):** C 그래프에서 `_sync_dialogue_history_to_dialogue_seed`
+   호출을 옵션 처리(예: 환경 변수 `MURPHY_C_LEGACY_HISTORY=1` 일 때만
+   동작)하여 운영 기본값에서 비활성화.
+3. **단계 3 (제거):** 안정 기간 경과 후 함수와 관련 OpenKB 읽기 코드 제거.
+   `TurnHistoryEntry`, `DialogueSeed.dialogue_history` 필드는 호환성을 위해
+   당분간 schema에 남겨두고 deprecation 주석 추가.
+
+### Compatibility Impact
+
+- A 측 변경 없음 (cold-start fallback 경로는 그대로 유지하되 점진적으로
+  비활성화).
+- C 측 페이로드 사이즈 감소 및 OpenKB 읽기 호출 감소로 latency 개선 기대.
+- 호환성: A는 `dialogue_history`가 비어 있어도 정상 동작하므로 단계 2까지
+  하위 호환.
+- 관련 CR: `[CR-B-HISTORY-MEMORY]` (입국신고서 컨텍스트는 별개 경로로
+  유지). A 자체 메모리와 arrival_form은 보완 관계이며 충돌하지 않는다.
+
+---
+
 ## Change Request - 2026-06-19 - [CR-B-AB-DESYNC] 입국심사 비-ADVANCE 분기 준수 가드 (대화 일관성 확보)
 
+Status: Resolved (Developer A implementation complete - 2026-06-19).
 Status: Resolved (Developer A 및 Developer C 구현 완료 - 2026-06-19).
 
 ### Requested By
@@ -15,6 +133,12 @@ Developer B
 
 - **Developer A / kimyonghee — 구현 주체** (`npc_dialogue_agent.py` 가드 추가).
 - Developer C / Sean Han — **신규 작업 없음**. 아래 §C 전달 경로(이미 충족) 확인 + 회귀 테스트만.
+
+### Developer A Resolution - 2026-06-19
+
+- `npc_dialogue_agent.py`의 `node_generate_dialogue_llm` 후처리 부분에 비-ADVANCE 분기 준수 가드(`is_non_advance`)를 추가하여, `next_action in {"REASK", "GIVE_HINT", "WARNING"}` 일 때 다음 질문 대신 현재 노드 질문(`surface_goal`)을 재질문하도록 오버라이드 조치했습니다.
+- `test_non_advance_dialogue_guard_override` 유닛 테스트를 추가하여 비-ADVANCE 제어 동작을 검증했습니다.
+- A-owned 테스트 87종 모두 100% 그린으로 통과 완료했습니다.
 
 ### Reason (재현 로그)
 
@@ -37,12 +161,12 @@ A가 받는 정규화 페이로드에는 가드에 필요한 신호가 **이미 
 (`backend/app/services/service_a/developer_a_input_service.py`,
 `normalize_level_design_payload`):
 
-| 신호 | normalized 키 | 라인 | 값 예시 |
-| --- | --- | --- | --- |
-| 다음 행동 | `next_action` | :110 | `ADVANCE` / `REASK` / `GIVE_HINT` / `WARNING` / `FAIL_END` |
-| 분기 타입 | `branch_type` | :82 | `success` / `retry` / `clarify` / `hint` / `warning` |
-| 대사 목적 | `dialogue_purpose` | :84 | `continue_to_next_question` / `support_retry` / `warn_and_control_risk` |
-| 질문 목표 | `dialogue_seed.surface_goal` | :88 | 비-ADVANCE 시 **현재 노드 질문의 goal**(예: `ask_stay_duration`) |
+| 신호      | normalized 키                | 라인 | 값 예시                                                                 |
+| --------- | ---------------------------- | ---- | ----------------------------------------------------------------------- |
+| 다음 행동 | `next_action`                | :110 | `ADVANCE` / `REASK` / `GIVE_HINT` / `WARNING` / `FAIL_END`              |
+| 분기 타입 | `branch_type`                | :82  | `success` / `retry` / `clarify` / `hint` / `warning`                    |
+| 대사 목적 | `dialogue_purpose`           | :84  | `continue_to_next_question` / `support_retry` / `warn_and_control_risk` |
+| 질문 목표 | `dialogue_seed.surface_goal` | :88  | 비-ADVANCE 시 **현재 노드 질문의 goal**(예: `ask_stay_duration`)        |
 
 문제는 **A의 두 생성 경로 중 LLM 경로에만 가드가 없다**:
 
@@ -86,6 +210,7 @@ if is_non_advance and purpose != "smalltalk_diagnostic":
 입국심사/세관(비-ADVANCE) 턴에도 적용되도록 일반화한다.
 
 **재사용 가능한 기존 유틸 (신규 구현 불필요)**
+
 - `synthesize_fallback_next_question(original_text, surface_goal)` — `npc_dialogue_agent.py`(:262에서 이미 사용).
 - `get_retry_variation(surface_goal, last_npc_text, current_text)` — `backend/app/services/service_a/dialogue_policy_service.py`.
 - smalltalk coherence guard 패턴 — `npc_dialogue_agent.py:479-501`.
@@ -109,6 +234,7 @@ if is_non_advance and purpose != "smalltalk_diagnostic":
   보장만 하면 된다(예: `test_preprototype_flow.py`).
 
 Developer C follow-up, 2026-06-19:
+
 - Added a C-owned regression in `test_preprototype_flow.py` proving
   `branch.next_action`, `dialogue_directive.purpose`, and
   `dialogue_seed.surface_goal` reach the A-facing payload on a non-ADVANCE
@@ -143,6 +269,38 @@ Developer C follow-up, 2026-06-19:
 Developer B는 UNCLEAR 시 hard-fail 카운터 증가를 배제하고 한도를 5로 상향
 (`[CR retry 완화]`, 구현 완료)하여 조기 강제 종료 민감도만 완화함. desync로 인한
 발화-슬롯 불일치 근본 문제는 A 가드 적용 전까지 잔존한다.
+
+## Change Request - 2026-06-19 - [CR-A-E2E-TEST-SYNC] E2E 테스트 단언 수정 요청 (ask_stay_duration 폴백 개선 관련)
+
+### Requested By
+
+Developer A
+
+### Affected Owner
+
+Developer C / Sean Han (E2E 테스트 소유자)
+
+### Reason
+
+Developer A의 통합 작업계획서 `docs/contracts/dev_a_unified_memory_plan.md` (M-7)에 의거하여, `ask_stay_duration`에 대한 룰베이스 폴백 텍스트가 개선되었습니다.
+
+- 기존: 디폴트 텍스트인 `"Okay. Please continue."`로 폴백됨.
+- 신규: `"How long will you stay in the United States?"`가 올바르게 반환됨.
+
+이 개선으로 인해 Developer C가 소유한 `backend/tests/test_preprototype_flow.py`의 E2E 테스트 `test_orchestrator_uses_repaired_llm_visit_purpose_before_developer_a_dialogue`가 기존 버그성 디폴트값인 `"Okay. Please continue."`를 단언(assert)하고 있어 테스트 실패가 발생합니다.
+
+### Proposed Contract Change
+
+`backend/tests/test_preprototype_flow.py` (line 863)의 단언문을 다음과 같이 업데이트할 것을 요청합니다.
+
+```diff
+-       assert response.npc.text == "Okay. Please continue."
++       assert response.npc.text == "How long will you stay in the United States?"
+```
+
+### Compatibility Impact
+
+E2E 흐름에서 `ask_stay_duration`에 대한 실제 NPC 대사가 더욱 자연스럽게 반환되도록 변경되는 것으로, 시나리오 정합성에 부합하며 하위 호환성을 깨뜨리지 않습니다.
 
 ### Developer A & C Resolution - 2026-06-19
 
@@ -207,7 +365,7 @@ Developer C / Sean Han (일부 Unreal 연동 필요)
   history는 대화 코히런스(반복 회피·직전 반응) 전용으로 두고, 사실 기억은 C3로 분리.
 - **C3. 입국신고서 컨텍스트 전송 (핵심).** Unreal이 신고서 작성 내용을 구조화 객체로
   전송하고(예: `GameState.arrival_form { full_name, address, purpose, stay_length,
-  declared_items, ... }`), C가 매 턴 game_state로 유지하며 A(및 필요시
+declared_items, ... }`), C가 매 턴 game_state로 유지하며 A(및 필요시
   B/Understanding)에 전달한다. 이를 통해 슬롯·history window 의존 없이 NPC가 사실을
   항상 참조하고, 말한 답변과 신고서 내용을 대조할 수 있다.
 
@@ -256,6 +414,7 @@ Developer B는 `docs/workplan-dev-b-1.md` 계획에 따라 입국심사 챕터
 50-134줄)에 등록돼 있지 않다.
 
 영향:
+
 - **LLM 모드**: node_context 기반으로 LLM이 슬롯을 추출하므로 정상 동작 예상.
 - **룰 모드(LLM fallback·오프라인·일부 테스트 경로)**: 신규 슬롯이 미등록이라
   추출 실패 → `missing_slots` 고정 → 해당 노드가 영원히 SUCCESS에 도달하지 못하고
@@ -312,6 +471,7 @@ Developer B는 `docs/workplan-dev-b-1.md` 계획에 따라 입국심사 챕터
 Status: Resolved (Developer C implementation complete - 2026-06-18).
 
 Developer C follow-up:
+
 - Added `TurnHistoryEntry` and `DialogueSeed.dialogue_history` as the C-owned short-term-memory payload for Developer A.
 - Developer C now reads recent B OpenKB session records, excludes the current turn, compresses the previous turns to previews + filled slots, and forwards them to A on every node with a `dialogue_seed`.
 - Understanding now recognizes `item_purpose` keyword families and free-form street-address answers as `stay_location=address`, including LLM-mode deterministic repair when the LLM leaves the required slot missing.
@@ -340,22 +500,18 @@ C 경계다.
 - **Dev C (스키마/조립/영속화):**
   1. `game_turn.py`에 대화 히스토리 표현 추가 — `PreviousNodeResult` 확장 또는
      신규 `TurnHistoryEntry { node_id, player_text_preview, npc_text_preview,
-     filled_slots }`. (full raw text 대신 preview, 기존 로깅 정책 준수)
+filled_slots }`. (full raw text 대신 preview, 기존 로깅 정책 준수)
   2. 직전 N턴(권장 3~5)을 조립해 `dialogue_seed`(또는 game_state)에
      `dialogue_history`로 실어 A에 전달. 모든 노드에서.
   3. game_state 라운드트립/OpenKB 세션 레코드로 턴 간 영속화.
-- **Dev C (이해 에이전트, agent_c/understanding_agent.py):**
-  4. `ALPHA_SLOT_VALUE_KEYWORDS`에 `item_purpose` 추가(B가 정의할 카테고리별
-     허용값과 정합). 예: food→("eat","eating","food","personal use"),
-     medicine→("health","for my health"), 등.
-  5. stay_location 주소 추출 — 자유형 주소 발화를 `address` 허용값으로 인식.
-- **Dev C (트집 스코프 sync):**
-  6. `_sync_challenge_context_to_dialogue_seed`가 B의 `suspicion_scope` 신호를
-     존중해 location은 location 노드, item은 declaration 노드에서만
-     challenge_context를 채우도록 게이팅.
-- **Dev C (desync 조사):**
-  7. seed `surface_goal`이 "다음 답변이 채점될 노드"와 일치하는지 B와 합동 재현.
-     node_context 전달 시점이 원인이면 C 측 수정.
+- **Dev C (이해 에이전트, agent_c/understanding_agent.py):** 4. `ALPHA_SLOT_VALUE_KEYWORDS`에 `item_purpose` 추가(B가 정의할 카테고리별
+  허용값과 정합). 예: food→("eat","eating","food","personal use"),
+  medicine→("health","for my health"), 등. 5. stay_location 주소 추출 — 자유형 주소 발화를 `address` 허용값으로 인식.
+- **Dev C (트집 스코프 sync):** 6. `_sync_challenge_context_to_dialogue_seed`가 B의 `suspicion_scope` 신호를
+  존중해 location은 location 노드, item은 declaration 노드에서만
+  challenge_context를 채우도록 게이팅.
+- **Dev C (desync 조사):** 7. seed `surface_goal`이 "다음 답변이 채점될 노드"와 일치하는지 B와 합동 재현.
+  node_context 전달 시점이 원인이면 C 측 수정.
 
 ### Compatibility Impact
 
@@ -399,16 +555,13 @@ CR-B-EOKKKA로 도입된 SUSPICION MODE 블록
      플레이어 진술을 근거로 cross-turn 트집("출장이라며? 근데 고급 호텔?").
   3. Rule 3 verbatim 강제를 완화 — 장소/품목명을 맥락상 관련될 때만 자연스럽게
      지칭.
-- **Dev A (히스토리 소비, 전 노드):**
-  4. `llm_payload`에 C가 보내는 `dialogue_history`를 모든 purpose에서 주입.
-     `discussed_topics`/`past_player_utterances` smalltalk 전용 제약 해제.
-  5. 프롬프트에 "이미 답변된 질문 반복 금지 + 직전 턴 반응 후 진행" 가이드를
-     입국심사/세관에도 적용.
-- **Dev A (대사 변주):**
-  6. stern/retry(clarify 반복)에서 동일 문장 반복 대신 표현 변주 +
-     `recommended_expression`을 모범답안으로 1회 제시(verbatim 에코는 금지 규칙
-     유지하되 패러프레이즈 힌트 허용). 필요 시 `dialogue_policy_service.py`
-     (service_a) 보강.
+- **Dev A (히스토리 소비, 전 노드):** 4. `llm_payload`에 C가 보내는 `dialogue_history`를 모든 purpose에서 주입.
+  `discussed_topics`/`past_player_utterances` smalltalk 전용 제약 해제. 5. 프롬프트에 "이미 답변된 질문 반복 금지 + 직전 턴 반응 후 진행" 가이드를
+  입국심사/세관에도 적용.
+- **Dev A (대사 변주):** 6. stern/retry(clarify 반복)에서 동일 문장 반복 대신 표현 변주 +
+  `recommended_expression`을 모범답안으로 1회 제시(verbatim 에코는 금지 규칙
+  유지하되 패러프레이즈 힌트 허용). 필요 시 `dialogue_policy_service.py`
+  (service_a) 보강.
 
 ### Compatibility Impact
 
@@ -2374,6 +2527,7 @@ Dev C는 자유 발화를 임의 슬롯으로 채우지 않도록 추출을 완�
 Status: Resolved (Developer C implementation complete - 2026-06-17).
 
 Developer C follow-up:
+
 - `DialogueSeed.challenge_context` is now the preferred A-facing Eokkka metadata field.
 - Existing flat location/item metadata fields remain for backward compatibility while A migrates.
 - C preserves an already assigned location/customs item and only picks a new value at the transition point when the `GameState` field is empty.
@@ -2571,3 +2725,26 @@ B-authored dialogue candidates before calling A.
 Developer C updated C-owned logging so failed C LangGraph runs and Understanding
 LLM fallback traces include structured `error_details`. C did not modify A/B
 implementation files.
+
+## Change Request - 2026-06-19 - [CR-A-FLIGHT-A001-SLOT-STRICTNESS] FLIGHT_A_001 polite_response 슬롯 추출 엄격성 강화 (인사말 단독 충족 차단)
+
+### Requested By
+
+Developer A
+
+### Affected Owner
+
+Developer C / Sean Han
+
+### Reason
+
+`FLIGHT_A_001_SEATMATE_SMALLTALK` 노드에서 NPC가 "Could I borrow your pen?"(펜 좀 빌려주실 수 있나요?)라고 요청했을 때, 플레이어가 "Hello?"와 같은 단순 인사말만 단독으로 응답했음에도 `polite_response` 슬롯이 충족된 것으로 채점되어 대화 분기가 SUCCESS로 잘못 타는 현상이 발견되었습니다. 이로 인해 NPC가 펜을 전달받지도 않았는데 "Sure, here you are"와 같이 스스로 펜을 건네며 응답해 버리는 화자 역할 혼동(Speaker Role Confusion) 대사 오류가 발생하게 됩니다.
+A 측에서 대사 후처리 가드로 차단하였으나, 근본적인 대화 흐름 정상화를 위해서는 단순 인사말을 펜 대여 수락으로 오인하지 않도록 슬롯 추출 기준을 엄격하게 강화해야 합니다.
+
+### Proposed Contract Change
+
+`backend/app/agents/agent_c/understanding_agent.py`의 `ALPHA_SLOT_VALUE_KEYWORDS` 또는 LLM 모드의 슬롯 증거(evidence) 정책 및 프롬프트를 보강하여, `polite_response` 슬롯 추출 시 "Hello", "Hi"와 같이 펜 빌려달라는 요청에 직접 대응하지 않는 단순 인사말 단독 발화는 수락 슬롯 충족에서 배제하고 `needs_clarification` 또는 retry/clarify 분기로 빠지게 수정해 주기를 요청합니다.
+
+### Compatibility Impact
+
+단순 인사에 대한 슬롯 채점 엄격화는 게임의 대화 타당성(Coherence)을 높이는 작업이며, 기존의 올바른 펜 대여 수락 발화에 영향을 미치지 않으므로 하위 호환성을 깨뜨리지 않습니다.

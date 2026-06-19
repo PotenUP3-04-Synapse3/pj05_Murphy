@@ -178,3 +178,23 @@ LLM의 시스템 지침인 `_developer_instructions(persona_instruction: str)` �
 - uv run ruff check . -> Ruff 린터 지적 사항 0건 확인.
 - uv run mypy . -> 101개 소스 파일 대상 정적 분석 타입 오류 0건 통과 확인.
 - 이에 따라, 원래 추후 계획으로 기재되어 있던 LangChain 및 LangGraph 마이그레이션이 이번 스프린트 구현 범위 내에서 무결하게 완결되었음을 선언합니다.
+
+---
+
+## 6. NPC 메모리 및 꼬리물기 대화 강화 (Session Memory & Follow-up Reinforcement) - 2026-06-19 추가
+
+NPC가 대화 기록을 인지하지 못해 질문을 중복하거나, 플레이어의 답변을 자연스럽게 받아치지 못하는 문제를 해결하기 위해 **세션 컨텍스트 카드(Session Context Card)**와 **후처리 가드(Post-processing Guard)**를 도입했습니다.
+
+### 🗃️ 세션 컨텍스트 카드 빌더 (`session_context_card_service.py`)
+- **confirmed_facts**: 플레이어가 기존 턴에서 답한 슬롯(`visit_purpose`, `stay_duration` 등)의 누적 딕셔너리를 자연어 설명문 리스트로 변환해 관리합니다.
+- **forbidden_repeat_questions**: 이미 채워진 슬롯에 해당하는 대표 질문 리스트를 수집하여, NPC가 동일한 내용의 질문을 중복 생성하지 못하도록 프롬프트에 제공하고 가드에서 사용합니다.
+- **open_hooks**: 플레이어의 직전 발화에서 명사/단어 후보를 3글자 이상이며 중복되지 않는 영어 단어로 추출하여 후속 꼬리물기 질문의 앵커(Anchor)로 삼습니다.
+- **last_npc_intent**: 직전 턴 NPC의 `surface_goal` 또는 발화 첫 문장을 통해 직전 NPC 의도를 기록합니다.
+- **recent_turns_compact**: 대화 기록 5턴을 한 줄 문자열 포맷(`T-x player='...' npc='...' filled={...}`)으로 단순화하여 가독성 높게 메모리에 주입합니다.
+- **topic_thread**: NPC의 누적 `surface_goal` 및 핵심 명사들을 시간 순으로 나열하여 대화 토픽 흐름을 추적합니다.
+
+### 🛡️ 후처리 안전 가드 및 폴백 (Post-processing Guards)
+- **재질문 차단 가드 (`repeats_confirmed_fact`)**: LLM이 생성한 `npc_text`가 `forbidden_repeat_questions` 중 어느 하나와 실질적으로 중복되면, 에러를 발생시키고 안전하게 룰베이스 폴백으로 전환합니다.
+- **꼬리물기 훅 가드 (`weak_followup_no_hook`)**: 분기가 성공/중립이고, `open_hooks`가 존재하며, 일반 대화 모드(비-diagnostic)일 때, LLM의 응답 문장이 1개 이하면서 `open_hooks` 내 단어를 단 하나도 포함하지 않는 "약한 꼬리물기"를 감지하여 차단하고 폴백으로 우회합니다.
+- **룰베이스 폴백 합성 강화 (`synthesize_fallback_next_question`)**: LLM 실패 등으로 룰베이스 폴백으로 빠지는 분기에서도, `open_hooks`의 첫 번째 단어를 접두사(`"You mentioned {hook} — "`)로 활용하여 자연스럽게 대화의 꼬리를 물도록 변주를 이식했습니다.
+

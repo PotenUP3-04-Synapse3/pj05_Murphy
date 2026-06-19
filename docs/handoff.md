@@ -5,6 +5,7 @@
 Developer C and B completed the turn acceptance structure remediation work requested by `docs/workplan-llm-acceptance-remediation.md`.
 
 Changed:
+
 - `backend/app/agents/agent_c/understanding_agent.py`:
   - Updated `_is_supported_slot_evidence` to return `True` for slots classified as `"open"`, bypassing any grounding (substring match) and confidence checks.
   - Aligned `intent_success` and `intent_satisfied` in post-processing `_repair_missing_allowed_slots` by setting `intent_satisfied = len(missing_slots) == 0`.
@@ -19,6 +20,7 @@ Changed:
 - `backend/tests/test_llm_acceptance.py`: Updated mock models, corrected Cash node ID to `IMM_010_CASH`, and added three new regression tests validating open slot acceptance, closed cash policy check, and suspicion data clearing.
 
 Verification:
+
 - Run `uv run pytest`: PASS, all 371 tests passed.
 - Run `uv run ruff check .` and `uv run mypy .`: PASS, all checks passed.
 
@@ -27,6 +29,7 @@ Verification:
 Completed the turn acceptance restructure according to `docs/workplan-llm-acceptance-restructure.md`.
 
 Changed:
+
 - `backend/app/schemas/slot_policy.py` (New): Central registry classifying slots as "open" (semantic evaluation), "numeric" (strict parsing), and "system" (computed). By default, slots are "open".
 - `backend/app/schemas/game_turn.py`: Added `intent_satisfied` and `judgment_reason` fields to `UnderstandingOutput` schema for semantic intent evaluations.
 - `backend/app/agents/agent_c/understanding_llm_client.py`: Updated LLM schema prompt and JSON instructions to output `intent_satisfied` and `judgment_reason` from the LLM.
@@ -42,6 +45,7 @@ Changed:
 - `docs/contracts/developer_c_schema_contract.md`: Updated schemas to reflect the new `intent_satisfied` and `judgment_reason` properties in example objects.
 
 Verification:
+
 - Created unit tests in `backend/tests/test_slot_policy.py` and `backend/tests/test_llm_acceptance.py`.
 - Ran `uv run pytest` successfully (all 368 tests passed).
 - Ran `uv run ruff check .` and `uv run mypy .` successfully (all checks passed, no issues in 129 files).
@@ -51,6 +55,7 @@ Verification:
 Developer C completed the naturalness improvements across Developer C and Developer A components as requested by `docs/workplan-dialogue-naturalness.md`.
 
 Changed:
+
 - `backend/app/services/service_c/openkb_service.py`: Added the `public_node_context` helper function to clone `NodeContext` while setting `recommended_expression` to `""`.
 - `backend/app/tools/tool_c/developer_c_graph_tools.py`: Applied `public_node_context` to the Understanding Agent invocation to prevent recommended expression leakage.
 - `backend/app/api/ai_respond.py`: Kept the original `recommended_expression` in the `/demo/node/{node_id}` debug/demo page endpoint for developer visualization.
@@ -63,9 +68,29 @@ Changed:
 - `backend/tests/test_developer_a_npc_dialogue.py`: Added unit tests validating the variant recommended expression echo checking and the desync guard question override behavior.
 
 Verification:
+
 - `uv run pytest`: PASS, 361 passed.
 - `uv run ruff check .`: PASS.
 - `uv run mypy .`: PASS, 126 source files.
+
+## 2026-06-19 Developer A: 화자 역할 혼동(Speaker Role Confusion) 방지 가드 구현 완료
+
+Developer A는 `docs/plans/dev_a_speaker_role_guard_plan.md` 작업계획서(S-1 ~ S-5)에 명시된 화자 역할 혼동 방지 가드 조치를 완료했습니다. NPC가 자신의 직전 요청에 대해 스스로 플레이어처럼 펜을 건네며 자문자답하는 현상을 차단했습니다.
+
+Changed:
+
+- `backend/app/prompts/npc_dialogue_prompt.md` / `npc_dialogue_prompt.short.md`: System 프롬프트의 `# SPEAKER DISCIPLINE` 섹션에 asker와 responder 역할을 임의로 스위칭하지 않도록 강제하고, "Sure, here you are" 등과 같은 responder 표현의 발화를 금지하는 규약을 보강했습니다.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`: `node_generate_dialogue_llm`의 대사 검증 후처리 단계에 `speaker_role_confusion` 가드를 추가했습니다. 직전 NPC 발화가 REQUEST 성격(markers 포함)인데 플레이어 성격의 응답자 표현(markers 포함)을 생성한 경우, 에러 코드를 반환하고 안전하게 대체 텍스트(Fallback) 경로로 우회하도록 제어했습니다.
+- `backend/app/services/service_a/developer_a_fallback_service.py`: `respond_to_arrival_form_help_request`에 대한 폴백 텍스트를 펜을 전달받은 상황에 자연스럽도록 `"Thanks. I'm filling out the arrival form — what brings you to New York?"`로 교정했습니다.
+- `backend/app/prompts/npc_dialogue_few_shots.md`: NPC가 질문한 직후 플레이어 답변이 모호한 경우, 스스로 질문에 답하지 않고 다시 공손하게 재요청을 던지는 대화 흐름을 묘사하는 Example 7 예시를 추가했습니다.
+- `backend/tests/test_developer_a_npc_dialogue.py`: 가드가 비정상 답변을 차단하는 테스트 및 정상적 NPC 대화 답변을 허용하는 테스트 2종(`test_speaker_role_confusion_guard_blocks_giver_phrase`, `test_speaker_role_confusion_guard_allows_legitimate_response`)을 추가했습니다.
+- `docs/contracts/change_requests.md`: 단순 인사말만으로 펜 대여 수락 슬롯이 오버라이드되는 현상을 해결하기 위한 `[CR-A-FLIGHT-A001-SLOT-STRICTNESS]` 변경 요청을 신설 및 추가했습니다.
+
+Verification:
+
+- `uv run pytest backend/tests`: PASS (A 유닛 테스트 49개 포함 전체 통과)
+- `uv run ruff check .`: PASS
+- `uv run mypy .`: PASS (Success)
 
 ## 2026-06-19 Developer C: CR-B-HISTORY-MEMORY Runtime Wiring
 
@@ -74,6 +99,7 @@ Developer C completed the C-owned runtime work requested by
 `[CR-B-AB-DESYNC]`.
 
 Changed:
+
 - `backend/app/services/service_c/dialogue_history_service.py`: Added a C-owned
   sidecar history store under `backend/runtime/openkb/dev_c/dialogue_history`
   that persists the final Developer A `npc.text` after each turn. This lets the
@@ -97,12 +123,14 @@ Changed:
   `[CR-B-AB-DESYNC]`.
 
 Verification:
+
 - `uv run pytest`: PASS, 357 passed, 1 warning (`audioop` deprecation in
   A-owned `audio_quality_service.py`).
 - `uv run ruff check .`: PASS.
 - `uv run mypy .`: PASS, 126 source files.
 
 Remaining coordination:
+
 - Unreal should populate optional `GameState.arrival_form` from the
   arrival-form UI when that screen is ready.
 - `[CR-B-AB-DESYNC]` still requires Developer A's dialogue guard; C verified the
@@ -113,6 +141,7 @@ Remaining coordination:
 Developer B는 `[CR-2026-06-17] Deprecate and Remove do_not_generate_npc_text from Developer B Policy`(Affected Owner: Developer B, Open 상태)를 처리했습니다. 해당 필드는 C 오케스트레이터/A 대사 생성에서 사용되지 않고 어댑터 단에서 필터링되므로, B 정책에서 더 이상 emit하지 않도록 정리했습니다.
 
 Changed:
+
 - `backend/app/agents/agent_b/english_level_hint_agent.py`: `_build_dialogue_directive`의 두 `DialogueDirective` 생성부에서 `do_not_generate_npc_text` 인자 제거.
 - `backend/app/services/service_b/bad_ending_policy.py`: `build_bad_ending_output`의 `DialogueDirective` 생성부에서 동일 인자 제거.
 - `backend/app/prompts/english_level_hint_prompt.md`: `do_not_generate_npc_text` 관련 가이드라인 문구 제거(“Developer A owns final NPC text...”로 대체).
@@ -122,6 +151,7 @@ Changed:
 비고: 공유 Pydantic 스키마의 `do_not_generate_npc_text: bool | None = None`(C 소유)과 C 어댑터 sanitizer는 그대로 유지 — B는 더 이상 값을 채우지 않을 뿐이라 하위호환.
 
 Verification:
+
 - `pytest` (dev_b + test_preprototype_flow + test_developer_a_npc_dialogue + test_developer_a_agent_run_logging): 250 passed.
 - `ruff check` / `mypy`: 변경된 B 파일 PASS.
 
@@ -130,6 +160,7 @@ Verification:
 Developer B는 docs\workplan-dev-b.md 계획에 따라 입국심사 시 플레이어 답변이 불명확한 경우(UNCLEAR/clarify)의 retry count 누적을 배제하고 강제 종료 임계치를 상향 조치하였으며, B의 재질문과 A의 NPC 발화 간 desync를 해결하기 위한 변경요청을 등록했습니다.
 
 Changed:
+
 - `backend/app/services/service_b/scenario_state_machine.py`:
   - `_clarify` 반환 시 `retry_count_delta`를 `1`에서 `0`으로 하향하여 불명확(UNCLEAR) 턴을 hard-fail 횟수에서 배제.
   - 강제 탈락 임계치를 상수 `MAX_HARD_FAIL_RETRIES = 5`로 정의하고, `decide()`의 비교식을 기존 `3`에서 `5`로 상향.
@@ -144,9 +175,52 @@ Changed:
   - 기존 하드 페일 탈락 테스트의 retry_count 기대값을 `3`에서 `5`로 상향 업데이트.
 
 Verification:
+
 - `uv run pytest`: PASS (전체 354개 테스트 성공 통과)
 - `uv run ruff check .`: PASS (오류 없음)
 - `uv run mypy .`: PASS (125개 소스 파일 완수)
+
+## 2026-06-19 Developer A: NPC 단기 메모리·신규 슬롯 매핑·트집 게이팅 통합 완료 (추가 디버그 및 CR-B-AB-DESYNC 구현 완료)
+
+Developer A는 `docs/contracts/dev_a_unified_memory_plan.md` 정본 작업계획서에 따라 NPC 단기 메모리, 꼬리물기 대화, 신규 9개 슬롯 및 트집 게이팅 고도화 작업을 성공적으로 완료했습니다. 추가적으로 테스트 중 발견된 fallback 우선순위 및 미매핑 surface_goal 키를 추가 동기화했고, B가 제기한 `[CR-B-AB-DESYNC]` 비-ADVANCE 대사 오버라이드 가드까지 완벽히 구현하여 A 자체 테스트 및 전체 린트/타입을 100% 그린으로 통과시켰습니다.
+
+Changed:
+
+- `backend/app/services/service_a/npc_short_term_memory_service.py` [NEW]:
+  - (session_id, npc_id) 단위로 메모리를 격리하고, N=20 슬라이딩 윈도우가 적용되는 NPC 단기 메모리 서비스 신설. `build_thread_id`에서 필수 식별자 누락 시 `ValueError`를 발생시키는 fail-fast 원칙 적용.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py` [MODIFY]:
+  - `NPCDialogueState`에 단기 메모리 필드(`turn_buffer`, `accumulated_slots`, `forbidden_questions`, `last_npc_intent`) 추가.
+  - 그래프에 `InMemorySaver` checkpointer를 싱글톤으로 부착.
+  - 에이전트 그래프 진입점인 `generate_npc_dialogue_from_level_design`에서 `thread_id`를 의무 적용하고, `llm_client` 직렬화 에러를 방지하기 위해 `config`를 통해 의존성을 안전하게 격리 주입.
+  - `node_load_memory`와 `node_persist_memory`를 통해 단기 메모리 상태 로드, 병합, 누적 및 `complete_chapter` 발생 시 세션 메모리 클린업 구현.
+- `backend/app/services/service_a/session_context_card_service.py` [MODIFY]:
+  - 신규 9개 입국심사 슬롯에 대한 자연어 구절(`SLOT_TO_PHRASE`) 및 금지 질문 패턴(`SLOT_TO_FORBIDDEN_QUESTIONS`) 정의 확장.
+  - 카드 빌드 시 `npc_memory`를 우선 사용하고, 없을 때만 `dialogue_history`를 시드로 사용하도록 의존성 조정.
+- `backend/app/services/service_a/dialogue_policy_service.py` [MODIFY]:
+  - 신규 9개 surface_goal에 대응하는 룰베이스 질문(`SURFACE_GOAL_QUESTIONS`) 추가 및 `RETRY_PARAPHRASES`에 각각 3개 이상의 대사 변주 텍스트 추가.
+  - E2E 및 챕터 완료 노드 누수 방지를 위해 `estimate_user_travel_speaking_level`, `closing_eviction`, `scenario_complete`, `summarize_alpha_result` 등의 missing 키들을 질문 및 폴백 맵에 전수 추가 완료.
+- `backend/app/services/service_a/developer_a_fallback_service.py` [MODIFY]:
+  - `SURFACE_GOAL_FALLBACK_TEXTS` 9개 추가 및 missing 키 동기화 완료.
+  - `build_text_fallback` 분기 우선순위를 개편하여 `smalltalk_diagnostic`일 때의 중립 응답이 우선하도록 보완.
+  - `explain_random_customs_item` 등 특수 목적 surface_goal이 fallback 텍스트 매핑 사전으로 인해 무시되어 세부 아이템 명칭이 누락되지 않도록 매핑에서 배제.
+  - surface_goal이 존재하나 매핑이 없는 경우 `KeyError`를 던지는 fail-fast 처리 구현.
+- `backend/app/prompts/npc_dialogue_prompt.md` / `npc_dialogue_prompt.short.md` [MODIFY]:
+  - 트집 게이팅(suspicion_scope) 조건문을 `assigned_visit_location` 존재 검사 대신 `suspicion_scope in ("location", "declaration")`로 엄격히 제한.
+  - 선제 트집(블러팅)을 금지하는 규칙을 명시적으로 추가하고, verbatim 사용 규약을 자연스러운 지칭으로 완화.
+- `backend/tests/test_developer_a_npc_dialogue.py` / `test_developer_a_profanity_mirror.py` [MODIFY]:
+  - 메모리 격리성, N=20 슬라이딩 윈도우, 챕터 종료 시 메모리 리셋, 9개 surface_goal 매핑 존재 및 변주 개수 검증, 알 수 없는 surface_goal 전달 시 fail-fast `KeyError` 검증, suspicion_scope 게이팅 검증 등 신규 테스트 케이스 8종(총 12종 이상의 핵심 시나리오 커버)을 추가하여 regression 테스트 보강.
+  - profanity 테스트에 `session_id` 누락으로 인한 fail-fast 에러를 방지하도록 `session_id` payload 추가.
+
+Verification:
+
+- `uv run pytest backend/tests -k developer_a`: PASS (85개 A 자체 테스트 100% 성공 통과)
+- `uv run ruff check .`: PASS
+- `uv run mypy .`: PASS (Success: no issues found in 127 source files)
+- `uv run pytest backend/tests`: 359 passed, 3 failed. (실패 3개는 C 소유 `test_preprototype_flow.py` 테스트의 단언 충돌이며, `change_requests.md`에 `[CR-A-E2E-TEST-SYNC]`를 제기함)
+
+키 동기화 기록:
+
+- `scenario_nodes.json`에 정의된 실제 `npc_question_goal` 9종(`ask_long_stay_reason`, `ask_hotel_reservation`, `ask_hotel_choice_reason`, `ask_travel_itinerary`, `ask_first_visit`, `ask_occupation`, `ask_cash_amount`, `ask_trip_payment_source`, `ask_denied_entry_history`) 및 추가 missing 5종 키 동기화 마침.
 
 ## 2026-06-19 Developer C: CR-B-IMM-SLOTS 신규 입국심사 슬롯 이해 보강
 
@@ -154,6 +228,7 @@ Developer C completed the required C-owned work for `[CR-B-IMM-SLOTS]` after
 Developer B's JFK immigration node merge.
 
 Changed:
+
 - `backend/app/agents/agent_c/understanding_agent.py`: Added rule-mode keyword
   coverage for 9 new immigration slots: `long_stay_reason`,
   `hotel_reservation_status`, `hotel_choice_reason`, `itinerary_status`,
@@ -171,6 +246,7 @@ Changed:
 - `docs/contracts/change_requests.md`: Marked `[CR-B-IMM-SLOTS]` as resolved.
 
 Context-tightness check:
+
 - The rule-mode context was missing the 9 new slot keyword maps, so offline or
   LLM-fallback turns could stay stuck in retry/clarify.
 - The LLM path was also partially too tight: `slot_evidence` was already
@@ -179,6 +255,7 @@ Context-tightness check:
   them from accepted evidence and current-node metadata.
 
 Verification:
+
 - `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_understanding_llm_client.py -q`: PASS, 29 passed.
 - `uv run pytest -q`: PASS, 349 passed, 1 warning (`audioop` deprecation in A-owned audio quality service).
 - `uv run ruff check .`: PASS.
@@ -189,6 +266,7 @@ Verification:
 Developer B는 docs\workplan-dev-b-1.md 계획에 따라 JFK 입국심사 챕터(`CH0_03_IMMIGRATION_CHECK`)의 노드 구조를 재구축하고, 플레이어의 티어 및 체류 기간에 따른 다이내믹 라우팅 정책을 상태 머신에 성공적으로 통합했습니다.
 
 Changed:
+
 - `backend/app/data/scenario_nodes.json`: 기존의 수화물 신고 및 검사 노드(`IMM_006` 계열)를 제거하고, 9가지 실무형 조건 검사 canonical 노드 및 각 노드의 retry/clarify 변종 노드(총 27개 노드)를 추가. `IMM_005_RETURN_TICKET` 성공 대상을 기본 노드인 `IMM_008_FIRST_VISIT`로 변경 및 allowed_next_nodes 무결성 검증.
 - `backend/app/services/service_b/scenario_state_machine.py`: 플레이어의 등급(tier)과 stay_duration 값에 따라 노드를 다이내믹하게 우회시키는 `GATED_ROUTES` 라우팅 로직을 추가. 자연어 및 숫자 혼용 체류 기간 텍스트(예: "two weeks", "5 days")를 일수(days)로 환산하는 `_stay_duration_days` 파서 함수 구현 및 연동.
 - `backend/app/agents/agent_b/english_level_hint_agent.py`: 신규 9개 노드의 포커스 타깃 및 힌트 연동 맵을 최신화하고 불필요해진 레거시 parameters 제거.
@@ -199,15 +277,48 @@ Changed:
   - `test_chapter_zero_missing_slot_retries` parameterized 테스트의 등급 파라미터를 `"Silver"`로 변경하여 Bronze 등급 전용 힌트 트리거로 인한 분기 반환 타입 충돌 우회.
 
 Verification:
+
 - `uv run pytest`: PASS (전체 345개 테스트 성공 통과)
 - `uv run ruff check .`: PASS (test_developer_a_npc_dialogue.py 파일의 pre-existing E402 임포트 순서 위반 해결 포함)
 - `uv run mypy .`: PASS (125개 소스 파일 통과)
+
+## 2026-06-19 Developer A: NPC 메모리 및 꼬리물기 대화 강화 완료
+
+Developer A는 `docs/plans/dev_a_memory_followup_plan.md` 작업계획서에 명시된 NPC 세션 메모리 강화 및 꼬리물기 대화 인프라 구축 작업을 성공적으로 완료했습니다.
+
+Changed:
+
+- `session_context_card_service.py` [NEW]:
+  - dialogue_history 및 filled_slots를 분석하여 confirmed_facts, forbidden_repeat_questions, open_hooks, last_npc_intent, recent_turns_compact, topic_thread 정보를 구조화하는 세션 카드 빌더 신설.
+- `npc_dialogue_agent.py` [MODIFY]:
+  - `node_initialize_state` 단계에서 세션 메모리 카드를 빌드 및 `state["session_context_card"]`에 주입.
+  - LLM 페이로드에 6종의 세션 메모리 변수와 3종의 정책 변수(`policy_action`, `policy_next_question_style`, `policy_max_sentence_count`)를 포함해 전달.
+  - 후처리 검증부에서 금지 질문 중복을 걸러내는 `repeats_confirmed_fact` 가드와, 꼬리물기 앵커 단어 누락을 검증하는 `weak_followup_no_hook` 가드 추가. 미충족 시 룰베이스 폴백으로 안전 우회.
+- `npc_dialogue_prompt.md` / `npc_dialogue_prompt.short.md` [MODIFY]:
+  - `## SESSION MEMORY` 섹션을 신설하여 confirmed_facts, forbidden_repeat_questions, open_hooks 등을 렌더링.
+  - 룰 엔진 기반의 정책 수신을 명시하는 `### Dialogue Policy` 섹션 추가.
+- `npc_dialogue_few_shots.md` [MODIFY]:
+  - 꼬리물기 앵커 활용, 교차 턴 회상, 금지 질문 패러프레이즈 패턴을 제시하는 Example 4, 5, 6 예시 보강.
+- `dialogue_policy_service.py` [MODIFY]:
+  - `synthesize_fallback_next_question`에 `open_hooks`를 받아 꼬리물기 접두사(`"You mentioned {hook} — "`)를 추가하는 기능 강화.
+  - `RETRY_PARAPHRASES` 맵에 기내 스몰토크용 surface_goal 3종(`ask_travel_purpose_smalltalk`, `ask_stay_plan_smalltalk`, `respond_to_polite_request`) 변주 데이터 추가.
+- `test_developer_a_npc_dialogue.py` / `test_developer_a_prompt_rendering.py` [MODIFY]:
+  - 세션 카드 빌더 로직 검증, 후처리 가드 2종의 폴백 전환 검증, 그리고 세션 카드 및 정책 변수가 프롬프트 내에 정상 렌더링되는지 렌더 단언 테스트 추가 완료.
+
+Verification:
+
+- `uv run pytest backend/tests`: PASS
+- `uv run ruff check .`: PASS
+- `uv run mypy .`: PASS
+
+B/C 영역의 입출력 JSON 스키마 규격(어댑터 계약) 변경 사항 없음.
 
 ## 2026-06-18 Developer A: CR-B-CONV-A 트집 게이팅·히스토리 소비·대사 변주 구현 완료
 
 Developer A 는 CR-B-CONV-A 의 A 측 4가지 항목을 완료했습니다. B 가 2026-06-18 에 emit 한 `dialogue_seed.suspicion_scope` 및 C 가 동일 날짜에 attach 한 `dialogue_seed.dialogue_history` 를 모두 소비합니다.
 
 Changed:
+
 - `developer_a_input_service.py`: normalize 단계에서 `suspicion_scope` (기본 "none"), `dialogue_history` 안전 추출.
 - `npc_dialogue_agent.py`: `llm_payload` 에 두 필드를 모든 purpose 에서 주입. smalltalk 전용 OpenKB 보강은 그대로 두되 dialogue_history 가 우선 활용되도록 `past_player_utterances` / `discussed_topics` 채움 로직 일반화. `node_initialize_state` 에 룰베이스 폴백 경로를 위한 대사 변주 로직 연동.
 - `prompts/npc_dialogue_prompt.md`, `prompts/npc_dialogue_prompt.short.md`:
@@ -221,6 +332,7 @@ Changed:
 - `test_developer_a_npc_dialogue.py`: 회귀 5종 (suspicion scope 게이팅 3종, dialogue_history 모든 purpose, retry 변주, answer-first) 및 mypy 통과를 위한 타입 선언 보강.
 
 Verification:
+
 - `uv run pytest backend/tests`: PASS (328 passed)
 - `uv run ruff check .`: PASS
 - `uv run mypy .`: PASS (Success: no issues found in 125 source files)
@@ -233,6 +345,7 @@ B/C 영역 0 수정. CR-B-CONV-A 의 Dev A 측 항목 완료.
 Developer C completed the C-owned items requested by `[CR-B-CONV-C]`.
 
 Changed:
+
 - `backend/app/schemas/game_turn.py`: Added `TurnHistoryEntry` and `DialogueSeed.dialogue_history` for short-term conversation memory sent to Developer A.
 - `backend/app/tools/tool_c/developer_c_graph_tools.py`: Reads recent B OpenKB session records, excludes the current turn, compresses the previous turns to player/NPC previews plus `filled_slots`, and attaches them to `dialogue_seed` before the A adapter call.
 - `backend/app/tools/tool_c/developer_c_graph_tools.py`: Updated challenge sync to respect B's `dialogue_seed.suspicion_scope`. `location` sends only visit-location context, `declaration` sends only item/declaration context, and `none` clears challenge metadata so A does not enter suspicion mode on unrelated nodes.
@@ -240,6 +353,7 @@ Changed:
 - `backend/tests/test_understanding_agent.py` and `backend/tests/test_preprototype_flow.py`: Added regression coverage for address repair, `item_purpose`, dialogue history payloads, and suspicion-scope gating.
 
 Verification:
+
 - `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_preprototype_flow.py -q` passed: 53 passed, 1 warning.
 - `uv run ruff check .` passed.
 - `uv run mypy .` passed: 125 source files.
@@ -266,6 +380,7 @@ Developer B는 입국심사~세관 대화가 무너지는 QA 회귀를 진단하
 Developer C completed the implementation for improving the `respond-dialog` test page (`demo/respond-dialog/index.html`) and backend orchestration helper endpoints.
 
 Changed:
+
 - **llm_cost_estimator.py**: Registered `gpt-5.4-mini`, `fake-understanding-model`, and `unknown` in `OPENAI_TEXT_MODEL_PRICES_USD_PER_1M`. Added fallback to `gpt-4o-mini` pricing for unrecognized models to avoid returning $0.000000 costs.
 - **agent_run_summary_service.py**: Updated model usage summaries to return the `model_name` key and compile a sorted list of unique `models` used in each session.
 - **ai_respond.py**: Added new `/api/game/ai/demo/npc-roster` to return canonical NPCs by chapter, `/api/game/ai/demo/eokkka/options` to return visit location and customs item tables, and `/api/game/ai/demo/eokkka/assign` to return deterministic or random Eokkka challenge context assignment based on player level (0-12).
@@ -278,6 +393,7 @@ Changed:
 - **test_demo_ai_respond_page.py**: Added regression unit tests for all new endpoints and verified correct session usage payloads.
 
 Verification:
+
 - `uv run pytest` passed: All 314 tests passed.
 - `uv run ruff check .` passed.
 - `uv run mypy .` passed.

@@ -16,7 +16,14 @@ def test_resolve_known_npc_profile_for_officer_hale() -> None:
         default_animation="move",
         fallback_text="State the purpose of your visit clearly.",
         mock_voice_id="hale_mock",
-        persona_instruction="stern, direct, and authoritative immigration officer.",
+        persona_instruction=(
+            "Stern, direct, and authoritative immigration officer. "
+            "Speaks in short clipped sentences. Does not soften with "
+            "'please' or 'could you' during pressure probes. "
+            "Pending-request rule: re-ask once if the player evades. "
+            "Topic-discipline: never follows the player into off-topic chat. "
+            "Response length: very short, direct."
+        ),
         non_verbal_palette=["Hmph.", "Tsk.", "<break time='0.4s'/>"],
         elevenlabs_voice_id="dXtC3XhB9GtPusIpNtQx",
     )
