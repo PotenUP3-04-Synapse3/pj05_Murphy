@@ -74,3 +74,9 @@ def _parse_node_type(value: Any, current_node_id: str) -> NodeType:
     if not isinstance(value, str) or value not in _ALLOWED_NODE_TYPES:
         raise ValueError(f"Unsupported node_type for {current_node_id}: {value!r}")
     return cast(NodeType, value)
+
+
+def public_node_context(node_context: NodeContext) -> NodeContext:
+    """A·C에 넘길, 학습용 모범답안을 제거한 NodeContext 사본을 만든다."""
+    return node_context.model_copy(update={"recommended_expression": ""})
+

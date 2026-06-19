@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Literal, Any, Callable
 
 from backend.app.schemas.game_turn import DevBPolicyInput
+from backend.app.schemas.slot_policy import get_slot_policy
 
 
 BranchType = Literal["success", "retry", "clarify", "hint", "warning", "bad_end", "final"]
@@ -208,6 +209,10 @@ class ScenarioStateMachine:
         allowed = payload.node_context.allowed_slot_values or {}
         extracted = payload.understanding.extracted_slots or {}
         for slot in payload.node_context.required_slots:
+            policy = get_slot_policy(slot)
+            if policy in ("open", "system"):
+                # Bypass open and system slots
+                continue
             candidates = allowed.get(slot)
             if not candidates:
                 # 허용값 목록(후보군)이 정의되지 않은 자유 서술형 슬롯은 검증 생략
@@ -217,26 +222,30 @@ class ScenarioStateMachine:
                 if value is None:
                     return True
                 
-                # stay_duration의 경우 추출값이 "five days", "one week" 등 구체적인 문자열일 수 있으므로
-                # allowed_slot_values 범주인 ("days", "weeks", "months", "until_date")와의 매핑 검사를 별도로 지원합니다.
-                if slot == "stay_duration":
-                    matched = False
-                    for candidate in candidates:
-                        if candidate == "days" and ("day" in value or "days" in value):
-                            matched = True
-                            break
-                        elif candidate == "weeks" and ("week" in value or "weeks" in value):
-                            matched = True
-                            break
-                        elif candidate == "months" and ("month" in value or "months" in value):
-                            matched = True
-                            break
-                        elif candidate == "until_date" and "until" in value:
-                            matched = True
-                            break
-                    if not matched:
-                        return True
-                else:
+                if policy == "numeric":
+                    # stay_duration의 경우 추출값이 "five days", "one week" 등 구체적인 문자열일 수 있으므로
+                    # allowed_slot_values 범주인 ("days", "weeks", "months", "until_date")와의 매핑 검사를 별도로 지원합니다.
+                    if slot == "stay_duration":
+                        matched = False
+                        for candidate in candidates:
+                            if candidate == "days" and ("day" in value or "days" in value):
+                                matched = True
+                                break
+                            elif candidate == "weeks" and ("week" in value or "weeks" in value):
+                                matched = True
+                                break
+                            elif candidate == "months" and ("month" in value or "months" in value):
+                                matched = True
+                                break
+                            elif candidate == "until_date" and "until" in value:
+                                matched = True
+                                break
+                        if not matched:
+                            return True
+                    else:
+                        if value not in candidates:
+                            return True
+                elif policy == "closed":
                     if value not in candidates:
                         # 추출된 값이 후보군에 매핑되지 않는 유효하지 않은 값임
                         return True
@@ -252,6 +261,24 @@ class ScenarioStateMachine:
         req_intents = payload.node_context.required_intents or []
         completed = set(payload.scenario_state.completed_intents or [])
         has_already_completed = any(intent in completed for intent in req_intents)
+
+        has_open_required = any(get_slot_policy(slot) == "open" for slot in (payload.node_context.required_slots or []))
+        intent_satisfied = getattr(payload.understanding, "intent_satisfied", True)
+
+        if has_open_required:
+            if has_already_completed:
+                return (
+                    intent_satisfied
+                    and not self._has_invalid_required_slot_value(payload)
+                    and payload.understanding.risk_delta <= 0
+                )
+            else:
+                return (
+                    intent_satisfied
+                    and not payload.understanding.missing_slots
+                    and not self._has_invalid_required_slot_value(payload)
+                    and payload.understanding.risk_delta <= 0
+                )
 
         if has_already_completed:
             return (

@@ -382,6 +382,47 @@ def test_llm_dialogue_rejects_recommended_expression_echo() -> None:
     assert result["fallback"]["used"] is True
 
 
+def test_llm_dialogue_rejects_recommended_expression_echo_variants() -> None:
+    # 구두점/대소문자/추가 문구가 섞여도, 또 tts_text에만 새도 에코로 감지해야 함.
+    # (예: recommended_expression="Thank you, officer." 가 NPC 대사에 그대로 흘러든 케이스)
+    class VariantEchoLLMClient:
+        model = "fake-echo-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                # npc_text는 깨끗하지만 tts_text에 추천 표현이 변형되어 새어든 경우
+                "npc_text": "All right. Move on to baggage claim.",
+                "tts_text": "Okay. <break time=\"0.4s\"/> thank you, OFFICER! Then move on.",
+                "feedback_kr": "좋아요.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "llm_reason": "echoed expression in tts",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "miller"},
+            "node_id": "IMM_007_FINAL_DECISION",
+            "player_text": "thank you",
+            "node_context": {
+                "npc_question": "All right, you're cleared to enter. Enjoy your stay.",
+                "recommended_expression": "Thank you, officer.",
+            },
+            "evaluation_summary": {"task_success": True, "clarity": 0.9},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+        },
+        use_llm=True,
+        llm_client=VariantEchoLLMClient(),
+    )
+
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "recommended_expression_echo"
+    assert result["fallback"]["used"] is True
+
+
 def test_llm_dialogue_rejects_missing_followup_question() -> None:
     # surface_goal이 주어졌는데 질문이 아닌 문장 1개만 생성한 경우 에러 감지 검증
     class ReactionOnlyLLMClient:
@@ -1133,4 +1174,42 @@ def test_suspicion_not_blurted_before_answer():
     captured = _capture_llm_payload(payload)
     rendered = _render_system_prompt(captured)
     assert "answer" in rendered.lower() and "preemptive" in rendered.lower() or "Answer-first" in rendered
+
+
+def test_desync_guard_overrides_llm_next_node_question() -> None:
+    # LLM이 분기를 어기고 임의로 다음 노드의 질문("Where will you stay?")을 유출하는 상황을 모사
+    class BadDialogueLLMClient:
+        model = "fake-model"
+        def generate(self, payload: dict) -> dict:
+            return {
+                "npc_text": "I see. Tell me where you will stay in the US.",  # 다음 질문(location)을 유출함
+                "tts_text": "I see. Tell me where you will stay in the US.",
+                "feedback_kr": "좋아요.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "llm_reason": "off-topic progression",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    # 입력: branch_type="clarify", next_action="REASK", dialogue_purpose="support_retry", surface_goal="ask_stay_duration"
+    payload = _payload(
+        branch_type="clarify",
+        dialogue_purpose="support_retry",
+        surface_goal="ask_stay_duration",
+        dialogue_history=[{"player_text_preview": "maybe 13days", "npc_text_preview": "How long will you stay?"}]
+    )
+    # next_action을 REASK로 명시적으로 전달
+    payload["branch"]["next_action"] = "REASK"
+    payload["next_action"] = "REASK"
+
+    result = generate_npc_dialogue_from_level_design(
+        payload,
+        use_llm=True,
+        llm_client=BadDialogueLLMClient()
+    )
+
+    # 비-ADVANCE 가드로 인해 다음 질문("stay")이 override되어, 원래 노드의 질문(stay_duration)만 질문해야 함
+    assert "stay in the United States" in result["npc_text"] or "plan to stay" in result["npc_text"] or "remain here" in result["npc_text"]
+    assert "where you will stay" not in result["npc_text"].lower()
+
 

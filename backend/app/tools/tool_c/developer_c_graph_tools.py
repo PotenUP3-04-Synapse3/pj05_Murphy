@@ -44,7 +44,7 @@ from backend.app.schemas.game_turn import (
 from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader
 from backend.app.services.service_c.dialogue_history_service import DialogueHistoryService
 from backend.app.services.service_c.logging_service import LoggingService
-from backend.app.services.service_c.openkb_service import OpenKBService
+from backend.app.services.service_c.openkb_service import OpenKBService, public_node_context
 from backend.app.services.service_c.response_builder import ResponseBuilder
 from backend.app.services.service_c.stt_service import WhisperLargeV3TurboSttService
 from backend.app.services.service_c.validator import Validator
@@ -316,9 +316,10 @@ class DeveloperCGraphTools:
         timing_ms = _state_timing_ms(state)
 
         stage_started = perf_counter()
+        public_context = public_node_context(node_context)
         understanding = self.understanding_agent.analyze_player_text(
             normalized_input.player_text,
-            node_context,
+            public_context,
         )
         timing_ms["understanding_ms"] = _elapsed_ms(stage_started)
         self.agent_run_middleware.record_event(
