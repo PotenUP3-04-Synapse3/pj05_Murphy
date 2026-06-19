@@ -1,5 +1,39 @@
 # Handoff
 
+## 2026-06-19 Developer C: Authorized One-Time Developer A Hotfix
+
+Developer C applied a one-time user-authorized cross-owner hotfix in Developer
+A-owned dialogue code to unblock `/api/game/ai/respond` responses after an
+`UnboundLocalError` caused `npc.audio_url` to become `null`.
+
+Changed:
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`: Removed conditional
+  in-function imports that shadowed already imported module/function names
+  (`re`, `synthesize_fallback_next_question`). The shadowing caused Python to
+  treat those names as local variables and crash on smalltalk/REASK paths before
+  the conditional import branches executed.
+- `backend/app/prompts/npc_dialogue_prompt.short.md`: Closed the missing Jinja
+  outer `{% if %}` block and restored the short prompt's few-shot section so A's
+  short prompt renders instead of falling back to default instructions.
+- `backend/tests/test_preprototype_flow.py`: Updated stale C integration
+  expectations from the old A error fallback text (`Okay. Please continue.`) to
+  the now-successful next-question text.
+
+Verification:
+- RED confirmed:
+  `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_bypasses_missing_question_guard -q`
+  failed with `UnboundLocalError`.
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py -q`: PASS,
+  36 passed.
+- `uv run pytest backend/tests/test_developer_a_prompt_rendering.py -q`: PASS,
+  2 passed.
+- Focused C integration rerun for the three updated expectations: PASS,
+  3 passed.
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 138 source files.
+- `uv run pytest`: PASS, 373 passed, 1 warning (`audioop` deprecation in
+  A-owned `audio_quality_service.py`).
+
 ## 2026-06-19 Developer C, B: JFK Immigration Turn Acceptance Remediation (LLM Acceptance Remediation)
 
 Developer C and B completed the turn acceptance structure remediation work requested by `docs/workplan-llm-acceptance-remediation.md`.

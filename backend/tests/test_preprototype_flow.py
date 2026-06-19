@@ -229,7 +229,7 @@ def test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response() -> N
     assert response.next_node_id == "IMM_003_DURATION"
     assert response.next_action == "ADVANCE"
     assert response.npc.speaker == "Officer Hale"
-    assert response.npc.text == "Okay. Please continue."
+    assert response.npc.text == "How long will you stay in the United States?"
     assert response.npc.emotion == "Nomal"
     assert response.evaluation.verdict == "SUCCESS"
     assert response.ui.in_game_feedback.feedback_strategy == "recast"
@@ -1077,7 +1077,7 @@ def test_orchestrator_uses_repaired_llm_visit_purpose_before_developer_a_dialogu
     assert response.evaluation.verdict == "SUCCESS"
     assert response.debug.understanding_confidence == pytest.approx(0.94)
     assert response.npc.text != "All right. Let's continue."
-    assert response.npc.text == "Okay. Please continue."
+    assert response.npc.text == "How long will you stay in the United States?"
 
 
 def test_dev_a_adapter_uses_real_tts_and_llm_modes_from_settings() -> None:
@@ -1848,7 +1848,7 @@ def test_api_accepts_multipart_turn_json_and_sample_wav() -> None:
     assert body["stt"]["runtime_used"] == "local"
     assert body["stt"]["player_text"] == "I'm here for tourism."
     assert body["next_node_id"] == "IMM_003_DURATION"
-    assert body["npc"]["text"] == "Okay. Please continue."
+    assert body["npc"]["text"] == "How long will you stay in the United States?"
     assert body["npc"]["audio_url"].startswith("/runtime/audio/edge/")
 
     audio_response = client.get(body["npc"]["audio_url"])

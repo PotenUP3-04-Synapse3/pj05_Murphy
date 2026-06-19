@@ -511,7 +511,6 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             r"^wonderful\b[.,!\s]*",
             r"^awesome\b[.,!\s]*",
         ]
-        import re
         for pat in positive_patterns:
             if re.match(pat, npc_text, re.IGNORECASE):
                 npc_text = re.sub(pat, "", npc_text, flags=re.IGNORECASE).strip()
@@ -665,7 +664,6 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         logger.info(f"Non-ADVANCE action '{next_action}' detected. Overriding LLM next question with current surface_goal '{surface_goal}'")
         sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
         reaction_part = sentences[0] if sentences else ""
-        from backend.app.services.service_a.dialogue_policy_service import synthesize_fallback_next_question
         overridden_text = synthesize_fallback_next_question(
             reaction_part,
             str(surface_goal),
