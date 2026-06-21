@@ -129,6 +129,28 @@ def test_flight_smalltalk_low_confidence_clarifies_softly(tmp_path: Path) -> Non
     assert result2.state_delta.retry_count_delta == 0
 
 
+def test_flight_smalltalk_rude_pen_refusal_still_continues_diagnostic(tmp_path: Path) -> None:
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(
+        node_context=context,
+        player_text="Nope, get yourself your own pen.",
+        intent_success=True,
+        answer_relevance="on_topic",
+        confidence=0.86,
+        missing_slots=[],
+    )
+
+    result = _agent(tmp_path).evaluate_turn(payload)
+
+    assert result.evaluation.verdict == "SUCCESS"
+    assert result.branch.branch_type == "success"
+    assert result.branch.next_action == "ADVANCE"
+    assert result.branch.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+    assert result.branch.branch_reason == "flight_smalltalk_continue"
+    assert result.state_delta.retry_count_delta == 0
+    assert result.state_delta.patience_delta == 0
+
+
 def test_flight_smalltalk_critical_risk_still_guarded(tmp_path: Path) -> None:
     context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
     payload = _policy_input(
@@ -215,6 +237,37 @@ def test_probe_selection_prefers_coherent_topic(tmp_path: Path) -> None:
     # Since topic is "travel", the selected probe should have a coherent topic tag "travel".
     assert decision.selected_probe is not None
     assert decision.selected_probe["topic_tag"] == "travel" or "travel" in decision.selected_probe["coherent_topics"]
+
+
+def test_flight_smalltalk_excludes_form_and_address_probes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.app.services.service_b import flight_smalltalk_diagnostic_policy
+
+    monkeypatch.setattr(flight_smalltalk_diagnostic_policy, "STEERING", 0.0)
+
+    def choose_first_safe_probe(population, weights=None, cum_weights=None, k=1):
+        assert all(probe.get("topic_tag") != "arrival_form" for probe in population)
+        assert all(probe.get("target_competency") != "address_guidance" for probe in population)
+        assert all(probe.get("target_competency") != "stay_location" for probe in population)
+        return [population[0]]
+
+    monkeypatch.setattr(flight_smalltalk_diagnostic_policy.random, "choices", choose_first_safe_probe)
+
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(
+        node_context=context,
+        player_text="Nope. Get yourself your own pen.",
+        confidence=0.98,
+    )
+
+    policy = FlightSmallTalkDiagnosticPolicy(runtime_root=tmp_path / "openkb" / "dev_b")
+    decision = policy.decide_conversational(payload)
+
+    assert decision.selected_probe is not None
+    assert decision.selected_probe["topic_tag"] != "arrival_form"
+    assert decision.selected_probe["target_competency"] not in {"address_guidance", "stay_location"}
 
 
 def test_termination_bounded_by_turns_and_confidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -600,6 +600,139 @@ def test_understanding_agent_llm_mode_builds_new_immigration_slot_from_evidence(
     assert output.slot_evidence[0].value == "engineer"
 
 
+def test_understanding_agent_llm_mode_upgrades_here_you_go_passport_handover() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "submit_passport",
+            "intent_success": False,
+            "confidence": 0.34,
+            "meaning_summary_kr": "The player made a vague handover phrase.",
+            "emotion": "calm",
+            "answer_relevance": "partially_related",
+            "ambiguity_type": "vague_reference",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "slot_evidence": [
+                {
+                    "slot": "passport_submission_status",
+                    "value": "available",
+                    "confidence": 0.72,
+                    "evidence_text": "Here you go.",
+                }
+            ],
+            "missing_slots": [],
+            "needs_clarification": False,
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text(
+        "Hi. Here you go.",
+        _alpha_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_001_PASSPORT"),
+    )
+
+    assert output.intent == "submit_passport"
+    assert output.intent_success is True
+    assert output.intent_satisfied is True
+    assert output.confidence >= 0.9
+    assert output.answer_relevance == "on_topic"
+    assert output.extracted_slots == {"passport_submission_status": "submitted"}
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
+    assert agent.last_trace["postprocessing"]["passport_handover_repair_applied"] is True
+
+
+def test_understanding_agent_llm_mode_repairs_first_visit_prior_visit_phrase() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "confirm_first_visit",
+            "intent_success": False,
+            "confidence": 0.64,
+            "meaning_summary_kr": "The player mentions prior visits but the slot was missed.",
+            "emotion": "calm",
+            "answer_relevance": "partially_related",
+            "ambiguity_type": "unclear_confirmation",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "slot_evidence": [],
+            "extracted_slots": {},
+            "missing_slots": ["first_visit_status"],
+            "needs_clarification": True,
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text(
+        "No, uh, it's actually my, uh... I've been here quite a long... quite a lot.",
+        _alpha_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_008_FIRST_VISIT"),
+    )
+
+    assert output.intent == "confirm_first_visit"
+    assert output.intent_success is True
+    assert output.intent_satisfied is True
+    assert output.confidence >= 0.9
+    assert output.answer_relevance == "on_topic"
+    assert output.extracted_slots == {"first_visit_status": "no_visited_before"}
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
+    assert agent.last_trace["postprocessing"]["first_visit_repair_applied"] is True
+
+
+def test_understanding_agent_llm_mode_repairs_final_clearance_acknowledgement() -> None:
+    cases = [
+        ("Good. Thanks.", "thanked_officer"),
+        ("Am I good to go right now? Am I good to go now?", "ready_for_baggage_claim"),
+    ]
+    for player_text, slot_value in cases:
+        llm_client = FakeUnderstandingLLMClient(
+            {
+                "intent": "acknowledge_immigration_clearance",
+                "intent_success": False,
+                "confidence": 0.94,
+                "meaning_summary_kr": "The player is responding to the clearance.",
+                "emotion": "calm",
+                "answer_relevance": "partially_related",
+                "ambiguity_type": "unclear_confirmation",
+                "risk_delta": 0,
+                "risk_reason": "No risk expression was found.",
+                "risk_tags": [],
+                "slot_evidence": [],
+                "extracted_slots": {},
+                "missing_slots": ["immigration_transition_acknowledgement"],
+                "needs_clarification": False,
+            }
+        )
+        agent = UnderstandingAgent(
+            settings=AppSettings(murphy_understanding_mode="llm"),
+            llm_client=llm_client,
+        )
+
+        output = agent.analyze_player_text(
+            player_text,
+            _alpha_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_007_FINAL_DECISION"),
+        )
+
+        assert output.intent == "acknowledge_immigration_clearance"
+        assert output.intent_success is True
+        assert output.intent_satisfied is True
+        assert output.confidence >= 0.9
+        assert output.answer_relevance == "on_topic"
+        assert output.extracted_slots == {
+            "immigration_transition_acknowledgement": slot_value,
+        }
+        assert output.missing_slots == []
+        assert output.needs_clarification is False
+        assert agent.last_trace["postprocessing"]["final_clearance_ack_repair_applied"] is True
+
+
 def test_understanding_agent_llm_mode_ignores_extracted_slot_without_evidence() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {
@@ -673,7 +806,7 @@ def test_understanding_agent_llm_mode_repairs_freeform_address_slot() -> None:
     assert agent.last_trace["postprocessing"]["slot"] == "stay_location"
 
 
-def test_understanding_agent_rule_mode_keeps_flight_diagnostic_node_slot_neutral() -> None:
+def test_understanding_agent_rule_mode_keeps_flight_diagnostic_node_slot_neutral_but_successful() -> None:
     agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
 
     output = agent.analyze_player_text(
@@ -682,10 +815,72 @@ def test_understanding_agent_rule_mode_keeps_flight_diagnostic_node_slot_neutral
     )
 
     assert output.intent == "estimate_user_travel_speaking_level"
-    assert output.intent_success is False
+    assert output.intent_success is True
+    assert output.intent_satisfied is True
+    assert output.answer_relevance == "on_topic"
     assert output.extracted_slots == {}
     assert output.missing_slots == []
     assert output.needs_clarification is False
+
+
+def test_understanding_agent_rule_mode_treats_flight_followup_as_free_smalltalk() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text(
+        "Quite a long time. I'm gonna work here.",
+        _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK"),
+    )
+
+    assert output.intent == "estimate_user_travel_speaking_level"
+    assert output.intent_success is True
+    assert output.intent_satisfied is True
+    assert output.confidence >= 0.7
+    assert output.answer_relevance == "on_topic"
+    assert output.extracted_slots == {}
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
+
+
+def test_understanding_agent_llm_mode_repairs_flight_followup_as_free_smalltalk() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "estimate_user_travel_speaking_level",
+            "intent_success": False,
+            "confidence": 0.17,
+            "meaning_summary_kr": "The answer does not respond to the old pen request.",
+            "emotion": "calm",
+            "answer_relevance": "off_topic",
+            "ambiguity_type": "off_topic_response",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "slot_evidence": [],
+            "extracted_slots": {},
+            "missing_slots": [],
+            "needs_clarification": False,
+            "intent_satisfied": False,
+            "judgment_reason": "Judged against legacy pen request.",
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text(
+        "Quite a long time. I'm gonna work here.",
+        _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK"),
+    )
+
+    assert output.intent == "estimate_user_travel_speaking_level"
+    assert output.intent_success is True
+    assert output.intent_satisfied is True
+    assert output.confidence >= 0.7
+    assert output.answer_relevance == "on_topic"
+    assert output.extracted_slots == {}
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
+    assert agent.last_trace["postprocessing"]["flight_smalltalk_free_response_applied"] is True
 
 
 def test_understanding_agent_rule_mode_rejects_off_topic_idiom_for_flight_diagnostic_node() -> None:
@@ -705,7 +900,7 @@ def test_understanding_agent_rule_mode_rejects_off_topic_idiom_for_flight_diagno
     assert output.needs_clarification is False
 
 
-def test_understanding_agent_rule_mode_rejects_visit_purpose_in_flight_diagnostic_node() -> None:
+def test_understanding_agent_rule_mode_accepts_travel_detail_in_flight_diagnostic_node() -> None:
     agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
 
     output = agent.analyze_player_text(
@@ -714,8 +909,8 @@ def test_understanding_agent_rule_mode_rejects_visit_purpose_in_flight_diagnosti
     )
 
     assert output.intent == "estimate_user_travel_speaking_level"
-    assert output.intent_success is False
-    assert output.answer_relevance != "on_topic"
+    assert output.intent_success is True
+    assert output.answer_relevance == "on_topic"
     assert output.extracted_slots == {}
     assert output.missing_slots == []
     assert output.needs_clarification is False

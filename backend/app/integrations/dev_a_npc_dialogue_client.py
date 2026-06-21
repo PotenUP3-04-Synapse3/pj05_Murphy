@@ -155,6 +155,14 @@ class DevANpcDialogueClient:
             else None
         )
 
+        if _is_flight_smalltalk_turn(payload.current_node_id, payload.node_context.chapter_id):
+            node_context["required_slots"] = []
+            node_context["optional_slots"] = []
+            node_context["critical_slots"] = []
+            dialogue_directive["target_slot"] = None
+            if dialogue_seed_dump is not None:
+                dialogue_seed_dump["required_slots"] = []
+
         game_state_dump, random_customs_item_dump, dialogue_seed_dump = _filter_suspicion_data(
             required_slots=payload.node_context.required_slots,
             game_state=game_state_dump,
@@ -218,6 +226,10 @@ class DevANpcDialogueClient:
             return ""
 
         return node_context.npc_question
+
+
+def _is_flight_smalltalk_turn(current_node_id: str, chapter_id: str) -> bool:
+    return current_node_id.startswith("FLIGHT_") or chapter_id == "CH0_01_FLIGHT_SMALLTALK"
 
 
 def _second_person_recast(text: str | None) -> str:

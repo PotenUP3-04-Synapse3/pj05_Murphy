@@ -1,5 +1,371 @@
 # Handoff
 
+## 2026-06-21 Developer C, A: Immigration Prompt Alignment and Slot Repair Fix
+
+Developer C traced a unified AgentRun where Immigration technically progressed
+but the dialogue and scoring contract drifted: `Hi. Here you go.` did not pass
+passport submission, A asked host/history follow-ups that did not match B's
+next node, retry text produced `You mentioned mentioned`, and the final
+occupation success dialogue said `Unemployed` after the current turn filled
+`occupation=student`.
+
+Root cause:
+- C Understanding treated a deictic passport handover phrase as weak evidence
+  even in the `IMM_001_PASSPORT` context. The LLM saw
+  `passport_submission_status=available`, but C did not upgrade that into a
+  strong `submitted` handover.
+- A's immigration LLM was allowed to ask context-driven follow-ups such as
+  `Who is your host?` even when B had already selected the canonical next node
+  (`IMM_005_RETURN_TICKET`) and surface goal (`ask_return_ticket`).
+- A's generic callback hook policy leaked into formal Immigration retry text,
+  producing phrases such as `You mentioned mentioned`.
+- A could reuse stale dialogue-history facts over the current turn's
+  `understanding.extracted_slots`, so `occupation=student` was contradicted by
+  `Unemployed`.
+
+Follow-up runtime log:
+- A later `b_policy_run_cc0b01...` run showed passport submission fixed, but
+  exposed three remaining Immigration demo issues:
+  - `No, ... I've been here quite a lot` at `IMM_008_FIRST_VISIT` was a valid
+    "not first visit" answer, but C let the LLM miss
+    `first_visit_status=no_visited_before`, causing a noisy REASK.
+  - After `occupation=engineer`, A opened `Any work here in the United States?`
+    even though B had advanced to `IMM_007_FINAL_DECISION`; this created a new
+    obligation right before clearance.
+  - At `IMM_007_FINAL_DECISION`, short acknowledgements such as `Good. Thanks.`
+    and confirmation checks such as `Am I good to go now?` were not recognized
+    as `immigration_transition_acknowledgement`, so B repeatedly selected
+    `IMM_EXTRA_007_CLARIFY_FINAL_DECISION`. A's later fallback synthesis then
+    added formal-context-breaking text like `You mentioned good`.
+
+Changed:
+- `backend/app/agents/agent_c/understanding_agent.py`:
+  Added a passport-context repair for handover phrases like `Here you go`,
+  `Here you are`, `Here it is`, and `my passport`. In `IMM_001_PASSPORT`,
+  non-risky handover phrases now become `submit_passport`, confidence >= 0.9,
+  `passport_submission_status=submitted`, and `intent_satisfied=true`.
+  Follow-up repair now also handles:
+  - `first_visit_status=no_visited_before` for prior-visit wording such as
+    `No, ... I've been here quite a lot`;
+  - `immigration_transition_acknowledgement` for `thanks`, `good`, and
+    `good to go` clearance acknowledgements.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`:
+  Added Immigration-only post-processing guards:
+  - success turns that advance to a known `surface_goal` must ask the canonical
+    next-node question;
+  - retry/clarify turns cannot include `You mentioned ...` callback hooks;
+  - current `understanding.extracted_slots` cannot be contradicted by stale LLM
+    text such as saying `Unemployed` when the current slot is `student`.
+  Follow-up guard now treats `confirm_immigration_clearance_transition` as a
+  non-question clearance surface goal and disables casual `open_hooks` prefixes
+  in formal Immigration fallback synthesis.
+- `backend/tests/test_understanding_agent.py`:
+  Added regression coverage for `Hi. Here you go.` as passport handover in LLM
+  mode, first-visit prior-visit wording, and final clearance acknowledgements.
+- `backend/tests/test_developer_a_npc_dialogue.py`:
+  Added regression coverage for host-question drift, retry hook leakage, and
+  stale occupation contradiction. Follow-up coverage now also blocks clearance
+  work-question drift and post-override `You mentioned ...` prefixes.
+
+Team impact:
+- Developer A: A-owned post-processing now keeps Immigration dialogue aligned
+  with B's branch/surface-goal contract and current-slot evidence. Clearance
+  transition turns should close or acknowledge, not ask a new question.
+- Developer B: No B-owned code changed. B's branch output was correct in the
+  inspected runs; the mismatch came from C Understanding and A dialogue output.
+- Developer C: C Understanding now repairs passport handover evidence before B
+  policy evaluation and repairs final Immigration acknowledgement slots before
+  B sees them as missing.
+
+Verification:
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_mode_upgrades_here_you_go_passport_handover backend/tests/test_developer_a_npc_dialogue.py::test_immigration_success_llm_must_follow_branch_surface_goal_question backend/tests/test_developer_a_npc_dialogue.py::test_immigration_retry_llm_hook_prefix_falls_back_to_direct_question backend/tests/test_developer_a_npc_dialogue.py::test_immigration_llm_cannot_contradict_current_occupation_slot`: PASS, 4 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_mode_repairs_first_visit_prior_visit_phrase backend/tests/test_understanding_agent.py::test_understanding_agent_llm_mode_repairs_final_clearance_acknowledgement backend/tests/test_developer_a_npc_dialogue.py::test_immigration_success_llm_cannot_open_question_on_clearance_transition backend/tests/test_developer_a_npc_dialogue.py::test_immigration_non_advance_override_does_not_add_open_hook_prefix`: PASS, 4 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py::test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response`: PASS, 71 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest`: PASS, 398 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 139 source files.
+- `git diff --check`: PASS, with existing Windows LF-to-CRLF working-copy warnings only.
+
+## 2026-06-21 Developer C, A, B: Flight Address Probe and Completion Closing Fix
+
+Developer C traced the latest unified AgentRun where Arabella moved from a pen
+refusal into arrival-form address help, then completed the Flight chapter while
+still asking a new question. This is another user-approved emergency Alpha demo
+fix that crosses A/B/C ownership.
+
+Root cause:
+- C dialogue history delivery was working in this run. The address drift came
+  from B's Flight probe selector still allowing `arrival_form`,
+  `address_guidance`, and `stay_location` probes inside the free seatmate
+  diagnostic.
+- Once address/form language entered the history, A could naturally but
+  awkwardly continue that thread even when B selected a later travel probe.
+- B correctly returned `COMPLETE_CHAPTER -> FLIGHT_999_COMPLETE` at the end,
+  but A's LLM output was not post-processed for completion semantics, so it
+  could end a chapter with another follow-up question.
+
+Changed:
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`:
+  Added a Flight seatmate probe filter that keeps form/address/stay-location
+  probes out of the free smalltalk diagnostic selector. The source data remains
+  intact; only this policy path excludes those probes.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`:
+  Added a shared complete-chapter detector and a post-processing guard. If a
+  completion turn LLM output contains a question, A falls back to the
+  deterministic closing line such as `Enjoy your trip!`.
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`:
+  Added regression coverage proving B's selected probe population excludes
+  form/address/stay-location candidates.
+- `backend/tests/test_developer_a_npc_dialogue.py`:
+  Added regression coverage proving a completion-turn LLM question falls back
+  to a closing line and records `complete_chapter_question_violation`.
+
+Team impact:
+- Developer A: A-owned post-processing now enforces that `COMPLETE_CHAPTER`
+  turns close instead of opening a new conversational hook.
+- Developer B: B-owned Flight policy now treats form/address/stay-location
+  probes as inappropriate for the seatmate free diagnostic. Branch authority and
+  risk/abuse guards remain in B.
+- Developer C: C's diagnosis confirms this was not the previous history-sync
+  failure. The unified logs were used to distinguish B probe selection from C
+  adapter/history behavior.
+
+Follow-up to track:
+- C Understanding should expose a lightweight social-discomfort signal for
+  player turns like "why are you asking me that?", "are you interested in me?",
+  "do you have a boyfriend?", or "do you want to stay with me?".
+- B Flight policy should use repeated social-discomfort evidence to stop
+  pushing personal travel probes and instead select a repair, neutral pivot, or
+  wrap-up path.
+- A dialogue policy should avoid extending romantic/flirtatious or uncomfortable
+  frames. It should briefly set a friendly boundary, then pivot or close.
+- Flight completion closing should answer the player's final harmless question
+  when possible before closing, for example: "I'm Arabella. Nice meeting you,
+  Yong Hee. Enjoy your trip!" instead of an abrupt standalone close.
+
+Verification:
+- `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_excludes_form_and_address_probes backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_complete_chapter_llm_question_falls_back_to_closing`: PASS, 2 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/dev_b/test_flight_smalltalk_redesign.py backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_complete_chapter_llm_question_falls_back_to_closing backend/tests/test_developer_a_npc_dialogue.py::test_complete_chapter_transition_returns_closing_phrase_for_each_role backend/tests/test_preprototype_flow.py::test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller`: PASS, 25 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest`: PASS, 390 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 139 source files.
+- `git diff --check`: PASS, with existing Windows LF-to-CRLF working-copy warnings only.
+
+## 2026-06-21 Developer C, A, B: Flight Pen Loop Emergency Fix
+
+Developer C traced the latest unified AgentRun where Emily repeatedly asked for
+more pens even after the player gave one, refused more, and explicitly called
+out the "pen loop." This was an emergency cross-owner Alpha demo fix approved by
+the user, so C changed A-owned and B-owned files as well as C-owned adapter
+code.
+
+Root cause:
+- B was not selecting the same probe every turn. Its OpenKB records showed
+  changing `dialogue_seed.surface_goal` values such as travel purpose, form
+  help, address guidance, wrap-up, and destination.
+- However B still emitted legacy Flight metadata:
+  `dialogue_directive.target_slot="polite_response"`,
+  `dialogue_seed.required_slots=["polite_response"]`, and
+  `opening_intent="ask_polite_response"`.
+- C was clearing `dialogue_seed.dialogue_history` by default unless
+  `MURPHY_C_LEGACY_HISTORY=1`, so A did not see that the pen request had already
+  been handled or that the player complained about repetition.
+- A's smalltalk prompt still instructed the NPC to return to the pending request
+  if a previous request looked unresolved. With no history and the legacy
+  `polite_response` target, A kept treating the initial pen request as the
+  active conversational obligation.
+
+Changed:
+- `backend/app/agents/agent_b/english_level_hint_agent.py`:
+  Flight smalltalk now emits free-diagnostic metadata instead of pen-slot
+  metadata. For Flight turns, `dialogue_directive.target_slot=None`,
+  `dialogue_seed.required_slots=[]`, `opening_intent=surface_goal`, and
+  `assessment_targets` / `feedback_focus` no longer include `polite_response`.
+- `backend/app/tools/tool_c/developer_c_graph_tools.py`:
+  C now syncs recent B records plus the C-owned dialogue sidecar into
+  `dialogue_seed.dialogue_history` by default. A receives prior player/NPC
+  turns without requiring `MURPHY_C_LEGACY_HISTORY=1`.
+- `backend/app/integrations/dev_a_npc_dialogue_client.py`:
+  C additionally neutralizes Flight A-facing `node_context.required_slots`,
+  `optional_slots`, `critical_slots`, and directive `target_slot` before calling
+  Developer A, so legacy `polite_response` cannot leak through the adapter.
+- `backend/app/prompts/npc_dialogue_prompt.md` and
+  `backend/app/prompts/npc_dialogue_prompt.short.md`:
+  In `smalltalk_diagnostic`, the opening favor/request is now described as a
+  conversation starter, not a required slot. If the player already answered,
+  refused, or complained about repetition, A should acknowledge briefly and move
+  to the current `surface_goal` instead of re-asking for the same object.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`:
+  Added a post-processing guard for Flight smalltalk: if history/player text
+  shows the pen request was already handled and the LLM still asks for the pen
+  again, A falls back with `smalltalk_repeated_object_request`.
+- Tests added/updated:
+  - `backend/tests/dev_b/test_developer_b_policy_engine.py` checks Flight B
+    dialogue metadata no longer keeps the pen slot.
+  - `backend/tests/test_preprototype_flow.py` reproduces the two-turn pen-loop
+    boundary and verifies A receives history plus neutral Flight slots.
+  - `backend/tests/test_developer_a_npc_dialogue.py` verifies A's LLM
+    post-processing blocks repeated pen requests after history.
+
+Team impact:
+- Developer A: A-owned prompt and post-processing were changed under explicit
+  emergency approval. The change is scoped to `smalltalk_diagnostic` pen/favor
+  repetition and should not affect immigration retry/clarify behavior.
+- Developer B: Flight metadata now represents free level-diagnostic probes
+  instead of the original pen response slot. Branch authority and abuse/risk
+  guards remain in B.
+- Developer C: C re-enabled history delivery by default and added A-facing
+  Flight slot neutralization as defense in depth.
+
+Verification:
+- `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py::test_flight_smalltalk_dialogue_metadata_does_not_keep_pen_slot backend/tests/test_preprototype_flow.py::test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_blocks_repeated_pen_request_after_history`: PASS, 3 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py::test_flight_smalltalk_creates_deferred_out_game_feedback_seed backend/tests/dev_b/test_developer_b_policy_engine.py::test_flight_smalltalk_dialogue_metadata_does_not_keep_pen_slot backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/dev_b/test_flight_smalltalk_redesign.py backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_bypasses_missing_question_guard backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_triggers_coherence_guard_for_naked_question backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_triggers_coherence_guard_for_non_sequitur backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_fallback_uses_generic_neutral_responses backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_handles_topic_switch_and_length_target backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_blocks_repeated_pen_request_after_history backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_allows_flight_rude_refusal_to_continue_smalltalk backend/tests/test_preprototype_flow.py::test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller`: PASS, 32 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller backend/tests/test_preprototype_flow.py::test_dev_a_adapter_allows_flight_rude_refusal_to_continue_smalltalk backend/tests/test_preprototype_flow.py::test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop`: PASS, 4 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest`: PASS, 388 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 139 source files.
+
+## 2026-06-21 Developer C, B: Flight Rude Refusal Continues Diagnostic
+
+Developer C traced a unified AgentRun where the player answered Arabella's pen
+request with "Nope. Get yourself your own pen." B returned `FAIL/WARNING`, while
+A generated a natural follow-up question: "By the way, are you traveling for
+work or fun?" The deeper issue was not A asking the follow-up. The Flight scene's
+primary purpose is English level diagnosis, so a rude but non-abusive refusal is
+still useful conversational evidence and should not stop the smalltalk flow.
+
+Root cause:
+- Developer B's temporary `flight_smalltalk_rude_refusal` branch treated a
+  socially uncooperative pen refusal as a non-advance warning.
+- That conflicted with the Flight diagnostic design: ordinary free smalltalk
+  should keep moving unless there is true abuse, repeated tier-1 incivility, or
+  critical travel/immigration risk.
+
+Changed:
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`:
+  Removed the special rude-refusal warning branch. The utterance now falls
+  through the normal Flight diagnostic policy and returns
+  `SUCCESS/ADVANCE -> FLIGHT_A_001_SEATMATE_SMALLTALK`.
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`: Updated the
+  rude pen refusal regression to prove the diagnostic continues with no retry or
+  patience penalty.
+- `backend/tests/test_preprototype_flow.py`: Added regression coverage proving
+  an A-style output like "Oh, okay. I can get my own one. By the way, are you
+  traveling for work or fun?" remains intact and the response is `ADVANCE` /
+  `SUCCESS`. The Flight seed tests now use isolated OpenKB session IDs so local
+  runtime history cannot leak across repeated test runs.
+- `docs/handoff.md` and `docs/portfolio_seanhan.md`: Documented the follow-up
+  correction and why the earlier warning-only direction was rejected.
+
+Team impact:
+- Developer A: No A-owned code changed. A's follow-up question is expected and
+  should continue the free smalltalk diagnostic.
+- Developer B: The emergency B-owned policy branch was revised with user
+  approval. Abuse and critical-risk guards remain; non-abusive pen refusal no
+  longer stops the diagnostic.
+- Developer C: C keeps the A/B adapter boundary, but does not suppress A's
+  follow-up question for this case.
+
+Verification:
+- `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_rude_pen_refusal_still_continues_diagnostic backend/tests/test_preprototype_flow.py::test_dev_a_adapter_allows_flight_rude_refusal_to_continue_smalltalk`: PASS, 2 passed, 1 warning (`audioop` deprecation in A-owned audio quality service).
+- `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/dev_b/test_flight_smalltalk_redesign.py backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_allows_flight_rude_refusal_to_continue_smalltalk backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller`: PASS, 23 passed, 1 warning (`audioop` deprecation in A-owned audio quality service).
+- `uv run pytest`: PASS, 385 passed, 1 warning (`audioop` deprecation in A-owned audio quality service).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 139 source files.
+
+## 2026-06-21 Developer C, B: Flight Free Smalltalk Diagnostic Hotfix
+
+Developer C applied a user-authorized emergency cross-owner hotfix in Developer
+B policy code for the Alpha demo. The Flight seatmate scene now treats
+`FLIGHT_A_001_SEATMATE_SMALLTALK` as one free smalltalk diagnostic node instead
+of continuing to score every turn against the legacy pen-request
+`polite_response` slot.
+
+Changed:
+- `backend/app/agents/agent_c/understanding_agent.py`: Updated Flight
+  diagnostic handling so meaningful free-form player answers are returned as
+  `intent_success=true`, `answer_relevance="on_topic"`, and confidence high
+  enough for B to continue, while still stripping legacy slot evidence and
+  keeping known off-topic idioms low-confidence.
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`:
+  Initially added, then revised, an emergency rude-refusal branch after runtime
+  review. The final behavior treats non-abusive pen refusal as a continuing
+  diagnostic sample; true abuse and critical-risk guards still stop or warn.
+- `backend/tests/test_understanding_agent.py`: Added regression coverage for
+  rule and LLM-mode Flight follow-up answers like "Quite a long time. I'm gonna
+  work here.", and updated older Flight slot-neutral expectations to the new
+  free-smalltalk design.
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`: Added a
+  B-policy regression test proving rude pen refusal still advances the
+  diagnostic conversation.
+
+Notes:
+- This intentionally crosses Developer B ownership because the user explicitly
+  approved urgent demo-critical B-code edits by Developer C.
+- No public API schema changed. The behavior change is internal policy: Flight
+  diagnostic progress now depends on free-response relevance and social
+  appropriateness rather than the legacy `polite_response` slot.
+
+Team impact:
+- Developer A: No A-owned code changed. A will receive fewer Flight
+  `clarify/REASK` turns for normal follow-up answers, so NPC dialogue can keep
+  moving naturally. Non-abusive rude refusals should also remain in the
+  continuing smalltalk stream.
+- Developer B: Flight policy was hotfixed with explicit user approval. The
+  policy should treat C's Flight understanding as free-response evidence, while
+  keeping branch authority and social guardrails.
+- Developer C: C Understanding now owns the Flight free-response normalization
+  that prevents legacy `polite_response` slot scoring from blocking natural
+  smalltalk.
+
+Verification:
+- `uv run pytest backend/tests/test_understanding_agent.py -q`: PASS, 24
+  passed.
+- `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py
+  backend/tests/dev_b/test_flight_smalltalk_redesign.py -q`: PASS, 20 passed.
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition
+  backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller
+  backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata
+  -q`: PASS, 3 passed, 1 warning (`audioop` deprecation in A-owned audio
+  quality service).
+- `uv run pytest backend/tests/test_understanding_agent.py
+  backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py
+  backend/tests/dev_b/test_flight_smalltalk_redesign.py
+  backend/tests/test_preprototype_flow.py::test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition
+  backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller
+  backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata
+  -q`: PASS, 47 passed, 1 warning (`audioop` deprecation in A-owned audio
+  quality service).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 139 source files.
+- `uv run pytest`: PASS, 384 passed, 1 warning (`audioop` deprecation in
+  A-owned audio quality service).
+
+## 2026-06-21 Developer C Documentation: Sean Han Portfolio Restructure
+
+Developer C restructured Sean Han's portfolio document to match the current
+state of the implementation recorded in this handoff.
+
+Changed:
+- `docs/portfolio_seanhan.md`: Rebuilt the document around problem definition,
+  process narrative, and Developer C technical ownership. Added explicit
+  sections for LangGraph tool nodes, C-owned AgentRun middleware,
+  Understanding/adapter/validator guardrails, STT provider safety, testing
+  evidence, demo coverage, and resume bullets.
+
+Notes:
+- No API contract or runtime behavior changed.
+- `docs/handoff.md` remains the detailed implementation ledger; the portfolio
+  now distills that history into a hiring-oriented narrative.
+
+Verification:
+- `git diff --check`: PASS. Git reported only the existing LF-to-CRLF working
+  copy normalization warnings.
+- Portfolio heading spot-check: PASS for problem definition, architecture
+  rationale, LangGraph tool nodes, AgentRun middleware, validator guardrails,
+  and resume bullets.
+- Documentation-only change. Full Python test suite not run.
+
 ## 2026-06-19 Developer C: Authorized One-Time Developer A Hotfix
 
 Developer C applied a one-time user-authorized cross-owner hotfix in Developer

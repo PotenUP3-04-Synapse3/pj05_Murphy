@@ -17,7 +17,26 @@ MIN_TURNS = 3
 MAX_TURNS = 30
 CONFIDENCE_THRESHOLD = 0.7
 STEERING = 0.4
+BLOCKED_FLIGHT_SEATMATE_PROBE_IDS = {
+    "ADDRESS_HELP",
+    "FORM_HELP_REQUEST",
+    "HOTEL_HOSTEL_REPAIR",
+    "STAY_PLACE",
+}
+BLOCKED_FLIGHT_SEATMATE_TOPICS = {"arrival_form"}
+BLOCKED_FLIGHT_SEATMATE_COMPETENCIES = {"address_guidance", "stay_location"}
 
+
+def is_probe_allowed_for_flight_seatmate(probe: dict[str, Any]) -> bool:
+    """Keep Flight seatmate diagnostics in natural smalltalk territory."""
+
+    if probe.get("probe_id") in BLOCKED_FLIGHT_SEATMATE_PROBE_IDS:
+        return False
+    if probe.get("topic_tag") in BLOCKED_FLIGHT_SEATMATE_TOPICS:
+        return False
+    if probe.get("target_competency") in BLOCKED_FLIGHT_SEATMATE_COMPETENCIES:
+        return False
+    return True
 
 @dataclass(frozen=True)
 class FlightSmallTalkDiagnosticDecision:
@@ -201,13 +220,19 @@ class FlightSmallTalkDiagnosticPolicy:
                     if dseed and isinstance(dseed, dict):
                         goal = dseed.get("surface_goal", "")
                         for p in self.probes:
+                            if not is_probe_allowed_for_flight_seatmate(p):
+                                continue
                             if p["probe_id"] == goal or f"{p['target_competency']}_{p['topic_tag']}" == goal:
                                 last_probe = p
                                 break
                     if last_probe:
                         break
-            if not last_probe and self.probes:
-                last_probe = self.probes[0]
+            safe_probes = [
+                p for p in self.probes
+                if is_probe_allowed_for_flight_seatmate(p)
+            ]
+            if not last_probe and safe_probes:
+                last_probe = safe_probes[0]
                 
             return ScenarioDecision(
                 verdict="UNCLEAR",
@@ -248,8 +273,12 @@ class FlightSmallTalkDiagnosticPolicy:
             return False
 
         # 7. 숨은-목표 기반 확률적 토픽 스티어링 (가중 랜덤 선택)
-        unused_probes = [p for p in self.probes if p["probe_id"] not in used_probes and not is_probe_sensitive(p)]
-        candidates = unused_probes if unused_probes else [p for p in self.probes if not is_probe_sensitive(p)]
+        selectable_probes = [
+            p for p in self.probes
+            if is_probe_allowed_for_flight_seatmate(p) and not is_probe_sensitive(p)
+        ]
+        unused_probes = [p for p in selectable_probes if p["probe_id"] not in used_probes]
+        candidates = unused_probes if unused_probes else selectable_probes
 
         selected_probe = None
         if candidates:
@@ -279,8 +308,8 @@ class FlightSmallTalkDiagnosticPolicy:
 
             selected_probe = random.choices(chosen_pool, weights=weights, k=1)[0]
 
-        if not selected_probe and self.probes:
-            selected_probe = self.probes[0]
+        if not selected_probe and selectable_probes:
+            selected_probe = selectable_probes[0]
 
         self.current_selected_probe = selected_probe
 

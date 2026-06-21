@@ -743,29 +743,52 @@ class _EnglishLevelHintPolicyCore:
         elif "declaration" in node_id.lower() or "bag_content" in node_id.lower() or "customs" in node_id.lower() or "item" in node_id.lower() or node_id.startswith("BAG_006"):
             suspicion_scope = "declaration"
 
-        return DialogueSeed(
-            scene=payload.scene_id,
-            npc_role=self._npc_role(payload),
-            surface_goal=surface_goal,
-            hidden_assessment_goal="estimate_user_travel_speaking_level",
-            opening_intent=self._opening_intent(payload),
-            assessment_targets=_unique_non_empty(
+        required_slots = [] if is_flight_smalltalk else payload.node_context.required_slots
+        if is_flight_smalltalk:
+            probe_targets: list[str] = []
+            if decision and hasattr(decision, "selected_probe") and decision.selected_probe:
+                selected_probe = decision.selected_probe
+                probe_targets = [
+                    str(selected_probe.get("target_competency", "")),
+                    str(selected_probe.get("topic_tag", "")),
+                ]
+            assessment_targets = _unique_non_empty([*probe_targets, surface_goal])
+            opening_intent = surface_goal
+            feedback_focus = _unique_non_empty(
+                [
+                    output.in_game_feedback.focus,
+                    *probe_targets,
+                    *output.out_game_feedback_seed.focus_on_form_targets,
+                ]
+            )
+        else:
+            assessment_targets = _unique_non_empty(
                 [
                     *payload.node_context.required_intents,
                     *payload.node_context.required_slots,
                     *payload.node_context.critical_slots,
                 ]
-            ),
-            required_slots=payload.node_context.required_slots,
-            max_turns=5 if payload.current_node_id.startswith("FLIGHT_") else 4,
-            difficulty_profile="auto",
-            feedback_focus=_unique_non_empty(
+            )
+            opening_intent = self._opening_intent(payload)
+            feedback_focus = _unique_non_empty(
                 [
                     output.in_game_feedback.focus,
                     *payload.node_context.required_slots,
                     *output.out_game_feedback_seed.focus_on_form_targets,
                 ]
-            ),
+            )
+
+        return DialogueSeed(
+            scene=payload.scene_id,
+            npc_role=self._npc_role(payload),
+            surface_goal=surface_goal,
+            hidden_assessment_goal="estimate_user_travel_speaking_level",
+            opening_intent=opening_intent,
+            assessment_targets=assessment_targets,
+            required_slots=required_slots,
+            max_turns=5 if payload.current_node_id.startswith("FLIGHT_") else 4,
+            difficulty_profile="auto",
+            feedback_focus=feedback_focus,
             tone_guidance=output.dialogue_directive.tone_hint if output.dialogue_directive else "neutral",
             allowed_followup_intents=self._allowed_followup_intents(payload, output),
             stop_condition=(
@@ -831,6 +854,7 @@ class _EnglishLevelHintPolicyCore:
         target_slot = payload.node_context.required_slots[0] if payload.node_context.required_slots else None
         is_flight_smalltalk = (payload.scene_id == "FLIGHT_A_001_SEATMATE_SMALLTALK" or payload.current_node_id.startswith("FLIGHT_"))
         if is_flight_smalltalk:
+            target_slot = None
             topic_switch = False
             if hasattr(decision, "selected_probe") and decision.selected_probe:
                 from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader

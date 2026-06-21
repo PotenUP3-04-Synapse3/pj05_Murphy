@@ -708,6 +708,319 @@ def test_complete_chapter_transition_returns_closing_phrase_for_each_role() -> N
     assert res_immigration["npc_text"] == "All right, you're cleared."
 
 
+def test_smalltalk_complete_chapter_llm_question_falls_back_to_closing() -> None:
+    class QuestionOnCompleteLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Arabella",
+                "npc_text": "Fun sounds great. What do you like to do there?",
+                "tts_text": "Fun sounds great. What do you like to do there?",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "joy",
+                "stability": 0.75,
+                "style": 0.45,
+                "speed": 1.0,
+                "similarity_boost": 0.85,
+                "llm_reason": "[COHERENT] It answers, but wrongly asks another question.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "I'm staying there for fun. My name is John. What is your name?",
+            "node_context": {"recommended_expression": "Nice to meet you."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "success",
+                "next_action": "COMPLETE_CHAPTER",
+                "next_node_id": "FLIGHT_999_COMPLETE",
+            },
+            "transition": {"status": "chapter_complete"},
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "target_slot": None,
+                "topic_switch": False,
+                "length_target": 12,
+            },
+            "dialogue_seed": {
+                "surface_goal": "travel_purpose_travel",
+                "required_slots": [],
+            },
+        },
+        use_llm=True,
+        llm_client=QuestionOnCompleteLLMClient(),
+    )
+
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "complete_chapter_question_violation"
+    assert result["npc_text"] == "Enjoy your trip!"
+    assert "?" not in result["npc_text"]
+
+
+def test_immigration_success_llm_must_follow_branch_surface_goal_question() -> None:
+    class HostQuestionLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Officer Hale",
+                "npc_text": "Friend's house. Who is your host?",
+                "tts_text": "Friend's house. Who is your host?",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "normal",
+                "llm_reason": "Wrongly asks a suspicion hook instead of the next node question.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_004_STAY_LOCATION",
+            "player_text": "I'm staying in my friend's house.",
+            "node_context": {"recommended_expression": "I'm staying at my friend's house."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "success",
+                "next_action": "ADVANCE",
+                "next_node_id": "IMM_005_RETURN_TICKET",
+            },
+            "dialogue_directive": {
+                "purpose": "continue_to_next_question",
+                "target_slot": "stay_location",
+            },
+            "dialogue_seed": {
+                "surface_goal": "ask_return_ticket",
+                "required_slots": ["stay_location"],
+            },
+        },
+        use_llm=True,
+        llm_client=HostQuestionLLMClient(),
+    )
+
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "immigration_surface_goal_mismatch"
+    assert result["npc_text"] == "Do you have a return ticket to Korea?"
+    assert "host" not in result["npc_text"].lower()
+
+
+def test_immigration_retry_llm_hook_prefix_falls_back_to_direct_question() -> None:
+    class MentionedHookLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Officer Hale",
+                "npc_text": "What is your occupation. You mentioned mentioned — What is your occupation?",
+                "tts_text": "What is your occupation. You mentioned mentioned — What is your occupation?",
+                "feedback_kr": "Try again.",
+                "tone": "formal_firm",
+                "animation": "move",
+                "npc_emotion": "confusion",
+                "llm_reason": "Wrongly uses an open hook in a formal retry.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_009_OCCUPATION",
+            "player_text": "I went to school here before.",
+            "node_context": {"recommended_expression": "I'm a student."},
+            "evaluation_summary": {"task_success": False, "clarity": 0.3},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "next_node_id": "IMM_009_OCCUPATION_CLARIFY_OCCUPATION",
+            },
+            "dialogue_directive": {
+                "purpose": "support_retry",
+                "target_slot": "occupation",
+            },
+            "dialogue_seed": {
+                "surface_goal": "ask_occupation",
+                "required_slots": ["occupation"],
+            },
+        },
+        use_llm=True,
+        llm_client=MentionedHookLLMClient(),
+    )
+
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "immigration_retry_hook_violation"
+    assert result["npc_text"] == "What is your occupation?"
+    assert "mentioned" not in result["npc_text"].lower()
+
+
+def test_immigration_non_advance_override_does_not_add_open_hook_prefix() -> None:
+    class NeutralRetryLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Officer Hale",
+                "npc_text": "Now go to baggage claim.",
+                "tts_text": "Now go to baggage claim.",
+                "feedback_kr": "Try again.",
+                "tone": "formal_firm",
+                "animation": "confusion",
+                "npc_emotion": "confusion",
+                "llm_reason": "A neutral retry sentence before fallback synthesis.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_007_FINAL_DECISION",
+            "player_text": "Good. Thanks.",
+            "node_context": {"recommended_expression": "Thank you, officer."},
+            "evaluation_summary": {"task_success": False, "clarity": 0.5},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "next_node_id": "IMM_EXTRA_007_CLARIFY_FINAL_DECISION",
+            },
+            "dialogue_directive": {
+                "purpose": "support_retry",
+                "target_slot": "immigration_transition_acknowledgement",
+            },
+            "dialogue_seed": {
+                "surface_goal": "confirm_immigration_clearance_transition",
+                "required_slots": ["immigration_transition_acknowledgement"],
+            },
+        },
+        use_llm=True,
+        llm_client=NeutralRetryLLMClient(),
+    )
+
+    assert result["llm"]["used"] is True
+    assert "you mentioned" not in result["npc_text"].lower()
+    assert result["npc_text"].endswith("Alright, here is your passport. Enjoy your stay.")
+
+
+def test_immigration_llm_cannot_contradict_current_occupation_slot() -> None:
+    class StaleOccupationLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Officer Hale",
+                "npc_text": "Unemployed. That is clear. Move on.",
+                "tts_text": "Unemployed. That is clear. Move on.",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "normal",
+                "llm_reason": "Wrongly uses a previous occupation fact.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_009_OCCUPATION",
+            "player_text": "I'm a student.",
+            "node_context": {"recommended_expression": "I'm a student."},
+            "evaluation_summary": {"task_success": True, "clarity": 0.8},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "success",
+                "next_action": "ADVANCE",
+                "next_node_id": "IMM_007_FINAL_DECISION",
+            },
+            "dialogue_directive": {
+                "purpose": "continue_to_next_question",
+                "target_slot": "occupation",
+            },
+            "dialogue_seed": {
+                "surface_goal": "confirm_immigration_clearance_transition",
+                "required_slots": ["occupation"],
+            },
+            "understanding": {
+                "extracted_slots": {"occupation": "student"},
+            },
+        },
+        use_llm=True,
+        llm_client=StaleOccupationLLMClient(),
+    )
+
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "current_slot_contradiction"
+    assert "unemployed" not in result["npc_text"].lower()
+    assert result["npc_text"] == "Alright, here is your passport. Enjoy your stay."
+
+
+def test_immigration_success_llm_cannot_open_question_on_clearance_transition() -> None:
+    class WorkQuestionLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Officer Hale",
+                "npc_text": "OpenAI engineer. Good. Any work here in the United States?",
+                "tts_text": "OpenAI engineer. Good. Any work here in the United States?",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "normal",
+                "llm_reason": "Wrongly opens a new work question on the clearance transition.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_009_OCCUPATION",
+            "player_text": "Um, I work at OpenAI as a AI engineer.",
+            "node_context": {"recommended_expression": "I'm an engineer."},
+            "evaluation_summary": {"task_success": True, "clarity": 0.86},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "success",
+                "next_action": "ADVANCE",
+                "next_node_id": "IMM_007_FINAL_DECISION",
+            },
+            "dialogue_directive": {
+                "purpose": "continue_to_next_question",
+                "target_slot": "occupation",
+            },
+            "dialogue_seed": {
+                "surface_goal": "confirm_immigration_clearance_transition",
+                "required_slots": ["occupation"],
+            },
+            "understanding": {
+                "extracted_slots": {"occupation": "engineer"},
+            },
+        },
+        use_llm=True,
+        llm_client=WorkQuestionLLMClient(),
+    )
+
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "immigration_surface_goal_mismatch"
+    assert result["npc_text"] == "Alright, here is your passport. Enjoy your stay."
+    assert "?" not in result["npc_text"]
+    assert "work here" not in result["npc_text"].lower()
+
+
 def test_animation_resolved_by_emotion() -> None:
     # joy emotion -> joy animation
     res_joy = generate_npc_dialogue_from_level_design(
@@ -999,6 +1312,65 @@ def test_smalltalk_diagnostic_handles_topic_switch_and_length_target() -> None:
     # Topic switch True should trigger post-processing pivot addition
     assert result["npc_text"].startswith("Anyway, ")
     assert result["tts_text"].startswith("Anyway, ")
+
+
+def test_smalltalk_diagnostic_blocks_repeated_pen_request_after_history() -> None:
+    class PenLoopLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Arabella",
+                "npc_text": "Sorry about that. Could I borrow your pen for this form?",
+                "tts_text": "Sorry about that. Could I borrow your pen for this form?",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "joy",
+                "stability": 0.75,
+                "style": 0.45,
+                "speed": 1.0,
+                "similarity_boost": 0.85,
+                "llm_reason": "[COHERENT] It acknowledges the player but repeats the old pen request.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Why do you keep asking about my pen? I already gave it to you.",
+            "node_context": {"recommended_expression": "Let's talk about the trip."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "target_slot": None,
+                "topic_switch": True,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "destination_travel",
+                "required_slots": [],
+                "dialogue_history": [
+                    {
+                        "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+                        "player_text_preview": "Hi. Sure, here you go. You can have that.",
+                        "npc_text_preview": "Thanks, that's kind. Do you have a spare pen too?",
+                        "filled_slots": {},
+                    }
+                ],
+            },
+        },
+        use_llm=True,
+        llm_client=PenLoopLLMClient(),
+    )
+
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "smalltalk_repeated_object_request"
+    assert "borrow your pen" not in result["npc_text"].lower()
 
 
 class _CapturingLLMClient:

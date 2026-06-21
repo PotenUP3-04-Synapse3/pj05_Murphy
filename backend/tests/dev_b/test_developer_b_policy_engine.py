@@ -444,6 +444,30 @@ def test_flight_smalltalk_creates_deferred_out_game_feedback_seed(tmp_path: Path
     assert result.dialogue_seed.max_turns == 5
 
 
+def test_flight_smalltalk_dialogue_metadata_does_not_keep_pen_slot(tmp_path: Path) -> None:
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="Sure, here you are.",
+            intent_success=True,
+            confidence=0.88,
+            extracted_slots={"polite_response": "offered_help"},
+            missing_slots=[],
+            client_allowed_next_nodes=context.allowed_next_nodes,
+        )
+    )
+
+    assert result.dialogue_directive is not None
+    assert result.dialogue_directive.target_slot is None
+    assert result.dialogue_seed is not None
+    assert result.dialogue_seed.required_slots == []
+    assert result.dialogue_seed.opening_intent == result.dialogue_seed.surface_goal
+    assert "polite_response" not in result.dialogue_seed.assessment_targets
+    assert "polite_response" not in result.dialogue_seed.feedback_focus
+
+
 # test_flight_diagnostic_retry_still_moves_to_next_evidence_node removed because intermediate flight nodes are deleted.
 
 
