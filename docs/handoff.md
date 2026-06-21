@@ -1,5 +1,30 @@
 # Handoff
 
+## 2026-06-21 Developer C Documentation: Sean Han Portfolio Restructure
+
+Developer C restructured Sean Han's portfolio document to match the current
+state of the implementation recorded in this handoff.
+
+Changed:
+- `docs/portfolio_seanhan.md`: Rebuilt the document around problem definition,
+  process narrative, and Developer C technical ownership. Added explicit
+  sections for LangGraph tool nodes, C-owned AgentRun middleware,
+  Understanding/adapter/validator guardrails, STT provider safety, testing
+  evidence, demo coverage, and resume bullets.
+
+Notes:
+- No API contract or runtime behavior changed.
+- `docs/handoff.md` remains the detailed implementation ledger; the portfolio
+  now distills that history into a hiring-oriented narrative.
+
+Verification:
+- `git diff --check`: PASS. Git reported only the existing LF-to-CRLF working
+  copy normalization warnings.
+- Portfolio heading spot-check: PASS for problem definition, architecture
+  rationale, LangGraph tool nodes, AgentRun middleware, validator guardrails,
+  and resume bullets.
+- Documentation-only change. Full Python test suite not run.
+
 ## 2026-06-19 Developer C: Authorized One-Time Developer A Hotfix
 
 Developer C applied a one-time user-authorized cross-owner hotfix in Developer
