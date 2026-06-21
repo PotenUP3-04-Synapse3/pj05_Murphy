@@ -1,5 +1,127 @@
 # Handoff
 
+## 2026-06-21 Developer C, A, B: Flight Pen Loop Emergency Fix
+
+Developer C traced the latest unified AgentRun where Emily repeatedly asked for
+more pens even after the player gave one, refused more, and explicitly called
+out the "pen loop." This was an emergency cross-owner Alpha demo fix approved by
+the user, so C changed A-owned and B-owned files as well as C-owned adapter
+code.
+
+Root cause:
+- B was not selecting the same probe every turn. Its OpenKB records showed
+  changing `dialogue_seed.surface_goal` values such as travel purpose, form
+  help, address guidance, wrap-up, and destination.
+- However B still emitted legacy Flight metadata:
+  `dialogue_directive.target_slot="polite_response"`,
+  `dialogue_seed.required_slots=["polite_response"]`, and
+  `opening_intent="ask_polite_response"`.
+- C was clearing `dialogue_seed.dialogue_history` by default unless
+  `MURPHY_C_LEGACY_HISTORY=1`, so A did not see that the pen request had already
+  been handled or that the player complained about repetition.
+- A's smalltalk prompt still instructed the NPC to return to the pending request
+  if a previous request looked unresolved. With no history and the legacy
+  `polite_response` target, A kept treating the initial pen request as the
+  active conversational obligation.
+
+Changed:
+- `backend/app/agents/agent_b/english_level_hint_agent.py`:
+  Flight smalltalk now emits free-diagnostic metadata instead of pen-slot
+  metadata. For Flight turns, `dialogue_directive.target_slot=None`,
+  `dialogue_seed.required_slots=[]`, `opening_intent=surface_goal`, and
+  `assessment_targets` / `feedback_focus` no longer include `polite_response`.
+- `backend/app/tools/tool_c/developer_c_graph_tools.py`:
+  C now syncs recent B records plus the C-owned dialogue sidecar into
+  `dialogue_seed.dialogue_history` by default. A receives prior player/NPC
+  turns without requiring `MURPHY_C_LEGACY_HISTORY=1`.
+- `backend/app/integrations/dev_a_npc_dialogue_client.py`:
+  C additionally neutralizes Flight A-facing `node_context.required_slots`,
+  `optional_slots`, `critical_slots`, and directive `target_slot` before calling
+  Developer A, so legacy `polite_response` cannot leak through the adapter.
+- `backend/app/prompts/npc_dialogue_prompt.md` and
+  `backend/app/prompts/npc_dialogue_prompt.short.md`:
+  In `smalltalk_diagnostic`, the opening favor/request is now described as a
+  conversation starter, not a required slot. If the player already answered,
+  refused, or complained about repetition, A should acknowledge briefly and move
+  to the current `surface_goal` instead of re-asking for the same object.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`:
+  Added a post-processing guard for Flight smalltalk: if history/player text
+  shows the pen request was already handled and the LLM still asks for the pen
+  again, A falls back with `smalltalk_repeated_object_request`.
+- Tests added/updated:
+  - `backend/tests/dev_b/test_developer_b_policy_engine.py` checks Flight B
+    dialogue metadata no longer keeps the pen slot.
+  - `backend/tests/test_preprototype_flow.py` reproduces the two-turn pen-loop
+    boundary and verifies A receives history plus neutral Flight slots.
+  - `backend/tests/test_developer_a_npc_dialogue.py` verifies A's LLM
+    post-processing blocks repeated pen requests after history.
+
+Team impact:
+- Developer A: A-owned prompt and post-processing were changed under explicit
+  emergency approval. The change is scoped to `smalltalk_diagnostic` pen/favor
+  repetition and should not affect immigration retry/clarify behavior.
+- Developer B: Flight metadata now represents free level-diagnostic probes
+  instead of the original pen response slot. Branch authority and abuse/risk
+  guards remain in B.
+- Developer C: C re-enabled history delivery by default and added A-facing
+  Flight slot neutralization as defense in depth.
+
+Verification:
+- `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py::test_flight_smalltalk_dialogue_metadata_does_not_keep_pen_slot backend/tests/test_preprototype_flow.py::test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_blocks_repeated_pen_request_after_history`: PASS, 3 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py::test_flight_smalltalk_creates_deferred_out_game_feedback_seed backend/tests/dev_b/test_developer_b_policy_engine.py::test_flight_smalltalk_dialogue_metadata_does_not_keep_pen_slot backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/dev_b/test_flight_smalltalk_redesign.py backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_bypasses_missing_question_guard backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_triggers_coherence_guard_for_naked_question backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_triggers_coherence_guard_for_non_sequitur backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_fallback_uses_generic_neutral_responses backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_handles_topic_switch_and_length_target backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_blocks_repeated_pen_request_after_history backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_allows_flight_rude_refusal_to_continue_smalltalk backend/tests/test_preprototype_flow.py::test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller`: PASS, 32 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller backend/tests/test_preprototype_flow.py::test_dev_a_adapter_allows_flight_rude_refusal_to_continue_smalltalk backend/tests/test_preprototype_flow.py::test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop`: PASS, 4 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest`: PASS, 388 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 139 source files.
+
+## 2026-06-21 Developer C, B: Flight Rude Refusal Continues Diagnostic
+
+Developer C traced a unified AgentRun where the player answered Arabella's pen
+request with "Nope. Get yourself your own pen." B returned `FAIL/WARNING`, while
+A generated a natural follow-up question: "By the way, are you traveling for
+work or fun?" The deeper issue was not A asking the follow-up. The Flight scene's
+primary purpose is English level diagnosis, so a rude but non-abusive refusal is
+still useful conversational evidence and should not stop the smalltalk flow.
+
+Root cause:
+- Developer B's temporary `flight_smalltalk_rude_refusal` branch treated a
+  socially uncooperative pen refusal as a non-advance warning.
+- That conflicted with the Flight diagnostic design: ordinary free smalltalk
+  should keep moving unless there is true abuse, repeated tier-1 incivility, or
+  critical travel/immigration risk.
+
+Changed:
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`:
+  Removed the special rude-refusal warning branch. The utterance now falls
+  through the normal Flight diagnostic policy and returns
+  `SUCCESS/ADVANCE -> FLIGHT_A_001_SEATMATE_SMALLTALK`.
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`: Updated the
+  rude pen refusal regression to prove the diagnostic continues with no retry or
+  patience penalty.
+- `backend/tests/test_preprototype_flow.py`: Added regression coverage proving
+  an A-style output like "Oh, okay. I can get my own one. By the way, are you
+  traveling for work or fun?" remains intact and the response is `ADVANCE` /
+  `SUCCESS`. The Flight seed tests now use isolated OpenKB session IDs so local
+  runtime history cannot leak across repeated test runs.
+- `docs/handoff.md` and `docs/portfolio_seanhan.md`: Documented the follow-up
+  correction and why the earlier warning-only direction was rejected.
+
+Team impact:
+- Developer A: No A-owned code changed. A's follow-up question is expected and
+  should continue the free smalltalk diagnostic.
+- Developer B: The emergency B-owned policy branch was revised with user
+  approval. Abuse and critical-risk guards remain; non-abusive pen refusal no
+  longer stops the diagnostic.
+- Developer C: C keeps the A/B adapter boundary, but does not suppress A's
+  follow-up question for this case.
+
+Verification:
+- `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_rude_pen_refusal_still_continues_diagnostic backend/tests/test_preprototype_flow.py::test_dev_a_adapter_allows_flight_rude_refusal_to_continue_smalltalk`: PASS, 2 passed, 1 warning (`audioop` deprecation in A-owned audio quality service).
+- `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/dev_b/test_flight_smalltalk_redesign.py backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_allows_flight_rude_refusal_to_continue_smalltalk backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller`: PASS, 23 passed, 1 warning (`audioop` deprecation in A-owned audio quality service).
+- `uv run pytest`: PASS, 385 passed, 1 warning (`audioop` deprecation in A-owned audio quality service).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 139 source files.
+
 ## 2026-06-21 Developer C, B: Flight Free Smalltalk Diagnostic Hotfix
 
 Developer C applied a user-authorized emergency cross-owner hotfix in Developer
@@ -15,15 +137,16 @@ Changed:
   enough for B to continue, while still stripping legacy slot evidence and
   keeping known off-topic idioms low-confidence.
 - `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`:
-  Added an emergency rude-refusal guard for relevant but socially blocking
-  answers such as "Nope, get yourself your own pen." These return
-  `FAIL/WARNING` instead of advancing as successful diagnostic samples.
+  Initially added, then revised, an emergency rude-refusal branch after runtime
+  review. The final behavior treats non-abusive pen refusal as a continuing
+  diagnostic sample; true abuse and critical-risk guards still stop or warn.
 - `backend/tests/test_understanding_agent.py`: Added regression coverage for
   rule and LLM-mode Flight follow-up answers like "Quite a long time. I'm gonna
   work here.", and updated older Flight slot-neutral expectations to the new
   free-smalltalk design.
 - `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`: Added a
-  B-policy regression test proving rude pen refusal does not advance.
+  B-policy regression test proving rude pen refusal still advances the
+  diagnostic conversation.
 
 Notes:
 - This intentionally crosses Developer B ownership because the user explicitly
@@ -35,8 +158,8 @@ Notes:
 Team impact:
 - Developer A: No A-owned code changed. A will receive fewer Flight
   `clarify/REASK` turns for normal follow-up answers, so NPC dialogue can keep
-  moving naturally. Rude refusals now arrive as a B warning branch rather than
-  as a successful diagnostic sample.
+  moving naturally. Non-abusive rude refusals should also remain in the
+  continuing smalltalk stream.
 - Developer B: Flight policy was hotfixed with explicit user approval. The
   policy should treat C's Flight understanding as free-response evidence, while
   keeping branch authority and social guardrails.

@@ -1001,6 +1001,65 @@ def test_smalltalk_diagnostic_handles_topic_switch_and_length_target() -> None:
     assert result["tts_text"].startswith("Anyway, ")
 
 
+def test_smalltalk_diagnostic_blocks_repeated_pen_request_after_history() -> None:
+    class PenLoopLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Arabella",
+                "npc_text": "Sorry about that. Could I borrow your pen for this form?",
+                "tts_text": "Sorry about that. Could I borrow your pen for this form?",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "joy",
+                "stability": 0.75,
+                "style": 0.45,
+                "speed": 1.0,
+                "similarity_boost": 0.85,
+                "llm_reason": "[COHERENT] It acknowledges the player but repeats the old pen request.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Why do you keep asking about my pen? I already gave it to you.",
+            "node_context": {"recommended_expression": "Let's talk about the trip."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "target_slot": None,
+                "topic_switch": True,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "destination_travel",
+                "required_slots": [],
+                "dialogue_history": [
+                    {
+                        "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+                        "player_text_preview": "Hi. Sure, here you go. You can have that.",
+                        "npc_text_preview": "Thanks, that's kind. Do you have a spare pen too?",
+                        "filled_slots": {},
+                    }
+                ],
+            },
+        },
+        use_llm=True,
+        llm_client=PenLoopLLMClient(),
+    )
+
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "smalltalk_repeated_object_request"
+    assert "borrow your pen" not in result["npc_text"].lower()
+
+
 class _CapturingLLMClient:
     model = "fake-model"
 

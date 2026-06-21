@@ -196,6 +196,86 @@ def _is_recommended_expression_echoed(recommended_expression: str, *texts: str) 
     )
 
 
+def _is_repeated_smalltalk_object_request(
+    npc_text: str,
+    tts_text: str,
+    normalized: dict[str, Any],
+) -> bool:
+    """Return True when Flight smalltalk is drifting back into an answered favor."""
+
+    if not _mentions_pen_request(npc_text) and not _mentions_pen_request(tts_text):
+        return False
+
+    player_text = str(normalized.get("player_text") or "")
+    if _mentions_repeat_complaint(player_text):
+        return True
+
+    dialogue_history = normalized.get("dialogue_history") or []
+    for turn in dialogue_history:
+        if not isinstance(turn, dict):
+            continue
+        previous_npc = str(turn.get("npc_text_preview") or "")
+        previous_player = str(turn.get("player_text_preview") or "")
+        if _mentions_pen_request(previous_npc) or _mentions_pen_resolution(previous_player):
+            return True
+    return False
+
+
+def _mentions_pen_request(text: str) -> bool:
+    normalized = _normalize_for_echo_match(text)
+    if "pen" not in normalized.split():
+        return False
+    request_markers = (
+        "borrow your pen",
+        "borrow the pen",
+        "borrow a pen",
+        "spare pen",
+        "one more pen",
+        "another pen",
+        "still borrow",
+        "could i borrow",
+        "can i borrow",
+        "do you have a pen",
+        "do you have one more pen",
+    )
+    return any(marker in normalized for marker in request_markers)
+
+
+def _mentions_pen_resolution(text: str) -> bool:
+    normalized = _normalize_for_echo_match(text)
+    if "pen" not in normalized.split():
+        return False
+    resolution_markers = (
+        "here you go",
+        "here you are",
+        "you can have",
+        "already gave",
+        "gave it to you",
+        "last one",
+        "get yourself",
+        "nope",
+    )
+    return any(marker in normalized for marker in resolution_markers)
+
+
+def _mentions_repeat_complaint(text: str) -> bool:
+    normalized = _normalize_for_echo_match(text)
+    if "pen" not in normalized.split():
+        return False
+    complaint_markers = (
+        "keep asking",
+        "already gave",
+        "gave it to you",
+        "pen loop",
+        "asking me about my pen",
+        "why do you want more",
+        "why you want more",
+        "one more",
+        "more pen",
+    )
+    return any(marker in normalized for marker in complaint_markers)
+
+
 # LangGraph 에이전트의 내부 공유 상태(Shared State) 명세를 정의하는 TypedDict 클래스입니다.
 class NPCDialogueState(TypedDict):
     # payload: 개발자 C의 어댑터로부터 넘겨받은 원본 입력 데이터(Raw Input Payload)입니다.
@@ -693,6 +773,13 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         if "NON-SEQUITUR" in llm_reason_upper or "COHERENT" not in llm_reason_upper:
             logger.error(f"Coherence violation: non-sequitur detected or coherent flag missing in llm_reason: {llm_result.get('llm_reason')}")
             return {"error": "coherence_violation_non_sequitur"}
+
+        if _is_repeated_smalltalk_object_request(npc_text, tts_text, normalized):
+            logger.error(
+                "Smalltalk repeated object request detected after history/player correction: %r",
+                npc_text,
+            )
+            return {"error": "smalltalk_repeated_object_request"}
 
     # topic_switch 전환구 강제 보정 (smalltalk_diagnostic 전용)
     topic_switch = payload.get("dialogue_directive", {}).get("topic_switch", False)

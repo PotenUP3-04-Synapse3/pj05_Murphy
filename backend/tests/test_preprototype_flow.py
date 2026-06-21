@@ -168,6 +168,7 @@ def _preprototype_request(transcript: str = "I'm here for tourism.") -> PreProto
 def _chapter_boundary_request(
     *,
     request_id: str,
+    session_id: str | None = None,
     chapter_id: str,
     current_node_id: str,
     npc_id: str,
@@ -178,6 +179,8 @@ def _chapter_boundary_request(
 ) -> PrePrototypeRequest:
     turn_payload = _turn_payload()
     turn_payload["request_id"] = request_id
+    if session_id is not None:
+        turn_payload["session"]["session_id"] = session_id
     turn_payload["session"]["chapter_id"] = chapter_id
     turn_payload["session"]["current_node_id"] = current_node_id
     turn_payload["session"]["turn_index"] = 9
@@ -519,10 +522,12 @@ def test_orchestrator_attaches_final_result_only_on_alpha_scoreboard_node() -> N
 
 
 def test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition() -> None:
-    session_id = "session_001"
+    session_id = "session_alpha_flight_wrap_up_transition_0001"
     runtime_dir = Path("backend/runtime/openkb/dev_b")
+    dev_c_jsonl_path = Path("backend/runtime/openkb/dev_c/dialogue_history") / f"{session_id}.jsonl"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     jsonl_path = runtime_dir / f"{session_id}.jsonl"
+    _remove_dialogue_history_records(dev_c_jsonl_path)
     
     mock_record = {
         "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
@@ -587,6 +592,7 @@ def test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition() -> N
     finally:
         if jsonl_path.exists():
             jsonl_path.unlink()
+        _remove_dialogue_history_records(dev_c_jsonl_path)
 
 
 def test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -594,9 +600,11 @@ def test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller(
     monkeypatch.setattr(random, "choices", lambda pop, weights=None, cum_weights=None, k=1: [pop[0]])
     session_id = "session_flight_smalltalk_openkb_accumulation"
     runtime_dir = Path("backend/runtime/openkb/dev_b")
+    dev_c_jsonl_path = Path("backend/runtime/openkb/dev_c/dialogue_history") / f"{session_id}.jsonl"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     jsonl_path = runtime_dir / f"{session_id}.jsonl"
     _remove_openkb_session_records(runtime_dir, jsonl_path)
+    _remove_dialogue_history_records(dev_c_jsonl_path)
 
     transcripts = [
         "I like playing computer games.",
@@ -650,6 +658,7 @@ def test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller(
         assert response.next_node_id == "FLIGHT_999_COMPLETE"
     finally:
         _remove_openkb_session_records(runtime_dir, jsonl_path)
+        _remove_dialogue_history_records(dev_c_jsonl_path)
 
 
 def test_orchestrator_marks_immigration_clearance_as_baggage_scene_transition() -> None:
@@ -1487,18 +1496,27 @@ def _dev_a_payload_for_request(request: PrePrototypeRequest) -> tuple[DevADialog
 def test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(random, "random", lambda: 0.9)
     monkeypatch.setattr(random, "choices", lambda pop, weights=None, cum_weights=None, k=1: [pop[0]])
-    output, payload = _dev_a_payload_for_request(
-        _chapter_boundary_request(
-            request_id="req_alpha_flight_seed_0001",
-            chapter_id="CH0_01_FLIGHT_SMALLTALK",
-            current_node_id="FLIGHT_A_001_SEATMATE_SMALLTALK",
-            npc_id="SEATMATE_A_01",
-            npc_role="seatmate",
-            last_npc_message="Could I borrow your pen for this arrival form?",
-            transcript="Sure, here you are.",
-            allowed_next_nodes=["FLIGHT_A_001_SEATMATE_SMALLTALK", "FLIGHT_999_COMPLETE"],
+    session_id = "session_alpha_flight_seed_0001"
+    runtime_dir = Path("backend/runtime/openkb/dev_b")
+    jsonl_path = runtime_dir / f"{session_id}.jsonl"
+    _remove_openkb_session_records(runtime_dir, jsonl_path)
+
+    try:
+        output, payload = _dev_a_payload_for_request(
+            _chapter_boundary_request(
+                request_id="req_alpha_flight_seed_0001",
+                session_id=session_id,
+                chapter_id="CH0_01_FLIGHT_SMALLTALK",
+                current_node_id="FLIGHT_A_001_SEATMATE_SMALLTALK",
+                npc_id="SEATMATE_A_01",
+                npc_role="seatmate",
+                last_npc_message="Could I borrow your pen for this arrival form?",
+                transcript="Sure, here you are.",
+                allowed_next_nodes=["FLIGHT_A_001_SEATMATE_SMALLTALK", "FLIGHT_999_COMPLETE"],
+            )
         )
-    )
+    finally:
+        _remove_openkb_session_records(runtime_dir, jsonl_path)
 
     assert output.speaker == "SEATMATE_A_01"
     assert output.text == "Are you visiting New York for a trip?"
@@ -1513,10 +1531,164 @@ def test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata(monkeypatch: p
     assert "npc_question_goal" not in payload["node_context"]
     assert "do_not_generate_npc_text" not in payload["dialogue_directive"]
     assert payload["dialogue_directive"]["purpose"] == "smalltalk_diagnostic"
+    assert payload["dialogue_directive"]["target_slot"] is None
+    assert payload["node_context"]["required_slots"] == []
+    assert payload["dialogue_seed"]["required_slots"] == []
     assert payload["dialogue_seed"]["npc_role"] == "seatmate_passenger"
     assert payload["dialogue_seed"]["surface_goal"] == "travel_purpose_travel"
     assert "advance_to_next_prompt" in payload["dialogue_seed"]["allowed_followup_intents"]
     assert payload["dialogue_seed"]["max_turns"] == 5
+
+
+def test_dev_a_adapter_allows_flight_rude_refusal_to_continue_smalltalk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(random, "random", lambda: 0.9)
+    monkeypatch.setattr(random, "choices", lambda pop, weights=None, cum_weights=None, k=1: [pop[0]])
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": "Arabella",
+            "npc_text": "Oh, okay. I can get my own one. By the way, are you traveling for work or fun?",
+            "tone": "friendly_neutral",
+            "animation": "dialogue_idle",
+            "feedback_kr": "Keep the conversation polite.",
+            "tts": {
+                "audio_url": "/runtime/audio/edge/test.wav",
+            },
+        }
+
+    session_id = "session_alpha_flight_rude_refusal_continue_0001"
+    runtime_dir = Path("backend/runtime/openkb/dev_b")
+    dev_c_jsonl_path = Path("backend/runtime/openkb/dev_c/dialogue_history") / f"{session_id}.jsonl"
+    jsonl_path = runtime_dir / f"{session_id}.jsonl"
+    _remove_openkb_session_records(runtime_dir, jsonl_path)
+    _remove_dialogue_history_records(dev_c_jsonl_path)
+
+    try:
+        request = _chapter_boundary_request(
+            request_id="req_alpha_flight_rude_refusal_continue_0001",
+            session_id=session_id,
+            chapter_id="CH0_01_FLIGHT_SMALLTALK",
+            current_node_id="FLIGHT_A_001_SEATMATE_SMALLTALK",
+            npc_id="SEATMATE_A_01",
+            npc_role="seatmate",
+            last_npc_message="Could I borrow your pen for this arrival form?",
+            transcript="Nope. Get yourself your own pen.",
+            allowed_next_nodes=["FLIGHT_A_001_SEATMATE_SMALLTALK", "FLIGHT_999_COMPLETE"],
+        )
+        orchestrator = Orchestrator()
+        orchestrator.dev_a_client = DevANpcDialogueClient(
+            settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+            voice_output_builder=fake_voice_output_builder,
+        )
+
+        response = orchestrator.run_turn(request)
+    finally:
+        _remove_openkb_session_records(runtime_dir, jsonl_path)
+        _remove_dialogue_history_records(dev_c_jsonl_path)
+
+    assert response.next_action == "ADVANCE"
+    assert response.evaluation.verdict == "SUCCESS"
+    assert builder_payloads
+    payload = builder_payloads[0]
+    assert payload["branch"]["branch_reason"] == "flight_smalltalk_continue"
+    assert payload["dialogue_directive"]["purpose"] == "smalltalk_diagnostic"
+    assert payload["dialogue_directive"]["topic_switch"] is False
+    assert payload["dialogue_seed"]["surface_goal"]
+    assert "advance_to_next_prompt" in payload["dialogue_seed"]["allowed_followup_intents"]
+    assert response.npc.text == "Oh, okay. I can get my own one. By the way, are you traveling for work or fun?"
+
+
+def test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(random, "random", lambda: 0.9)
+    monkeypatch.setattr(random, "choices", lambda pop, weights=None, cum_weights=None, k=1: [pop[0]])
+
+    session_id = "session_alpha_flight_pen_loop_history_0001"
+    dev_b_runtime_dir = Path("backend/runtime/openkb/dev_b")
+    dev_c_runtime_dir = Path("backend/runtime/openkb/dev_c/dialogue_history")
+    dev_b_jsonl_path = dev_b_runtime_dir / f"{session_id}.jsonl"
+    dev_c_jsonl_path = dev_c_runtime_dir / f"{session_id}.jsonl"
+    _remove_openkb_session_records(dev_b_runtime_dir, dev_b_jsonl_path)
+    _remove_dialogue_history_records(dev_c_jsonl_path)
+
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        npc_text = (
+            "Thanks, that's kind. Do you have a spare pen too?"
+            if len(builder_payloads) == 1
+            else "Sorry about that. Anyway, where are you headed after JFK?"
+        )
+        return {
+            "speaker": "Emily",
+            "npc_text": npc_text,
+            "tone": "friendly_neutral",
+            "animation": "dialogue_idle",
+            "feedback_kr": "Keep the conversation going.",
+            "tts": {"audio_url": "/runtime/audio/edge/test.wav"},
+        }
+
+    try:
+        orchestrator = Orchestrator()
+        orchestrator.dev_a_client = DevANpcDialogueClient(
+            settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+            voice_output_builder=fake_voice_output_builder,
+        )
+
+        first_request = _chapter_boundary_request(
+            request_id="req_alpha_flight_pen_loop_history_0001",
+            session_id=session_id,
+            chapter_id="CH0_01_FLIGHT_SMALLTALK",
+            current_node_id="FLIGHT_A_001_SEATMATE_SMALLTALK",
+            npc_id="SEATMATE_A_01",
+            npc_role="seatmate",
+            last_npc_message="Could I borrow your pen for this arrival form?",
+            transcript="Hi. Sure, here you go. You can have that.",
+            allowed_next_nodes=["FLIGHT_A_001_SEATMATE_SMALLTALK", "FLIGHT_999_COMPLETE"],
+        )
+        first_request.turn.session.turn_index = 1
+        first_response = orchestrator.run_turn(first_request)
+
+        second_request = _chapter_boundary_request(
+            request_id="req_alpha_flight_pen_loop_history_0002",
+            session_id=session_id,
+            chapter_id="CH0_01_FLIGHT_SMALLTALK",
+            current_node_id="FLIGHT_A_001_SEATMATE_SMALLTALK",
+            npc_id="SEATMATE_A_01",
+            npc_role="seatmate",
+            last_npc_message=first_response.npc.text,
+            transcript="Why do you keep asking me about my pen? I already gave it to you.",
+            allowed_next_nodes=["FLIGHT_A_001_SEATMATE_SMALLTALK", "FLIGHT_999_COMPLETE"],
+        )
+        second_request.turn.session.turn_index = 2
+        second_response = orchestrator.run_turn(second_request)
+    finally:
+        _remove_openkb_session_records(dev_b_runtime_dir, dev_b_jsonl_path)
+        _remove_dialogue_history_records(dev_c_jsonl_path)
+
+    assert second_response.next_action == "ADVANCE"
+    assert len(builder_payloads) == 2
+    second_payload = builder_payloads[1]
+    assert second_payload["dialogue_directive"]["purpose"] == "smalltalk_diagnostic"
+    assert second_payload["dialogue_directive"]["target_slot"] is None
+    assert second_payload["node_context"]["required_slots"] == []
+    assert second_payload["dialogue_seed"]["required_slots"] == []
+    assert second_payload["dialogue_seed"]["dialogue_history"][0]["npc_text_preview"] == (
+        "Thanks, that's kind. Do you have a spare pen too?"
+    )
+    assert "pen" not in second_response.npc.text.lower()
 
 
 def test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata() -> None:

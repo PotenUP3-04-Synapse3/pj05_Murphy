@@ -123,7 +123,7 @@ evidence, and off-topic/smalltalk safeguards. For the Alpha Flight scene, Sean
 also changed the C Understanding layer to treat the seatmate exchange as a
 single free smalltalk diagnostic node: the legacy pen-request slot is stripped
 from runtime scoring, meaningful follow-up answers can advance, and Developer B
-still blocks socially hostile refusals.
+still blocks true abuse and critical-risk cases.
 
 ### Adapter Boundaries
 
@@ -135,6 +135,9 @@ The Developer A adapter receives sanitized context, B transition data, dialogue
 seed fields, short-term history previews, challenge metadata, incivility
 signals, and TTS mode configuration. C filters private or misleading context so
 A can write natural NPC dialogue without taking over branch or state authority.
+Recent Flight work added a second adapter guard: free-smalltalk turns arrive at
+A with neutralized legacy slots and recent dialogue history, preventing the NPC
+from treating the opening pen favor as an unresolved required task.
 
 ### Validator and Unreal Guardrails
 
@@ -199,7 +202,18 @@ When Flight dialogue kept falling into `UNCLEAR/REASK`, Sean traced the unified
 AgentRun data flow and found that C was still scoring every seatmate turn
 against the first pen-request slot. He refactored C's Flight understanding into
 a single-node free-response diagnostic and, with explicit emergency approval,
-patched B's policy so rude but relevant refusals warn instead of advancing.
+patched B's policy under demo pressure. A follow-up runtime check then corrected
+the design again: refusing the pen is still useful English-level evidence, so
+the final behavior lets non-abusive refusals continue while preserving true
+abuse and critical-risk guardrails.
+
+A later unified log exposed a subtler follow-up bug: B was rotating through
+different diagnostic probes, but A kept returning to the pen because C had
+stopped sending dialogue history by default and B/A-facing metadata still named
+`polite_response` as the active target. Sean fixed the boundary end to end:
+Flight B metadata now carries probe intent instead of pen-slot intent, C sends
+recent dialogue history by default, the A adapter neutralizes legacy Flight
+slots, and A has a small post-processing guard against repeated pen requests.
 
 ## Reliability and Guardrails
 
@@ -258,7 +272,13 @@ evidence of architecture, ownership, reliability, and follow-through.
   fallback reasons, and structured error diagnostics.
 - Refactored the Alpha Flight seatmate scene from legacy slot gating into a
   free smalltalk diagnostic flow while preserving B-owned branch authority and
-  social guardrails for rude refusals.
+  critical social/risk guardrails.
+- Used unified runtime logs to correct an over-strict follow-up decision:
+  non-abusive pen refusal now continues the level diagnostic instead of stopping
+  a natural A-generated question.
+- Diagnosed and fixed a Flight pen-loop regression across A/B/C boundaries by
+  restoring short-term dialogue history, removing legacy `polite_response`
+  metadata from free-smalltalk payloads, and adding an A-side repeat guard.
 - Maintained contract-first documentation, handoff records, and portfolio notes
   so rapid daily backend changes remain traceable and reusable for employment
   storytelling.

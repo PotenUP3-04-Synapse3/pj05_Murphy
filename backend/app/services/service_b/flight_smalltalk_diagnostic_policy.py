@@ -18,15 +18,6 @@ MAX_TURNS = 30
 CONFIDENCE_THRESHOLD = 0.7
 STEERING = 0.4
 
-RUDE_REFUSAL_MARKERS = (
-    "get yourself",
-    "your own pen",
-    "get your own",
-    "not my problem",
-    "leave me alone",
-)
-
-
 @dataclass(frozen=True)
 class FlightSmallTalkDiagnosticDecision:
     """
@@ -146,19 +137,6 @@ class FlightSmallTalkDiagnosticPolicy:
                         retry_count_delta=0,
                         hint_count_delta=0,
                     )
-
-        if _is_rude_smalltalk_refusal(payload.player_text):
-            return ScenarioDecision(
-                verdict="FAIL",
-                branch_type="warning",
-                next_action="WARNING",
-                next_node_id=SCENE_ID,
-                branch_reason="flight_smalltalk_rude_refusal",
-                patience_delta=-5,
-                suspicion_delta=0,
-                retry_count_delta=0,
-                hint_count_delta=0,
-            )
 
         # 3. Load session history from OpenKB
         reader = OpenKBFinalResultRecordReader(runtime_root=self.runtime_root)
@@ -343,15 +321,3 @@ class FlightSmallTalkDiagnosticPolicy:
             selected_probe=selected_probe,
             cumulative_confidence=cumulative_confidence,
         )
-
-
-def _is_rude_smalltalk_refusal(player_text: str) -> bool:
-    """Return whether a flight answer is relevant but socially blocking.
-
-    The free smalltalk node should not reject a rude answer as "unclear": the
-    player did answer Arabella.  Developer B still prevents progression when
-    that answer is a hostile refusal that would make the conversation stall.
-    """
-
-    normalized = " ".join(player_text.lower().replace(".", " ").replace(",", " ").split())
-    return any(marker in normalized for marker in RUDE_REFUSAL_MARKERS)
