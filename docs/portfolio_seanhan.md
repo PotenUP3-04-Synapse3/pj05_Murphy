@@ -119,7 +119,11 @@ Real LLM mode uses structured JSON output with repair/fallback behavior. Rule
 fallbacks remain available so tests and local demos can run without provider
 credentials. Recent updates added open/numeric/closed/system slot policy
 handling, `intent_satisfied`, `judgment_reason`, generic immigration slot
-evidence, and off-topic/smalltalk safeguards.
+evidence, and off-topic/smalltalk safeguards. For the Alpha Flight scene, Sean
+also changed the C Understanding layer to treat the seatmate exchange as a
+single free smalltalk diagnostic node: the legacy pen-request slot is stripped
+from runtime scoring, meaningful follow-up answers can advance, and Developer B
+still blocks socially hostile refusals.
 
 ### Adapter Boundaries
 
@@ -189,6 +193,14 @@ details, result feedback exposure, and session usage summaries. The goal was to
 make every AI turn explainable after the fact, not just functional during a
 demo.
 
+### 7. Free Smalltalk Repair Under Demo Pressure
+
+When Flight dialogue kept falling into `UNCLEAR/REASK`, Sean traced the unified
+AgentRun data flow and found that C was still scoring every seatmate turn
+against the first pen-request slot. He refactored C's Flight understanding into
+a single-node free-response diagnostic and, with explicit emergency approval,
+patched B's policy so rude but relevant refusals warn instead of advancing.
+
 ## Reliability and Guardrails
 
 - Rule-based final validator for Unreal-facing safety.
@@ -244,6 +256,9 @@ evidence of architecture, ownership, reliability, and follow-through.
 - Created unified AgentRun observability for C orchestration, including runtime
   modes, tool names, STT metadata, validation outcomes, model usage estimates,
   fallback reasons, and structured error diagnostics.
+- Refactored the Alpha Flight seatmate scene from legacy slot gating into a
+  free smalltalk diagnostic flow while preserving B-owned branch authority and
+  social guardrails for rude refusals.
 - Maintained contract-first documentation, handoff records, and portfolio notes
   so rapid daily backend changes remain traceable and reusable for employment
   storytelling.

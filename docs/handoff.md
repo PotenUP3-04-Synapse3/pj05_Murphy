@@ -1,5 +1,72 @@
 # Handoff
 
+## 2026-06-21 Developer C, B: Flight Free Smalltalk Diagnostic Hotfix
+
+Developer C applied a user-authorized emergency cross-owner hotfix in Developer
+B policy code for the Alpha demo. The Flight seatmate scene now treats
+`FLIGHT_A_001_SEATMATE_SMALLTALK` as one free smalltalk diagnostic node instead
+of continuing to score every turn against the legacy pen-request
+`polite_response` slot.
+
+Changed:
+- `backend/app/agents/agent_c/understanding_agent.py`: Updated Flight
+  diagnostic handling so meaningful free-form player answers are returned as
+  `intent_success=true`, `answer_relevance="on_topic"`, and confidence high
+  enough for B to continue, while still stripping legacy slot evidence and
+  keeping known off-topic idioms low-confidence.
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`:
+  Added an emergency rude-refusal guard for relevant but socially blocking
+  answers such as "Nope, get yourself your own pen." These return
+  `FAIL/WARNING` instead of advancing as successful diagnostic samples.
+- `backend/tests/test_understanding_agent.py`: Added regression coverage for
+  rule and LLM-mode Flight follow-up answers like "Quite a long time. I'm gonna
+  work here.", and updated older Flight slot-neutral expectations to the new
+  free-smalltalk design.
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`: Added a
+  B-policy regression test proving rude pen refusal does not advance.
+
+Notes:
+- This intentionally crosses Developer B ownership because the user explicitly
+  approved urgent demo-critical B-code edits by Developer C.
+- No public API schema changed. The behavior change is internal policy: Flight
+  diagnostic progress now depends on free-response relevance and social
+  appropriateness rather than the legacy `polite_response` slot.
+
+Team impact:
+- Developer A: No A-owned code changed. A will receive fewer Flight
+  `clarify/REASK` turns for normal follow-up answers, so NPC dialogue can keep
+  moving naturally. Rude refusals now arrive as a B warning branch rather than
+  as a successful diagnostic sample.
+- Developer B: Flight policy was hotfixed with explicit user approval. The
+  policy should treat C's Flight understanding as free-response evidence, while
+  keeping branch authority and social guardrails.
+- Developer C: C Understanding now owns the Flight free-response normalization
+  that prevents legacy `polite_response` slot scoring from blocking natural
+  smalltalk.
+
+Verification:
+- `uv run pytest backend/tests/test_understanding_agent.py -q`: PASS, 24
+  passed.
+- `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py
+  backend/tests/dev_b/test_flight_smalltalk_redesign.py -q`: PASS, 20 passed.
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition
+  backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller
+  backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata
+  -q`: PASS, 3 passed, 1 warning (`audioop` deprecation in A-owned audio
+  quality service).
+- `uv run pytest backend/tests/test_understanding_agent.py
+  backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py
+  backend/tests/dev_b/test_flight_smalltalk_redesign.py
+  backend/tests/test_preprototype_flow.py::test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition
+  backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller
+  backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata
+  -q`: PASS, 47 passed, 1 warning (`audioop` deprecation in A-owned audio
+  quality service).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 139 source files.
+- `uv run pytest`: PASS, 384 passed, 1 warning (`audioop` deprecation in
+  A-owned audio quality service).
+
 ## 2026-06-21 Developer C Documentation: Sean Han Portfolio Restructure
 
 Developer C restructured Sean Han's portfolio document to match the current

@@ -129,6 +129,28 @@ def test_flight_smalltalk_low_confidence_clarifies_softly(tmp_path: Path) -> Non
     assert result2.state_delta.retry_count_delta == 0
 
 
+def test_flight_smalltalk_rude_pen_refusal_warns_instead_of_advancing(tmp_path: Path) -> None:
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(
+        node_context=context,
+        player_text="Nope, get yourself your own pen.",
+        intent_success=True,
+        answer_relevance="on_topic",
+        confidence=0.86,
+        missing_slots=[],
+    )
+
+    result = _agent(tmp_path).evaluate_turn(payload)
+
+    assert result.evaluation.verdict == "FAIL"
+    assert result.branch.branch_type == "warning"
+    assert result.branch.next_action == "WARNING"
+    assert result.branch.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+    assert result.branch.branch_reason == "flight_smalltalk_rude_refusal"
+    assert result.state_delta.retry_count_delta == 0
+    assert result.state_delta.patience_delta < 0
+
+
 def test_flight_smalltalk_critical_risk_still_guarded(tmp_path: Path) -> None:
     context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
     payload = _policy_input(

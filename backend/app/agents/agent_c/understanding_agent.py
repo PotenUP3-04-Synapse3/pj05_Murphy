@@ -211,6 +211,20 @@ ALPHA_SLOT_OFF_TOPIC_PHRASES: dict[str, tuple[str, ...]] = {
     ),
 }
 
+FLIGHT_SMALLTALK_MIN_FREE_RESPONSE_CONFIDENCE = 0.72
+FLIGHT_SMALLTALK_FILLER_ONLY_PHRASES = {
+    "uh",
+    "um",
+    "uhm",
+    "hmm",
+    "hm",
+    "er",
+    "ah",
+    "what",
+    "pardon",
+    "sorry",
+}
+
 
 class UnderstandingAgent:
     def __init__(
@@ -963,23 +977,23 @@ def _flight_smalltalk_diagnostic_output(
 ) -> UnderstandingOutput:
     """rule 모드에서 기내 스몰토크 진단용 Understanding 결과를 만듭니다."""
 
-    intent_mismatch = _has_required_intent_mismatch(player_text, node_context)
+    free_response = _flight_smalltalk_free_response(player_text, node_context)
     return UnderstandingOutput(
         intent=node_context.npc_question_goal,
-        intent_success=False,
-        confidence=0.72 if intent_mismatch else 0.55,
+        intent_success=free_response["intent_success"],
+        confidence=free_response["confidence"],
         meaning_summary_kr="The player gave a free-form answer for the flight speaking diagnostic.",
         emotion="calm",
-        answer_relevance="off_topic" if intent_mismatch else "partially_related",
-        ambiguity_type="off_topic_response" if intent_mismatch else "diagnostic_free_speech",
+        answer_relevance=free_response["answer_relevance"],
+        ambiguity_type=free_response["ambiguity_type"],
         risk_delta=0,
         risk_reason="No immigration risk expression was found.",
         risk_tags=[],
         extracted_slots={},
         missing_slots=[],
-        needs_clarification=False,
-        intent_satisfied=not intent_mismatch,
-        judgment_reason="Diagnostic free speech.",
+        needs_clarification=free_response["needs_clarification"],
+        intent_satisfied=free_response["intent_success"],
+        judgment_reason=free_response["judgment_reason"],
     )
 
 
@@ -996,35 +1010,81 @@ def _normalize_flight_smalltalk_diagnostic_output(
     근거로 오해하지 않도록 slot evidence와 extracted slot을 비워서 넘깁니다.
     """
 
+    free_response = _flight_smalltalk_free_response(player_text, node_context)
     intent_mismatch = _has_required_intent_mismatch(player_text, node_context)
-    answer_relevance = "off_topic" if intent_mismatch else output.answer_relevance
-    confidence = _guard_confidence_for_evidence(
-        output.confidence,
-        intent_mismatch=intent_mismatch,
-        weak_required_slot_evidence=False,
+    answer_relevance = free_response["answer_relevance"]
+    confidence = (
+        max(output.confidence, free_response["confidence"])
+        if free_response["intent_success"]
+        else min(output.confidence, free_response["confidence"])
     )
     normalized = output.model_copy(
         update={
             "intent": node_context.npc_question_goal,
-            "intent_success": False,
+            "intent_success": free_response["intent_success"],
             "confidence": confidence,
             "answer_relevance": answer_relevance,
-            "ambiguity_type": "off_topic_response" if intent_mismatch else output.ambiguity_type,
+            "ambiguity_type": free_response["ambiguity_type"],
             "slot_evidence": [],
             "extracted_slots": {},
             "missing_slots": [],
-            "needs_clarification": False,
-            "intent_satisfied": output.intent_satisfied and not intent_mismatch,
+            "needs_clarification": free_response["needs_clarification"],
+            "intent_satisfied": free_response["intent_success"],
+            "judgment_reason": free_response["judgment_reason"],
         }
     )
     return normalized, {
         "generic_slot_evidence_applied": False,
         "flight_smalltalk_diagnostic_slot_neutralized": True,
+        "flight_smalltalk_free_response_applied": free_response["intent_success"],
         "intent_relevance_guard_applied": intent_mismatch,
         "confidence_evidence_guard_applied": confidence != output.confidence,
         "weak_required_slot_evidence": False,
         "accepted_slot_evidence": [],
         "dropped_slot_evidence": [evidence.slot for evidence in output.slot_evidence],
+    }
+
+
+def _flight_smalltalk_free_response(player_text: str, node_context: NodeContext) -> dict[str, Any]:
+    """Return C's single-node free smalltalk understanding signal.
+
+    Flight smalltalk is a diagnostic self-loop, not a slot gate.  The old node
+    data still mentions `polite_response`, but after the first NPC line Arabella
+    can ask natural follow-ups.  C therefore judges whether the player produced
+    a meaningful conversational response and leaves politeness/branch policy to
+    Developer B.
+    """
+
+    normalized_text = _normalize_for_keyword_match(player_text)
+    words = re.findall(r"[a-z0-9']+", normalized_text)
+    if not words or " ".join(words) in FLIGHT_SMALLTALK_FILLER_ONLY_PHRASES:
+        return {
+            "intent_success": False,
+            "confidence": 0.22,
+            "answer_relevance": "partially_related",
+            "ambiguity_type": "too_short_for_diagnostic",
+            "needs_clarification": True,
+            "judgment_reason": "The flight smalltalk response was too short to evaluate.",
+        }
+
+    if _has_required_intent_mismatch(player_text, node_context):
+        return {
+            "intent_success": False,
+            "confidence": 0.22,
+            "answer_relevance": "off_topic",
+            "ambiguity_type": "off_topic_response",
+            "needs_clarification": False,
+            "judgment_reason": "The response matched a known off-topic idiom for the flight prompt.",
+        }
+
+    confidence = 0.78 if len(words) >= 3 else FLIGHT_SMALLTALK_MIN_FREE_RESPONSE_CONFIDENCE
+    return {
+        "intent_success": True,
+        "confidence": confidence,
+        "answer_relevance": "on_topic",
+        "ambiguity_type": "diagnostic_free_speech",
+        "needs_clarification": False,
+        "judgment_reason": "The player gave a meaningful free smalltalk response.",
     }
 
 
