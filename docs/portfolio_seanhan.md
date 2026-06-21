@@ -214,6 +214,11 @@ stopped sending dialogue history by default and B/A-facing metadata still named
 Flight B metadata now carries probe intent instead of pen-slot intent, C sends
 recent dialogue history by default, the A adapter neutralizes legacy Flight
 slots, and A has a small post-processing guard against repeated pen requests.
+The next runtime check caught second-order naturalness issues: form/address
+probes were still valid in B's Flight diagnostic pool, and A could ask a new
+question on a `COMPLETE_CHAPTER` turn. Sean tightened the Flight probe policy
+and added a completion-closing guard so the demo ends with a natural close
+instead of a new conversational obligation.
 
 ## Reliability and Guardrails
 
@@ -279,6 +284,9 @@ evidence of architecture, ownership, reliability, and follow-through.
 - Diagnosed and fixed a Flight pen-loop regression across A/B/C boundaries by
   restoring short-term dialogue history, removing legacy `polite_response`
   metadata from free-smalltalk payloads, and adding an A-side repeat guard.
+- Followed unified runtime logs beyond the first fix to remove awkward
+  form/address probes from Flight seatmate diagnostics and enforce non-question
+  closing dialogue on `COMPLETE_CHAPTER`.
 - Maintained contract-first documentation, handoff records, and portfolio notes
   so rapid daily backend changes remain traceable and reusable for employment
   storytelling.

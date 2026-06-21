@@ -128,6 +128,19 @@ def _branch_type(payload: NPCDialogueInput) -> BranchType:
     return "neutral"
 
 
+def _is_complete_chapter_turn(normalized: dict[str, Any]) -> bool:
+    """Return True when this turn should close the scene instead of asking more."""
+
+    transition_status = str(normalized.get("transition", {}).get("status") or "").lower()
+    next_action = str(normalized.get("next_action") or "").upper()
+    next_node_id = str(normalized.get("next_node_id") or "").upper()
+    return (
+        transition_status in {"complete_chapter", "chapter_complete"}
+        or next_action == "COMPLETE_CHAPTER"
+        or next_node_id.endswith("_999_COMPLETE")
+    )
+
+
 def _success_text(payload: NPCDialogueInput) -> str:
     """성공 분기(Success Branch) 진입 시 다음 시나리오 노드(Scenario Node)에 대응하는 NPC 대사를 생성합니다."""
     next_node_id = str(payload.branch.get("next_node_id", ""))
@@ -386,9 +399,7 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
         
     use_llm = state.get("use_llm", False)
     surface_goal = normalized.get("dialogue_seed", {}).get("surface_goal") or ""
-    transition_status = normalized.get("transition", {}).get("status") or ""
-    next_action = normalized.get("next_action") or ""
-    is_complete_chapter = (transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER")
+    is_complete_chapter = _is_complete_chapter_turn(normalized)
     
     purpose = normalized.get("dialogue_purpose") or ""
     # profanity_res가 없을 때만 surface_goal 질문을 합성합니다.
@@ -658,6 +669,13 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             
     # tts_text에 대해 SSML break 태그 유효성 검증 및 시간 0.0s~3.0s 클램프 수행
     tts_text = validate_and_clamp_ssml(tts_text)
+
+    if _is_complete_chapter_turn(normalized) and ("?" in npc_text or "?" in tts_text):
+        logger.error(
+            "Complete chapter LLM output asked a follow-up question. npc_text=%r",
+            npc_text,
+        )
+        return {"error": "complete_chapter_question_violation"}
 
     # [6단계] 생성된 대사가 안전한 영문 아스키(ASCII) 텍스트인지 검사합니다.
     if not _is_safe_english_dialogue_text(npc_text) or not _is_safe_english_dialogue_text(tts_text):
@@ -970,9 +988,7 @@ def node_persist_memory(state: NPCDialogueState) -> dict[str, Any]:
     new_last_npc_intent = surface_goal
     
     # 챕터 완료 검사
-    transition_status = normalized.get("transition", {}).get("status") or ""
-    next_action = normalized.get("next_action") or ""
-    is_complete_chapter = (transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER")
+    is_complete_chapter = _is_complete_chapter_turn(normalized)
     
     updates: dict[str, Any] = {
         "turn_buffer": updated_memory["turn_buffer"],

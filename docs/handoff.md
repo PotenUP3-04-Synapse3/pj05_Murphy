@@ -1,5 +1,57 @@
 # Handoff
 
+## 2026-06-21 Developer C, A, B: Flight Address Probe and Completion Closing Fix
+
+Developer C traced the latest unified AgentRun where Arabella moved from a pen
+refusal into arrival-form address help, then completed the Flight chapter while
+still asking a new question. This is another user-approved emergency Alpha demo
+fix that crosses A/B/C ownership.
+
+Root cause:
+- C dialogue history delivery was working in this run. The address drift came
+  from B's Flight probe selector still allowing `arrival_form`,
+  `address_guidance`, and `stay_location` probes inside the free seatmate
+  diagnostic.
+- Once address/form language entered the history, A could naturally but
+  awkwardly continue that thread even when B selected a later travel probe.
+- B correctly returned `COMPLETE_CHAPTER -> FLIGHT_999_COMPLETE` at the end,
+  but A's LLM output was not post-processed for completion semantics, so it
+  could end a chapter with another follow-up question.
+
+Changed:
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`:
+  Added a Flight seatmate probe filter that keeps form/address/stay-location
+  probes out of the free smalltalk diagnostic selector. The source data remains
+  intact; only this policy path excludes those probes.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`:
+  Added a shared complete-chapter detector and a post-processing guard. If a
+  completion turn LLM output contains a question, A falls back to the
+  deterministic closing line such as `Enjoy your trip!`.
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`:
+  Added regression coverage proving B's selected probe population excludes
+  form/address/stay-location candidates.
+- `backend/tests/test_developer_a_npc_dialogue.py`:
+  Added regression coverage proving a completion-turn LLM question falls back
+  to a closing line and records `complete_chapter_question_violation`.
+
+Team impact:
+- Developer A: A-owned post-processing now enforces that `COMPLETE_CHAPTER`
+  turns close instead of opening a new conversational hook.
+- Developer B: B-owned Flight policy now treats form/address/stay-location
+  probes as inappropriate for the seatmate free diagnostic. Branch authority and
+  risk/abuse guards remain in B.
+- Developer C: C's diagnosis confirms this was not the previous history-sync
+  failure. The unified logs were used to distinguish B probe selection from C
+  adapter/history behavior.
+
+Verification:
+- `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_excludes_form_and_address_probes backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_complete_chapter_llm_question_falls_back_to_closing`: PASS, 2 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/dev_b/test_flight_smalltalk_redesign.py backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_complete_chapter_llm_question_falls_back_to_closing backend/tests/test_developer_a_npc_dialogue.py::test_complete_chapter_transition_returns_closing_phrase_for_each_role backend/tests/test_preprototype_flow.py::test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller`: PASS, 25 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest`: PASS, 390 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 139 source files.
+- `git diff --check`: PASS, with existing Windows LF-to-CRLF working-copy warnings only.
+
 ## 2026-06-21 Developer C, A, B: Flight Pen Loop Emergency Fix
 
 Developer C traced the latest unified AgentRun where Emily repeatedly asked for

@@ -708,6 +708,63 @@ def test_complete_chapter_transition_returns_closing_phrase_for_each_role() -> N
     assert res_immigration["npc_text"] == "All right, you're cleared."
 
 
+def test_smalltalk_complete_chapter_llm_question_falls_back_to_closing() -> None:
+    class QuestionOnCompleteLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Arabella",
+                "npc_text": "Fun sounds great. What do you like to do there?",
+                "tts_text": "Fun sounds great. What do you like to do there?",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "joy",
+                "stability": 0.75,
+                "style": 0.45,
+                "speed": 1.0,
+                "similarity_boost": 0.85,
+                "llm_reason": "[COHERENT] It answers, but wrongly asks another question.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "I'm staying there for fun. My name is John. What is your name?",
+            "node_context": {"recommended_expression": "Nice to meet you."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "success",
+                "next_action": "COMPLETE_CHAPTER",
+                "next_node_id": "FLIGHT_999_COMPLETE",
+            },
+            "transition": {"status": "chapter_complete"},
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "target_slot": None,
+                "topic_switch": False,
+                "length_target": 12,
+            },
+            "dialogue_seed": {
+                "surface_goal": "travel_purpose_travel",
+                "required_slots": [],
+            },
+        },
+        use_llm=True,
+        llm_client=QuestionOnCompleteLLMClient(),
+    )
+
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "complete_chapter_question_violation"
+    assert result["npc_text"] == "Enjoy your trip!"
+    assert "?" not in result["npc_text"]
+
+
 def test_animation_resolved_by_emotion() -> None:
     # joy emotion -> joy animation
     res_joy = generate_npc_dialogue_from_level_design(
