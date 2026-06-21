@@ -141,6 +141,131 @@ def _is_complete_chapter_turn(normalized: dict[str, Any]) -> bool:
     )
 
 
+def _immigration_dialogue_violation(
+    npc_text: str,
+    tts_text: str,
+    normalized: dict[str, Any],
+    payload: dict[str, Any],
+) -> str | None:
+    """Return a fallback reason when immigration LLM text violates node policy."""
+
+    if not _is_immigration_turn(normalized):
+        return None
+    if _contradicts_current_immigration_slot(npc_text, tts_text, payload):
+        return "current_slot_contradiction"
+    if _has_immigration_retry_hook_leak(npc_text, tts_text, normalized):
+        return "immigration_retry_hook_violation"
+    if _has_immigration_surface_goal_mismatch(npc_text, tts_text, normalized):
+        return "immigration_surface_goal_mismatch"
+    return None
+
+
+def _is_immigration_turn(normalized: dict[str, Any]) -> bool:
+    node_id = str(normalized.get("node_id") or "")
+    npc_role = str(normalized.get("npc_role") or "")
+    return npc_role == "immigration_officer" or node_id.startswith("IMM_")
+
+
+def _has_immigration_retry_hook_leak(
+    npc_text: str,
+    tts_text: str,
+    normalized: dict[str, Any],
+) -> bool:
+    branch_type = str(normalized.get("branch_type") or "").lower()
+    next_action = str(normalized.get("next_action") or "").upper()
+    if branch_type not in {"retry", "clarify"} and next_action not in {"REASK", "GIVE_HINT"}:
+        return False
+    combined = _normalize_for_echo_match(f"{npc_text} {tts_text}")
+    return "you mentioned" in combined or "mentioned mentioned" in combined
+
+
+def _has_immigration_surface_goal_mismatch(
+    npc_text: str,
+    tts_text: str,
+    normalized: dict[str, Any],
+) -> bool:
+    purpose = str(normalized.get("dialogue_purpose") or "")
+    branch_type = str(normalized.get("branch_type") or "").lower()
+    next_action = str(normalized.get("next_action") or "").upper()
+    if purpose != "continue_to_next_question":
+        return False
+    if branch_type not in {"success", "neutral"} or next_action == "COMPLETE_CHAPTER":
+        return False
+
+    surface_goal = str((normalized.get("dialogue_seed") or {}).get("surface_goal") or "")
+    if surface_goal not in _IMMIGRATION_SURFACE_GOAL_CHECKS:
+        return False
+    if surface_goal == "confirm_immigration_clearance_transition" and (
+        "?" in npc_text or "?" in tts_text
+    ):
+        return True
+    combined = _normalize_for_echo_match(f"{npc_text} {tts_text}")
+    return not _IMMIGRATION_SURFACE_GOAL_CHECKS[surface_goal](combined)
+
+
+def _contradicts_current_immigration_slot(
+    npc_text: str,
+    tts_text: str,
+    payload: dict[str, Any],
+) -> bool:
+    understanding = payload.get("understanding") or {}
+    extracted_slots = understanding.get("extracted_slots") or {}
+    occupation = str(extracted_slots.get("occupation") or "").strip().lower()
+    if not occupation:
+        return False
+    combined = _normalize_for_echo_match(f"{npc_text} {tts_text}")
+    if occupation not in {"unemployed", "no_job", "no job"}:
+        stale_unemployed_terms = ("unemployed", "no job", "jobless", "looking for a job")
+        if any(term in combined for term in stale_unemployed_terms):
+            return True
+    return False
+
+
+def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
+    return any(marker in text for marker in markers)
+
+
+def _open_hooks_for_fallback_synthesis(
+    normalized: dict[str, Any],
+    session_context_card: dict[str, Any],
+) -> list[str] | None:
+    """Disable casual hook prefixes in formal immigration turns."""
+
+    if _is_immigration_turn(normalized):
+        return []
+    return session_context_card.get("open_hooks")
+
+
+_IMMIGRATION_SURFACE_GOAL_CHECKS = {
+    "request_passport_submission": lambda text: "passport" in text.split(),
+    "ask_visit_purpose": lambda text: _contains_any(
+        text,
+        ("purpose", "why are you here", "what brings"),
+    ),
+    "ask_stay_duration": lambda text: _contains_any(
+        text,
+        ("how long", "how many days", "stay for", "planning to stay"),
+    ),
+    "ask_stay_location": lambda text: _contains_any(
+        text,
+        ("where will you stay", "where are you staying", "where will you be staying", "address"),
+    ),
+    "ask_return_ticket": lambda text: "return ticket" in text or "return flight" in text,
+    "ask_first_visit": lambda text: _contains_any(
+        text,
+        ("first visit", "first time", "visited before"),
+    ),
+    "ask_occupation": lambda text: _contains_any(
+        text,
+        ("occupation", "job", "do for a living", "work do you do"),
+    ),
+    "confirm_immigration_clearance_transition": lambda text: _contains_any(
+        text,
+        ("cleared", "enjoy your stay", "here is your passport", "baggage claim"),
+    ),
+}
+
+
 def _success_text(payload: NPCDialogueInput) -> str:
     """성공 분기(Success Branch) 진입 시 다음 시나리오 노드(Scenario Node)에 대응하는 NPC 대사를 생성합니다."""
     next_node_id = str(payload.branch.get("next_node_id", ""))
@@ -408,7 +533,7 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
         synthesized_text = synthesize_fallback_next_question(
             original_text,
             surface_goal,
-            session_context_card.get("open_hooks"),
+            _open_hooks_for_fallback_synthesis(normalized, session_context_card),
         )
         fallback_res["npc_text"] = synthesized_text
         fallback_res["text"] = synthesized_text
@@ -579,6 +704,17 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     llm_usage = llm_result.get("__llm_usage", {})
     npc_text = str(llm_result.get("npc_text") or "").strip()
     tts_text = str(llm_result.get("tts_text") or "").strip()
+
+    if _is_immigration_turn(normalized) and _has_immigration_retry_hook_leak(
+        npc_text,
+        tts_text,
+        normalized,
+    ):
+        logger.error(
+            "Immigration retry LLM output leaked a callback hook. npc_text=%r",
+            npc_text,
+        )
+        return {"error": "immigration_retry_hook_violation"}
     
     # [5.2단계] retry/clarify 분기일 경우 긍정 리액션 차단, 톤 보정 및 피드백 보정 가드 적용
     branch_type = normalized.get("branch_type")
@@ -677,6 +813,20 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         )
         return {"error": "complete_chapter_question_violation"}
 
+    immigration_violation = _immigration_dialogue_violation(
+        npc_text,
+        tts_text,
+        normalized,
+        payload,
+    )
+    if immigration_violation:
+        logger.error(
+            "Immigration LLM output violated node policy. reason=%s npc_text=%r",
+            immigration_violation,
+            npc_text,
+        )
+        return {"error": immigration_violation}
+
     # [6단계] 생성된 대사가 안전한 영문 아스키(ASCII) 텍스트인지 검사합니다.
     if not _is_safe_english_dialogue_text(npc_text) or not _is_safe_english_dialogue_text(tts_text):
         return {"error": "invalid_llm_dialogue_language"}
@@ -764,7 +914,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         overridden_text = synthesize_fallback_next_question(
             reaction_part,
             str(surface_goal),
-            session_context_card.get("open_hooks"),
+            _open_hooks_for_fallback_synthesis(normalized, session_context_card),
         )
         npc_text = overridden_text
         tts_text = overridden_text

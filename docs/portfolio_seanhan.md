@@ -220,6 +220,18 @@ question on a `COMPLETE_CHAPTER` turn. Sean tightened the Flight probe policy
 and added a completion-closing guard so the demo ends with a natural close
 instead of a new conversational obligation.
 
+Sean then applied the same follow-up discipline to the Immigration demo path.
+Unified logs showed that B's branch decisions were often correct, but C could
+underweight a passport handover phrase and A could ask dialogue that did not
+match B's next node. Sean added C-side passport handover repair and A-side
+Immigration guards so official dialogue follows the canonical next question,
+formal retry text stays clean, and current slot evidence wins over stale
+dialogue memory. A later runtime pass exposed second-order clearance issues:
+prior-visit answers and "good to go" confirmations were valid English evidence
+but could still be scored as missing slots. Sean tightened C's deterministic
+slot repair and A's final-clearance surface-goal guard so the Immigration scene
+can close naturally instead of looping through unclear reasks.
+
 ## Reliability and Guardrails
 
 - Rule-based final validator for Unreal-facing safety.
@@ -287,6 +299,12 @@ evidence of architecture, ownership, reliability, and follow-through.
 - Followed unified runtime logs beyond the first fix to remove awkward
   form/address probes from Flight seatmate diagnostics and enforce non-question
   closing dialogue on `COMPLETE_CHAPTER`.
+- Tightened the Immigration path by repairing passport handover understanding
+  and guarding A dialogue against next-node mismatch, retry hook leakage, and
+  stale slot contradictions.
+- Followed up on Immigration runtime logs to repair first-visit and final
+  clearance acknowledgement slots, stopping end-node `UNCLEAR/REASK` loops and
+  preserving a natural demo close.
 - Maintained contract-first documentation, handoff records, and portfolio notes
   so rapid daily backend changes remain traceable and reusable for employment
   storytelling.

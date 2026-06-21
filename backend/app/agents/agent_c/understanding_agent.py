@@ -594,6 +594,10 @@ def _normalize_for_keyword_match(value: str) -> str:
     return " ".join(value.lower().replace("_", " ").replace("-", " ").split())
 
 
+def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
+    return any(marker in text for marker in markers)
+
+
 def _looks_like_freeform_address(player_text: str) -> bool:
     """번지와 도로명이 같이 나온 자유형 주소 발화를 감지합니다.
 
@@ -774,6 +778,30 @@ def _apply_generic_slot_evidence(
     if _is_flight_smalltalk_diagnostic_node(node_context):
         return _normalize_flight_smalltalk_diagnostic_output(output, player_text, node_context)
 
+    passport_handover = _repair_passport_handover_output(
+        output,
+        player_text,
+        node_context,
+    )
+    if passport_handover is not None:
+        return passport_handover
+
+    first_visit = _repair_first_visit_output(
+        output,
+        player_text,
+        node_context,
+    )
+    if first_visit is not None:
+        return first_visit
+
+    final_clearance_ack = _repair_final_clearance_acknowledgement_output(
+        output,
+        player_text,
+        node_context,
+    )
+    if final_clearance_ack is not None:
+        return final_clearance_ack
+
     allowed_slots = _allowed_slot_names(node_context)
     accepted_evidence: list[SlotEvidence] = []
     dropped_slots: list[str] = []
@@ -866,6 +894,245 @@ def _apply_generic_slot_evidence(
         "accepted_slot_evidence": [evidence.slot for evidence in accepted_evidence],
         "dropped_slot_evidence": dropped_slots,
     }
+
+
+def _repair_passport_handover_output(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> tuple[UnderstandingOutput, dict[str, Any]] | None:
+    """Treat deictic handover phrases as passport submission in passport context."""
+
+    slot_name = "passport_submission_status"
+    if slot_name not in node_context.required_slots:
+        return None
+    if _has_risk_expression(player_text, node_context):
+        return None
+    if not _looks_like_passport_handover(player_text):
+        return None
+
+    evidence = SlotEvidence(
+        slot=slot_name,
+        value="submitted",
+        confidence=0.96,
+        evidence_text=player_text.strip() or "Here you go.",
+    )
+    normalized = output.model_copy(
+        update={
+            "intent": _required_intent_for_slot(node_context, slot_name),
+            "intent_success": True,
+            "intent_satisfied": True,
+            "confidence": max(output.confidence, 0.94),
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "none",
+            "slot_evidence": [evidence],
+            "extracted_slots": {slot_name: "submitted"},
+            "missing_slots": [],
+            "needs_clarification": False,
+            "risk_delta": 0,
+            "risk_reason": "Passport handover phrase recognized in passport-submission context.",
+            "risk_tags": [],
+            "judgment_reason": "The player handed over the passport with a short deictic phrase.",
+        }
+    )
+    return normalized, {
+        "generic_slot_evidence_applied": True,
+        "passport_handover_repair_applied": True,
+        "intent_relevance_guard_applied": False,
+        "confidence_evidence_guard_applied": normalized.confidence != output.confidence,
+        "weak_required_slot_evidence": False,
+        "accepted_slot_evidence": [slot_name],
+        "dropped_slot_evidence": [],
+    }
+
+
+def _looks_like_passport_handover(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    handover_markers = (
+        "here you go",
+        "here you are",
+        "here it is",
+        "there you go",
+        "take it",
+        "my passport",
+        "here is my passport",
+        "heres my passport",
+    )
+    if any(marker in normalized for marker in handover_markers):
+        return True
+    return "passport" in normalized.split() and "here" in normalized.split()
+
+
+def _repair_first_visit_output(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> tuple[UnderstandingOutput, dict[str, Any]] | None:
+    """Recover first-visit answers when the LLM misses the enum slot."""
+
+    slot_name = "first_visit_status"
+    if slot_name not in node_context.required_slots:
+        return None
+    if _has_risk_expression(player_text, node_context):
+        return None
+
+    slot_value = _classify_first_visit_status(player_text)
+    if slot_value is None:
+        return None
+
+    evidence = SlotEvidence(
+        slot=slot_name,
+        value=slot_value,
+        confidence=0.93,
+        evidence_text=player_text.strip(),
+    )
+    normalized = output.model_copy(
+        update={
+            "intent": _required_intent_for_slot(node_context, slot_name),
+            "intent_success": True,
+            "intent_satisfied": True,
+            "confidence": max(output.confidence, 0.91),
+            "meaning_summary_kr": "The player answered whether this is their first U.S. visit.",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "none",
+            "slot_evidence": [evidence],
+            "extracted_slots": {slot_name: slot_value},
+            "missing_slots": [],
+            "needs_clarification": False,
+            "risk_delta": 0,
+            "risk_reason": "First-visit answer recognized with deterministic slot repair.",
+            "risk_tags": [],
+            "judgment_reason": "The player gave a yes/no first-visit answer with prior-visit wording.",
+        }
+    )
+    return normalized, {
+        "generic_slot_evidence_applied": True,
+        "first_visit_repair_applied": True,
+        "intent_relevance_guard_applied": False,
+        "confidence_evidence_guard_applied": normalized.confidence != output.confidence,
+        "weak_required_slot_evidence": False,
+        "accepted_slot_evidence": [slot_name],
+        "dropped_slot_evidence": [],
+    }
+
+
+def _classify_first_visit_status(player_text: str) -> str | None:
+    normalized = _normalize_for_keyword_match(player_text)
+    tokens = set(normalized.split())
+    prior_visit_markers = (
+        "visited before",
+        "been here before",
+        "i have been here",
+        "ive been here",
+        "i ve been here",
+        "been here quite",
+        "been here a lot",
+        "been here quite a lot",
+        "quite a lot",
+        "quite often",
+        "visit united states quite often",
+        "visited united states",
+        "came here before",
+        "been to the united states",
+        "been to america",
+        "not my first",
+        "not first",
+        "second time",
+        "third time",
+    )
+    first_time_markers = (
+        "yes",
+        "first time",
+        "first visit",
+        "my first",
+        "never been",
+        "never visited",
+    )
+    if any(marker in normalized for marker in prior_visit_markers):
+        return "no_visited_before"
+    if "no" in tokens or "nope" in tokens:
+        return "no_visited_before"
+    if any(marker in normalized for marker in first_time_markers):
+        return "yes_first_time"
+    return None
+
+
+def _repair_final_clearance_acknowledgement_output(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> tuple[UnderstandingOutput, dict[str, Any]] | None:
+    """Accept short acknowledgements and "good to go" checks at clearance."""
+
+    slot_name = "immigration_transition_acknowledgement"
+    if slot_name not in node_context.required_slots:
+        return None
+    if _has_risk_expression(player_text, node_context):
+        return None
+
+    slot_value = _classify_final_clearance_acknowledgement(player_text)
+    if slot_value is None:
+        return None
+
+    evidence = SlotEvidence(
+        slot=slot_name,
+        value=slot_value,
+        confidence=0.93,
+        evidence_text=player_text.strip(),
+    )
+    normalized = output.model_copy(
+        update={
+            "intent": _required_intent_for_slot(node_context, slot_name),
+            "intent_success": True,
+            "intent_satisfied": True,
+            "confidence": max(output.confidence, 0.91),
+            "meaning_summary_kr": "The player acknowledged the immigration clearance.",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "none",
+            "slot_evidence": [evidence],
+            "extracted_slots": {slot_name: slot_value},
+            "missing_slots": [],
+            "needs_clarification": False,
+            "risk_delta": 0,
+            "risk_reason": "Clearance acknowledgement recognized with deterministic slot repair.",
+            "risk_tags": [],
+            "judgment_reason": "The player acknowledged or confirmed they can proceed after clearance.",
+        }
+    )
+    return normalized, {
+        "generic_slot_evidence_applied": True,
+        "final_clearance_ack_repair_applied": True,
+        "intent_relevance_guard_applied": False,
+        "confidence_evidence_guard_applied": normalized.confidence != output.confidence,
+        "weak_required_slot_evidence": False,
+        "accepted_slot_evidence": [slot_name],
+        "dropped_slot_evidence": [],
+    }
+
+
+def _classify_final_clearance_acknowledgement(player_text: str) -> str | None:
+    normalized = _normalize_for_keyword_match(player_text)
+    tokens = set(normalized.split())
+    if _contains_any(normalized, ("thank", "thanks", "thank you")):
+        return "thanked_officer"
+    if _contains_any(
+        normalized,
+        (
+            "good to go",
+            "go right now",
+            "go now",
+            "can i go",
+            "may i go",
+            "am i cleared",
+            "baggage claim",
+        ),
+    ):
+        return "ready_for_baggage_claim"
+    if tokens.intersection({"okay", "ok", "good", "alright", "understood"}):
+        return "acknowledged"
+    if _contains_any(normalized, ("all right", "i understand", "got it", "you are cleared")):
+        return "acknowledged"
+    return None
 
 
 def _allowed_slot_names(node_context: NodeContext) -> set[str]:

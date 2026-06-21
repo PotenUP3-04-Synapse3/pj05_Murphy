@@ -1,5 +1,91 @@
 # Handoff
 
+## 2026-06-21 Developer C, A: Immigration Prompt Alignment and Slot Repair Fix
+
+Developer C traced a unified AgentRun where Immigration technically progressed
+but the dialogue and scoring contract drifted: `Hi. Here you go.` did not pass
+passport submission, A asked host/history follow-ups that did not match B's
+next node, retry text produced `You mentioned mentioned`, and the final
+occupation success dialogue said `Unemployed` after the current turn filled
+`occupation=student`.
+
+Root cause:
+- C Understanding treated a deictic passport handover phrase as weak evidence
+  even in the `IMM_001_PASSPORT` context. The LLM saw
+  `passport_submission_status=available`, but C did not upgrade that into a
+  strong `submitted` handover.
+- A's immigration LLM was allowed to ask context-driven follow-ups such as
+  `Who is your host?` even when B had already selected the canonical next node
+  (`IMM_005_RETURN_TICKET`) and surface goal (`ask_return_ticket`).
+- A's generic callback hook policy leaked into formal Immigration retry text,
+  producing phrases such as `You mentioned mentioned`.
+- A could reuse stale dialogue-history facts over the current turn's
+  `understanding.extracted_slots`, so `occupation=student` was contradicted by
+  `Unemployed`.
+
+Follow-up runtime log:
+- A later `b_policy_run_cc0b01...` run showed passport submission fixed, but
+  exposed three remaining Immigration demo issues:
+  - `No, ... I've been here quite a lot` at `IMM_008_FIRST_VISIT` was a valid
+    "not first visit" answer, but C let the LLM miss
+    `first_visit_status=no_visited_before`, causing a noisy REASK.
+  - After `occupation=engineer`, A opened `Any work here in the United States?`
+    even though B had advanced to `IMM_007_FINAL_DECISION`; this created a new
+    obligation right before clearance.
+  - At `IMM_007_FINAL_DECISION`, short acknowledgements such as `Good. Thanks.`
+    and confirmation checks such as `Am I good to go now?` were not recognized
+    as `immigration_transition_acknowledgement`, so B repeatedly selected
+    `IMM_EXTRA_007_CLARIFY_FINAL_DECISION`. A's later fallback synthesis then
+    added formal-context-breaking text like `You mentioned good`.
+
+Changed:
+- `backend/app/agents/agent_c/understanding_agent.py`:
+  Added a passport-context repair for handover phrases like `Here you go`,
+  `Here you are`, `Here it is`, and `my passport`. In `IMM_001_PASSPORT`,
+  non-risky handover phrases now become `submit_passport`, confidence >= 0.9,
+  `passport_submission_status=submitted`, and `intent_satisfied=true`.
+  Follow-up repair now also handles:
+  - `first_visit_status=no_visited_before` for prior-visit wording such as
+    `No, ... I've been here quite a lot`;
+  - `immigration_transition_acknowledgement` for `thanks`, `good`, and
+    `good to go` clearance acknowledgements.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`:
+  Added Immigration-only post-processing guards:
+  - success turns that advance to a known `surface_goal` must ask the canonical
+    next-node question;
+  - retry/clarify turns cannot include `You mentioned ...` callback hooks;
+  - current `understanding.extracted_slots` cannot be contradicted by stale LLM
+    text such as saying `Unemployed` when the current slot is `student`.
+  Follow-up guard now treats `confirm_immigration_clearance_transition` as a
+  non-question clearance surface goal and disables casual `open_hooks` prefixes
+  in formal Immigration fallback synthesis.
+- `backend/tests/test_understanding_agent.py`:
+  Added regression coverage for `Hi. Here you go.` as passport handover in LLM
+  mode, first-visit prior-visit wording, and final clearance acknowledgements.
+- `backend/tests/test_developer_a_npc_dialogue.py`:
+  Added regression coverage for host-question drift, retry hook leakage, and
+  stale occupation contradiction. Follow-up coverage now also blocks clearance
+  work-question drift and post-override `You mentioned ...` prefixes.
+
+Team impact:
+- Developer A: A-owned post-processing now keeps Immigration dialogue aligned
+  with B's branch/surface-goal contract and current-slot evidence. Clearance
+  transition turns should close or acknowledge, not ask a new question.
+- Developer B: No B-owned code changed. B's branch output was correct in the
+  inspected runs; the mismatch came from C Understanding and A dialogue output.
+- Developer C: C Understanding now repairs passport handover evidence before B
+  policy evaluation and repairs final Immigration acknowledgement slots before
+  B sees them as missing.
+
+Verification:
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_mode_upgrades_here_you_go_passport_handover backend/tests/test_developer_a_npc_dialogue.py::test_immigration_success_llm_must_follow_branch_surface_goal_question backend/tests/test_developer_a_npc_dialogue.py::test_immigration_retry_llm_hook_prefix_falls_back_to_direct_question backend/tests/test_developer_a_npc_dialogue.py::test_immigration_llm_cannot_contradict_current_occupation_slot`: PASS, 4 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_mode_repairs_first_visit_prior_visit_phrase backend/tests/test_understanding_agent.py::test_understanding_agent_llm_mode_repairs_final_clearance_acknowledgement backend/tests/test_developer_a_npc_dialogue.py::test_immigration_success_llm_cannot_open_question_on_clearance_transition backend/tests/test_developer_a_npc_dialogue.py::test_immigration_non_advance_override_does_not_add_open_hook_prefix`: PASS, 4 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py::test_orchestrator_connects_stt_understanding_dev_b_dev_a_and_response`: PASS, 71 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest`: PASS, 398 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`: PASS.
+- `uv run mypy .`: PASS, 139 source files.
+- `git diff --check`: PASS, with existing Windows LF-to-CRLF working-copy warnings only.
+
 ## 2026-06-21 Developer C, A, B: Flight Address Probe and Completion Closing Fix
 
 Developer C traced the latest unified AgentRun where Arabella moved from a pen
@@ -43,6 +129,19 @@ Team impact:
 - Developer C: C's diagnosis confirms this was not the previous history-sync
   failure. The unified logs were used to distinguish B probe selection from C
   adapter/history behavior.
+
+Follow-up to track:
+- C Understanding should expose a lightweight social-discomfort signal for
+  player turns like "why are you asking me that?", "are you interested in me?",
+  "do you have a boyfriend?", or "do you want to stay with me?".
+- B Flight policy should use repeated social-discomfort evidence to stop
+  pushing personal travel probes and instead select a repair, neutral pivot, or
+  wrap-up path.
+- A dialogue policy should avoid extending romantic/flirtatious or uncomfortable
+  frames. It should briefly set a friendly boundary, then pivot or close.
+- Flight completion closing should answer the player's final harmless question
+  when possible before closing, for example: "I'm Arabella. Nice meeting you,
+  Yong Hee. Enjoy your trip!" instead of an abrupt standalone close.
 
 Verification:
 - `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_excludes_form_and_address_probes backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_complete_chapter_llm_question_falls_back_to_closing`: PASS, 2 passed, 1 warning (`audioop` deprecation).
