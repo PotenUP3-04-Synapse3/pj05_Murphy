@@ -1,6 +1,6 @@
 # Portfolio - Sean Han
 
-Updated: 2026-06-21
+Updated: 2026-06-24
 
 ## Project Title
 
@@ -266,6 +266,8 @@ evidence of architecture, ownership, reliability, and follow-through.
 
 ## Resume Bullets
 
+- Designed and engineered the end-to-end 2P multiplayer extensions, enabling parallel isolated chapters (cabin, immigration) and cooperative shared-memory runtime missions (baggage claim) while fully preserving legacy 1P backward compatibility.
+- Implemented stateless owner setup routes, dynamic NPC addressed-player templates, session-filtered player rubric scoreboards, and room-level async concurrency lock guards to serialize backend processing and eliminate race conditions.
 - Designed and implemented the Developer C FastAPI AI backend layer for an
   Unreal Engine travel-English simulator.
 - Built a LangGraph v1.2.2 orchestration workflow with named C-owned tool nodes

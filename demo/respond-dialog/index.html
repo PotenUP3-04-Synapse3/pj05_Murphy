@@ -478,6 +478,197 @@
       font-weight: 700;
     }
 
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    #viewResultButton {
+      min-height: 34px;
+      padding: 0 14px;
+      font-size: 14px;
+    }
+
+    .result-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 32px 16px;
+      background: rgba(15, 23, 32, 0.45);
+      overflow-y: auto;
+    }
+
+    .result-overlay[hidden] {
+      display: none;
+    }
+
+    .result-modal {
+      width: min(820px, 100%);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      box-shadow: 0 12px 40px rgba(15, 23, 32, 0.25);
+    }
+
+    .result-modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+      padding: 16px 20px;
+    }
+
+    .result-modal-head h2 {
+      margin: 0;
+    }
+
+    .result-modal-body {
+      padding: 20px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .result-hero {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+      border-radius: 10px;
+      background: var(--surface-soft);
+      padding: 16px 18px;
+    }
+
+    .result-score {
+      font-size: 40px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .result-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .result-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      background: #fff;
+    }
+
+    .result-chip.tier-Gold { border-color: #d6b24a; color: #8a6a12; background: #fef8e7; }
+    .result-chip.tier-Silver { border-color: #b6bdc4; color: #5b6772; background: #f4f6f8; }
+    .result-chip.tier-Bronze { border-color: #c79a72; color: #875327; background: #fbf2e9; }
+    .result-chip.tier-Iron { border-color: #f0b9b4; color: var(--red); background: #fdeeec; }
+
+    .result-section h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      color: var(--muted);
+    }
+
+    .result-dim-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .result-dim {
+      display: grid;
+      gap: 4px;
+    }
+
+    .result-dim-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .result-bar {
+      height: 8px;
+      border-radius: 999px;
+      background: #e6ebe3;
+      overflow: hidden;
+    }
+
+    .result-bar > span {
+      display: block;
+      height: 100%;
+      background: var(--blue);
+    }
+
+    .result-fonf-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .result-fonf-item .fonf-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: baseline;
+    }
+
+    .result-fonf-item strong {
+      font-size: 14px;
+    }
+
+    .result-fonf-pri {
+      font-size: 11px;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--amber);
+    }
+
+    .result-utterances {
+      font-family: Consolas, Monaco, "Courier New", monospace;
+      font-size: 12px;
+      color: var(--ink);
+      background: var(--surface-soft);
+      border-radius: 6px;
+      padding: 8px 10px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .result-utterances .bad { color: var(--red); }
+    .result-utterances .good { color: var(--green); }
+
+    .result-muted {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .result-player-block {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 16px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .result-player-block > h2 {
+      margin: 0;
+      font-size: 16px;
+    }
+
     @media (max-width: 900px) {
       main {
         grid-template-columns: 1fr;
@@ -502,7 +693,10 @@
 <body>
   <header>
     <div class="header-inner">
-      <h1>Murphy Respond Dialog</h1>
+      <div class="header-left">
+        <h1>Murphy Respond Dialog</h1>
+        <button class="secondary" id="viewResultButton" type="button">📊 결과 보기</button>
+      </div>
       <div class="status-pill" id="runtimeStatus">
         <span class="running-stopwatch" id="runningStopwatch" aria-hidden="true"></span>
         <span id="runtimeStatusText">Idle</span>
@@ -650,6 +844,16 @@
     </div>
   </main>
 
+  <div class="result-overlay" id="resultOverlay" hidden>
+    <div class="result-modal">
+      <div class="result-modal-head">
+        <h2 id="resultModalTitle">결과</h2>
+        <button class="secondary" id="closeResultButton" type="button">닫기</button>
+      </div>
+      <div class="result-modal-body" id="resultModalBody"></div>
+    </div>
+  </div>
+
   <script>
     const firstNodeId = "FLIGHT_A_001_SEATMATE_SMALLTALK";
     const defaultChapterId = "CH0_01_FLIGHT_SMALLTALK";
@@ -728,7 +932,12 @@
       turnIndex: document.getElementById("turnIndex"),
       dialogShell: document.getElementById("dialogShell"),
       transcript: document.getElementById("transcript"),
-      rawJson: document.getElementById("rawJson")
+      rawJson: document.getElementById("rawJson"),
+      viewResultButton: document.getElementById("viewResultButton"),
+      resultOverlay: document.getElementById("resultOverlay"),
+      resultModalTitle: document.getElementById("resultModalTitle"),
+      resultModalBody: document.getElementById("resultModalBody"),
+      closeResultButton: document.getElementById("closeResultButton")
     };
 
     const dialogState = {
@@ -1837,6 +2046,187 @@
       }
       updateRecordingControls();
     }
+
+    function currentSessionId() {
+      try {
+        return parseTurn().session.session_id;
+      } catch {
+        const text = refs.sessionId.textContent;
+        return text && text !== "-" ? text : null;
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    const RESULT_DIMENSIONS = [
+      ["comprehension", "Comprehension"],
+      ["fluency", "Fluency"],
+      ["grammar_accuracy", "Grammar"],
+      ["vocabulary_range", "Vocabulary"],
+      ["clarity", "Clarity"],
+      ["interaction_problem_solving", "Interaction"]
+    ];
+
+    function renderFinalResultHtml(finalResult) {
+      const score = Number(finalResult.final_score_100 || 0);
+      const tier = finalResult.tier || "Iron";
+      const dims = finalResult.quantitative_scores || {};
+      const summary = finalResult.report_summary || {};
+
+      const badges = [
+        '<span class="result-chip tier-' + escapeHtml(tier) + '">Tier: ' + escapeHtml(tier) + "</span>",
+        '<span class="result-chip">Rank: ' + escapeHtml(finalResult.rank || "-") + "</span>",
+        '<span class="result-chip">' + escapeHtml(finalResult.final_recommendation || "-") + "</span>"
+      ].join("");
+
+      const dimRows = RESULT_DIMENSIONS.map(([key, label]) => {
+        const value = Number(dims[key] || 0);
+        return (
+          '<div class="result-dim">' +
+            '<div class="result-dim-label"><span>' + label + "</span><span>" + value + "</span></div>" +
+            '<div class="result-bar"><span style="width:' + Math.max(0, Math.min(100, value)) + '%"></span></div>' +
+          "</div>"
+        );
+      }).join("");
+
+      const summaryRows = [];
+      if (summary.overall) summaryRows.push("<p>" + escapeHtml(summary.overall) + "</p>");
+      if (summary.main_improvement) {
+        summaryRows.push('<p class="result-muted">개선 포인트: ' + escapeHtml(summary.main_improvement) + "</p>");
+      }
+      const nodeBits = [];
+      if (summary.best_node) nodeBits.push("Best: " + escapeHtml(summary.best_node));
+      if (summary.weakest_node) nodeBits.push("Weakest: " + escapeHtml(summary.weakest_node));
+      if (nodeBits.length) summaryRows.push('<p class="result-muted">' + nodeBits.join(" · ") + "</p>");
+
+      return (
+        '<div class="result-hero">' +
+          '<div class="result-score">' + score + '<span class="result-muted"> / 100</span></div>' +
+          '<div class="result-badges">' + badges + "</div>" +
+        "</div>" +
+        '<div class="result-section"><h3>세부 점수</h3><div class="result-dim-grid">' + dimRows + "</div></div>" +
+        (summaryRows.length
+          ? '<div class="result-section"><h3>총평</h3>' + summaryRows.join("") + "</div>"
+          : "")
+      );
+    }
+
+    function renderFonfHtml(outGameFeedback) {
+      if (!outGameFeedback) {
+        return '<div class="result-section"><h3>Focus on Form 피드백</h3><p class="result-muted">피드백 데이터가 없습니다.</p></div>';
+      }
+      const items = Array.isArray(outGameFeedback.focus_on_form_items)
+        ? outGameFeedback.focus_on_form_items
+        : [];
+
+      let body;
+      if (!items.length) {
+        body = '<p class="result-muted">' +
+          escapeHtml(outGameFeedback.overall_summary_kr || "아직 Focus-on-Form 기록이 없습니다.") + "</p>";
+      } else {
+        body = items.map((item) => {
+          const bad = (item.original_utterances || [])
+            .map((line) => '<div class="bad">✗ ' + escapeHtml(line) + "</div>").join("");
+          const good = (item.suggested_expressions || [])
+            .map((line) => '<div class="good">✓ ' + escapeHtml(line) + "</div>").join("");
+          const utter = bad || good
+            ? '<div class="result-utterances">' + bad + good + "</div>"
+            : "";
+          return (
+            '<div class="result-fonf-item">' +
+              '<div class="fonf-head"><strong>' + escapeHtml(item.title_kr || item.focus_on_form_target || "표현") + "</strong>" +
+                '<span class="result-fonf-pri">' + escapeHtml(item.priority || "low") + "</span></div>" +
+              (item.rule_summary_kr ? '<div class="result-muted">' + escapeHtml(item.rule_summary_kr) + "</div>" : "") +
+              utter +
+              (item.practice_prompt_kr ? '<div class="result-muted">연습: ' + escapeHtml(item.practice_prompt_kr) + "</div>" : "") +
+            "</div>"
+          );
+        }).join("");
+      }
+
+      const next = outGameFeedback.personalized_next_step;
+      const nextHtml = next && (next.practice_prompt_kr || next.answer_example)
+        ? '<div class="result-fonf-item">' +
+            "<strong>다음 연습 추천</strong>" +
+            (next.practice_prompt_kr ? '<div class="result-muted">' + escapeHtml(next.practice_prompt_kr) + "</div>" : "") +
+            (next.answer_example ? '<div class="result-utterances"><div class="good">✓ ' + escapeHtml(next.answer_example) + "</div></div>" : "") +
+          "</div>"
+        : "";
+
+      return '<div class="result-section"><h3>Focus on Form 피드백</h3>' + body + nextHtml + "</div>";
+    }
+
+    function renderResultBody(body) {
+      if (Array.isArray(body.players)) {
+        refs.resultModalTitle.textContent = "팀 결과 · " + (body.room_id || "");
+        const team = body.team_outcome
+          ? '<div class="result-section"><h3>팀 결과</h3><p>' + escapeHtml(body.team_outcome) + "</p></div>"
+          : "";
+        const players = body.players.map((player) =>
+          '<div class="result-player-block"><h2>' + escapeHtml(player.player_id) + "</h2>" +
+            renderFinalResultHtml(player.final_result) +
+            renderFonfHtml(player.out_game_feedback) +
+          "</div>"
+        ).join("");
+        refs.resultModalBody.innerHTML = team + players;
+        return;
+      }
+
+      refs.resultModalTitle.textContent = "결과 · " + (body.session_id || "");
+      refs.resultModalBody.innerHTML =
+        renderFinalResultHtml(body.final_result) + renderFonfHtml(body.out_game_feedback);
+    }
+
+    async function openResultPanel() {
+      const sessionId = currentSessionId();
+      if (!sessionId) {
+        setStatus("No Session", "warning");
+        return;
+      }
+      refs.resultModalTitle.textContent = "결과";
+      refs.resultModalBody.innerHTML = '<p class="result-muted">불러오는 중...</p>';
+      refs.resultOverlay.hidden = false;
+      try {
+        const response = await fetch("/api/game/ai/result/" + encodeURIComponent(sessionId));
+        const text = await response.text();
+        const body = JSON.parse(text);
+        if (!response.ok) {
+          refs.resultModalBody.innerHTML =
+            '<p class="error">결과를 불러오지 못했습니다.</p><pre>' + escapeHtml(JSON.stringify(body, null, 2)) + "</pre>";
+          return;
+        }
+        renderResultBody(body);
+      } catch (error) {
+        refs.resultModalBody.innerHTML = '<p class="error">' + escapeHtml(String(error)) + "</p>";
+      }
+    }
+
+    function closeResultPanel() {
+      refs.resultOverlay.hidden = true;
+    }
+
+    refs.viewResultButton.addEventListener("click", () => {
+      openResultPanel().catch((error) => {
+        refs.resultModalBody.innerHTML = '<p class="error">' + escapeHtml(String(error)) + "</p>";
+      });
+    });
+    refs.closeResultButton.addEventListener("click", closeResultPanel);
+    refs.resultOverlay.addEventListener("click", (event) => {
+      if (event.target === refs.resultOverlay) {
+        closeResultPanel();
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !refs.resultOverlay.hidden) {
+        closeResultPanel();
+      }
+    });
 
     refs.chapterButtons.querySelectorAll("[data-chapter-id]").forEach((button) => {
       button.addEventListener("click", () => {

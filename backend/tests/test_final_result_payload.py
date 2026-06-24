@@ -327,7 +327,13 @@ def test_validator_accepts_alpha_scene_normalized_score_policy() -> None:
 
 
 def test_result_endpoint_returns_unreal_result_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import MagicMock
+
     class FakeDevBPolicyClient:
+        def __init__(self) -> None:
+            self.final_record_reader = MagicMock()
+            self.final_record_reader.read_session_records.return_value = []
+
         def final_result_for_session(self, session_id: str) -> FinalResult:
             assert session_id == "session_final_result"
             return FinalResult.model_validate(_final_result())

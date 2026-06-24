@@ -9,6 +9,7 @@ previews; committed final text is the only text that should later enter the
 normal `/respond` turn flow.
 """
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any, Literal, Sequence, cast
@@ -28,7 +29,12 @@ from backend.app.schemas.game_turn import (
     SttRuntimeUsed,
     UnrealResponse,
     UnrealResultResponse,
+    UnrealRoomResultResponse,
+    PlayerRubricReport,
     UnrealTurnRequest,
+    BaggageSetupRequest,
+    BaggageSetupResponse,
+    is_shared_baggage,
 )
 from backend.app.services.service_c.agent_run_summary_service import AgentRunSummaryService
 from backend.app.services.service_c.elevenlabs_realtime_stt_relay import (
@@ -57,6 +63,17 @@ _STT_RUNTIME_USED_VALUES = frozenset(
 )
 
 
+_ROOM_LOCKS: dict[str, asyncio.Lock] = {}
+_ROOM_LOCKS_LOCK = asyncio.Lock()
+
+
+async def get_room_lock(room_id: str) -> asyncio.Lock:
+    async with _ROOM_LOCKS_LOCK:
+        if room_id not in _ROOM_LOCKS:
+            _ROOM_LOCKS[room_id] = asyncio.Lock()
+        return _ROOM_LOCKS[room_id]
+
+
 @router.post("/respond", response_model=UnrealResponse)
 async def respond(request: Request) -> UnrealResponse:
     settings = get_settings()
@@ -66,7 +83,31 @@ async def respond(request: Request) -> UnrealResponse:
     else:
         preprototype_request = PrePrototypeRequest.model_validate(await request.json())
 
-    return Orchestrator().run_turn(preprototype_request)
+    # Room Concurrency Lock Mechanism (WP-R5 Documented)
+    # WARNING: This in-process dictionary lock registry (_ROOM_LOCKS) is scoped
+    # to a single worker process only. If the application is deployed in a
+    # multi-worker server environment (e.g. gunicorn/uvicorn with --workers > 1)
+    # or scaled across multiple nodes, in-process memory locks and NPC memory
+    # singletons will NOT be shared between workers. In production, this must be
+    # backed by an external distributed lock provider (such as Redis locks) or
+    # run under a single worker constraint.
+    room_id = preprototype_request.turn.session.room_id
+    is_baggage = is_shared_baggage(preprototype_request.turn.session)
+
+    if room_id and is_baggage:
+        lock = await get_room_lock(room_id)
+        async with lock:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, Orchestrator().run_turn, preprototype_request)
+    else:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, Orchestrator().run_turn, preprototype_request)
+
+
+@router.post("/room/baggage/setup", response_model=BaggageSetupResponse)
+def baggage_setup(request: BaggageSetupRequest) -> BaggageSetupResponse:
+    from backend.app.services.service_b.baggage_room_setup_service import BaggageRoomSetupService
+    return BaggageRoomSetupService().resolve_setup(request)
 
 
 @router.websocket("/stt/stream")
@@ -394,17 +435,51 @@ def _is_websocket_receive_after_disconnect(error: RuntimeError) -> bool:
     return 'WebSocket is not connected. Need to call "accept" first.' in str(error)
 
 
-@router.get("/result/{session_id}", response_model=UnrealResultResponse)
-def result(session_id: str) -> UnrealResultResponse:
+@router.get("/result/{session_id}", response_model=UnrealResultResponse | UnrealRoomResultResponse)
+def result(session_id: str) -> UnrealResultResponse | UnrealRoomResultResponse:
     dev_b_client = DevBPolicyClient()
-    response = UnrealResultResponse(
-        contract_version="dev_c_unreal_result.v1",
-        session_id=session_id,
-        final_result=dev_b_client.final_result_for_session(session_id),
-        out_game_feedback=dev_b_client.out_game_feedback_for_session(session_id),
-    )
-    Validator().validate_unreal_result_response(response)
-    return response
+    
+    # Read the records to determine if this is a multiplayer session
+    records = dev_b_client.final_record_reader.read_session_records(session_id)
+    unique_players = list(dict.fromkeys(cast(str, r.get("speaker_player_id") or r.get("player_id")) for r in records if (r.get("speaker_player_id") or r.get("player_id"))))
+    has_room_id = any(r.get("room_id") for r in records)
+    
+    if len(unique_players) > 1 or has_room_id:
+        team_result = dev_b_client.final_result_for_session(session_id)
+        team_outcome = team_result.final_recommendation
+        
+        players_reports = []
+        players_to_query = unique_players
+        
+        for player_id in players_to_query:
+            p_result = dev_b_client.final_result_for_session(session_id, player_id=player_id)
+            p_feedback = dev_b_client.out_game_feedback_for_session(session_id, player_id=player_id)
+            players_reports.append(
+                PlayerRubricReport(
+                    player_id=player_id,
+                    final_result=p_result,
+                    out_game_feedback=p_feedback,
+                )
+            )
+            
+        actual_room_id = str(next((r.get("room_id") for r in records if r.get("room_id")), session_id))
+        response_room = UnrealRoomResultResponse(
+            contract_version="dev_c_unreal_room_result.v1",
+            room_id=actual_room_id,
+            team_outcome=team_outcome,
+            players=players_reports,
+        )
+        Validator().validate_unreal_room_result_response(response_room)
+        return response_room
+    else:
+        response = UnrealResultResponse(
+            contract_version="dev_c_unreal_result.v1",
+            session_id=session_id,
+            final_result=dev_b_client.final_result_for_session(session_id),
+            out_game_feedback=dev_b_client.out_game_feedback_for_session(session_id),
+        )
+        Validator().validate_unreal_result_response(response)
+        return response
 
 
 async def _parse_multipart_request(

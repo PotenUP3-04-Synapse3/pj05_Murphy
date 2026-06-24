@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 from pathlib import Path
 from typing import Any, Literal, TypeAlias
@@ -11,6 +12,8 @@ from backend.app.schemas.game_turn import (
     FinalScoreState,
     QuantitativeScores,
 )
+
+logger = logging.getLogger(__name__)
 
 FINAL_DECISION_NODE_IDS = {"IMM_007_FINAL_DECISION", "ALPHA_999_FINAL_SCOREBOARD"}
 SCENE_SCORE_WEIGHTS = {
@@ -77,20 +80,26 @@ class OpenKBFinalResultRecordReader:
         Returns:
             대화 턴별 로그 레코드들이 담긴 딕셔너리 리스트
         """
-        jsonl_path = self.runtime_root / f"{session_id}.jsonl"
-        if not jsonl_path.exists():
-            return []
 
+        # session_id == room_id for shared baggage chapter; direct lookup is sufficient.
+        jsonl_path = self.runtime_root / f"{session_id}.jsonl"
+        if jsonl_path.exists():
+            return self._parse_file(jsonl_path)
+        return []
+
+    def _parse_file(self, jsonl_path: Path) -> list[dict[str, Any]]:
+        from backend.app.schemas.game_turn import PolicyTurnFeedbackRecord
         records: list[dict[str, Any]] = []
         for line in jsonl_path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
+                raw_record = json.loads(line)
+                record_obj = PolicyTurnFeedbackRecord.model_validate(raw_record)
+                records.append(record_obj.model_dump())
+            except Exception as exc:
+                logger.warning("Skipping malformed record in %s: %s", jsonl_path.name, exc)
                 continue
-            if isinstance(record, dict):
-                records.append(record)
         return records
 
 
@@ -120,7 +129,7 @@ class FinalResultScorePolicy:
         """
         scored_records = self._scored_records(records)
         included_records = self._included_records(scored_records)
-        state = final_state or self._state_from_records(records)
+        state = final_state or self.state_from_records(records)
 
         if not included_records:
             return self._unranked_result()
@@ -351,7 +360,7 @@ class FinalResultScorePolicy:
                 return improvement
         return "Keep answers concise and polite."
 
-    def _state_from_records(self, records: list[dict[str, Any]]) -> FinalScoreState:
+    def state_from_records(self, records: list[dict[str, Any]]) -> FinalScoreState:
         """
         세션 대화 로그들의 상태 변동량(State Delta)을 누적 연산하여 인내심, 의심도 등의 최종 게임 수치를 복원합니다.
         """
