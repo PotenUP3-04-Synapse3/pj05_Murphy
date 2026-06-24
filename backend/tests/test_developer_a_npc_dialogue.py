@@ -1575,3 +1575,65 @@ def test_desync_guard_overrides_llm_next_node_question() -> None:
     assert "where you will stay" not in result["npc_text"].lower()
 
 
+def test_duplicate_intent_question_guard_blocks_repeated_phrasing() -> None:
+    """LLM이 'What is your job. What is your occupation?' 같이 같은 의도를
+    두 번 출력할 때 duplicate_intent_question 가드가 작동하여 fallback으로 전환되는지 검증."""
+    class DuplicateIntentLLMClient:
+        model = "fake-model"
+        def generate(self, payload: dict) -> dict:
+            return {
+                "npc_text": "What is your job? What is your occupation?",
+                "tts_text": "What is your job? What is your occupation?",
+                "feedback_kr": "좋아요.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "llm_reason": "duplicate question",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    payload = _payload(
+        branch_type="success",
+        surface_goal="ask_occupation",
+    )
+    result = generate_npc_dialogue_from_level_design(
+        payload,
+        use_llm=True,
+        llm_client=DuplicateIntentLLMClient()
+    )
+
+    # 가드가 감지하여 fallback을 사용하는지 검증
+    assert result["llm"]["reason"] == "duplicate_intent_question"
+    assert result["llm"]["fallback_used"] is True
+
+
+def test_clearance_failure_contradiction_guard_blocks_mixed_tone() -> None:
+    """LLM이 success closing과 fail message를 함께 출력할 때 가드 발동."""
+    class MixedToneLLMClient:
+        model = "fake-model"
+        def generate(self, payload: dict) -> dict:
+            return {
+                "npc_text": "All right. Go to baggage claim. Sir, since you cannot provide the details, we cannot complete the report.",
+                "tts_text": "All right. Go to baggage claim. Sir, since you cannot provide the details, we cannot complete the report.",
+                "feedback_kr": "좋아요.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "llm_reason": "mixed tone closing",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    payload = _payload(
+        branch_type="fail",
+        surface_goal="closing_eviction",
+    )
+    result = generate_npc_dialogue_from_level_design(
+        payload,
+        use_llm=True,
+        llm_client=MixedToneLLMClient()
+    )
+
+    # 가드가 감지하여 fallback을 사용하는지 검증
+    assert result["llm"]["reason"] == "clearance_failure_contradiction"
+    assert result["llm"]["fallback_used"] is True
+
+
+

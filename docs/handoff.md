@@ -1,5 +1,13 @@
 # Handoff
 
+## 2026-06-24 Developer A: 응답 품질 가드 추가 (Hale 22턴 회귀 대응)
+- duplicate_intent_question 가드: 같은 의도 질문 두 번 반복 차단 (예: "What is your job? What is your occupation?").
+- clearance_failure_contradiction 가드: success closing과 fail message가 한 응답에 동시 출현 시 차단 (예: "Go to baggage claim ... we cannot complete").
+- `dialogue_policy_service.py` 내 `synthesize_fallback_next_question` 의미적 중복 질문 합성 제어 로직 확인 완료.
+- 평가 하네스에 `immigration_hale_full_flow.yaml` 시나리오 3건 추가.
+- 검증: `uv run pytest -k duplicate_intent_question` 및 `uv run pytest -k clearance_failure_contradiction` 통과.
+
+
 ## 2026-06-24 Developer A: NPC 페르소나 5섹션 재정렬 (옵션 C)
 - 6개 NPC(Arabella, Novak, Hale, Harris, Dan, Brielle)의 persona_instruction을 Background / Tone & Speech / Behavioral Rules / In-Character Rule / Forbidden Phrasings 5섹션 형식으로 재작성.
 - 공통 vs 페르소나 분리 가이드라인을 npc_roster_service.py 모듈 docstring에 명시.
