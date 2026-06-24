@@ -116,7 +116,9 @@ class _EnglishLevelHintPolicyCore:
         try:
             is_flight_smalltalk = (payload.scene_id == "FLIGHT_A_001_SEATMATE_SMALLTALK" or payload.current_node_id.startswith("FLIGHT_"))
             if is_flight_smalltalk:
-                diagnostic_policy = FlightSmallTalkDiagnosticPolicy()
+                diagnostic_policy = FlightSmallTalkDiagnosticPolicy(
+                    runtime_root=getattr(self.openkb_writer, "runtime_root", None)
+                )
                 decision = diagnostic_policy.decide_conversational(payload)
                 tool_name = "flight_smalltalk_diagnostic_policy.decide_conversational"
             else:

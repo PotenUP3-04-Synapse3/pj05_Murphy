@@ -5,6 +5,7 @@ import pytest
 from backend.app.services.service_b.flight_smalltalk_diagnostic_policy import (
     FlightSmallTalkDiagnosticPolicy,
 )
+from backend.app.schemas.game_turn import SocialContextCard
 from backend.tests.dev_b.test_developer_b_policy_engine import _policy_input, _node_context, _agent
 
 
@@ -67,7 +68,7 @@ def test_flight_smalltalk_missing_slot_still_advances(tmp_path: Path) -> None:
     context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
     payload = _policy_input(
         node_context=context,
-        player_text="Hello",
+        player_text="Nice to meet you. I am going to New York.",
         intent_success=False,
         missing_slots=["polite_response"],
         confidence=0.8,
@@ -79,6 +80,458 @@ def test_flight_smalltalk_missing_slot_still_advances(tmp_path: Path) -> None:
     assert result.branch.branch_type == "success"
     assert result.branch.next_action == "ADVANCE"
     assert result.branch.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+
+
+def test_flight_smalltalk_greeting_only_keeps_social_obligation_open(tmp_path: Path) -> None:
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(
+        node_context=context,
+        player_text="Hello?",
+        intent_success=False,
+        missing_slots=[],
+        confidence=0.48,
+    )
+    payload = payload.model_copy(
+        update={
+            "understanding": payload.understanding.model_copy(
+                update={
+                    "social_context": SocialContextCard(
+                        scene_norm="peer_smalltalk",
+                        conversation_move="greeting_only",
+                        pending_social_obligation="seatmate_pen_request",
+                        obligation_status="open",
+                        engagement_quality="thin",
+                        recommended_npc_move="acknowledge_and_retry_request",
+                        reason="The player greeted but did not answer the seatmate's pen request.",
+                    )
+                }
+            )
+        }
+    )
+
+    result = _agent(tmp_path).evaluate_turn(payload)
+
+    assert result.evaluation.verdict == "UNCLEAR"
+    assert result.branch.branch_type == "clarify"
+    assert result.branch.next_action == "REASK"
+    assert result.branch.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+    assert result.branch.branch_reason == "flight_smalltalk_social_obligation_open"
+
+
+def test_flight_smalltalk_repeated_greeting_drops_soft_pen_request(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "openkb" / "dev_b"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    jsonl_path = runtime_root / "session_dev_b_test.jsonl"
+    prior_social_context = {
+        "scene_norm": "peer_smalltalk",
+        "conversation_move": "greeting_only",
+        "pending_social_obligation": "seatmate_pen_request",
+        "obligation_status": "open",
+        "engagement_quality": "thin",
+        "recommended_npc_move": "acknowledge_and_retry_request",
+        "reason": "The player greeted but did not answer the seatmate's pen request.",
+    }
+    history_records = [
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello.",
+            "understanding": {"social_context": prior_social_context},
+            "evaluation": {"verdict": "UNCLEAR"},
+        },
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello?",
+            "understanding": {
+                "social_context": {
+                    **prior_social_context,
+                    "conversation_move": "repeated_greeting",
+                }
+            },
+            "evaluation": {"verdict": "UNCLEAR"},
+        },
+    ]
+    jsonl_path.write_text(
+        "\n".join(json.dumps(record, ensure_ascii=False) for record in history_records) + "\n",
+        encoding="utf-8",
+    )
+
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(
+        node_context=context,
+        player_text="Hello?",
+        intent_success=False,
+        missing_slots=[],
+        confidence=0.48,
+    )
+    payload = payload.model_copy(
+        update={
+            "understanding": payload.understanding.model_copy(
+                update={
+                    "social_context": SocialContextCard(
+                        scene_norm="peer_smalltalk",
+                        conversation_move="repeated_greeting",
+                        pending_social_obligation="seatmate_pen_request",
+                        obligation_status="ignored",
+                        engagement_quality="stalled",
+                        recommended_npc_move="playful_boundary",
+                        reason="The player keeps greeting instead of answering the pen request.",
+                    )
+                }
+            )
+        }
+    )
+
+    result = FlightSmallTalkDiagnosticPolicy(runtime_root=runtime_root).decide_conversational(payload)
+
+    assert result.verdict == "SUCCESS"
+    assert result.branch_type == "success"
+    assert result.next_action == "ADVANCE"
+    assert result.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+    assert result.branch_reason == "flight_smalltalk_social_obligation_dropped"
+
+
+def test_flight_smalltalk_repeated_greeting_after_drop_checks_engagement(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "openkb" / "dev_b"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    jsonl_path = runtime_root / "session_dev_b_test.jsonl"
+    prior_social_context = {
+        "scene_norm": "peer_smalltalk",
+        "conversation_move": "repeated_greeting",
+        "pending_social_obligation": "seatmate_pen_request",
+        "obligation_status": "ignored",
+        "engagement_quality": "stalled",
+        "recommended_npc_move": "playful_boundary",
+        "reason": "The player keeps greeting instead of answering the pen request.",
+    }
+    history_records = [
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello.",
+            "understanding": {
+                "social_context": {
+                    **prior_social_context,
+                    "conversation_move": "greeting_only",
+                    "obligation_status": "open",
+                }
+            },
+            "branch": {"branch_reason": "flight_smalltalk_social_obligation_open"},
+        },
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello?",
+            "understanding": {"social_context": prior_social_context},
+            "branch": {"branch_reason": "flight_smalltalk_repeated_social_repair"},
+        },
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello.",
+            "understanding": {"social_context": prior_social_context},
+            "branch": {"branch_reason": "flight_smalltalk_social_obligation_dropped"},
+        },
+    ]
+    jsonl_path.write_text(
+        "\n".join(json.dumps(record, ensure_ascii=False) for record in history_records) + "\n",
+        encoding="utf-8",
+    )
+
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(
+        node_context=context,
+        player_text="Hello?",
+        intent_success=False,
+        missing_slots=[],
+        confidence=0.48,
+    )
+    payload = payload.model_copy(
+        update={
+            "understanding": payload.understanding.model_copy(
+                update={
+                    "social_context": SocialContextCard(
+                        scene_norm="peer_smalltalk",
+                        conversation_move="repeated_greeting",
+                        pending_social_obligation="seatmate_pen_request",
+                        obligation_status="ignored",
+                        engagement_quality="stalled",
+                        recommended_npc_move="playful_boundary",
+                        reason="The player keeps greeting after the pen request was dropped.",
+                    )
+                }
+            )
+        }
+    )
+
+    result = FlightSmallTalkDiagnosticPolicy(runtime_root=runtime_root).decide_conversational(payload)
+
+    assert result.verdict == "UNCLEAR"
+    assert result.branch_type == "clarify"
+    assert result.next_action == "REASK"
+    assert result.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+    assert result.branch_reason == "flight_smalltalk_engagement_check"
+
+
+def test_flight_smalltalk_repeated_greeting_after_engagement_give_space_closes(
+    tmp_path: Path,
+) -> None:
+    runtime_root = tmp_path / "openkb" / "dev_b"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    jsonl_path = runtime_root / "session_dev_b_test.jsonl"
+    prior_social_context = {
+        "scene_norm": "peer_smalltalk",
+        "conversation_move": "repeated_greeting",
+        "pending_social_obligation": "seatmate_pen_request",
+        "obligation_status": "ignored",
+        "engagement_quality": "stalled",
+        "recommended_npc_move": "playful_boundary",
+        "reason": "The player keeps greeting instead of joining the conversation.",
+    }
+    history_records = [
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello.",
+            "understanding": {
+                "social_context": {
+                    **prior_social_context,
+                    "conversation_move": "greeting_only",
+                    "obligation_status": "open",
+                    "engagement_quality": "thin",
+                }
+            },
+            "branch": {"branch_reason": "flight_smalltalk_social_obligation_open"},
+        },
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello?",
+            "understanding": {"social_context": prior_social_context},
+            "branch": {"branch_reason": "flight_smalltalk_repeated_social_repair"},
+        },
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello.",
+            "understanding": {"social_context": prior_social_context},
+            "branch": {"branch_reason": "flight_smalltalk_social_obligation_dropped"},
+        },
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello?",
+            "understanding": {"social_context": prior_social_context},
+            "branch": {"branch_reason": "flight_smalltalk_engagement_check"},
+        },
+    ]
+    jsonl_path.write_text(
+        "\n".join(json.dumps(record, ensure_ascii=False) for record in history_records) + "\n",
+        encoding="utf-8",
+    )
+
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(
+        node_context=context,
+        player_text="Hello.",
+        intent_success=False,
+        missing_slots=[],
+        confidence=0.48,
+    )
+    payload = payload.model_copy(
+        update={
+            "understanding": payload.understanding.model_copy(
+                update={"social_context": prior_social_context}
+            )
+        }
+    )
+
+    result = FlightSmallTalkDiagnosticPolicy(runtime_root=runtime_root).decide_conversational(payload)
+
+    assert result.verdict == "SUCCESS"
+    assert result.branch_type == "success"
+    assert result.next_action == "COMPLETE_CHAPTER"
+    assert result.next_node_id == "FLIGHT_999_COMPLETE"
+    assert result.branch_reason == "flight_smalltalk_engagement_give_space"
+
+
+def test_flight_smalltalk_after_give_space_stays_closed(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "openkb" / "dev_b"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    jsonl_path = runtime_root / "session_dev_b_test.jsonl"
+    prior_social_context = {
+        "scene_norm": "peer_smalltalk",
+        "conversation_move": "repeated_greeting",
+        "pending_social_obligation": "seatmate_pen_request",
+        "obligation_status": "ignored",
+        "engagement_quality": "stalled",
+        "recommended_npc_move": "playful_boundary",
+        "reason": "The player kept greeting after Arabella offered space.",
+    }
+    history_records = [
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello.",
+            "understanding": {"social_context": prior_social_context},
+            "branch": {"branch_reason": "flight_smalltalk_engagement_give_space"},
+        }
+    ]
+    jsonl_path.write_text(
+        "\n".join(json.dumps(record, ensure_ascii=False) for record in history_records) + "\n",
+        encoding="utf-8",
+    )
+
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(
+        node_context=context,
+        player_text="Hello?",
+        intent_success=False,
+        missing_slots=[],
+        confidence=0.48,
+    )
+    payload = payload.model_copy(
+        update={
+            "understanding": payload.understanding.model_copy(
+                update={"social_context": prior_social_context}
+            )
+        }
+    )
+
+    result = FlightSmallTalkDiagnosticPolicy(runtime_root=runtime_root).decide_conversational(payload)
+
+    assert result.verdict == "SUCCESS"
+    assert result.branch_type == "success"
+    assert result.next_action == "COMPLETE_CHAPTER"
+    assert result.next_node_id == "FLIGHT_999_COMPLETE"
+    assert result.branch_reason == "flight_smalltalk_social_pause_closed"
+
+
+def test_flight_smalltalk_repeated_clarification_drops_soft_pen_request(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "openkb" / "dev_b"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    jsonl_path = runtime_root / "session_dev_b_test.jsonl"
+    prior_social_context = {
+        "scene_norm": "peer_smalltalk",
+        "conversation_move": "clarification_request",
+        "pending_social_obligation": "seatmate_pen_request",
+        "obligation_status": "unclear",
+        "engagement_quality": "thin",
+        "recommended_npc_move": "clarify",
+        "reason": "The player asked for clarification instead of answering the pen request.",
+    }
+    history_records = [
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "What?",
+            "understanding": {"social_context": prior_social_context},
+            "evaluation": {"verdict": "UNCLEAR"},
+        },
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "What?",
+            "understanding": {"social_context": prior_social_context},
+            "evaluation": {"verdict": "UNCLEAR"},
+        },
+    ]
+    jsonl_path.write_text(
+        "\n".join(json.dumps(record, ensure_ascii=False) for record in history_records) + "\n",
+        encoding="utf-8",
+    )
+
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(
+        node_context=context,
+        player_text="What?",
+        intent_success=False,
+        missing_slots=[],
+        confidence=0.48,
+    )
+    payload = payload.model_copy(
+        update={
+            "understanding": payload.understanding.model_copy(
+                update={
+                    "social_context": {
+                        **prior_social_context,
+                        "reason": "The player is still asking what instead of answering the pen request.",
+                    }
+                }
+            )
+        }
+    )
+
+    result = FlightSmallTalkDiagnosticPolicy(runtime_root=runtime_root).decide_conversational(payload)
+
+    assert result.verdict == "SUCCESS"
+    assert result.branch_type == "success"
+    assert result.next_action == "ADVANCE"
+    assert result.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+    assert result.branch_reason == "flight_smalltalk_social_obligation_dropped"
+
+
+def test_flight_smalltalk_repeated_low_content_after_drop_checks_engagement(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "openkb" / "dev_b"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    jsonl_path = runtime_root / "session_dev_b_test.jsonl"
+    prior_social_context = {
+        "scene_norm": "peer_smalltalk",
+        "conversation_move": "low_content_non_answer",
+        "pending_social_obligation": "seatmate_pen_request",
+        "obligation_status": "ignored",
+        "engagement_quality": "stalled",
+        "recommended_npc_move": "playful_boundary",
+        "reason": "The player keeps giving a thin everyday response instead of answering.",
+    }
+    history_records = [
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Fine.",
+            "understanding": {
+                "social_context": {
+                    **prior_social_context,
+                    "obligation_status": "open",
+                    "engagement_quality": "thin",
+                }
+            },
+            "branch": {"branch_reason": "flight_smalltalk_social_obligation_open"},
+        },
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Fine.",
+            "understanding": {
+                "social_context": {
+                    **prior_social_context,
+                    "engagement_quality": "thin",
+                }
+            },
+            "branch": {"branch_reason": "flight_smalltalk_repeated_social_repair"},
+        },
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Fine.",
+            "understanding": {"social_context": prior_social_context},
+            "branch": {"branch_reason": "flight_smalltalk_social_obligation_dropped"},
+        },
+    ]
+    jsonl_path.write_text(
+        "\n".join(json.dumps(record, ensure_ascii=False) for record in history_records) + "\n",
+        encoding="utf-8",
+    )
+
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(
+        node_context=context,
+        player_text="Fine.",
+        intent_success=False,
+        missing_slots=[],
+        confidence=0.48,
+    )
+    payload = payload.model_copy(
+        update={
+            "understanding": payload.understanding.model_copy(
+                update={"social_context": prior_social_context}
+            )
+        }
+    )
+
+    result = FlightSmallTalkDiagnosticPolicy(runtime_root=runtime_root).decide_conversational(payload)
+
+    assert result.verdict == "UNCLEAR"
+    assert result.branch_type == "clarify"
+    assert result.next_action == "REASK"
+    assert result.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+    assert result.branch_reason == "flight_smalltalk_engagement_check"
 
 
 def test_flight_smalltalk_no_penalty_delta(tmp_path: Path) -> None:

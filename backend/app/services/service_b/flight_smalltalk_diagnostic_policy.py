@@ -165,6 +165,10 @@ class FlightSmallTalkDiagnosticPolicy:
 
         turns = len(flight_records) + 1
 
+        social_repair = _social_repair_decision(payload, flight_records)
+        if social_repair is not None:
+            return social_repair
+
         # Identify covered competencies from history early
         covered_competencies = set()
         for r in flight_records:
@@ -351,3 +355,207 @@ class FlightSmallTalkDiagnosticPolicy:
             selected_probe=selected_probe,
             cumulative_confidence=cumulative_confidence,
         )
+
+
+def _social_repair_decision(
+    payload: DevBPolicyInput,
+    flight_records: list[dict[str, Any]],
+) -> ScenarioDecision | None:
+    social_context = _social_context_dict(payload.understanding)
+    obligation_status = str(social_context.get("obligation_status") or "")
+    pending_obligation = str(social_context.get("pending_social_obligation") or "")
+    if pending_obligation != "seatmate_pen_request":
+        return None
+    if obligation_status not in {"open", "ignored", "unclear"}:
+        return None
+    if not _is_social_stall_move(payload.player_text, social_context):
+        return None
+
+    lifecycle = _social_obligation_lifecycle(flight_records)
+    if lifecycle == "paused_or_closed":
+        return ScenarioDecision(
+            verdict="SUCCESS",
+            branch_type="success",
+            next_action="COMPLETE_CHAPTER",
+            next_node_id="FLIGHT_999_COMPLETE",
+            branch_reason="flight_smalltalk_social_pause_closed",
+            patience_delta=0,
+            suspicion_delta=0,
+            retry_count_delta=0,
+            hint_count_delta=0,
+            selected_probe=None,
+            cumulative_confidence=0.0,
+        )
+    if lifecycle == "engagement_checked":
+        return ScenarioDecision(
+            verdict="SUCCESS",
+            branch_type="success",
+            next_action="COMPLETE_CHAPTER",
+            next_node_id="FLIGHT_999_COMPLETE",
+            branch_reason="flight_smalltalk_engagement_give_space",
+            patience_delta=0,
+            suspicion_delta=0,
+            retry_count_delta=0,
+            hint_count_delta=0,
+            selected_probe=None,
+            cumulative_confidence=0.0,
+        )
+    if lifecycle == "dropped":
+        return ScenarioDecision(
+            verdict="UNCLEAR",
+            branch_type="clarify",
+            next_action="REASK",
+            next_node_id=SCENE_ID,
+            branch_reason="flight_smalltalk_engagement_check",
+            patience_delta=0,
+            suspicion_delta=0,
+            retry_count_delta=0,
+            hint_count_delta=0,
+            selected_probe=None,
+            cumulative_confidence=0.0,
+        )
+
+    social_stall_streak = _social_stall_streak(payload, flight_records)
+    if social_stall_streak >= 5:
+        return ScenarioDecision(
+            verdict="SUCCESS",
+            branch_type="success",
+            next_action="COMPLETE_CHAPTER",
+            next_node_id="FLIGHT_999_COMPLETE",
+            branch_reason="flight_smalltalk_engagement_give_space",
+            patience_delta=0,
+            suspicion_delta=0,
+            retry_count_delta=0,
+            hint_count_delta=0,
+            selected_probe=None,
+            cumulative_confidence=0.0,
+        )
+    if social_stall_streak >= 4:
+        return ScenarioDecision(
+            verdict="UNCLEAR",
+            branch_type="clarify",
+            next_action="REASK",
+            next_node_id=SCENE_ID,
+            branch_reason="flight_smalltalk_engagement_check",
+            patience_delta=0,
+            suspicion_delta=0,
+            retry_count_delta=0,
+            hint_count_delta=0,
+            selected_probe=None,
+            cumulative_confidence=0.0,
+        )
+    if social_stall_streak >= 3:
+        return ScenarioDecision(
+            verdict="SUCCESS",
+            branch_type="success",
+            next_action="ADVANCE",
+            next_node_id=SCENE_ID,
+            branch_reason="flight_smalltalk_social_obligation_dropped",
+            patience_delta=0,
+            suspicion_delta=0,
+            retry_count_delta=0,
+            hint_count_delta=0,
+            selected_probe=None,
+            cumulative_confidence=0.1,
+        )
+
+    branch_reason = (
+        "flight_smalltalk_repeated_social_repair"
+        if social_stall_streak >= 2
+        else "flight_smalltalk_social_obligation_open"
+    )
+    return ScenarioDecision(
+        verdict="UNCLEAR",
+        branch_type="clarify",
+        next_action="REASK",
+        next_node_id=SCENE_ID,
+        branch_reason=branch_reason,
+        patience_delta=0,
+        suspicion_delta=0,
+        retry_count_delta=0,
+        hint_count_delta=0,
+        selected_probe=None,
+        cumulative_confidence=0.0,
+    )
+
+
+def _social_obligation_lifecycle(flight_records: list[dict[str, Any]]) -> str:
+    """Read the latest seatmate social-obligation stage from B's record trail."""
+
+    for record in reversed(flight_records):
+        branch = record.get("branch") if isinstance(record, dict) else {}
+        branch_reason = str(branch.get("branch_reason") or "") if isinstance(branch, dict) else ""
+        if "social_pause_closed" in branch_reason or "engagement_give_space" in branch_reason:
+            return "paused_or_closed"
+        if "engagement_check" in branch_reason:
+            return "engagement_checked"
+        if "social_obligation_dropped" in branch_reason:
+            return "dropped"
+        if "repeated_social_repair" in branch_reason:
+            return "repaired_once"
+        if "social_obligation_open" in branch_reason:
+            return "open"
+    return "none"
+
+
+def _social_context_dict(understanding: Any) -> dict[str, Any]:
+    social_context = getattr(understanding, "social_context", None)
+    if isinstance(social_context, dict):
+        return social_context
+    if social_context is not None and hasattr(social_context, "model_dump"):
+        return social_context.model_dump()
+    return {}
+
+
+def _social_stall_streak(
+    payload: DevBPolicyInput,
+    flight_records: list[dict[str, Any]],
+) -> int:
+    count = 1 if _is_social_stall_move(payload.player_text, _social_context_dict(payload.understanding)) else 0
+    for record in reversed(flight_records):
+        understanding = record.get("understanding") if isinstance(record, dict) else {}
+        social_context = understanding.get("social_context") if isinstance(understanding, dict) else {}
+        player_text = str(record.get("player_text") or "") if isinstance(record, dict) else ""
+        if _is_social_stall_move(player_text, social_context if isinstance(social_context, dict) else {}):
+            count += 1
+            continue
+        break
+    return count
+
+
+def _is_social_stall_move(player_text: str, social_context: dict[str, Any]) -> bool:
+    conversation_move = str(social_context.get("conversation_move") or "")
+    if conversation_move in {"meaningful_answer", "refusal"}:
+        return False
+    if conversation_move in {
+        "greeting_only",
+        "repeated_greeting",
+        "low_content_non_answer",
+        "filler",
+        "off_topic",
+        "clarification_request",
+        "unknown",
+    }:
+        return True
+    engagement_quality = str(social_context.get("engagement_quality") or "")
+    obligation_status = str(social_context.get("obligation_status") or "")
+    if engagement_quality in {"thin", "stalled"} and obligation_status in {"open", "ignored", "unclear"}:
+        return True
+    normalized = " ".join(player_text.lower().replace("?", " ").replace(".", " ").split())
+    if normalized in {"what", "what what", "what what what", "fine", "fine fine", "fine fine fine"}:
+        return True
+    return _is_greeting_move(player_text, social_context)
+
+
+def _is_greeting_move(player_text: str, social_context: dict[str, Any]) -> bool:
+    if str(social_context.get("conversation_move") or "") in {"greeting_only", "repeated_greeting"}:
+        return True
+    normalized = " ".join(player_text.lower().replace("?", " ").replace(".", " ").split())
+    if not normalized:
+        return False
+    words = normalized.split()
+    greeting_words = {"hello", "hi", "hey", "hiya"}
+    soft_fillers = {"there", "again", "um", "uh", "uhm", "ah"}
+    return any(word in greeting_words for word in words) and all(
+        word in greeting_words or word in soft_fillers for word in words
+    )

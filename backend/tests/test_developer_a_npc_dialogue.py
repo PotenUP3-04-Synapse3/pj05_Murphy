@@ -1352,16 +1352,22 @@ def test_smalltalk_diagnostic_blocks_repeated_pen_request_after_history() -> Non
 
 def test_smalltalk_diagnostic_blocks_repeated_pen_request_using_in_memory_checkpointer() -> None:
     from backend.app.agents.agent_a.npc_dialogue_agent import reset_graph_singleton_for_testing
+
     reset_graph_singleton_for_testing()
 
     class PenLoopLLMClient:
         model = "fake-model"
-        def __init__(self):
+
+        def __init__(self) -> None:
             self.call_count = 0
 
         def generate(self, payload: dict) -> dict:
             self.call_count += 1
-            text = "Thanks. Could I borrow your pen for this form?" if self.call_count == 1 else "Sorry about that. Could I borrow your pen for this form?"
+            text = (
+                "Thanks. Could I borrow your pen for this form?"
+                if self.call_count == 1
+                else "Sorry about that. Could I borrow your pen for this form?"
+            )
             return {
                 "speaker": "Arabella",
                 "npc_text": text,
@@ -1444,16 +1450,22 @@ def test_smalltalk_diagnostic_blocks_repeated_pen_request_using_in_memory_checkp
 
 def test_smalltalk_diagnostic_blocks_repeated_pen_request_using_in_memory_checkpointer_neutral_player() -> None:
     from backend.app.agents.agent_a.npc_dialogue_agent import reset_graph_singleton_for_testing
+
     reset_graph_singleton_for_testing()
 
     class PenLoopLLMClient:
         model = "fake-model"
-        def __init__(self):
+
+        def __init__(self) -> None:
             self.call_count = 0
 
         def generate(self, payload: dict) -> dict:
             self.call_count += 1
-            text = "Thanks. Could I borrow your pen for this form?" if self.call_count == 1 else "Sorry about that. Could I borrow your pen for this form?"
+            text = (
+                "Thanks. Could I borrow your pen for this form?"
+                if self.call_count == 1
+                else "Sorry about that. Could I borrow your pen for this form?"
+            )
             return {
                 "speaker": "Arabella",
                 "npc_text": text,
@@ -1532,6 +1544,316 @@ def test_smalltalk_diagnostic_blocks_repeated_pen_request_using_in_memory_checkp
     assert result2["llm"]["used"] is False
     assert result2["llm"]["reason"] == "smalltalk_repeated_object_request"
     assert "borrow your pen" not in result2["npc_text"].lower()
+
+
+def test_smalltalk_social_context_open_falls_back_to_repair_request() -> None:
+    class TravelQuestionLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Arabella",
+                "npc_text": "Hi again. Do you travel often?",
+                "tts_text": "Hi again. Do you travel often?",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "confusion",
+                "stability": 0.75,
+                "style": 0.45,
+                "speed": 1.0,
+                "similarity_boost": 0.85,
+                "llm_reason": "[COHERENT] The player greeted again, then I pivoted to a travel question.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello?",
+            "node_context": {"recommended_expression": "Sure, here you go."},
+            "understanding": {
+                "social_context": {
+                    "scene_norm": "peer_smalltalk",
+                    "conversation_move": "greeting_only",
+                    "pending_social_obligation": "seatmate_pen_request",
+                    "obligation_status": "open",
+                    "engagement_quality": "thin",
+                    "recommended_npc_move": "acknowledge_and_retry_request",
+                    "reason": "The player greeted but did not answer the seatmate's pen request.",
+                }
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.3},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "branch_reason": "flight_smalltalk_social_obligation_open",
+            },
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "tone_hint": "warm_social_repair",
+                "target_slot": None,
+                "topic_switch": False,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "estimate_user_travel_speaking_level",
+                "required_slots": [],
+            },
+        },
+        use_llm=True,
+        llm_client=TravelQuestionLLMClient(),
+    )
+
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "smalltalk_social_obligation_ignored"
+    assert "pen" in result["npc_text"].lower()
+    assert "travel often" not in result["npc_text"].lower()
+
+
+def test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello?",
+            "node_context": {"recommended_expression": "Sure, here you go."},
+            "understanding": {
+                "social_context": {
+                    "scene_norm": "peer_smalltalk",
+                    "conversation_move": "repeated_greeting",
+                    "pending_social_obligation": "seatmate_pen_request",
+                    "obligation_status": "ignored",
+                    "engagement_quality": "stalled",
+                    "recommended_npc_move": "playful_boundary",
+                    "reason": "The player repeatedly greeted instead of answering the pen request.",
+                }
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.3},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "success",
+                "next_action": "ADVANCE",
+                "branch_reason": "flight_smalltalk_social_obligation_dropped",
+            },
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "tone_hint": "warm_social_repair",
+                "target_slot": None,
+                "topic_switch": False,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "estimate_user_travel_speaking_level",
+                "required_slots": [],
+            },
+        },
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "social_context_fallback"
+    assert "pen" not in text
+    assert "borrow" not in text
+    assert "ask someone else" in text
+
+
+def test_smalltalk_engagement_check_fallback_asks_if_player_is_okay() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello?",
+            "node_context": {"recommended_expression": "Sure, here you go."},
+            "understanding": {
+                "social_context": {
+                    "scene_norm": "peer_smalltalk",
+                    "conversation_move": "repeated_greeting",
+                    "pending_social_obligation": "seatmate_pen_request",
+                    "obligation_status": "ignored",
+                    "engagement_quality": "stalled",
+                    "recommended_npc_move": "playful_boundary",
+                    "reason": "The player keeps greeting after the pen request was dropped.",
+                }
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.3},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "branch_reason": "flight_smalltalk_engagement_check",
+            },
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "tone_hint": "warm_social_repair",
+                "target_slot": None,
+                "topic_switch": False,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "estimate_user_travel_speaking_level",
+                "required_slots": [],
+            },
+        },
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "social_context_fallback"
+    assert "pen" not in text
+    assert "travel" not in text
+    assert "are you okay" in text
+
+
+def test_smalltalk_engagement_check_fallback_does_not_assume_greeting() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "What?",
+            "node_context": {"recommended_expression": "Sure, here you go."},
+            "understanding": {
+                "social_context": {
+                    "scene_norm": "peer_smalltalk",
+                    "conversation_move": "clarification_request",
+                    "pending_social_obligation": "seatmate_pen_request",
+                    "obligation_status": "ignored",
+                    "engagement_quality": "stalled",
+                    "recommended_npc_move": "playful_boundary",
+                    "reason": "The player keeps asking what after the request was dropped.",
+                }
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.3},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "branch_reason": "flight_smalltalk_engagement_check",
+            },
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "tone_hint": "warm_social_repair",
+                "target_slot": None,
+                "topic_switch": False,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "estimate_user_travel_speaking_level",
+                "required_slots": [],
+            },
+        },
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "social_context_fallback"
+    assert "hello" not in text
+    assert "are you having trouble" in text
+
+
+def test_smalltalk_engagement_give_space_fallback_stops_pushing_conversation() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello.",
+            "node_context": {"recommended_expression": "Sure, here you go."},
+            "understanding": {
+                "social_context": {
+                    "scene_norm": "peer_smalltalk",
+                    "conversation_move": "repeated_greeting",
+                    "pending_social_obligation": "seatmate_pen_request",
+                    "obligation_status": "ignored",
+                    "engagement_quality": "stalled",
+                    "recommended_npc_move": "playful_boundary",
+                    "reason": "The player keeps greeting after engagement was checked.",
+                }
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.3},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "branch_reason": "flight_smalltalk_engagement_give_space",
+            },
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "tone_hint": "warm_social_repair",
+                "target_slot": None,
+                "topic_switch": False,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "estimate_user_travel_speaking_level",
+                "required_slots": [],
+            },
+        },
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "social_context_fallback"
+    assert "pen" not in text
+    assert "travel" not in text
+    assert "give you some space" in text
+
+
+def test_smalltalk_dropped_obligation_payload_marks_pen_closed() -> None:
+    captured: dict[str, Any] = {}
+
+    generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello. Hello.",
+            "node_context": {"recommended_expression": "Sure, here you go."},
+            "understanding": {
+                "social_context": {
+                    "scene_norm": "peer_smalltalk",
+                    "conversation_move": "repeated_greeting",
+                    "pending_social_obligation": "seatmate_pen_request",
+                    "obligation_status": "ignored",
+                    "engagement_quality": "stalled",
+                    "recommended_npc_move": "playful_boundary",
+                    "reason": "The player kept greeting after the pen request was dropped.",
+                }
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.3},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "success",
+                "next_action": "ADVANCE",
+                "branch_reason": "flight_smalltalk_social_obligation_dropped",
+            },
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "tone_hint": "warm_social_repair",
+                "target_slot": None,
+                "topic_switch": False,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "estimate_user_travel_speaking_level",
+                "required_slots": [],
+            },
+        },
+        use_llm=True,
+        llm_client=_CapturingLLMClient(captured),
+    )
+
+    payload = captured["payload"]
+    assert "seatmate_pen_request" in payload["closed_hooks"]
+    assert "seatmate_pen_request" in payload["do_not_reopen"]
+    assert payload["social_obligation_lifecycle"] == "dropped"
+    assert "seatmate_pen_request" not in payload["open_hooks"]
 
 
 class _CapturingLLMClient:

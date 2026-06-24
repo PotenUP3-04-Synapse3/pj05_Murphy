@@ -14,6 +14,11 @@ wheels/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tmp/pytest/
+.tmp/pytest-*/
+.tmp/pytest-cache/
+.tmp/pytest-cache-*/
+.tmp/uv-*.lock
 .continue/
 
 # Environment and secrets

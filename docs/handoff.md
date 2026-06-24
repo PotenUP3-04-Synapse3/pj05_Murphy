@@ -1,5 +1,6 @@
 # Handoff
 
+## 2026-06-24 Developer A, B, C: Flight Social Obligation Lifecycle Closure
 ## 2026-06-24 Developer A: 응답 품질 가드 추가 (Hale 22턴 회귀 대응)
 
 - duplicate_intent_question 가드: 같은 의도 질문 두 번 반복 차단 (예: "What is your job? What is your occupation?").
@@ -10,8 +11,56 @@
 
 ## 2026-06-24 Developer C: Gating Legacy History and Resolving Change Requests
 
-Developer C completed the implementation of `[CR-A-HISTORY-DEPRECATION]` Stage 2 and updated tracking files to mark open change requests as resolved.
+Developer C implemented this as a user-approved cross-owner continuation of the
+Flight smalltalk naturalness sprint. The previous fixes stopped the immediate
+pen-request loop, but repeated low-cooperation turns could still reopen the
+same social hook or keep the scene in a `REASK` loop after Arabella had already
+said she would give the player space. This sprint treats the pen request as a
+soft social obligation lifecycle instead of another utterance-specific rule.
 
+<<<<<<< HEAD
+Sprint notes:
+
+- **Sprint 1 - RED lifecycle coverage**:
+  Added regressions for two missing states: after an engagement check, the next
+  repeated social stall should close the chapter with
+  `flight_smalltalk_engagement_give_space`; after give-space has already been
+  emitted, a later stalled turn should stay closed with
+  `flight_smalltalk_social_pause_closed`. Added A-side coverage proving the LLM
+  payload must receive `closed_hooks` / `do_not_reopen` evidence for the
+  dropped pen request.
+- **Sprint 2 - Lifecycle propagation**:
+  Extended `SocialContextCard` with `social_obligation_lifecycle`,
+  `closed_hooks`, and `do_not_reopen`. Developer A input normalization derives
+  those fields from B branch reasons, session context cards carry them forward,
+  and the A LLM payload now exposes them beside `open_hooks`.
+- **Sprint 3 - Closure behavior**:
+  Developer B now reads prior Flight branch reasons as a lifecycle:
+  `open -> repaired_once -> dropped -> engagement_checked -> paused_or_closed`.
+  `dropped` cannot fall back to opening or re-asking the pen; it moves to an
+  engagement check. `engagement_checked` closes through give-space, and
+  `paused_or_closed` stays complete. A prompts/fallbacks now treat
+  `flight_smalltalk_social_pause_closed` like give-space and explicitly avoid
+  reopening the pen or starting a new travel probe.
+
+Changed files:
+
+- `backend/app/schemas/game_turn.py`
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`
+- `backend/app/services/service_a/developer_a_input_service.py`
+- `backend/app/services/service_a/session_context_card_service.py`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/contracts/developer_c_schema_contract.md`
+- `docs/handoff.md`
+
+Verification:
+=======
 Changed:
 
 - `backend/app/tools/tool_c/developer_c_graph_tools.py`:
@@ -30,12 +79,269 @@ Verification:
 
 - Run `uv run pytest`: PASS (all 399 tests pass successfully).
 - Run `uv run ruff check .` and `uv run mypy .`: PASS.
+>>>>>>> origin
 
-## 2026-06-24 Developer C: Unification of Scoreboard Retrieval and Alignment of Scoring Policy Label
+- RED confirmed:
+  `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_after_engagement_give_space_closes backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_after_give_space_stays_closed backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_obligation_payload_marks_pen_closed backend/tests/test_preprototype_flow.py::test_orchestrator_checks_engagement_after_dropped_pen_request -q`:
+  failed with expected assertions: B still returned `UNCLEAR/REASK` for
+  give-space closure, A did not expose `closed_hooks`, and C still returned
+  `REASK` on the fifth repeated greeting.
+- GREEN targeted:
+  same command after implementation: PASS, 4 passed, 1 warning (`audioop`
+  deprecation).
+- Regression subset:
+  `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_social_context_open_falls_back_to_repair_request backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_check_fallback_asks_if_player_is_okay backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_check_fallback_does_not_assume_greeting backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_give_space_fallback_stops_pushing_conversation backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_obligation_payload_marks_pen_closed backend/tests/test_preprototype_flow.py::test_orchestrator_drops_soft_pen_request_after_repeated_greetings backend/tests/test_preprototype_flow.py::test_orchestrator_checks_engagement_after_dropped_pen_request -q`:
+  PASS, 29 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`: PASS, all checks passed.
+- `uv run mypy .`: PASS, no issues found in 139 source files.
+- `uv run pytest -q`: PASS, 420 passed, 1 warning (`audioop` deprecation).
 
-Developer C integrated the final result scoreboard payload fixes as requested by `docs/workplan-final-result-scoreboard-remaining.md`.
+## 2026-06-24 Developer A, B, C: General Social-Stall Pragmatics for Flight Smalltalk
+
+Developer C implemented this as a user-approved continuation of the Flight
+smalltalk naturalness work across A/B/C surfaces. The previous patch used
+`greeting_streak` to handle repeated `Hello` loops. This sprint generalizes the
+same behavior so Arabella can react to low-cooperation everyday turns such as
+`What?`, `Fine.`, or repeated thin non-answers without hard-coding only greeting
+loops.
+
+Sprint notes:
+
+- **Sprint 1 - RED behavior coverage**:
+  Added tests proving the gap: C treated `What?` as filler, treated `Fine.` as a
+  successful free smalltalk answer, B continued instead of dropping/checking the
+  social stall, and A's engagement fallback assumed the user was saying hello.
+- **Sprint 2 - Generalized social context and policy**:
+  Extended `SocialContextCard` with additive pragmatics evidence
+  (`prior_turn_relation`, `social_pattern`, `pragmatics_confidence`) and added
+  `low_content_non_answer`. C now classifies clarification-only turns and
+  low-content non-answers before generic filler/free-response success. B replaced
+  `greeting_streak` with a generic `social_stall_streak` over thin/stalled
+  social moves.
+- **Sprint 3 - NPC response and prompt repair**:
+  A fallback no longer assumes all engagement checks are greeting loops.
+  Clarification loops can produce a hearing/understanding check, low-content
+  loops can produce a gentle joking/okay check, and greeting loops still keep the
+  existing hello-specific fallback. A prompts now describe low-cooperation social
+  turns instead of repeated greetings only.
+
+Changed files:
+
+- `backend/app/schemas/game_turn.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/contracts/developer_c_schema_contract.md`
+- `docs/handoff.md`
+
+Verification:
+
+- RED confirmed:
+  `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_flight_what_marks_clarification_request backend/tests/test_understanding_agent.py::test_understanding_agent_flight_fine_marks_low_content_non_answer backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_clarification_drops_soft_pen_request backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_low_content_after_drop_checks_engagement backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_check_fallback_does_not_assume_greeting -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  failed with expected assertions.
+- GREEN targeted:
+  same command after implementation: PASS, 5 passed, 1 warning (`audioop`
+  deprecation).
+- Regression subset:
+  `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/test_understanding_agent.py::test_understanding_agent_flight_hello_marks_open_social_obligation backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_social_context_open_falls_back_to_repair_request backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_check_fallback_asks_if_player_is_okay backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_give_space_fallback_stops_pushing_conversation backend/tests/test_preprototype_flow.py::test_orchestrator_checks_engagement_after_dropped_pen_request -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 25 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run ruff check .`:
+  PASS, all checks passed.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run mypy .`:
+  PASS, no issues found in 139 source files.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 413 passed, 1 warning (`audioop` deprecation).
+
+## 2026-06-24 Developer A, B, C: Engagement Check After Flight Hello Loops
+
+Developer C implemented this as a user-approved follow-up cross-owner change
+after the soft pen-request drop fix. The previous fix stopped Arabella from
+asking for the pen forever, but the next attached run showed a new awkwardness:
+after the pen request was dropped, repeated `Hello` inputs were still treated as
+normal `ADVANCE/SUCCESS` smalltalk and Arabella kept asking travel probes like
+"do you travel often?"
+
+Changed files:
+
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`:
+  Extended repeated-greeting handling after the soft pen-request drop. The
+  third greeting still drops the soft pen obligation, but the fourth greeting
+  now emits `flight_smalltalk_engagement_check` with `UNCLEAR/REASK`, and the
+  fifth-or-later greeting emits `flight_smalltalk_engagement_give_space` with
+  `UNCLEAR/REASK`. This prevents repeated `Hello` from being counted as normal
+  diagnostic progress.
+- `backend/app/services/service_a/developer_a_fallback_service.py`:
+  Added social-context fallback lines for the new engagement branches:
+  `You keep saying hello. Are you okay?` and
+  `Okay, I'll give you some space.`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`:
+  Allows engagement branch output through the smalltalk social-obligation guard
+  without requiring another pen-related repair.
+- `backend/app/prompts/npc_dialogue_prompt.md` and
+  `backend/app/prompts/npc_dialogue_prompt.short.md`:
+  Instructed the LLM not to ask travel probes on engagement-check/give-space
+  branches; it should respond to the stalled social engagement itself.
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`:
+  Added a RED/GREEN regression for the post-drop repeated greeting case.
+- `backend/tests/test_developer_a_npc_dialogue.py`:
+  Added fallback tests for engagement check and give-space outputs so A does
+  not mention the pen or travel probes in those states.
+- `backend/tests/test_preprototype_flow.py`:
+  Added integrated C flow coverage for five repeated greetings:
+  `social_obligation_open` -> `repeated_greeting_social_repair` ->
+  `social_obligation_dropped` -> `engagement_check` -> `engagement_give_space`.
+- `docs/contracts/developer_c_schema_contract.md`:
+  Documented the two new branch reasons and their intended A-side meaning.
+
+Verification:
+
+- RED confirmed:
+  `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_after_drop_checks_engagement backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_check_fallback_asks_if_player_is_okay backend/tests/test_preprototype_flow.py::test_orchestrator_checks_engagement_after_dropped_pen_request -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  failed with expected assertions: B still returned `SUCCESS`, A still mentioned
+  `pen`, and C still emitted `flight_smalltalk_social_obligation_dropped`.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_drops_soft_pen_request backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_after_drop_checks_engagement backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_check_fallback_asks_if_player_is_okay backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_give_space_fallback_stops_pushing_conversation backend/tests/test_preprototype_flow.py::test_orchestrator_drops_soft_pen_request_after_repeated_greetings backend/tests/test_preprototype_flow.py::test_orchestrator_checks_engagement_after_dropped_pen_request -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 7 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run ruff check .`:
+  PASS, all checks passed.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run mypy .`:
+  PASS, no issues found in 139 source files.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_check_fallback_asks_if_player_is_okay backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_give_space_fallback_stops_pushing_conversation backend/tests/test_preprototype_flow.py::test_orchestrator_drops_soft_pen_request_after_repeated_greetings backend/tests/test_preprototype_flow.py::test_orchestrator_checks_engagement_after_dropped_pen_request -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 22 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 408 passed, 1 warning (`audioop` deprecation).
+
+## 2026-06-24 Developer A, B, C: Soft Social Obligation Drop for Flight Greeting Loops
+
+Developer C implemented this as a user-approved one-time cross-owner change
+across Developer A, B, and C surfaces. This follows the earlier
+`SocialContextCard` work, but fixes the over-correction where Arabella treated
+the pen request like a hard mission gate and repeated "Are you playing with
+me?" on every `Hello?`.
+
+Changed files:
+
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`:
+  Keeps the first seatmate pen repair as `REASK`, but if repeated greeting-only
+  turns reach a short loop, treats the pen request as a soft social obligation
+  that can be dropped. The new branch reason is
+  `flight_smalltalk_social_obligation_dropped`, with `ADVANCE` instead of an
+  endless `REASK`.
+- `backend/app/services/service_a/developer_a_fallback_service.py`:
+  Changed repeated greeting fallback from the accusatory "Are you playing with
+  me?" loop to a softer hearing-check line, and added a drop fallback:
+  `No worries. I'll ask someone else.`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`:
+  Forwards `branch_reason` into the A LLM prompt payload and lets the
+  coherence guard accept the social-obligation-dropped branch instead of
+  forcing another pen repair.
+- `backend/app/prompts/npc_dialogue_prompt.md` and
+  `backend/app/prompts/npc_dialogue_prompt.short.md`:
+  Clarified that unresolved soft obligations should be resolved only until B
+  marks them dropped; after that the LLM should stop asking for the same favor
+  and use a human-like give-up, space-giving, or light pivot.
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`:
+  Added regression coverage that repeated greeting-only turns drop the soft pen
+  request instead of staying `UNCLEAR/REASK` forever.
+- `backend/tests/test_developer_a_npc_dialogue.py`:
+  Added A fallback coverage that the dropped branch does not ask for the pen or
+  borrow again.
+- `backend/tests/test_preprototype_flow.py`:
+  Added integrated C flow coverage for three repeated greetings:
+  `social_obligation_open` -> `repeated_greeting_social_repair` ->
+  `social_obligation_dropped`.
+- `docs/contracts/developer_c_schema_contract.md`:
+  Documented that `social_context` is soft progression evidence, and that B may
+  advance with `flight_smalltalk_social_obligation_dropped` so A can stop
+  re-asking the same favor.
+- `.gitignore`:
+  Ignored pytest temp/cache directories under `.tmp/` because Windows refused
+  to delete a generated pytest basetemp during verification, leaving otherwise
+  irrelevant untracked files.
+- `pyproject.toml`:
+  Added `.tmp` to pytest `norecursedirs` so root-level `uv run pytest` does not
+  try to collect local scratch directories or locked pytest basetemp folders.
+
+Verification:
+
+- RED confirmed:
+  `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_drops_soft_pen_request -q --basetemp=.tmp\pytest -o cache_dir=.tmp\pytest-cache`
+  failed with `AssertionError: assert 'UNCLEAR' == 'SUCCESS'`.
+- RED confirmed:
+  `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen -q --basetemp=.tmp\pytest -o cache_dir=.tmp\pytest-cache`
+  failed with `AssertionError: assert 'pen' not in ...`.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_drops_soft_pen_request backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 2 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_greeting_only_keeps_social_obligation_open backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_drops_soft_pen_request backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_social_context_open_falls_back_to_repair_request backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen backend/tests/test_understanding_agent.py::test_understanding_agent_flight_hello_marks_open_social_obligation -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 5 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/test_preprototype_flow.py::test_orchestrator_drops_soft_pen_request_after_repeated_greetings -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 1 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run ruff check .`:
+  PASS, all checks passed.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run mypy .`:
+  PASS, no issues found in 139 source files.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 404 passed, 1 warning (`audioop` deprecation).
+
+## 2026-06-24 Developer A, B, C: Social Context Card for Flight Greeting Loops
+
+Developer C implemented this as a user-approved one-time cross-owner change
+covering A/B/C responsibilities. The immediate bug was the Flight seatmate run
+where Arabella asked to borrow a pen, the player repeatedly said `Hello?`, and
+the system treated each thin greeting as successful free smalltalk until the
+chapter completed.
 
 Root cause:
+<<<<<<< HEAD
+- C's Flight diagnostic understanding treated a greeting-only answer such as
+  `Hello?` as meaningful free smalltalk.
+- B's Flight diagnostic policy optimized for free-form level sampling and turn
+  coverage, so an unresolved social request could still self-loop or complete.
+- A's prompt had a weak smalltalk instruction for non-answers, but B kept
+  sending success/probe metadata and A had no hard input signal or guard to
+  stop topic jumps like `Do you travel often?`.
+
+Changed:
+- `backend/app/schemas/game_turn.py`:
+  Added additive `SocialContextCard` and `UnderstandingOutput.social_context`.
+  This card records scene norm, player conversation move, unresolved social
+  obligation, engagement quality, and recommended repair move. It is semantic
+  evidence only; it does not own branch decisions or NPC text.
+- `backend/app/agents/agent_c/understanding_agent.py`:
+  Added social-context attachment after both rule and LLM understanding paths.
+  Flight `Hello?`/`Hi`-only answers now become low-confidence, clarification
+  needed responses with `pending_social_obligation=seatmate_pen_request`.
+  The same card also classifies institutional and baggage-service scenes so A
+  can speak in the right tone when a player greets or dodges instead of
+  answering.
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`:
+  Added a soft social-repair gate before Flight probe selection/completion.
+  If the current turn has an open seatmate pen obligation and the player only
+  greets/fillers/off-topic, B returns `UNCLEAR / REASK` on the same node instead
+  of `SUCCESS / ADVANCE` or `COMPLETE_CHAPTER`. Repeated greeting history is
+  detected from B OpenKB records and marked with
+  `flight_smalltalk_repeated_greeting_social_repair`.
+- `backend/app/agents/agent_b/english_level_hint_agent.py`:
+  Passes B writer `runtime_root` into the Flight diagnostic policy so the policy
+  reads the same session history that B writes during tests/runtime.
+- `backend/app/services/service_a/developer_a_input_service.py`:
+  Forwards `understanding.social_context` and `branch_reason` into A's
+  normalized payload.
+- `backend/app/services/service_a/developer_a_fallback_service.py`:
+  Added social-repair fallback text. Flight falls back to a natural pen-request
+  repair line; Immigration uses a firm official re-ask; Baggage uses a helpful
+  service re-ask.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py` and
+  `backend/app/prompts/npc_dialogue_prompt*.md`:
+  Added social context variables to the LLM payload/prompt and a postprocessing
+  guard that rejects smalltalk LLM output if it jumps topics while a seatmate
+  pen request is still open.
+=======
 
 - **scoring_policy 라벨 모순:** 종합 성적 산출은 scene-normalized 방식(flight 20, immigration 50, baggage 30)으로 계산되고 있었으나, 응답 스키마 상의 `scoring_policy` 라벨이 여전히 `"simple_average"`로 하드코딩되어 `reason_tags` 내 `"scene_normalized_dimension_average_policy"`와 모순을 빚고 있었습니다.
 - **bad-end 결과 비대칭:** 입국 강제반려 등 배드엔딩 노드 도달 시 per-turn `/respond` 응답에 `final_result`가 실리지 않아, Unreal이 결과를 화면에 렌더링하기 위해 2회 호출(/respond + /result)이 필수적이거나 결과 수집 경로가 비대칭적이었습니다.
@@ -50,11 +356,30 @@ Changed:
 - `backend/tests/test_final_result_payload.py`:
   - Updated the mock `_final_result()` helper's `scoring_policy` value to `"scene_normalized_dimension_average"`.
   - Added a new integration test `test_result_endpoint_returns_bad_end_comic_fail_from_real_records` that writes a real bad-end session record (verbal abuse) to `backend/runtime/openkb/dev_b/` and calls the `/result/{session_id}` endpoint to verify it returns a valid `Comic Fail` with `Iron` tier.
+>>>>>>> origin
 - `docs/contracts/developer_c_schema_contract.md`:
-  - Documented the **Scoreboard Unification Rule (Option A)** specifying that Unreal should retrieve final scoreboard results via the `GET /api/game/ai/result/{session_id}` endpoint for both regular completion and bad endings.
-- `docs/contracts/change_requests.md`:
-  - Appended `[CR-C-SCOREBOARD-REDUNDANCY-ALIGNMENT]` detailing the contract alignment and retrieval unification.
+  Documented `social_context` as additive Understanding evidence for B/A.
 
+<<<<<<< HEAD
+Expected behavior now:
+- Flight: `Hello?` after Arabella's pen request does not count as successful
+  smalltalk evidence and cannot complete the chapter. Arabella should repair
+  the social obligation first, e.g. asking whether the player heard her pen
+  request, before moving to travel topics.
+- Immigration: greeting-only/dodging still stays formal and answer-seeking.
+- Baggage: greeting-only/dodging can be recovered with a helpful service tone
+  while still asking for the needed detail.
+
+Verification:
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_allows_flight_rude_refusal_to_continue_smalltalk backend/tests/test_preprototype_flow.py::test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller -q`: PASS, 91 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py -q`: PASS, 111 passed.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run pytest backend/tests/test_preprototype_flow.py -q`: PASS, 41 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run pytest -q`: PASS, 401 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run ruff check .`: PASS.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run mypy .`: PASS, 139 source files.
+- `git diff --check`: PASS, with existing Windows LF-to-CRLF working-copy
+  warnings only.
+=======
 Team impact:
 
 - Developer B: B's score policy labels have been updated. The change was executed directly on B-owned files by Developer C under explicit user approval to resolve the scoring policy inconsistencies.
@@ -81,6 +406,7 @@ Verification:
 - .env에 MURPHY_ELEVENLABS_SPEED=0.82 추가하여 모든 NPC 발화 속도 통일.
 - 코드 변경 없음. voice_output_service.py:459의 기존 \_env_float 경로 활용.
 - 영구 적용 시 EMOTION_TTS_PARAMETERS 하향(옵션 B) 또는 프롬프트 가이드(옵션 C)로 전환 예정.
+>>>>>>> origin
 
 ## 2026-06-21 Developer C, A: Immigration Prompt Alignment and Slot Repair Fix
 

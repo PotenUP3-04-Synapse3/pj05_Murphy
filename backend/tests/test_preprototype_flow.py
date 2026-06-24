@@ -1696,6 +1696,7 @@ def test_orchestrator_prevents_pen_loop_in_default_memory_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from backend.app.agents.agent_a.npc_dialogue_agent import reset_graph_singleton_for_testing
+
     reset_graph_singleton_for_testing()
 
     monkeypatch.setattr(random, "random", lambda: 0.9)
@@ -1708,12 +1709,17 @@ def test_orchestrator_prevents_pen_loop_in_default_memory_mode(
 
     class PenLoopLLMClient:
         model = "fake-model"
-        def __init__(self):
+
+        def __init__(self) -> None:
             self.call_count = 0
 
         def generate(self, payload: dict) -> dict:
             self.call_count += 1
-            text = "Thanks. Could I borrow your pen for this form?" if self.call_count == 1 else "Sorry about that. Could I borrow your pen for this form?"
+            text = (
+                "Thanks. Could I borrow your pen for this form?"
+                if self.call_count == 1
+                else "Sorry about that. Could I borrow your pen for this form?"
+            )
             return {
                 "speaker": "Arabella",
                 "npc_text": text,
@@ -1738,7 +1744,7 @@ def test_orchestrator_prevents_pen_loop_in_default_memory_mode(
         )
         monkeypatch.setattr(
             "backend.app.agents.agent_a.npc_dialogue_agent.build_npc_dialogue_llm_client_from_environment",
-            lambda: PenLoopLLMClient()
+            lambda: PenLoopLLMClient(),
         )
 
         first_request = _chapter_boundary_request(
@@ -1843,6 +1849,164 @@ def test_dialogue_history_is_empty_in_default_mode(
     assert len(builder_payloads) == 2
     second_payload = builder_payloads[1]
     assert second_payload["dialogue_seed"]["dialogue_history"] == []
+
+
+def test_orchestrator_drops_soft_pen_request_after_repeated_greetings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(random, "random", lambda: 0.9)
+    monkeypatch.setattr(random, "choices", lambda pop, weights=None, cum_weights=None, k=1: [pop[0]])
+
+    session_id = "session_alpha_flight_repeated_hello_drop_0001"
+    dev_b_runtime_dir = Path("backend/runtime/openkb/dev_b")
+    dev_c_runtime_dir = Path("backend/runtime/openkb/dev_c/dialogue_history")
+    dev_b_jsonl_path = dev_b_runtime_dir / f"{session_id}.jsonl"
+    dev_c_jsonl_path = dev_c_runtime_dir / f"{session_id}.jsonl"
+    _remove_openkb_session_records(dev_b_runtime_dir, dev_b_jsonl_path)
+    _remove_dialogue_history_records(dev_c_jsonl_path)
+
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        npc_text = (
+            "No worries. I'll ask someone else."
+            if payload["branch"]["branch_reason"] == "flight_smalltalk_social_obligation_dropped"
+            else "Sorry, did you hear me? I was asking about the pen."
+        )
+        return {
+            "speaker": "Arabella",
+            "npc_text": npc_text,
+            "tone": "friendly_neutral",
+            "animation": "dialogue_idle",
+            "feedback_kr": "Keep the conversation going.",
+            "tts": {"audio_url": "/runtime/audio/edge/test.wav"},
+        }
+
+    try:
+        orchestrator = Orchestrator()
+        orchestrator.dev_a_client = DevANpcDialogueClient(
+            settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+            voice_output_builder=fake_voice_output_builder,
+        )
+
+        last_npc_message = "Could I borrow your pen for this arrival form?"
+        responses = []
+        for index, transcript in enumerate(["Hello.", "Hello?", "Hello?"], start=1):
+            request = _chapter_boundary_request(
+                request_id=f"req_alpha_flight_repeated_hello_drop_{index:04d}",
+                session_id=session_id,
+                chapter_id="CH0_01_FLIGHT_SMALLTALK",
+                current_node_id="FLIGHT_A_001_SEATMATE_SMALLTALK",
+                npc_id="SEATMATE_A_01",
+                npc_role="seatmate",
+                last_npc_message=last_npc_message,
+                transcript=transcript,
+                allowed_next_nodes=["FLIGHT_A_001_SEATMATE_SMALLTALK", "FLIGHT_999_COMPLETE"],
+            )
+            request.turn.session.turn_index = index
+            response = orchestrator.run_turn(request)
+            responses.append(response)
+            last_npc_message = response.npc.text
+    finally:
+        _remove_openkb_session_records(dev_b_runtime_dir, dev_b_jsonl_path)
+        _remove_dialogue_history_records(dev_c_jsonl_path)
+
+    assert [payload["branch"]["branch_reason"] for payload in builder_payloads] == [
+        "flight_smalltalk_social_obligation_open",
+        "flight_smalltalk_repeated_social_repair",
+        "flight_smalltalk_social_obligation_dropped",
+    ]
+    assert responses[-1].next_action == "ADVANCE"
+    assert responses[-1].evaluation.verdict == "SUCCESS"
+    assert responses[-1].npc.text == "No worries. I'll ask someone else."
+
+
+def test_orchestrator_checks_engagement_after_dropped_pen_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(random, "random", lambda: 0.9)
+    monkeypatch.setattr(random, "choices", lambda pop, weights=None, cum_weights=None, k=1: [pop[0]])
+
+    session_id = "session_alpha_flight_repeated_hello_engagement_0001"
+    dev_b_runtime_dir = Path("backend/runtime/openkb/dev_b")
+    dev_c_runtime_dir = Path("backend/runtime/openkb/dev_c/dialogue_history")
+    dev_b_jsonl_path = dev_b_runtime_dir / f"{session_id}.jsonl"
+    dev_c_jsonl_path = dev_c_runtime_dir / f"{session_id}.jsonl"
+    _remove_openkb_session_records(dev_b_runtime_dir, dev_b_jsonl_path)
+    _remove_dialogue_history_records(dev_c_jsonl_path)
+
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        branch_reason = payload["branch"]["branch_reason"]
+        npc_text_by_reason = {
+            "flight_smalltalk_social_obligation_open": "Hi there. Could I borrow your pen, please?",
+            "flight_smalltalk_repeated_social_repair": (
+                "Sorry, did you hear me? I was asking about the pen."
+            ),
+            "flight_smalltalk_social_obligation_dropped": "No worries. I'll ask someone else.",
+            "flight_smalltalk_engagement_check": "You keep saying hello. Are you okay?",
+            "flight_smalltalk_engagement_give_space": "Okay, I'll give you some space.",
+        }
+        return {
+            "speaker": "Arabella",
+            "npc_text": npc_text_by_reason[branch_reason],
+            "tone": "friendly_neutral",
+            "animation": "dialogue_idle",
+            "feedback_kr": "Keep the conversation going.",
+            "tts": {"audio_url": "/runtime/audio/edge/test.wav"},
+        }
+
+    try:
+        orchestrator = Orchestrator()
+        orchestrator.dev_a_client = DevANpcDialogueClient(
+            settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+            voice_output_builder=fake_voice_output_builder,
+        )
+
+        last_npc_message = "Could I borrow your pen for this arrival form?"
+        responses = []
+        for index, transcript in enumerate(["Hello.", "Hello?", "Hello.", "Hello?", "Hello."], start=1):
+            request = _chapter_boundary_request(
+                request_id=f"req_alpha_flight_repeated_hello_engagement_{index:04d}",
+                session_id=session_id,
+                chapter_id="CH0_01_FLIGHT_SMALLTALK",
+                current_node_id="FLIGHT_A_001_SEATMATE_SMALLTALK",
+                npc_id="SEATMATE_A_01",
+                npc_role="seatmate",
+                last_npc_message=last_npc_message,
+                transcript=transcript,
+                allowed_next_nodes=["FLIGHT_A_001_SEATMATE_SMALLTALK", "FLIGHT_999_COMPLETE"],
+            )
+            request.turn.session.turn_index = index
+            response = orchestrator.run_turn(request)
+            responses.append(response)
+            last_npc_message = response.npc.text
+    finally:
+        _remove_openkb_session_records(dev_b_runtime_dir, dev_b_jsonl_path)
+        _remove_dialogue_history_records(dev_c_jsonl_path)
+
+    assert [payload["branch"]["branch_reason"] for payload in builder_payloads] == [
+        "flight_smalltalk_social_obligation_open",
+        "flight_smalltalk_repeated_social_repair",
+        "flight_smalltalk_social_obligation_dropped",
+        "flight_smalltalk_engagement_check",
+        "flight_smalltalk_engagement_give_space",
+    ]
+    assert responses[3].next_action == "REASK"
+    assert responses[3].evaluation.verdict == "UNCLEAR"
+    assert responses[3].npc.text == "You keep saying hello. Are you okay?"
+    assert responses[4].next_action == "COMPLETE_CHAPTER"
+    assert responses[4].evaluation.verdict == "SUCCESS"
+    assert responses[4].npc.text == "Okay, I'll give you some space."
 
 
 def test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata() -> None:

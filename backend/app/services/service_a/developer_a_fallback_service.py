@@ -77,6 +77,7 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
     npc_role = normalized.get("npc_role", "")
     purpose = normalized.get("dialogue_purpose") or ""
     reason = "missing_or_blocked_candidate_text"
+    social_context_text = _social_context_fallback_text(normalized)
     
     # 1. transition_status == complete_chapter 또는 next_action == COMPLETE_CHAPTER
     if transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER":
@@ -91,6 +92,11 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
         else:
             text = "You're all set."
         reason = "complete_chapter_fallback"
+
+    # 1.5. social context repair before generic smalltalk/slot fallback
+    elif social_context_text:
+        text = social_context_text
+        reason = "social_context_fallback"
         
     # 2. purpose == "smalltalk_diagnostic"
     elif purpose == "smalltalk_diagnostic":
@@ -177,6 +183,57 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
             "next_node_id": normalized.get("next_node_id"),
         },
     }
+
+
+def _social_context_fallback_text(normalized: dict[str, Any]) -> str:
+    social_context = normalized.get("social_context") or {}
+    if not isinstance(social_context, dict):
+        return ""
+    obligation_status = str(social_context.get("obligation_status") or "")
+    if obligation_status not in {"open", "ignored", "unclear"}:
+        return ""
+
+    pending_obligation = str(social_context.get("pending_social_obligation") or "")
+    conversation_move = str(social_context.get("conversation_move") or "")
+    scene_norm = str(social_context.get("scene_norm") or "")
+    branch_reason = str(normalized.get("branch_reason") or "")
+    surface_goal = str((normalized.get("dialogue_seed") or {}).get("surface_goal") or "")
+
+    if pending_obligation == "seatmate_pen_request":
+        if "social_pause_closed" in branch_reason or "engagement_give_space" in branch_reason:
+            return "Okay, I'll give you some space."
+        if "engagement_check" in branch_reason:
+            if conversation_move == "clarification_request":
+                return "You keep asking what. Are you having trouble hearing me?"
+            if conversation_move == "low_content_non_answer":
+                return "I'm not sure if you're joking with me. Are you okay?"
+            if conversation_move in {"greeting_only", "repeated_greeting"}:
+                return "You keep saying hello. Are you okay?"
+            return "I'm not sure we're connecting. Are you okay?"
+        if "social_obligation_dropped" in branch_reason:
+            return "No worries. I'll ask someone else."
+        if "repeated_social_repair" in branch_reason:
+            if conversation_move == "clarification_request":
+                return "I mean the pen. Could I borrow it for a moment?"
+            if conversation_move == "low_content_non_answer":
+                return "I still need a yes or no about the pen."
+            return "Sorry, did you hear me? I was asking about the pen."
+        if conversation_move == "repeated_greeting" or "repeated_greeting" in branch_reason:
+            return "Sorry, did you hear me? I was asking about the pen."
+        if conversation_move == "clarification_request":
+            return "Oh, I was asking if I could borrow your pen."
+        if conversation_move == "low_content_non_answer":
+            return "I still need your answer. Could I borrow your pen?"
+        return "Hi. I mean, could I borrow your pen for this form?"
+
+    fallback_question = SURFACE_GOAL_FALLBACK_TEXTS.get(surface_goal, "").strip()
+    if scene_norm == "institutional_check" and fallback_question:
+        return f"I need you to answer the question, please. {fallback_question}"
+    if scene_norm == "service_recovery" and fallback_question:
+        return f"No worries. I still need that detail so I can help. {fallback_question}"
+    if fallback_question:
+        return f"Let me ask that again. {fallback_question}"
+    return ""
 
 
 def build_audio_fallback(provider: str, voice_id: str, reason: str) -> dict[str, Any]:
