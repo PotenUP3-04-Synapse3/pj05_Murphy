@@ -120,7 +120,7 @@ SURFACE_GOAL_QUESTIONS = {
     # Baggage 챕터
     "report_missing_bag_at_service_desk": "Do you have your baggage claim tag or ticket?",
     "ask_claim_tag_or_ticket": "May I see your baggage claim tag?",
-    "confirm_carousel_search": "Let me search the carousel. Can you describe your bag?",
+    "confirm_carousel_search": "Did you check the carousel carefully before coming to the desk?",
     "redirect_to_customs_hold_area": "Please go to the customs hold area. Understood?",
     "customs_hold_explanation_before_unlock": "What brings you to the customs hold area?",
     "explain_random_customs_item": "Can you explain what this item is and why it is in your suitcase?",
@@ -140,6 +140,7 @@ def synthesize_fallback_next_question(
     fallback_text: str,
     surface_goal: str,
     open_hooks: list[str] | None = None,
+    branch_type: str | None = None,
 ) -> str:
     """LLM 실패 시 사용될 폴백 텍스트(Fallback Text) 뒤에 surface_goal에 따른 룰베이스 다음 질문을 합성합니다."""
     question = SURFACE_GOAL_QUESTIONS.get(surface_goal)
@@ -160,9 +161,10 @@ def synthesize_fallback_next_question(
     if not stripped.endswith((".", "!", "?")):
         stripped += "."
         
-    # open_hooks 가 있고 영어 1단어 이상일 때 hook prefix 합성
+    # open_hooks 가 있고 영어 1단어 이상일 때 hook prefix 합성 (success/neutral 분기거나 branch_type이 명시되지 않았을 때만)
     prefix = ""
-    if open_hooks and len(open_hooks) > 0:
+    is_allowed_branch = branch_type is None or branch_type.lower() in ("success", "neutral")
+    if is_allowed_branch and open_hooks and len(open_hooks) > 0:
         first_hook = open_hooks[0]
         # ASCII 영문 및 단어 형태 검증
         if first_hook.isascii() and first_hook.isalpha():
@@ -246,6 +248,11 @@ RETRY_PARAPHRASES = {
         "Have you ever been denied entry?",
         "Have you been refused entry to the United States?",
         "Is there any history of denied entry?",
+    ],
+    "confirm_carousel_search": [
+        "Did you check the carousel carefully before coming to the desk?",
+        "Are you sure you checked the baggage carousel thoroughly?",
+        "Did you check the carousel belt before coming here?",
     ]
 }
 

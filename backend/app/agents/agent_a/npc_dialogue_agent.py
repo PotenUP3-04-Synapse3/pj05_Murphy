@@ -582,6 +582,7 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
             original_text,
             surface_goal,
             _open_hooks_for_fallback_synthesis(normalized, session_context_card),
+            branch_type=normalized.get("branch_type"),
         )
         fallback_res["npc_text"] = synthesized_text
         fallback_res["text"] = synthesized_text
@@ -828,7 +829,11 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         if not reaction_part:
             reaction_part = "Pardon me?"
 
-        synthesized = synthesize_fallback_next_question(reaction_part, surface_goal)
+        synthesized = synthesize_fallback_next_question(
+            reaction_part,
+            surface_goal,
+            branch_type=normalized.get("branch_type"),
+        )
         turn_buffer = state.get("turn_buffer") or []
         dialogue_history = normalized.get("dialogue_history") or []
         last_npc_text = ""
@@ -1026,6 +1031,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             reaction_part,
             str(surface_goal),
             _open_hooks_for_fallback_synthesis(normalized, session_context_card),
+            branch_type=normalized.get("branch_type"),
         )
         npc_text = overridden_text
         tts_text = overridden_text

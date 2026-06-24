@@ -44,7 +44,7 @@ def test_resolve_known_npc_profile_for_officer_hale() -> None:
             "- Long explanations or apologies\n"
             "- Seatmate-style warmth"
         ),
-        non_verbal_palette=["Hmph.", "Tsk.", "<break time='0.4s'/>"],
+        non_verbal_palette=["<break time='0.4s'/>"],
         elevenlabs_voice_id="dXtC3XhB9GtPusIpNtQx",
     )
 

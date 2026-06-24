@@ -1,5 +1,19 @@
 # Handoff
 
+## 2026-06-25 Developer A: NPC Dialogue Naturalness & Loop Fix (Part A & B)
+
+Developer A has successfully executed the dialogue naturalness and loop fixes as outlined in [dev_a_npc_dialogue_naturalness_plan.md](file:///Users/will/pj05_Murphy/docs/plans/dev_a_npc_dialogue_naturalness_plan.md):
+- **Part B-① - BAG_003 Infinite Loop Resolution**: Realigned `"confirm_carousel_search"` question goal in `dialogue_policy_service.py` to match required slots of node `BAG_003` ("Did you check the carousel carefully before coming to the desk?"), preventing infinite re-asking clarify loops.
+- **Part B-② - Mechanical Hook Gating & Filtering**:
+  - Implemented `OPEN_HOOK_STOPLIST` and private helper `_extract_open_hooks` in `session_context_card_service.py` to prevent mechanical word echoes like `"You mentioned yeah"`.
+  - Added `branch_type` parameter to `synthesize_fallback_next_question` to disable hook prefixes altogether during non-advance turns (`retry`, `clarify`, `warning`).
+- **Part A-④ - Prompt Frequency constraints**: Added interjection frequency guidelines to `npc_dialogue_prompt.md` and `npc_dialogue_prompt.short.md`.
+- **Part A-⑤ - NPC Roster & Palette Alignment**:
+  - Realignment of `arabella`, `brielle`, `hale`, and `dan` persona instructions in `npc_roster_service.py` and synchronization of `non_verbal_palette.py` to remove conversational robot-like keywords (e.g. chat laughing tokens, command interjections, bad SSML text).
+- **Verification**:
+  - Wrote 3 targeted unit tests verifying search goal question mapping, stoplist filtering, and branch-type gating.
+  - Successfully ran the entire test suite (435 passed) and static check verification (`ruff` / `mypy` zero issues).
+
 ## 2026-06-24 Developer C: 2P Multiplayer Extension Remediation (R0 - R6)
 
 Developer C has completed the remediation work plan for the 2P Multiplayer Extension, ensuring strict storage typing, robust identity alignment, single scope checker unification, and true round-trip pipeline testing:

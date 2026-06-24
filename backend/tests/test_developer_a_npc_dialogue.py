@@ -2142,4 +2142,42 @@ def test_clearance_failure_contradiction_guard_blocks_mixed_tone() -> None:
     assert result["llm"]["fallback_used"] is True
 
 
+def test_dialogue_policy_service_confirm_carousel_search() -> None:
+    from backend.app.services.service_a.dialogue_policy_service import SURFACE_GOAL_QUESTIONS, RETRY_PARAPHRASES
+    assert SURFACE_GOAL_QUESTIONS["confirm_carousel_search"] == "Did you check the carousel carefully before coming to the desk?"
+    assert "confirm_carousel_search" in RETRY_PARAPHRASES
+    assert "Did you check the carousel belt before coming here?" in RETRY_PARAPHRASES["confirm_carousel_search"]
 
+
+def test_open_hooks_stoplist_filter() -> None:
+    from backend.app.services.service_a.session_context_card_service import _extract_open_hooks
+    # Test text containing stop words and content words
+    player_text = "Yeah, hi. I checked the carousel but my Hermes bag was not there."
+    hooks = _extract_open_hooks(player_text)
+    # Stop words like "yeah", "hi", "the", "but", "my", "was", "not", "there" must be filtered out
+    assert "hermes" in hooks
+    assert "bag" in hooks
+    assert "carousel" in hooks
+    assert "yeah" not in hooks
+    assert "hi" not in hooks
+
+
+def test_synthesize_fallback_next_question_gated_by_branch_type() -> None:
+    from backend.app.services.service_a.dialogue_policy_service import synthesize_fallback_next_question
+    # Case 1: branch_type is success or neutral (or None) -> prefix is added
+    res_success = synthesize_fallback_next_question(
+        fallback_text="Hold on.",
+        surface_goal="ask_occupation",
+        open_hooks=["engineer"],
+        branch_type="success"
+    )
+    assert "You mentioned engineer —" in res_success
+
+    # Case 2: branch_type is retry or clarify or warning -> prefix is NOT added
+    res_retry = synthesize_fallback_next_question(
+        fallback_text="Hold on.",
+        surface_goal="ask_occupation",
+        open_hooks=["engineer"],
+        branch_type="retry"
+    )
+    assert "You mentioned engineer —" not in res_retry

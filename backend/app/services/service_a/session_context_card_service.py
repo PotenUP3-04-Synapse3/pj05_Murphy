@@ -102,6 +102,39 @@ SLOT_TO_FORBIDDEN_QUESTIONS: dict[str, list[str]] = {
     ]
 }
 
+OPEN_HOOK_STOPLIST = {
+    # Pronouns & determiners
+    "the", "and", "for", "you", "are", "have", "this", "that", "stay", "with",
+    "him", "her", "his", "hers", "its", "our", "ours", "their", "theirs", "your", "yours",
+    "them", "they", "she", "who", "whom", "whose", "which", "what", "where", "when", "why", "how",
+    "some", "any", "all", "both", "each", "every", "many", "much", "few", "more", "most", "other",
+    "another", "such", "own", "very", "too", "also", "even", "only", "one", "two", "three",
+    # Fillers & greetings & common verbs/nouns
+    "yes", "yeah", "yup", "yep", "nop", "naw", "nah", "nope", "not", "hello", "hey", "well", "fine",
+    "okay", "sure", "please", "thanks", "thank", "good", "nice", "maybe", "perhaps", "probably",
+    "just", "like", "actually", "basically", "literally", "totally", "right", "sorry", "excuse",
+    "pardon", "mean", "think", "guess", "trip", "travel", "flight", "here", "there", "about",
+    "would", "could", "should", "will", "can", "may", "might", "must", "shall", "does", "done",
+    "doing", "make", "makes", "made", "making", "take", "takes", "took", "taken", "taking", "come",
+    "comes", "came", "coming", "go", "goes", "went", "gone", "going", "want", "wants", "wanted",
+    "wanting", "need", "needs", "needed", "needing", "give", "gives", "gave", "given", "giving",
+    "get", "gets", "got", "gotten", "getting", "would", "could", "should", "will", "can", "may",
+    "might", "must", "shall", "does", "done", "doing", "make", "made", "take", "took", "come",
+    "came", "going", "went", "want", "need", "give", "gave", "getting", "know", "look", "lookup",
+    "said", "says", "tell", "told", "yoursel", "himsel", "hersel", "themsel", "oursel"
+}
+
+def _extract_open_hooks(player_text: str) -> list[str]:
+    open_hooks: list[str] = []
+    if player_text:
+        cleaned = re.sub(r'[^a-zA-Z]', ' ', player_text.lower())
+        words = cleaned.split()
+        for w in words:
+            if len(w) >= 3 and w not in open_hooks:
+                if w not in OPEN_HOOK_STOPLIST:
+                    open_hooks.append(w)
+    return open_hooks[:5]
+
 
 def build_session_context_card(
     normalized: dict[str, Any],
@@ -160,15 +193,7 @@ def build_session_context_card(
         if not player_text and turn_buffer:
             player_text = turn_buffer[-1].get("player_text") or ""
             
-        open_hooks: list[str] = []
-        if player_text:
-            cleaned = re.sub(r'[^a-zA-Z]', ' ', player_text.lower())
-            words = cleaned.split()
-            for w in words:
-                if len(w) >= 3 and w not in open_hooks:
-                    if w not in ["the", "and", "for", "you", "are", "have", "this", "that", "stay", "with"]:
-                        open_hooks.append(w)
-        open_hooks = open_hooks[:5]
+        open_hooks = _extract_open_hooks(player_text)
         
         # 3. 직전 NPC 발화의 의도
         last_npc_intent = npc_memory.get("last_npc_intent") or ""
@@ -245,15 +270,7 @@ def build_session_context_card(
             if last_turn is not None:
                 player_text = last_turn.get("player_text_preview") or ""
             
-        open_hooks = []
-        if player_text:
-            cleaned = re.sub(r'[^a-zA-Z]', ' ', player_text.lower())
-            words = cleaned.split()
-            for w in words:
-                if len(w) >= 3 and w not in open_hooks:
-                    if w not in ["the", "and", "for", "you", "are", "have", "this", "that", "stay", "with"]:
-                        open_hooks.append(w)
-        open_hooks = open_hooks[:5]
+        open_hooks = _extract_open_hooks(player_text)
         
         last_npc_intent = ""
         if dialogue_history:
