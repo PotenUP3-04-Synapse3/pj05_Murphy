@@ -145,3 +145,9 @@ Developer-specific start prompts:
 
 - Developer A: [docs/prompts/developer_a_start_prompt.md](docs/prompts/developer_a_start_prompt.md)
 - Developer B: [docs/prompts/developer_b_start_prompt.md](docs/prompts/developer_b_start_prompt.md)
+
+
+```
+uv run uvicorn backend.app.main:app --reload
+http://127.0.0.1:8000/respond-dialog
+```
