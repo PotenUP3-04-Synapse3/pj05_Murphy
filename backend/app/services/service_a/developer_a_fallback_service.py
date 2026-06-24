@@ -54,7 +54,7 @@ SURFACE_GOAL_FALLBACK_TEXTS = {
     "redirect_to_customs_hold_area": "I'm sorry, but we don't have it here. It seems your bag is held in the customs area. You must go there.",
     
     # Baggage Customs 챕터
-    "customs_hold_explanation_before_unlock": "Please step forward.",
+    "customs_hold_explanation_before_unlock": "Please check the contents of the suitcase now.",
     "complete_customs_baggage_clearance": "Everything looks fine. You are good to go.",
     "complete_baggage_claim_transition": "You're all set. Have a nice day.",
     
@@ -78,9 +78,14 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
     purpose = normalized.get("dialogue_purpose") or ""
     reason = "missing_or_blocked_candidate_text"
     social_context_text = _social_context_fallback_text(normalized)
+    passport_refusal_text = _passport_submission_refusal_text(normalized)
     
     # 1. transition_status == complete_chapter 또는 next_action == COMPLETE_CHAPTER
-    if transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER":
+    if passport_refusal_text:
+        text = passport_refusal_text
+        reason = "passport_submission_refusal_fallback"
+
+    elif transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER":
         if npc_role == "seatmate":
             text = "Enjoy your trip!"
         elif npc_role == "immigration_officer":
@@ -227,6 +232,34 @@ def _social_context_fallback_text(normalized: dict[str, Any]) -> str:
         return "Hi. I mean, could I borrow your pen for this form?"
 
     fallback_question = SURFACE_GOAL_FALLBACK_TEXTS.get(surface_goal, "").strip()
+    if scene_norm == "service_recovery":
+        if "procedure_warning" in branch_reason:
+            return "I cannot continue the inspection without your cooperation."
+        if "engagement_check" in branch_reason:
+            if conversation_move == "clarification_request":
+                return "Are you having trouble understanding me? I need your cooperation to continue."
+            return "I need to check that you understand me before we continue."
+        if "repeated_social_repair" in branch_reason:
+            if fallback_question:
+                return f"I'm not sure you heard me. {fallback_question}"
+            return "I'm not sure you heard me. I still need your response."
+        if "social_obligation_open" in branch_reason:
+            if fallback_question:
+                return f"I need a response so we can continue. {fallback_question}"
+            return "I need a response so we can continue."
+
+    if scene_norm == "institutional_check":
+        if "procedure_warning" in branch_reason:
+            return "I cannot continue this process without your cooperation."
+        if "engagement_check" in branch_reason:
+            if conversation_move == "clarification_request":
+                return "Are you having trouble understanding the question?"
+            return "I need to make sure you understand the question before we continue."
+        if "repeated_social_repair" in branch_reason:
+            return "I need a direct answer to continue this process."
+        if "social_obligation_open" in branch_reason:
+            return "Please answer the current question so we can continue."
+
     if scene_norm == "institutional_check" and fallback_question:
         return f"I need you to answer the question, please. {fallback_question}"
     if scene_norm == "service_recovery" and fallback_question:
@@ -234,6 +267,17 @@ def _social_context_fallback_text(normalized: dict[str, Any]) -> str:
     if fallback_question:
         return f"Let me ask that again. {fallback_question}"
     return ""
+
+
+def _passport_submission_refusal_text(normalized: dict[str, Any]) -> str:
+    branch_reason = str(normalized.get("branch_reason") or "")
+    if "passport_submission_refused" not in branch_reason:
+        return ""
+
+    next_action = str(normalized.get("next_action") or "")
+    if next_action == "FAIL_END":
+        return "Since you refuse to present your passport, I have to send you to secondary inspection."
+    return "I understand, but I cannot process you without your passport. If you refuse, you may be sent to secondary inspection."
 
 
 def build_audio_fallback(provider: str, voice_id: str, reason: str) -> dict[str, Any]:

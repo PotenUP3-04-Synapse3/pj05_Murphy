@@ -288,6 +288,14 @@ class UnderstandingAgent:
                 player_text,
                 node_context,
             )
+            passport_refusal = _repair_passport_submission_refusal_output(
+                output,
+                player_text,
+                node_context,
+            )
+            passport_refusal_postprocessing: dict[str, Any] = {}
+            if passport_refusal is not None:
+                output, passport_refusal_postprocessing = passport_refusal
             output, slot_repair_postprocessing = _repair_missing_allowed_slots(
                 output,
                 player_text,
@@ -303,6 +311,7 @@ class UnderstandingAgent:
             postprocessing = _merge_postprocessing(
                 slot_evidence_postprocessing,
                 slot_repair_postprocessing,
+                passport_refusal_postprocessing,
             )
             self.last_trace = _build_llm_trace(
                 player_text=player_text,
@@ -379,6 +388,9 @@ class UnderstandingAgent:
         primary_required_slot = node_context.required_slots[0] if node_context.required_slots else None
 
         if risky:
+            passport_refusal = _passport_submission_refusal_output(player_text, node_context)
+            if passport_refusal is not None:
+                return passport_refusal
             return UnderstandingOutput(
                 intent=_required_intent_for_slot(node_context, primary_required_slot or "unknown"),
                 intent_success=False,
@@ -461,6 +473,25 @@ class UnderstandingAgent:
                 judgment_reason="The purpose is clear.",
             )
 
+        if _is_low_content_non_answer(player_text) and node_context.required_slots:
+            return UnderstandingOutput(
+                intent=_required_intent_for_slot(node_context, primary_required_slot or "unknown"),
+                intent_success=False,
+                confidence=0.34,
+                meaning_summary_kr="The player gave a thin everyday response that did not answer the required slot.",
+                emotion="nervous",
+                answer_relevance=_missing_required_slot_answer_relevance(player_text, node_context),
+                ambiguity_type="low_content_non_answer",
+                risk_delta=0,
+                risk_reason="No risk expression was found.",
+                risk_tags=[],
+                extracted_slots={},
+                missing_slots=node_context.required_slots,
+                needs_clarification=True,
+                intent_satisfied=False,
+                judgment_reason="The player gave a low-content social response instead of the required answer.",
+            )
+
         generic_slot = _extract_generic_required_slot(player_text, node_context)
         if generic_slot is not None:
             slot_name, slot_value = generic_slot
@@ -496,7 +527,7 @@ class UnderstandingAgent:
             confidence=0.55,
             meaning_summary_kr="The player answer did not clearly fill the required slot.",
             emotion="nervous",
-            answer_relevance="partially_related",
+            answer_relevance=_missing_required_slot_answer_relevance(player_text, node_context),
             ambiguity_type="unclear_required_slot",
             risk_delta=0,
             risk_reason="No risk expression was found.",
@@ -560,6 +591,23 @@ def _build_social_context_card(
 ) -> SocialContextCard:
     scene_norm = _scene_norm_for_node(node_context.node_id)
     pending_obligation = _pending_social_obligation(node_context)
+
+    if _is_passport_submission_node(node_context) and (
+        output.extracted_slots.get("refuse_submission") == "true"
+        or _looks_like_passport_submission_refusal(player_text)
+    ):
+        return SocialContextCard(
+            scene_norm=scene_norm,
+            conversation_move="refusal",
+            prior_turn_relation="answered",
+            social_pattern="none",
+            pending_social_obligation=pending_obligation,
+            obligation_status="addressed",
+            engagement_quality="useful",
+            recommended_npc_move="firm_redirect",
+            pragmatics_confidence=0.93,
+            reason="The player clearly refused the institutional passport-submission request.",
+        )
 
     if _is_flight_smalltalk_diagnostic_node(node_context) and _flight_pen_obligation_addressed(player_text):
         return SocialContextCard(
@@ -686,9 +734,29 @@ def _scene_norm_for_node(node_id: str) -> SceneNorm:
 def _pending_social_obligation(node_context: NodeContext) -> str | None:
     if _is_flight_smalltalk_diagnostic_node(node_context):
         return "seatmate_pen_request"
+    if _has_customs_hold_contents_obligation(node_context):
+        return "check_suitcase_contents"
     if node_context.npc_question_goal:
         return f"answer_{node_context.npc_question_goal}"
     return None
+
+
+def _has_customs_hold_contents_obligation(node_context: NodeContext) -> bool:
+    return (
+        node_context.node_id.startswith("BAG_005")
+        or node_context.npc_question_goal == "customs_hold_explanation_before_unlock"
+        or "customs_hold_acknowledgement" in node_context.required_slots
+    )
+
+
+def _missing_required_slot_answer_relevance(
+    player_text: str,
+    node_context: NodeContext,
+) -> Literal["partially_related", "off_topic"]:
+    if _scene_norm_for_node(node_context.node_id) == "service_recovery" and node_context.required_slots:
+        return "off_topic"
+    _ = player_text
+    return "partially_related"
 
 
 def _repair_move_for_scene(scene_norm: SceneNorm) -> RecommendedNPCMove:
@@ -736,7 +804,29 @@ def _is_low_content_non_answer(player_text: str) -> bool:
     words = re.findall(r"[a-z0-9']+", normalized)
     if not words:
         return False
-    return " ".join(words) in FLIGHT_SMALLTALK_LOW_CONTENT_NON_ANSWER_PHRASES
+    joined = " ".join(words)
+    if joined in FLIGHT_SMALLTALK_LOW_CONTENT_NON_ANSWER_PHRASES:
+        return True
+    if len(words) <= 4:
+        everyday_words = {
+            "okay",
+            "ok",
+            "alright",
+            "hello",
+            "hi",
+            "hey",
+            "fine",
+            "yeah",
+            "yes",
+            "no",
+            "um",
+            "uh",
+            "uhm",
+            "ah",
+        }
+        has_greeting = any(word in {"hello", "hi", "hey"} for word in words)
+        return has_greeting and all(word in everyday_words for word in words)
+    return False
 
 
 def _flight_pen_obligation_addressed(player_text: str) -> bool:
@@ -1199,6 +1289,105 @@ def _repair_passport_handover_output(
         "accepted_slot_evidence": [slot_name],
         "dropped_slot_evidence": [],
     }
+
+
+def _repair_passport_submission_refusal_output(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> tuple[UnderstandingOutput, dict[str, Any]] | None:
+    """Promote explicit passport-submission refusal into critical evidence."""
+
+    normalized = _passport_submission_refusal_output(player_text, node_context, base_output=output)
+    if normalized is None:
+        return None
+    return normalized, {
+        "generic_slot_evidence_applied": True,
+        "passport_refusal_repair_applied": True,
+        "intent_relevance_guard_applied": False,
+        "confidence_evidence_guard_applied": normalized.confidence != output.confidence,
+        "weak_required_slot_evidence": False,
+        "accepted_slot_evidence": ["refuse_submission"],
+        "dropped_slot_evidence": [],
+    }
+
+
+def _passport_submission_refusal_output(
+    player_text: str,
+    node_context: NodeContext,
+    *,
+    base_output: UnderstandingOutput | None = None,
+) -> UnderstandingOutput | None:
+    if not _is_passport_submission_node(node_context):
+        return None
+    if not _looks_like_passport_submission_refusal(player_text):
+        return None
+
+    base_confidence = base_output.confidence if base_output is not None else 0.0
+    base_risk_delta = base_output.risk_delta if base_output is not None else 0
+    base_risk_tags = list(base_output.risk_tags) if base_output is not None else []
+    if "refuse_submission" not in base_risk_tags:
+        base_risk_tags.append("refuse_submission")
+
+    return UnderstandingOutput(
+        intent=_required_intent_for_slot(node_context, "passport_submission_status"),
+        intent_success=False,
+        confidence=max(base_confidence, 0.9),
+        meaning_summary_kr="The player explicitly refused to present the passport.",
+        emotion=base_output.emotion if base_output is not None else "calm",
+        answer_relevance="on_topic",
+        ambiguity_type="explicit_refusal",
+        risk_delta=max(base_risk_delta, 20),
+        risk_reason="The player refused a required passport submission request.",
+        risk_tags=base_risk_tags,
+        slot_evidence=[
+            SlotEvidence(
+                slot="refuse_submission",
+                value="true",
+                confidence=0.95,
+                evidence_text=player_text.strip() or "no",
+            )
+        ],
+        extracted_slots={"refuse_submission": "true"},
+        missing_slots=[],
+        needs_clarification=False,
+        intent_satisfied=False,
+        judgment_reason="The player gave a clear refusal, not an unclear answer.",
+        incivility=base_output.incivility if base_output is not None else None,
+    )
+
+
+def _is_passport_submission_node(node_context: NodeContext) -> bool:
+    return (
+        "passport_submission_status" in node_context.required_slots
+        and "refuse_submission" in node_context.critical_slots
+    )
+
+
+def _looks_like_passport_submission_refusal(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    tokens = set(normalized.split())
+    if tokens.intersection({"no", "nope"}):
+        return True
+    refusal_markers = (
+        "answer is no",
+        "the answer is no",
+        "i said no",
+        "i already said no",
+        "i refuse",
+        "refuse to",
+        "will not",
+        "wont",
+        "won't",
+        "do not want to",
+        "dont want to",
+        "don't want to",
+        "not giving",
+        "not show",
+        "not presenting",
+        "not present",
+    )
+    return any(marker in normalized for marker in refusal_markers)
 
 
 def _looks_like_passport_handover(player_text: str) -> bool:
@@ -1758,7 +1947,9 @@ def _is_supported_extracted_slot_value(
 def _merge_postprocessing(
     slot_evidence_postprocessing: dict[str, Any],
     slot_repair_postprocessing: dict[str, Any],
+    extra_postprocessing: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    extra_postprocessing = extra_postprocessing or {}
     slot_evidence_changed = bool(
         slot_evidence_postprocessing.get("generic_slot_evidence_applied")
         or slot_evidence_postprocessing.get("flight_smalltalk_diagnostic_slot_neutralized")
@@ -1767,15 +1958,23 @@ def _merge_postprocessing(
         or slot_evidence_postprocessing.get("confidence_evidence_guard_applied")
     )
     slot_repair_changed = bool(slot_repair_postprocessing.get("slot_repair_applied"))
+    extra_changed = bool(extra_postprocessing)
     if slot_evidence_changed and slot_repair_changed:
         return {
             **slot_evidence_postprocessing,
             **slot_repair_postprocessing,
+            **extra_postprocessing,
         }
     if slot_evidence_changed:
         return {
             **slot_evidence_postprocessing,
             "slot_repair_applied": False,
+            **extra_postprocessing,
+        }
+    if extra_changed:
+        return {
+            **slot_repair_postprocessing,
+            **extra_postprocessing,
         }
     return slot_repair_postprocessing
 

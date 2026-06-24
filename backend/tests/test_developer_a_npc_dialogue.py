@@ -4,6 +4,7 @@ from backend.app.agents.agent_a.npc_dialogue_agent import (
     NPCDialogueResult,
     generate_npc_dialogue_from_level_design as _orig_generate_npc_dialogue_from_level_design,
 )
+from backend.app.services.service_a.dialogue_policy_service import synthesize_fallback_next_question
 from backend.app.services.service_a.npc_roster_service import NPCProfile
 from backend.app.services.service_a.tts_service import TTSRequest, synthesize_speech
 from backend.app.services.service_a.voice_output_service import build_voice_output
@@ -840,6 +841,265 @@ def test_immigration_retry_llm_hook_prefix_falls_back_to_direct_question() -> No
     assert result["llm"]["reason"] == "immigration_retry_hook_violation"
     assert result["npc_text"] == "What is your occupation?"
     assert "mentioned" not in result["npc_text"].lower()
+
+
+def test_fallback_question_synthesis_does_not_quote_low_content_hooks() -> None:
+    text = synthesize_fallback_next_question(
+        "Pardon me?",
+        "customs_hold_explanation_before_unlock",
+        ["hello"],
+    )
+
+    assert "mentioned" not in text.lower()
+    assert "hello" not in text.lower()
+    assert "check" in text.lower()
+    assert "contents" in text.lower()
+    assert "what brings you" not in text.lower()
+
+
+def test_customs_hold_greeting_retry_uses_procedure_not_hook_or_wrong_question() -> None:
+    class DriftLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Officer Dan",
+                "npc_text": "Understood. You mentioned hello - What brings you to the customs hold area?",
+                "tts_text": "Understood. You mentioned hello - What brings you to the customs hold area?",
+                "feedback_kr": "Try again.",
+                "tone": "formal_firm",
+                "animation": "move",
+                "npc_emotion": "confusion",
+                "llm_reason": "Wrongly quotes a greeting and asks the wrong customs question.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "dan", "npc_role": "customs_officer"},
+            "node_id": "BAG_005_CUSTOMS_HOLD_EXPLANATION",
+            "player_text": "Hello.",
+            "node_context": {
+                "node_id": "BAG_005_CUSTOMS_HOLD_EXPLANATION",
+                "npc_question": (
+                    "This suitcase was locked for inspection because there may be a questionable item. "
+                    "I'll unlock it, so please check the contents."
+                ),
+                "recommended_expression": "Okay, I'll open it and check the contents.",
+            },
+            "understanding": {
+                "answer_relevance": "off_topic",
+                "missing_slots": ["customs_hold_acknowledgement"],
+                "social_context": {
+                    "scene_norm": "service_recovery",
+                    "conversation_move": "greeting_only",
+                    "pending_social_obligation": "check_suitcase_contents",
+                    "obligation_status": "open",
+                    "recommended_npc_move": "service_repair",
+                },
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.2},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "hint",
+                "next_action": "GIVE_HINT",
+                "next_node_id": "BAG_005_RETRY_CUSTOMS_HOLD_EXPLANATION",
+                "branch_reason": "Repeated failure or beginner support policy requires a hint.",
+            },
+            "dialogue_directive": {
+                "purpose": "support_retry",
+                "target_slot": "customs_hold_acknowledgement",
+            },
+            "dialogue_seed": {
+                "surface_goal": "customs_hold_explanation_before_unlock",
+                "required_slots": ["customs_hold_acknowledgement"],
+                "dialogue_history": [],
+            },
+        },
+        use_llm=True,
+        llm_client=DriftLLMClient(),
+    )
+
+    text = result["npc_text"].lower()
+    assert "mentioned" not in text
+    assert "hello" not in text
+    assert "what brings you" not in text
+    assert "check" in text
+    assert "contents" in text
+
+
+def _customs_hold_social_payload(
+    *,
+    branch_reason: str,
+    conversation_move: str,
+    player_text: str,
+) -> dict[str, Any]:
+    return {
+        "npc": {"npc_id": "dan", "npc_role": "customs_officer"},
+        "node_id": "BAG_005_CUSTOMS_HOLD_EXPLANATION",
+        "player_text": player_text,
+        "node_context": {
+            "node_id": "BAG_005_CUSTOMS_HOLD_EXPLANATION",
+            "recommended_expression": "Okay, I'll open it and check the contents.",
+        },
+        "understanding": {
+            "answer_relevance": "off_topic",
+            "missing_slots": ["customs_hold_acknowledgement"],
+            "social_context": {
+                "scene_norm": "service_recovery",
+                "conversation_move": conversation_move,
+                "pending_social_obligation": "check_suitcase_contents",
+                "obligation_status": "ignored",
+                "engagement_quality": "stalled",
+                "recommended_npc_move": "service_repair",
+            },
+        },
+        "evaluation_summary": {"task_success": False, "clarity": 0.2},
+        "level_hint": {"english_level": "beginner"},
+        "in_game_feedback": {"npc_recast_line_candidate": None},
+        "branch": {
+            "branch_type": "clarify",
+            "next_action": "REASK",
+            "next_node_id": "BAG_005_RETRY_CUSTOMS_HOLD_EXPLANATION",
+            "branch_reason": branch_reason,
+        },
+        "dialogue_directive": {
+            "purpose": "support_retry",
+            "target_slot": "customs_hold_acknowledgement",
+        },
+        "dialogue_seed": {
+            "surface_goal": "customs_hold_explanation_before_unlock",
+            "required_slots": ["customs_hold_acknowledgement"],
+        },
+    }
+
+
+def test_customs_social_engagement_check_fallback_checks_understanding_without_repeating_template() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        _customs_hold_social_payload(
+            branch_reason="service_recovery_engagement_check",
+            conversation_move="clarification_request",
+            player_text="What?",
+        ),
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "social_context_fallback"
+    assert "no worries. i still need that detail" not in text
+    assert "hello" not in text
+    assert "trouble understanding" in text
+
+
+def test_customs_social_warning_fallback_sets_boundary_without_repeating_contents_prompt() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        _customs_hold_social_payload(
+            branch_reason="service_recovery_procedure_warning",
+            conversation_move="off_topic",
+            player_text="Can you rap for me?",
+        ),
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "social_context_fallback"
+    assert "no worries. i still need that detail" not in text
+    assert "please check the contents of the suitcase now" not in text
+    assert "cannot continue" in text
+    assert "cooperation" in text
+
+
+def test_passport_refusal_warning_fallback_does_not_ask_for_clear_answer() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_001_PASSPORT",
+            "player_text": "I answered the question. The answer is no.",
+            "node_context": {"recommended_expression": "Here you are."},
+            "evaluation_summary": {"task_success": False, "clarity": 0.9},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "bad_end",
+                "next_action": "FAIL_END",
+                "next_node_id": "END_SECONDARY_INSPECTION",
+                "branch_reason": "passport_submission_refused",
+            },
+            "dialogue_directive": {
+                "purpose": "warn_and_control_risk",
+                "target_slot": "passport_submission_status",
+            },
+            "dialogue_seed": {
+                "surface_goal": "request_passport_submission",
+                "required_slots": ["passport_submission_status"],
+            },
+        },
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert "clear answer" not in text
+    assert "may i see your passport" not in text
+    assert "refuse" in text or "secondary inspection" in text
+
+
+def test_passport_refusal_llm_output_is_not_overridden_back_to_passport_question() -> None:
+    class RefusalWarningLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Officer Hale",
+                "npc_text": (
+                    "I understand. Refusing to present your passport means "
+                    "I must send you to secondary inspection."
+                ),
+                "tts_text": (
+                    "I understand. Refusing to present your passport means "
+                    "I must send you to secondary inspection."
+                ),
+                "feedback_kr": "At immigration, refusing to present a passport is serious.",
+                "tone": "formal_warning",
+                "animation": "officer_warning",
+                "npc_emotion": "suspicion",
+                "llm_reason": "[COHERENT] The player explicitly refused to present the passport.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_001_PASSPORT",
+            "player_text": "I answered the question. The answer is no.",
+            "node_context": {"recommended_expression": "Here you are."},
+            "evaluation_summary": {"task_success": False, "clarity": 0.9},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "bad_end",
+                "next_action": "FAIL_END",
+                "next_node_id": "END_SECONDARY_INSPECTION",
+                "branch_reason": "passport_submission_refused",
+            },
+            "dialogue_directive": {
+                "purpose": "warn_and_control_risk",
+                "target_slot": "passport_submission_status",
+            },
+            "dialogue_seed": {
+                "surface_goal": "request_passport_submission",
+                "required_slots": ["passport_submission_status"],
+            },
+        },
+        use_llm=True,
+        llm_client=RefusalWarningLLMClient(),
+    )
+
+    text = result["npc_text"].lower()
+    assert result["llm"]["used"] is True
+    assert "clear answer" not in text
+    assert "may i see your passport" not in text
+    assert "secondary inspection" in text
 
 
 def test_immigration_non_advance_override_does_not_add_open_hook_prefix() -> None:

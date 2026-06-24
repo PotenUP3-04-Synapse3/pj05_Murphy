@@ -390,11 +390,16 @@ def _identity_tokens(value: str) -> set[str]:
 
     generic_tokens = {"a", "the", "npc", "officer", "staff", "agent", "service"}
     normalized = value.lower().replace("_", " ").replace("-", " ")
-    return {
+    tokens = {
         token
         for token in normalized.split()
         if len(token) >= 3 and not token.isdigit() and token not in generic_tokens
     }
+    if "baggage" in tokens or "brielle" in tokens:
+        tokens.update({"baggage", "brielle"})
+    if "customs" in tokens or "dan" in tokens:
+        tokens.update({"customs", "dan"})
+    return tokens
 
 
 def _filter_suspicion_data(

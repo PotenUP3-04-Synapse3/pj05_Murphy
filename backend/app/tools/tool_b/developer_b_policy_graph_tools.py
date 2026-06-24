@@ -22,6 +22,7 @@ from backend.app.services.service_b.feedback_hint_generator import FeedbackHintG
 from backend.app.services.service_b.level_adaptation_controller import LevelAdaptationController
 from backend.app.services.service_b.openkb_feedback_writer import OpenKBFeedbackWriter
 from backend.app.services.service_b.scenario_state_machine import ScenarioDecision, ScenarioStateMachine
+from backend.app.services.service_b.social_obligation_lifecycle_policy import SocialObligationLifecyclePolicy
 from backend.app.services.service_b.tier_difficulty_controller import TierDifficultyController, TierDifficultyResult
 from backend.app.services.service_b.flight_smalltalk_diagnostic_policy import FlightSmallTalkDiagnosticPolicy
 
@@ -111,8 +112,16 @@ class DeveloperBPolicyGraphTools(_EnglishLevelHintPolicyCore):
             decision = diagnostic_policy.decide_conversational(payload)
             tool_name = "flight_smalltalk_diagnostic_policy.decide_conversational"
         else:
-            decision = self.state_machine.decide(payload)
-            tool_name = "scenario_state_machine.decide"
+            social_policy = SocialObligationLifecyclePolicy(
+                runtime_root=getattr(self.openkb_writer, "runtime_root", None)
+            )
+            social_decision = social_policy.decide(payload)
+            if social_decision is None:
+                decision = self.state_machine.decide(payload)
+                tool_name = "scenario_state_machine.decide"
+            else:
+                decision = social_decision
+                tool_name = "social_obligation_lifecycle_policy.decide"
 
         self.agent_run_logger.record_event(
             agent_run,

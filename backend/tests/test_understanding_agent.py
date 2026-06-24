@@ -46,6 +46,10 @@ def _flight_smalltalk_node_context():
     return _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK")
 
 
+def _baggage_customs_hold_node_context():
+    return _alpha_node_context("CH0_04_BAGGAGE_CLAIM", "BAG_005_CUSTOMS_HOLD_EXPLANATION")
+
+
 def test_understanding_agent_flight_hello_marks_open_social_obligation() -> None:
     agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
 
@@ -58,6 +62,34 @@ def test_understanding_agent_flight_hello_marks_open_social_obligation() -> None
     assert output.social_context.pending_social_obligation == "seatmate_pen_request"
     assert output.social_context.obligation_status == "open"
     assert output.social_context.recommended_npc_move == "acknowledge_and_retry_request"
+
+
+def test_understanding_agent_customs_hold_hello_marks_open_procedural_obligation() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text("Hello.", _baggage_customs_hold_node_context())
+
+    assert output.intent_success is False
+    assert output.answer_relevance == "off_topic"
+    assert output.social_context.scene_norm == "service_recovery"
+    assert output.social_context.conversation_move == "greeting_only"
+    assert output.social_context.pending_social_obligation == "check_suitcase_contents"
+    assert output.social_context.obligation_status == "open"
+    assert output.social_context.recommended_npc_move == "service_repair"
+
+
+def test_understanding_agent_customs_hold_mixed_everyday_non_answer_marks_low_content() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text("Okay. Hello?", _baggage_customs_hold_node_context())
+
+    assert output.intent_success is False
+    assert output.answer_relevance == "off_topic"
+    assert output.social_context.scene_norm == "service_recovery"
+    assert output.social_context.conversation_move == "low_content_non_answer"
+    assert output.social_context.pending_social_obligation == "check_suitcase_contents"
+    assert output.social_context.obligation_status == "ignored"
+    assert output.social_context.recommended_npc_move == "service_repair"
 
 
 def test_understanding_agent_flight_what_marks_clarification_request() -> None:
@@ -692,6 +724,29 @@ def test_understanding_agent_llm_mode_upgrades_here_you_go_passport_handover() -
     assert output.missing_slots == []
     assert output.needs_clarification is False
     assert agent.last_trace["postprocessing"]["passport_handover_repair_applied"] is True
+
+
+def test_understanding_agent_passport_no_marks_explicit_submission_refusal() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text(
+        "I answered the question. The answer is no.",
+        _alpha_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_001_PASSPORT"),
+    )
+
+    assert output.intent == "submit_passport"
+    assert output.intent_success is False
+    assert output.intent_satisfied is False
+    assert output.answer_relevance == "on_topic"
+    assert output.needs_clarification is False
+    assert output.missing_slots == []
+    assert output.extracted_slots["refuse_submission"] == "true"
+    assert "refuse_submission" in output.risk_tags
+    assert output.social_context.scene_norm == "institutional_check"
+    assert output.social_context.conversation_move == "refusal"
+    assert output.social_context.pending_social_obligation == "answer_request_passport_submission"
+    assert output.social_context.obligation_status == "addressed"
+    assert output.social_context.recommended_npc_move == "firm_redirect"
 
 
 def test_understanding_agent_llm_mode_repairs_first_visit_prior_visit_phrase() -> None:

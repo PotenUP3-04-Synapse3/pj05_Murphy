@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from backend.app.agents.agent_c.understanding_agent import UnderstandingAgent
+from backend.app.integrations import dev_a_npc_dialogue_client as dev_a_dialogue_module
 from backend.app.integrations.dev_a_npc_dialogue_client import DevANpcDialogueClient
 from backend.app.main import app
 from backend.app.schemas.game_turn import (
@@ -15,6 +16,7 @@ from backend.app.schemas.game_turn import (
     DevADialogueOutput,
     IncivilityClassification,
     MockAudioInput,
+    NpcContext,
     PrePrototypeRequest,
     UnderstandingOutput,
     UnrealTurnRequest,
@@ -2108,13 +2110,83 @@ def test_orchestrator_forwards_non_advance_action_purpose_and_surface_goal_to_de
     assert builder_payloads
     payload = builder_payloads[0]
     assert payload["branch"]["next_action"] == response.next_action
-    assert payload["dialogue_directive"]["purpose"] in {
-        "support_retry",
-        "provide_hint",
-        "warn_and_control_risk",
-    }
-    assert "do_not_generate_npc_text" not in payload["dialogue_directive"]
-    assert payload["dialogue_seed"]["surface_goal"] == "ask_stay_duration"
+
+
+def test_orchestrator_treats_passport_no_as_submission_refusal_not_hint() -> None:
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": "Officer Hale",
+            "npc_text": "Refusing to present your passport means secondary inspection.",
+            "tone": "formal_warning",
+            "animation": "officer_warning",
+            "feedback_kr": "Passport refusal is serious.",
+            "tts": {"audio_url": "/runtime/audio/edge/passport-refusal.wav"},
+        }
+
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = "req_imm_passport_refusal_0001"
+    turn_payload["session"]["current_node_id"] = "IMM_001_PASSPORT"
+    turn_payload["session"]["turn_index"] = 6
+    turn_payload["npc"]["last_npc_message"] = "Passport, please."
+    turn_payload["game_state"]["current_objective"] = "Submit passport"
+    turn_payload["game_state"]["completed_intents"] = []
+    turn_payload["previous_node_results"] = []
+    turn_payload["scenario_state"]["retry_count"] = 4
+    turn_payload["scenario_state"]["previous_fail_count"] = 4
+    turn_payload["scenario_state"]["suspicion"] = 11
+    turn_payload["client_allowed_next_nodes"] = [
+        "IMM_002_PURPOSE",
+        "IMM_001_RETRY_PASSPORT",
+        "IMM_EXTRA_001_CLARIFY_PASSPORT",
+        "END_SECONDARY_INSPECTION",
+    ]
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://immigration/passport_refusal.wav",
+            transcript="I answered the question. The answer is no.",
+        ),
+    )
+    orchestrator = Orchestrator()
+    orchestrator.understanding_agent = StaticUnderstandingAgent(
+        UnderstandingOutput(
+            intent="submit_passport",
+            intent_success=False,
+            confidence=0.89,
+            meaning_summary_kr="The player explicitly refused to present the passport.",
+            emotion="calm",
+            answer_relevance="on_topic",
+            ambiguity_type="explicit_refusal",
+            risk_delta=2,
+            risk_reason="The player refused a required passport submission.",
+            risk_tags=[],
+            extracted_slots={
+                "passport_submission_status": "available",
+                "refuse_submission": "true",
+            },
+            missing_slots=[],
+            needs_clarification=False,
+        )
+    )
+    orchestrator.dev_a_client = DevANpcDialogueClient(
+        settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+        voice_output_builder=fake_voice_output_builder,
+    )
+
+    response = orchestrator.run_turn(request)
+
+    assert response.next_action == "FAIL_END"
+    assert response.next_node_id == "END_SECONDARY_INSPECTION"
+    assert response.evaluation.verdict == "CRITICAL_FAIL"
+    assert builder_payloads[0]["branch"]["branch_reason"] == "passport_submission_refused"
+    assert builder_payloads[0]["dialogue_directive"]["purpose"] == "warn_and_control_risk"
+    assert builder_payloads[0]["dialogue_seed"]["surface_goal"] == "closing_eviction"
 
 
 def test_dev_a_adapter_reports_speaker_mismatch_diagnostic() -> None:
@@ -2188,6 +2260,32 @@ def test_dev_a_adapter_reports_speaker_mismatch_diagnostic() -> None:
             "expected_npc_id": "BAGGAGE_STAFF",
             "expected_npc_role": "baggage_service_staff",
             "actual_speaker": "Officer Miller",
+        }
+    ]
+
+
+def test_dev_a_adapter_speaker_diagnostic_accepts_baggage_customs_aliases() -> None:
+    baggage_staff = NpcContext(
+        npc_id="BAGGAGE_STAFF",
+        npc_role="baggage_service_staff",
+        last_npc_message="Hi. How can I help you?",
+    )
+    customs_officer = NpcContext(
+        npc_id="CUSTOMS_OFFICER",
+        npc_role="customs_officer",
+        last_npc_message="Please step aside for inspection.",
+    )
+
+    assert dev_a_dialogue_module._speaker_mismatch_diagnostics(baggage_staff, "Brielle") == []
+    assert dev_a_dialogue_module._speaker_mismatch_diagnostics(customs_officer, "Officer Dan") == []
+    assert dev_a_dialogue_module._speaker_mismatch_diagnostics(baggage_staff, "Officer Dan") == [
+        {
+            "code": "npc_speaker_mismatch",
+            "severity": "warning",
+            "message": "Developer A returned a speaker that does not match the requested NPC context.",
+            "expected_npc_id": "BAGGAGE_STAFF",
+            "expected_npc_role": "baggage_service_staff",
+            "actual_speaker": "Officer Dan",
         }
     ]
 

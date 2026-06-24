@@ -122,7 +122,7 @@ SURFACE_GOAL_QUESTIONS = {
     "ask_claim_tag_or_ticket": "May I see your baggage claim tag?",
     "confirm_carousel_search": "Let me search the carousel. Can you describe your bag?",
     "redirect_to_customs_hold_area": "Please go to the customs hold area. Understood?",
-    "customs_hold_explanation_before_unlock": "What brings you to the customs hold area?",
+    "customs_hold_explanation_before_unlock": "Please check the contents of the suitcase now.",
     "explain_random_customs_item": "Can you explain what this item is and why it is in your suitcase?",
     "complete_customs_baggage_clearance": "You're cleared now. You may take your suitcase and exit the airport.",
     "complete_baggage_claim_transition": "Chapter complete.",
@@ -145,6 +145,7 @@ def synthesize_fallback_next_question(
     question = SURFACE_GOAL_QUESTIONS.get(surface_goal)
     if not question:
         return fallback_text
+    _ = open_hooks
     
     # 의미적 중복 점검 (예: "What is your job"이 있으면 "What is your occupation" 합성 생략)
     fallback_lower = fallback_text.lower()
@@ -160,15 +161,7 @@ def synthesize_fallback_next_question(
     if not stripped.endswith((".", "!", "?")):
         stripped += "."
         
-    # open_hooks 가 있고 영어 1단어 이상일 때 hook prefix 합성
-    prefix = ""
-    if open_hooks and len(open_hooks) > 0:
-        first_hook = open_hooks[0]
-        # ASCII 영문 및 단어 형태 검증
-        if first_hook.isascii() and first_hook.isalpha():
-            prefix = f"You mentioned {first_hook} — "
-            
-    return f"{stripped} {prefix}{question}"
+    return f"{stripped} {question}"
 
 
 RETRY_PARAPHRASES = {
@@ -246,7 +239,12 @@ RETRY_PARAPHRASES = {
         "Have you ever been denied entry?",
         "Have you been refused entry to the United States?",
         "Is there any history of denied entry?",
-    ]
+    ],
+    "customs_hold_explanation_before_unlock": [
+        "Please check the contents of the suitcase now.",
+        "I need you to check what is inside the suitcase.",
+        "Open the suitcase and check the contents, please.",
+    ],
 }
 
 

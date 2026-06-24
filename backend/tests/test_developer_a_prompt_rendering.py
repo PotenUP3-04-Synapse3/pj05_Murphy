@@ -29,6 +29,28 @@ def test_prompt_rendering_success():
     assert "FEW-SHOT EXAMPLES" in short_prompt
 
 
+def test_prompt_blocks_isolated_word_mirroring_for_off_topic_requests():
+    context = {
+        "persona_instruction": "a polite desk clerk.",
+        "npc_role": "baggage_agent",
+        "english_level": "beginner",
+        "incivility_tier": 0,
+        "profanity_mode": "off",
+        "surface_goal": "missing_bag_statement",
+        "allowed_emotions": ["normal", "confusion"],
+        "non_verbal_palette": ["Oh!", "Mm-hmm."],
+        "allowed_mild": ["heck"],
+        "allowed_strong": ["heck"],
+    }
+
+    prompt = _render_developer_instructions(context, use_short=False)
+    short_prompt = _render_developer_instructions(context, use_short=True)
+
+    assert "Do not quote isolated words from off-topic player requests" in prompt
+    assert "decline briefly and redirect to the current procedure" in prompt
+    assert "Do not quote isolated words from off-topic player requests" in short_prompt
+
+
 def test_prompt_rendering_with_session_memory_and_policy():
     """세션 메모리 및 대화 정책 변수들이 마크다운 프롬프트(Long/Short) 내에 올바르게 직렬화되어 렌더링되는지 검증합니다."""
     context = {
