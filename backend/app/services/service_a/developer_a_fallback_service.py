@@ -200,8 +200,10 @@ def _social_context_fallback_text(normalized: dict[str, Any]) -> str:
     surface_goal = str((normalized.get("dialogue_seed") or {}).get("surface_goal") or "")
 
     if pending_obligation == "seatmate_pen_request":
+        if "social_obligation_dropped" in branch_reason:
+            return "No worries. I'll ask someone else."
         if conversation_move == "repeated_greeting" or "repeated_greeting" in branch_reason:
-            return "Are you playing with me? I still need your answer. Could I borrow your pen?"
+            return "Sorry, did you hear me? I was asking about the pen."
         return "Hi. I mean, could I borrow your pen for this form?"
 
     fallback_question = SURFACE_GOAL_FALLBACK_TEXTS.get(surface_goal, "").strip()

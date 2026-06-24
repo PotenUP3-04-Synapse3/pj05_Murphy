@@ -430,6 +430,8 @@ def _ignores_open_smalltalk_social_obligation(
         return False
     if str(social_context.get("obligation_status") or "") not in {"open", "ignored", "unclear"}:
         return False
+    if "social_obligation_dropped" in str(normalized.get("branch_reason") or ""):
+        return False
 
     combined = _normalize_for_echo_match(f"{npc_text} {tts_text}")
     request_repair_markers = (
@@ -708,6 +710,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "social_obligation_status": (normalized.get("social_context") or {}).get("obligation_status", ""),
             "social_pending_obligation": (normalized.get("social_context") or {}).get("pending_social_obligation", ""),
             "social_recommended_npc_move": (normalized.get("social_context") or {}).get("recommended_npc_move", ""),
+            "branch_reason": normalized.get("branch_reason", ""),
             
             # 정책 관련 변수들
             "policy_action": policy.action,

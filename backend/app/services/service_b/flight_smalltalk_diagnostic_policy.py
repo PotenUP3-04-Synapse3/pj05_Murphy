@@ -373,6 +373,21 @@ def _social_repair_decision(
         return None
 
     greeting_streak = _greeting_streak(payload, flight_records)
+    if greeting_streak >= 3:
+        return ScenarioDecision(
+            verdict="SUCCESS",
+            branch_type="success",
+            next_action="ADVANCE",
+            next_node_id=SCENE_ID,
+            branch_reason="flight_smalltalk_social_obligation_dropped",
+            patience_delta=0,
+            suspicion_delta=0,
+            retry_count_delta=0,
+            hint_count_delta=0,
+            selected_probe=None,
+            cumulative_confidence=0.1,
+        )
+
     branch_reason = (
         "flight_smalltalk_repeated_greeting_social_repair"
         if greeting_streak >= 2

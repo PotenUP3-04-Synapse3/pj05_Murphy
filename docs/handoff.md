@@ -1,5 +1,77 @@
 # Handoff
 
+## 2026-06-24 Developer A, B, C: Soft Social Obligation Drop for Flight Greeting Loops
+
+Developer C implemented this as a user-approved one-time cross-owner change
+across Developer A, B, and C surfaces. This follows the earlier
+`SocialContextCard` work, but fixes the over-correction where Arabella treated
+the pen request like a hard mission gate and repeated "Are you playing with
+me?" on every `Hello?`.
+
+Changed files:
+
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`:
+  Keeps the first seatmate pen repair as `REASK`, but if repeated greeting-only
+  turns reach a short loop, treats the pen request as a soft social obligation
+  that can be dropped. The new branch reason is
+  `flight_smalltalk_social_obligation_dropped`, with `ADVANCE` instead of an
+  endless `REASK`.
+- `backend/app/services/service_a/developer_a_fallback_service.py`:
+  Changed repeated greeting fallback from the accusatory "Are you playing with
+  me?" loop to a softer hearing-check line, and added a drop fallback:
+  `No worries. I'll ask someone else.`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`:
+  Forwards `branch_reason` into the A LLM prompt payload and lets the
+  coherence guard accept the social-obligation-dropped branch instead of
+  forcing another pen repair.
+- `backend/app/prompts/npc_dialogue_prompt.md` and
+  `backend/app/prompts/npc_dialogue_prompt.short.md`:
+  Clarified that unresolved soft obligations should be resolved only until B
+  marks them dropped; after that the LLM should stop asking for the same favor
+  and use a human-like give-up, space-giving, or light pivot.
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`:
+  Added regression coverage that repeated greeting-only turns drop the soft pen
+  request instead of staying `UNCLEAR/REASK` forever.
+- `backend/tests/test_developer_a_npc_dialogue.py`:
+  Added A fallback coverage that the dropped branch does not ask for the pen or
+  borrow again.
+- `backend/tests/test_preprototype_flow.py`:
+  Added integrated C flow coverage for three repeated greetings:
+  `social_obligation_open` -> `repeated_greeting_social_repair` ->
+  `social_obligation_dropped`.
+- `docs/contracts/developer_c_schema_contract.md`:
+  Documented that `social_context` is soft progression evidence, and that B may
+  advance with `flight_smalltalk_social_obligation_dropped` so A can stop
+  re-asking the same favor.
+- `.gitignore`:
+  Ignored pytest temp/cache directories under `.tmp/` because Windows refused
+  to delete a generated pytest basetemp during verification, leaving otherwise
+  irrelevant untracked files.
+- `pyproject.toml`:
+  Added `.tmp` to pytest `norecursedirs` so root-level `uv run pytest` does not
+  try to collect local scratch directories or locked pytest basetemp folders.
+
+Verification:
+
+- RED confirmed:
+  `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_drops_soft_pen_request -q --basetemp=.tmp\pytest -o cache_dir=.tmp\pytest-cache`
+  failed with `AssertionError: assert 'UNCLEAR' == 'SUCCESS'`.
+- RED confirmed:
+  `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen -q --basetemp=.tmp\pytest -o cache_dir=.tmp\pytest-cache`
+  failed with `AssertionError: assert 'pen' not in ...`.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_drops_soft_pen_request backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 2 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_greeting_only_keeps_social_obligation_open backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_drops_soft_pen_request backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_social_context_open_falls_back_to_repair_request backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen backend/tests/test_understanding_agent.py::test_understanding_agent_flight_hello_marks_open_social_obligation -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 5 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/test_preprototype_flow.py::test_orchestrator_drops_soft_pen_request_after_repeated_greetings -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 1 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run ruff check .`:
+  PASS, all checks passed.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run mypy .`:
+  PASS, no issues found in 139 source files.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 404 passed, 1 warning (`audioop` deprecation).
+
 ## 2026-06-24 Developer A, B, C: Social Context Card for Flight Greeting Loops
 
 Developer C implemented this as a user-approved one-time cross-owner change

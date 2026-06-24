@@ -576,6 +576,11 @@ Runtime modes:
   recommended repair moves. Developer C does not turn it into a branch or NPC
   line; Developer B may use it as soft progression evidence and Developer A may
   use it as dialogue context.
+- A social obligation may be soft rather than mission-blocking. For Flight
+  seatmate smalltalk, Developer B may advance with
+  `branch_reason="flight_smalltalk_social_obligation_dropped"` after repeated
+  non-answers so Developer A can stop re-asking the same favor and produce a
+  human-like give-up, space-giving, or light pivot line.
 - Alpha 2 uses a generic slot evidence contract. The LLM may propose slot
   evidence for `node_context.required_slots`, `node_context.optional_slots`, and
   `node_context.critical_slots`. Developer C filters that evidence to allowed
