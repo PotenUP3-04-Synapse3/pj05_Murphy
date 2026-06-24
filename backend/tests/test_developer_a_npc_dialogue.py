@@ -549,29 +549,6 @@ def test_flight_b_curious_seatmate_fallback_dialogue() -> None:
     assert "Are you traveling alone or with someone?" in result["npc_text"]
 
 
-def test_flight_c_help_seatmate_fallback_dialogue() -> None:
-    # Flight C의 4번째 노드(repair_hotel_hostel_confusion) 폴백 검증
-    result = generate_npc_dialogue_from_level_design(
-        {
-            "npc": {"npc_id": "SEATMATE_C_01", "npc_role": "seatmate"},
-            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
-            "player_text": "I stay hotel.",
-            "node_context": {
-                "recommended_expression": "I will stay at a hotel.",
-            },
-            "evaluation_summary": {"task_success": True, "clarity": 1.0},
-            "level_hint": {"english_level": "beginner"},
-            "in_game_feedback": {"npc_recast_line_candidate": None},
-            "branch": {"branch_type": "success"},
-            "dialogue_seed": {
-                "surface_goal": "repair_hotel_hostel_confusion"
-            }
-        },
-        use_llm=False,
-    )
-    assert result["speaker"] == "Emily"
-    assert "Is it a hotel or a hostel? You should write the exact name." in result["npc_text"]
-
 
 def test_baggage_service_desk_fallback_dialogue() -> None:
     # Baggage 1번째 노드(report_missing_bag_at_service_desk) 폴백 검증

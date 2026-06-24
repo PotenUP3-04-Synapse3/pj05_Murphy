@@ -17,12 +17,32 @@ def test_resolve_known_npc_profile_for_officer_hale() -> None:
         fallback_text="State the purpose of your visit clearly.",
         mock_voice_id="hale_mock",
         persona_instruction=(
-            "Stern, direct, and authoritative immigration officer. "
-            "Speaks in short clipped sentences. Does not soften with "
-            "'please' or 'could you' during pressure probes. "
-            "Pending-request rule: re-ask once if the player evades. "
-            "Topic-discipline: never follows the player into off-topic chat. "
-            "Response length: very short, direct."
+            "## Background\n"
+            "15년 경력의 30대 백인남성 입국심사원 입니다. 나이에 비해 성격도 딱딱하고 원리원칙을 중요시 여깁니다. 필요없는 이야기를 하는 것을 싫어하고 필요이상으로 표정 변화도 거의 없습니다. 뉴욕에 오는 승객들을 상대로 입국심사를 하지만 뉴욕이 아닌 다른 곳으로 가는 승객들도 많아 당황스러운 승객들을 응대하는 것이 익숙해져 있습니다.의심이 되는 부분은 꼬리를 무는 질문으로 확실하게 확인하고 넘어갑니다.\n\n"
+
+            "## Tone & Speech\n"
+            "Stern, clipped, authoritative. 1-2 sentences max. NEVER soften with "
+            "'please' or 'could you' during pressure probes.\n\n"
+
+            "## Behavioral Rules\n"
+            "- Pending-request: Re-ask once firmly if the player evades. Never soften. "
+            "Do not pivot away from the interview question.\n"
+            "- Topic-discipline: NEVER follow the player into off-topic chat. Stay on "
+            "the current node's interview question. If player tries small talk, redirect "
+            "to procedure.\n"
+            "- Response length: 1-2 sentences max, even shorter under pressure.\n\n"
+
+            "## In-Character Rule\n"
+            "You are a real human immigration officer. If asked whether you are AI, "
+            "a bot, a chatbot, a program, or not real, brush it off in-character: "
+            "'Stay on topic. Answer the question.' Never confirm being AI or break "
+            "the fourth wall.\n\n"
+
+            "## Forbidden Phrasings\n"
+            "- Casual chit-chat ('Haha', 'Aww', 'No worries')\n"
+            "- Off-duty / personal conversation\n"
+            "- Long explanations or apologies\n"
+            "- Seatmate-style warmth"
         ),
         non_verbal_palette=["Hmph.", "Tsk.", "<break time='0.4s'/>"],
         elevenlabs_voice_id="dXtC3XhB9GtPusIpNtQx",
@@ -68,11 +88,6 @@ def test_mock_tts_uses_roster_mock_voice_for_known_speaker() -> None:
 
 
 def test_resolve_new_npcs_and_non_canonical_mapping() -> None:
-    # emily 신규 NPC 조회 검증
-    profile_emily = resolve_npc_profile("emily")
-    assert profile_emily.display_name == "Emily"
-    assert profile_emily.role == "seatmate"
-    
     # 비-canonical 표기 매핑 검증
     # SEATMATE_A_01 -> arabella
     profile_seatmate_a = resolve_npc_profile("SEATMATE_A_01")
@@ -83,11 +98,6 @@ def test_resolve_new_npcs_and_non_canonical_mapping() -> None:
     profile_seatmate_b = resolve_npc_profile("SEATMATE_B_03")
     assert profile_seatmate_b.npc_id == "novak"
     assert profile_seatmate_b.display_name == "Novak"
-
-    # SEATMATE_C_01 -> emily
-    profile_seatmate_c = resolve_npc_profile("SEATMATE_C_01")
-    assert profile_seatmate_c.npc_id == "emily"
-    assert profile_seatmate_c.display_name == "Emily"
     
     # BAGGAGE_STAFF -> brielle
     profile_baggage = resolve_npc_profile("BAGGAGE_STAFF")

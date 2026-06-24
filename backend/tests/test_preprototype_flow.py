@@ -556,7 +556,7 @@ def test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition() -> N
         turn_payload["session"]["scene_id"] = "FLIGHT_SEATMATE_SMALLTALK"
         turn_payload["session"]["current_node_id"] = "FLIGHT_A_001_SEATMATE_SMALLTALK"
         turn_payload["session"]["turn_index"] = 5
-        turn_payload["npc"]["npc_id"] = "SEATMATE_EMILY"
+        turn_payload["npc"]["npc_id"] = "SEATMATE_A_01"
         turn_payload["npc"]["npc_role"] = "seatmate"
         turn_payload["npc"]["last_npc_message"] = (
             "Looks like we're landing soon. Are you ready for immigration?"
@@ -1633,7 +1633,7 @@ def test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_l
             else "Sorry about that. Anyway, where are you headed after JFK?"
         )
         return {
-            "speaker": "Emily",
+            "speaker": "Arabella",
             "npc_text": npc_text,
             "tone": "friendly_neutral",
             "animation": "dialogue_idle",

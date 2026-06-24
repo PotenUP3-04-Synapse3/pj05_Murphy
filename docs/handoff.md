@@ -51,6 +51,19 @@ Verification:
 - `uv run pytest backend/tests/dev_b/test_final_result_score_policy.py backend/tests/test_final_result_payload.py`: PASS.
 - `uv run pytest`: PASS (all 399 tests pass successfully).
 - `uv run ruff check .` and `uv run mypy .`: PASS.
+## 2026-06-24 Developer A: NPC 페르소나 5섹션 재정렬 (옵션 C)
+- 6개 NPC(Arabella, Novak, Hale, Harris, Dan, Brielle)의 persona_instruction을 Background / Tone & Speech / Behavioral Rules / In-Character Rule / Forbidden Phrasings 5섹션 형식으로 재작성.
+- 공통 vs 페르소나 분리 가이드라인을 npc_roster_service.py 모듈 docstring에 명시.
+- Pen Loop Fix 이후 NPC가 immigration-style 질문으로 점프하거나 AI 자백하는 결함을 페르소나 측에서 잡기 위한 1차 조치.
+- 코드 구조 변경 없음 (persona_instruction 문자열만 확장).
+- 평가 하네스에 in_character / domain_consistency 시나리오 추가.
+- 1~2주 운영 후 NPCProfile 필드 분리(옵션 A)로 정식 리팩토링 검토.
+- Emily NPC를 모든 영역(roster, palette, voice_profile, few-shot, 테스트, C 라우팅 풀, eval_harness 시나리오)에서 완전 제거.
+
+## 2026-06-24 Developer A: TTS 발화 속도 통일 (env override)
+- .env에 MURPHY_ELEVENLABS_SPEED=0.82 추가하여 모든 NPC 발화 속도 통일.
+- 코드 변경 없음. voice_output_service.py:459의 기존 _env_float 경로 활용.
+- 영구 적용 시 EMOTION_TTS_PARAMETERS 하향(옵션 B) 또는 프롬프트 가이드(옵션 C)로 전환 예정.
 
 ## 2026-06-21 Developer C, A: Immigration Prompt Alignment and Slot Repair Fix
 
