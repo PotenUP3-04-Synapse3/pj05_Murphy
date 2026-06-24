@@ -1605,9 +1605,10 @@ def test_dev_a_adapter_allows_flight_rude_refusal_to_continue_smalltalk(
     assert response.npc.text == "Oh, okay. I can get my own one. By the way, are you traveling for work or fun?"
 
 
-def test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop(
+def test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop_legacy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("MURPHY_C_LEGACY_HISTORY", "1")
     monkeypatch.setattr(random, "random", lambda: 0.9)
     monkeypatch.setattr(random, "choices", lambda pop, weights=None, cum_weights=None, k=1: [pop[0]])
 
@@ -1689,6 +1690,159 @@ def test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_l
         "Thanks, that's kind. Do you have a spare pen too?"
     )
     assert "pen" not in second_response.npc.text.lower()
+
+
+def test_orchestrator_prevents_pen_loop_in_default_memory_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.app.agents.agent_a.npc_dialogue_agent import reset_graph_singleton_for_testing
+    reset_graph_singleton_for_testing()
+
+    monkeypatch.setattr(random, "random", lambda: 0.9)
+    monkeypatch.setattr(random, "choices", lambda pop, weights=None, cum_weights=None, k=1: [pop[0]])
+
+    session_id = "session_alpha_flight_pen_loop_memory_0001"
+    dev_b_runtime_dir = Path("backend/runtime/openkb/dev_b")
+    dev_b_jsonl_path = dev_b_runtime_dir / f"{session_id}.jsonl"
+    _remove_openkb_session_records(dev_b_runtime_dir, dev_b_jsonl_path)
+
+    class PenLoopLLMClient:
+        model = "fake-model"
+        def __init__(self):
+            self.call_count = 0
+
+        def generate(self, payload: dict) -> dict:
+            self.call_count += 1
+            text = "Thanks. Could I borrow your pen for this form?" if self.call_count == 1 else "Sorry about that. Could I borrow your pen for this form?"
+            return {
+                "speaker": "Arabella",
+                "npc_text": text,
+                "tts_text": text,
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "joy",
+                "stability": 0.75,
+                "style": 0.45,
+                "speed": 1.0,
+                "similarity_boost": 0.85,
+                "llm_reason": "[COHERENT] Pen request.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    try:
+        orchestrator = Orchestrator()
+        orchestrator.dev_a_client = DevANpcDialogueClient(
+            settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+            use_llm_dialogue=True,
+        )
+        monkeypatch.setattr(
+            "backend.app.agents.agent_a.npc_dialogue_agent.build_npc_dialogue_llm_client_from_environment",
+            lambda: PenLoopLLMClient()
+        )
+
+        first_request = _chapter_boundary_request(
+            request_id="req_alpha_flight_pen_loop_memory_0001",
+            session_id=session_id,
+            chapter_id="CH0_01_FLIGHT_SMALLTALK",
+            current_node_id="FLIGHT_A_001_SEATMATE_SMALLTALK",
+            npc_id="SEATMATE_A_01",
+            npc_role="seatmate",
+            last_npc_message="Could I borrow your pen for this arrival form?",
+            transcript="Hi. Sure, here you go. You can have that.",
+            allowed_next_nodes=["FLIGHT_A_001_SEATMATE_SMALLTALK", "FLIGHT_999_COMPLETE"],
+        )
+        first_request.turn.session.turn_index = 1
+        first_response = orchestrator.run_turn(first_request)
+        assert "borrow your pen" in first_response.npc.text.lower()
+
+        second_request = _chapter_boundary_request(
+            request_id="req_alpha_flight_pen_loop_memory_0002",
+            session_id=session_id,
+            chapter_id="CH0_01_FLIGHT_SMALLTALK",
+            current_node_id="FLIGHT_A_001_SEATMATE_SMALLTALK",
+            npc_id="SEATMATE_A_01",
+            npc_role="seatmate",
+            last_npc_message=first_response.npc.text,
+            transcript="Why do you keep asking me about my pen? I already gave it to you.",
+            allowed_next_nodes=["FLIGHT_A_001_SEATMATE_SMALLTALK", "FLIGHT_999_COMPLETE"],
+        )
+        second_request.turn.session.turn_index = 2
+        second_response = orchestrator.run_turn(second_request)
+    finally:
+        _remove_openkb_session_records(dev_b_runtime_dir, dev_b_jsonl_path)
+
+    assert second_response.next_action == "ADVANCE"
+    assert "pen" not in second_response.npc.text.lower()
+
+
+def test_dialogue_history_is_empty_in_default_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Ensure legacy history env variable is unset so that we run in default mode
+    monkeypatch.delenv("MURPHY_C_LEGACY_HISTORY", raising=False)
+
+    session_id = "session_alpha_flight_empty_history_0001"
+    dev_b_runtime_dir = Path("backend/runtime/openkb/dev_b")
+    dev_b_jsonl_path = dev_b_runtime_dir / f"{session_id}.jsonl"
+    _remove_openkb_session_records(dev_b_runtime_dir, dev_b_jsonl_path)
+
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": "Emily",
+            "npc_text": "Nice to meet you.",
+            "tone": "friendly_neutral",
+            "animation": "dialogue_idle",
+            "feedback_kr": "Keep the conversation going.",
+            "tts": {"audio_url": "/runtime/audio/edge/test.wav"},
+        }
+
+    try:
+        orchestrator = Orchestrator()
+        orchestrator.dev_a_client = DevANpcDialogueClient(
+            settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+            voice_output_builder=fake_voice_output_builder,
+        )
+
+        first_request = _chapter_boundary_request(
+            request_id="req_alpha_flight_empty_history_0001",
+            session_id=session_id,
+            chapter_id="CH0_01_FLIGHT_SMALLTALK",
+            current_node_id="FLIGHT_A_001_SEATMATE_SMALLTALK",
+            npc_id="SEATMATE_A_01",
+            npc_role="seatmate",
+            last_npc_message="Could I borrow your pen for this arrival form?",
+            transcript="Hi. Sure, here you go.",
+            allowed_next_nodes=["FLIGHT_A_001_SEATMATE_SMALLTALK", "FLIGHT_999_COMPLETE"],
+        )
+        first_request.turn.session.turn_index = 1
+        orchestrator.run_turn(first_request)
+
+        second_request = _chapter_boundary_request(
+            request_id="req_alpha_flight_empty_history_0002",
+            session_id=session_id,
+            chapter_id="CH0_01_FLIGHT_SMALLTALK",
+            current_node_id="FLIGHT_A_001_SEATMATE_SMALLTALK",
+            npc_id="SEATMATE_A_01",
+            npc_role="seatmate",
+            last_npc_message="Nice to meet you.",
+            transcript="Nice to meet you too.",
+            allowed_next_nodes=["FLIGHT_A_001_SEATMATE_SMALLTALK", "FLIGHT_999_COMPLETE"],
+        )
+        second_request.turn.session.turn_index = 2
+        orchestrator.run_turn(second_request)
+    finally:
+        _remove_openkb_session_records(dev_b_runtime_dir, dev_b_jsonl_path)
+
+    assert len(builder_payloads) == 2
+    second_payload = builder_payloads[1]
+    assert second_payload["dialogue_seed"]["dialogue_history"] == []
 
 
 def test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata() -> None:

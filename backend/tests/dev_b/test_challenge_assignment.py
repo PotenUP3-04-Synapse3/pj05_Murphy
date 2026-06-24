@@ -28,19 +28,15 @@ from backend.app.schemas.game_turn import RandomCustomsItemContext
 def test_pick_location_respects_tsl_range() -> None:
     """Verify that picking locations for each TSL maps to appropriate difficulties.
 
-    Since difficulty 3 has no locations in the LOCATIONS table, TSL_1 (range 1-3)
-    must fall back to difficulties 1 or 2.
+    The LOCATIONS table now covers every difficulty 1-12 with two entries each,
+    so each TSL must always pick a location strictly within its range.
     """
     for tsl, (min_diff, max_diff) in TSL_TO_DIFFICULTY_RANGE.items():
         # Run multiple times to cover random choices
         for _ in range(30):
             loc = pick_location(tsl)
             assert isinstance(loc, LocationEntry)
-            if tsl == "TSL_1_SURVIVAL":
-                # Difficulty 3 has no items, so should fall back to 1 or 2
-                assert loc.difficulty in (1, 2)
-            else:
-                assert min_diff <= loc.difficulty <= max_diff
+            assert min_diff <= loc.difficulty <= max_diff
 
 
 def test_pick_customs_item_respects_tsl_range() -> None:
@@ -112,14 +108,9 @@ def test_table_covers_all_tiers() -> None:
         locs_pool = [loc for loc in LOCATIONS if TSL_TO_DIFFICULTY_RANGE[tsl][0] <= loc.difficulty <= TSL_TO_DIFFICULTY_RANGE[tsl][1]]
         items_pool = [item for item in CUSTOMS_ITEMS if TSL_TO_DIFFICULTY_RANGE[tsl][0] <= item.difficulty <= TSL_TO_DIFFICULTY_RANGE[tsl][1]]
 
-        # Locations pool has entries for all tiers except TSL_1 (difficulty 3 is empty, but 1 and 2 exist)
-        if tsl == "TSL_1_SURVIVAL":
-            # Must have at least some entries within range or adjacent fallback must succeed
-            assert len(locs_pool) == 2  # LOCATIONS has diff 1 and diff 2 entries
-        else:
-            assert len(locs_pool) >= 1
-
-        assert len(items_pool) >= 1
+        # Each TSL spans 3 difficulties with two entries each = 6 per tier.
+        assert len(locs_pool) == 6
+        assert len(items_pool) == 6
 
 
 def test_to_context_helper_maps_fields() -> None:
@@ -130,7 +121,7 @@ def test_to_context_helper_maps_fields() -> None:
         name_ko="테스트 아이템",
         item_category="electronics",
         difficulty=5,
-        suspicion_reason="This looks like a test payload."
+        suspicion_reason="This looks like a test payload.",
     )
     context = to_random_customs_item_context(entry)
     assert isinstance(context, RandomCustomsItemContext)

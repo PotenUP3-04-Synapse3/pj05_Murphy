@@ -41,6 +41,17 @@ FinalRank: TypeAlias = Literal[
     "Comic Fail",
     "Unranked",
 ]
+FinalTier: TypeAlias = Literal["Gold", "Silver", "Bronze", "Iron"]
+# rank(UI 표시 문구) -> tier(게임 로직용 4단계) 매핑.
+# 합격 3단계만 Gold/Silver/Bronze로 두고, 비합격(반려/코믹실패/무순위)은 전부 Iron으로 모읍니다.
+_RANK_TO_TIER: dict[str, FinalTier] = {
+    "Gold Pass": "Gold",
+    "Silver Pass": "Silver",
+    "Bronze Pass": "Bronze",
+    "Secondary Review": "Iron",
+    "Comic Fail": "Iron",
+    "Unranked": "Iron",
+}
 
 
 class OpenKBFinalResultRecordReader:
@@ -122,9 +133,11 @@ class FinalResultScorePolicy:
         if focus_targets:
             reason_tags.append("focus_on_form_recorded")
 
+        rank = self._rank(recommendation, final_score)
         return FinalResult(
             final_recommendation=recommendation,
-            rank=self._rank(recommendation, final_score),
+            rank=rank,
+            tier=_RANK_TO_TIER[rank],
             final_score_100=final_score,
             reason_tags=_unique(reason_tags),
             quantitative_scores=quantitative_scores,
@@ -199,7 +212,7 @@ class FinalResultScorePolicy:
             vocabulary_range=averages["vocabulary_range"],
             clarity=averages["clarity"],
             interaction_problem_solving=averages["interaction_problem_solving"],
-            scoring_policy="simple_average",
+            scoring_policy="scene_normalized_dimension_average",
         )
 
     def _scene_key(self, record: dict[str, Any]) -> str:
@@ -408,6 +421,7 @@ class FinalResultScorePolicy:
         return FinalResult(
             final_recommendation="UNRANKED",
             rank="Unranked",
+            tier="Iron",
             final_score_100=0,
             reason_tags=["no_scored_rubric_records"],
             quantitative_scores=QuantitativeScores(
@@ -418,7 +432,7 @@ class FinalResultScorePolicy:
                 vocabulary_range=0,
                 clarity=0,
                 interaction_problem_solving=0,
-                scoring_policy="simple_average",
+                scoring_policy="scene_normalized_dimension_average",
             ),
             report_summary=FinalReportSummary(
                 overall="No scored rubric records were available for the final report.",

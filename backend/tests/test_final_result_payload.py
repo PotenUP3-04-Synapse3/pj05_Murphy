@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -115,6 +116,7 @@ def _final_result(score: int = 87) -> dict[str, Any]:
     return {
         "final_recommendation": "PASS",
         "rank": "Silver Pass",
+        "tier": "Silver",
         "final_score_100": score,
         "reason_tags": ["score_at_least_80"],
         "quantitative_scores": {
@@ -125,7 +127,7 @@ def _final_result(score: int = 87) -> dict[str, Any]:
             "vocabulary_range": 90,
             "clarity": 90,
             "interaction_problem_solving": 90,
-            "scoring_policy": "simple_average",
+            "scoring_policy": "scene_normalized_dimension_average",
         },
         "report_summary": {
             "overall": "You passed the immigration check.",
@@ -367,3 +369,71 @@ def test_result_endpoint_returns_unreal_result_payload(monkeypatch: pytest.Monke
     assert body["final_result"]["final_score_100"] == 87
     assert body["out_game_feedback"]["report_mode"] == "focus_on_form"
     assert body["out_game_feedback"]["focus_on_form_items"][0]["focus_on_form_target"] == "purpose_statement"
+
+
+def test_result_endpoint_returns_bad_end_comic_fail_from_real_records(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+    from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader
+    from backend.app.services.service_b.focus_on_form_report_policy import FocusOnFormReportPolicy
+    from backend.app.integrations.dev_b_level_hint_client import DevBPolicyClient
+    
+    session_id = "session_test_bad_end_comic_fail"
+    openkb_dir = tmp_path / "dev_b"
+    openkb_dir.mkdir(parents=True, exist_ok=True)
+    jsonl_path = openkb_dir / f"{session_id}.jsonl"
+    
+    # Write a record that simulates verbal abuse (bad end trigger)
+    record = {
+        "node_id": "IMM_002_PURPOSE",
+        "evaluation": {
+            "verdict": "CRITICAL_FAIL",
+            "feedback_tags": ["verbal_abuse"],
+        },
+        "rubric_scores": {
+            "comprehension": 0,
+            "fluency": 0,
+            "grammar_accuracy": 0,
+            "vocabulary_range": 0,
+            "clarity": 0,
+            "interaction_problem_solving": 0,
+            "total": 0,
+        },
+        "state_delta": {
+            "patience_delta": -10,
+            "suspicion_delta": 30,
+            "retry_count_delta": 0,
+            "hint_count_delta": 0,
+        },
+        "report_item": {
+            "summary": "Verbal abuse detected.",
+            "improvement": "Do not use offensive language.",
+            "example_answer": "Hello, officer.",
+            "score_tags": ["politeness_poor"],
+        },
+    }
+    
+    jsonl_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    
+    # Monkeypatch the endpoint client to use our temporary directory
+    def patched_dev_b_client(*args, **kwargs):
+        return DevBPolicyClient(
+            final_record_reader=OpenKBFinalResultRecordReader(runtime_root=openkb_dir),
+            focus_on_form_report_policy=FocusOnFormReportPolicy(runtime_root=openkb_dir)
+        )
+        
+    monkeypatch.setattr(ai_respond, "DevBPolicyClient", patched_dev_b_client)
+    
+    client = TestClient(app)
+    response = client.get(f"/api/game/ai/result/{session_id}")
+    
+    assert response.status_code == 200
+    body = response.json()
+    assert body["contract_version"] == "dev_c_unreal_result.v1"
+    assert body["session_id"] == session_id
+    
+    # Verify that the final result is calculated as Comic Fail due to verbal abuse
+    final_res = body["final_result"]
+    assert final_res["final_recommendation"] == "COMIC_FAIL"
+    assert final_res["rank"] == "Comic Fail"
+    assert final_res["tier"] == "Iron"
+    assert "verbal_abuse" in final_res["reason_tags"]
