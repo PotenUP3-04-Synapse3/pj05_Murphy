@@ -890,6 +890,54 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     if not _is_safe_english_dialogue_text(npc_text) or not _is_safe_english_dialogue_text(tts_text):
         return {"error": "invalid_llm_dialogue_language"}
 
+    # [신규 가드] duplicate_intent_question
+    # 한 응답에 같은 의도의 질문이 두 번 나오면 차단
+    # 문장 끝의 구두점을 유지하면서 문장을 분할합니다.
+    sentences_for_dup = [s.strip() for s in re.split(r'(?<=[.!?])\s+', npc_text) if s.strip()]
+    # 질문 의도 키워드 그룹
+    INTENT_KEYWORDS_GROUPS = [
+        {"purpose", "visit", "brings you"},
+        {"how long", "stay", "duration", "days"},
+        {"where", "stay", "staying", "address"},
+        {"return ticket", "ticket"},
+        {"job", "occupation", "do you do", "work"},
+        {"first visit", "first time"},
+    ]
+    question_sentences = [s for s in sentences_for_dup if "?" in s or any(
+        s.lower().startswith(w) for w in ("what", "where", "how", "do you",
+                                           "could you", "may i", "is this", "are you")
+    )]
+    if len(question_sentences) >= 2:
+        for group in INTENT_KEYWORDS_GROUPS:
+            hit_count = sum(1 for sent in question_sentences
+                            if any(kw in sent.lower() for kw in group))
+            if hit_count >= 2:
+                logger.error(
+                    "Duplicate intent question detected: %r", npc_text[:120]
+                )
+                return {"error": "duplicate_intent_question"}
+
+    # [신규 가드] clearance_failure_contradiction
+    # success closing과 fail closing이 한 응답에 동시 출현하면 차단
+    SUCCESS_CLOSING_MARKERS = (
+        "enjoy your stay", "enjoy your trip", "go to baggage claim",
+        "you are good to go", "you're good to go", "all set", "have a nice day",
+        "all cleared", "you may proceed",
+    )
+    FAILURE_CLOSING_MARKERS = (
+        "cannot complete", "secondary inspection", "interview is over",
+        "denied", "must wait", "cannot proceed", "this is over",
+    )
+    npc_lower = npc_text.lower()
+    has_success = any(m in npc_lower for m in SUCCESS_CLOSING_MARKERS)
+    has_failure = any(m in npc_lower for m in FAILURE_CLOSING_MARKERS)
+    if has_success and has_failure:
+        logger.error(
+            "Clearance/failure contradiction detected: %r", npc_text[:160]
+        )
+        return {"error": "clearance_failure_contradiction"}
+
+
     # 추천 표현(Recommended Expression)이 NPC 대사/TTS에 그대로 에코되는지 검사합니다.
     # 대소문자/구두점/공백/SSML 차이를 무시하고 npc_text와 tts_text를 함께 검사합니다.
     rec_exp = normalized.get("recommended_expression", "").strip()

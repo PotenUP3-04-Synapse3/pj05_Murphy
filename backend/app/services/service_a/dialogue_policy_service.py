@@ -146,8 +146,15 @@ def synthesize_fallback_next_question(
     if not question:
         return fallback_text
     
-    if question in fallback_text:
-        return fallback_text
+    # 의미적 중복 점검 (예: "What is your job"이 있으면 "What is your occupation" 합성 생략)
+    fallback_lower = fallback_text.lower()
+    intent_options = RETRY_PARAPHRASES.get(surface_goal, [])
+    all_intent_phrases = {question.lower()} | {opt.lower() for opt in intent_options}
+    for phrase in all_intent_phrases:
+        clean_phrase = phrase.replace("?", "").replace(".", "").replace("!", "").strip()
+        clean_fallback = fallback_lower.replace("?", "").replace(".", "").replace("!", "").strip()
+        if clean_phrase in clean_fallback:
+            return fallback_text
         
     stripped = fallback_text.strip()
     if not stripped.endswith((".", "!", "?")):

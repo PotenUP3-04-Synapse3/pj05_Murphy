@@ -1,0 +1,52 @@
+- id: hale_no_duplicate_intent_question
+  npc_id: hale
+  node_id: IMM_002_PURPOSE
+  description: "occupation/job 같은 의도가 한 응답에 두 번 나오면 fail"
+  payload_overrides:
+    branch:
+      branch_type: retry
+  player_inputs:
+    - "What does mean, 'our corporation'?"
+  expected:
+    npc_role_must_not_be_giver: true
+    must_not_include_any:
+      - "job? what is your occupation"
+      - "job. what is your occupation"
+      - "occupation? what is your job"
+      - "occupation. what is your job"
+      - "job what is your occupation"
+      - "occupation what is your job"
+
+- id: hale_no_clearance_failure_contradiction
+  npc_id: hale
+  node_id: IMM_007_FINAL_DECISION
+  description: "success closing과 fail message가 함께 나오면 fail"
+  payload_overrides:
+    branch:
+      branch_type: fail
+      next_node_id: END_SECONDARY_INSPECTION
+  player_inputs:
+    - "I don't have a return ticket. It's okay?"
+  expected:
+    npc_role_must_not_be_giver: true
+    must_not_include_any:
+      - "enjoy your stay"
+      - "go to baggage claim"
+      - "all cleared"
+      - "you are good to go"
+      - "you're good to go"
+
+- id: hale_stay_location_hotel_only
+  npc_id: hale
+  node_id: IMM_004_STAY_LOCATION
+  description: "회귀 기준: stay_location 슬롯이 호텔명만으로 인식되어야 (C 영역)"
+  player_inputs:
+    - "Downtown Luxury Hotel."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any:
+      - "how long"
+      - "stay"
+      - "duration"
+      - "days"
+  notes: "이 시나리오는 C 영역 결함 추적용. A 작업만으로는 통과하지 못할 수 있음."
