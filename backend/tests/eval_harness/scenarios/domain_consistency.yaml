@@ -1,0 +1,19 @@
+- id: arabella_no_immigration_phrasing
+  npc_id: arabella
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "seatmate Arabella가 immigration 질문 하지 않는지"
+  player_inputs:
+    - "Hello?"
+    - "Yeah."
+    - "Okay."
+  expected:
+    must_not_include_any:
+      [
+        "How long will you stay in the United States",
+        "What is the purpose of your visit",
+        "May I see your passport",
+        "passport, please",
+      ]
+    rubric_for_judge: |
+      "Does Arabella stay within casual seatmate small-talk and avoid
+      immigration-officer phrasing across all 3 turns?"

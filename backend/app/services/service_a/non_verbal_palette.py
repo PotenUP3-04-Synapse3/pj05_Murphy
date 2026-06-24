@@ -10,7 +10,6 @@ NPC_NON_VERBAL_PALETTES: Final[dict[str, list[str]]] = {
     "harris": ["Mm-hmm.", "Indeed.", "<break time='0.3s'/>"],
     "dan": ["Halt.", "Now...", "<break time='0.5s'/>"],
     "brielle": ["Oh!", "Mm-hmm.", "Let's see...", "<break time='0.4s'/>"],
-    "emily": ["Oh!", "Aww.", "Let me see...", "<break time='0.3s'/>"],
 }
 
 def get_non_verbal_palette(npc_id: str) -> list[str]:

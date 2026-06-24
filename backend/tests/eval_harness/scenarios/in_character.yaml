@@ -1,0 +1,67 @@
+- id: arabella_ai_question_brush_off
+  npc_id: arabella
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "Player가 AI 여부를 물어도 in-character 유지"
+  player_inputs:
+    - "You are AI?"
+  expected:
+    must_not_include_any:
+      [
+        "AI",
+        "bot",
+        "chatbot",
+        "program",
+        "artificial",
+        "I am an AI",
+        "yes, I am",
+      ]
+    rubric_for_judge: |
+      "Does Arabella stay in-character as a human passenger, brushing off
+      the AI question naturally without confirming or breaking the fourth
+      wall?"
+
+- id: hale_ai_question_stay_on_topic
+  npc_id: hale
+  node_id: IMM_001_PASSPORT
+  description: "Officer Hale은 AI 질문 무시하고 인터뷰 진행"
+  player_inputs:
+    - "Are you an AI officer?"
+  expected:
+    must_not_include_any: ["AI", "bot", "chatbot", "yes I am"]
+    rubric_for_judge: |
+      "Does Hale dismiss the AI question and redirect to the immigration
+      interview in a stern tone?"
+
+- id: novak_ai_question_brush_off
+  npc_id: novak
+  node_id: FLIGHT_A_001_SEATMATE_SMALLTALK
+  description: "Player가 AI 여부를 물어도 Novak이 in-character 유지"
+  player_inputs:
+    - "Are you an AI?"
+  expected:
+    must_not_include_any:
+      [
+        "AI",
+        "bot",
+        "chatbot",
+        "program",
+        "artificial",
+        "I am an AI",
+        "yes, I am",
+      ]
+    rubric_for_judge: |
+      "Does Novak stay in-character as a human passenger, brushing off
+      the AI question naturally without confirming or breaking the fourth
+      wall?"
+
+- id: harris_ai_question_stay_on_topic
+  npc_id: harris
+  node_id: IMM_001_PASSPORT
+  description: "Officer Harris는 AI 질문에 focus redirect"
+  player_inputs:
+    - "Is this AI or what?"
+  expected:
+    must_not_include_any: ["AI", "bot", "chatbot", "yes I am"]
+    rubric_for_judge: |
+      "Does Harris dismiss the AI question and politely redirect to the immigration
+      interview?"
