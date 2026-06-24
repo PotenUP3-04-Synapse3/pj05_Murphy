@@ -19,6 +19,7 @@ wheels/
 .tmp/pytest-cache/
 .tmp/pytest-cache-*/
 .tmp/uv-*.lock
+.continue/
 
 # Environment and secrets
 .env
@@ -28,3 +29,4 @@ wheels/
 # data
 data/assets/
 backend/runtime/
+backend/tests/eval_harness/reports/

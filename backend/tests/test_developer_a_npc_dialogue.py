@@ -549,29 +549,6 @@ def test_flight_b_curious_seatmate_fallback_dialogue() -> None:
     assert "Are you traveling alone or with someone?" in result["npc_text"]
 
 
-def test_flight_c_help_seatmate_fallback_dialogue() -> None:
-    # Flight C의 4번째 노드(repair_hotel_hostel_confusion) 폴백 검증
-    result = generate_npc_dialogue_from_level_design(
-        {
-            "npc": {"npc_id": "SEATMATE_C_01", "npc_role": "seatmate"},
-            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
-            "player_text": "I stay hotel.",
-            "node_context": {
-                "recommended_expression": "I will stay at a hotel.",
-            },
-            "evaluation_summary": {"task_success": True, "clarity": 1.0},
-            "level_hint": {"english_level": "beginner"},
-            "in_game_feedback": {"npc_recast_line_candidate": None},
-            "branch": {"branch_type": "success"},
-            "dialogue_seed": {
-                "surface_goal": "repair_hotel_hostel_confusion"
-            }
-        },
-        use_llm=False,
-    )
-    assert result["speaker"] == "Emily"
-    assert "Is it a hotel or a hostel? You should write the exact name." in result["npc_text"]
-
 
 def test_baggage_service_desk_fallback_dialogue() -> None:
     # Baggage 1번째 노드(report_missing_bag_at_service_desk) 폴백 검증
@@ -1371,6 +1348,202 @@ def test_smalltalk_diagnostic_blocks_repeated_pen_request_after_history() -> Non
     assert result["llm"]["used"] is False
     assert result["llm"]["reason"] == "smalltalk_repeated_object_request"
     assert "borrow your pen" not in result["npc_text"].lower()
+
+
+def test_smalltalk_diagnostic_blocks_repeated_pen_request_using_in_memory_checkpointer() -> None:
+    from backend.app.agents.agent_a.npc_dialogue_agent import reset_graph_singleton_for_testing
+
+    reset_graph_singleton_for_testing()
+
+    class PenLoopLLMClient:
+        model = "fake-model"
+
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        def generate(self, payload: dict) -> dict:
+            self.call_count += 1
+            text = (
+                "Thanks. Could I borrow your pen for this form?"
+                if self.call_count == 1
+                else "Sorry about that. Could I borrow your pen for this form?"
+            )
+            return {
+                "speaker": "Arabella",
+                "npc_text": text,
+                "tts_text": text,
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "joy",
+                "stability": 0.75,
+                "style": 0.45,
+                "speed": 1.0,
+                "similarity_boost": 0.85,
+                "llm_reason": "[COHERENT] Pen request.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    llm_client = PenLoopLLMClient()
+    session_id = "session_test_memory_pen_loop_0001"
+    npc = {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"}
+
+    # Turn 1: NPC asks, player gives pen
+    result1 = generate_npc_dialogue_from_level_design(
+        {
+            "session_id": session_id,
+            "npc": npc,
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Sure, here you are. You can borrow it.",
+            "node_context": {"recommended_expression": "Let's talk about the trip."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "target_slot": None,
+                "topic_switch": False,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "destination_travel",
+                "required_slots": [],
+            },
+        },
+        use_llm=True,
+        llm_client=llm_client,
+    )
+    assert result1["llm"]["used"] is True
+    assert "borrow your pen" in result1["npc_text"].lower()
+
+    # Turn 2: Player complains about repetition, NPC tries to ask again, gets blocked
+    result2 = generate_npc_dialogue_from_level_design(
+        {
+            "session_id": session_id,
+            "npc": npc,
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Why do you keep asking about my pen? I already gave it to you.",
+            "node_context": {"recommended_expression": "Let's talk about the trip."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "target_slot": None,
+                "topic_switch": True,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "destination_travel",
+                "required_slots": [],
+            },
+        },
+        use_llm=True,
+        llm_client=llm_client,
+    )
+    assert result2["llm"]["used"] is False
+    assert result2["llm"]["reason"] == "smalltalk_repeated_object_request"
+    assert "borrow your pen" not in result2["npc_text"].lower()
+
+
+def test_smalltalk_diagnostic_blocks_repeated_pen_request_using_in_memory_checkpointer_neutral_player() -> None:
+    from backend.app.agents.agent_a.npc_dialogue_agent import reset_graph_singleton_for_testing
+
+    reset_graph_singleton_for_testing()
+
+    class PenLoopLLMClient:
+        model = "fake-model"
+
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        def generate(self, payload: dict) -> dict:
+            self.call_count += 1
+            text = (
+                "Thanks. Could I borrow your pen for this form?"
+                if self.call_count == 1
+                else "Sorry about that. Could I borrow your pen for this form?"
+            )
+            return {
+                "speaker": "Arabella",
+                "npc_text": text,
+                "tts_text": text,
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "joy",
+                "stability": 0.75,
+                "style": 0.45,
+                "speed": 1.0,
+                "similarity_boost": 0.85,
+                "llm_reason": "[COHERENT] Pen request.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    llm_client = PenLoopLLMClient()
+    session_id = "session_test_memory_pen_loop_neutral_0001"
+    npc = {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"}
+
+    # Turn 1: NPC asks, player gives pen
+    result1 = generate_npc_dialogue_from_level_design(
+        {
+            "session_id": session_id,
+            "npc": npc,
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Sure, here you are. You can borrow it.",
+            "node_context": {"recommended_expression": "Let's talk about the trip."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "target_slot": None,
+                "topic_switch": False,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "destination_travel",
+                "required_slots": [],
+            },
+        },
+        use_llm=True,
+        llm_client=llm_client,
+    )
+    assert result1["llm"]["used"] is True
+    assert "borrow your pen" in result1["npc_text"].lower()
+
+    # Turn 2: Player replies neutrally, NPC tries to ask again, gets blocked by turn_buffer memory
+    result2 = generate_npc_dialogue_from_level_design(
+        {
+            "session_id": session_id,
+            "npc": npc,
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Yes, it is very nice.",
+            "node_context": {"recommended_expression": "Let's talk about the trip."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "target_slot": None,
+                "topic_switch": True,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "destination_travel",
+                "required_slots": [],
+            },
+        },
+        use_llm=True,
+        llm_client=llm_client,
+    )
+    assert result2["llm"]["used"] is False
+    assert result2["llm"]["reason"] == "smalltalk_repeated_object_request"
+    assert "borrow your pen" not in result2["npc_text"].lower()
 
 
 def test_smalltalk_social_context_open_falls_back_to_repair_request() -> None:

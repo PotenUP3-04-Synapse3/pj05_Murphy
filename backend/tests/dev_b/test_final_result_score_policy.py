@@ -104,9 +104,10 @@ def test_final_score_excludes_final_node_when_prior_scores_exist() -> None:
 
     assert result.final_recommendation == "CONDITIONAL_PASS"
     assert result.rank == "Bronze Pass"
+    assert result.tier == "Bronze"
     assert result.final_score_100 == 63
     assert result.quantitative_scores.overall == 63
-    assert result.quantitative_scores.scoring_policy == "simple_average"
+    assert result.quantitative_scores.scoring_policy == "scene_normalized_dimension_average"
     assert result.report_summary.included_node_count == 2
     assert result.report_summary.best_node == "IMM_003_DURATION"
     assert result.report_summary.weakest_node == "IMM_002_PURPOSE"
@@ -228,6 +229,7 @@ def test_critical_fail_overrides_high_score_for_final_recommendation() -> None:
 
     assert result.final_recommendation == "COMIC_FAIL"
     assert result.rank == "Comic Fail"
+    assert result.tier == "Iron"
     assert result.final_score_100 == 100
     assert "critical_fail" in result.reason_tags
     assert "high_suspicion" in result.reason_tags
@@ -238,6 +240,7 @@ def test_empty_records_return_unranked_result() -> None:
 
     assert result.final_recommendation == "UNRANKED"
     assert result.rank == "Unranked"
+    assert result.tier == "Iron"
     assert result.final_score_100 == 0
     assert result.quantitative_scores.overall == 0
     assert result.report_summary.included_node_count == 0

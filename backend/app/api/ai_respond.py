@@ -275,7 +275,7 @@ def demo_npc_roster() -> dict[str, list[dict[str, Any]]]:
     from backend.app.services.service_a.npc_roster_service import _NPC_ROSTER
 
     chapters_mapping = {
-        "CH0_01_FLIGHT_SMALLTALK": ["arabella", "novak", "emily"],
+        "CH0_01_FLIGHT_SMALLTALK": ["arabella", "novak"],
         "CH0_03_IMMIGRATION_CHECK": ["hale", "harris"],
         "CH0_04_BAGGAGE_CLAIM": ["brielle", "dan"],
     }

@@ -338,6 +338,7 @@ def _is_repeated_smalltalk_object_request(
     npc_text: str,
     tts_text: str,
     normalized: dict[str, Any],
+    turn_buffer: list[dict[str, Any]] | None = None,
 ) -> bool:
     """Return True when Flight smalltalk is drifting back into an answered favor."""
 
@@ -347,6 +348,13 @@ def _is_repeated_smalltalk_object_request(
     player_text = str(normalized.get("player_text") or "")
     if _mentions_repeat_complaint(player_text):
         return True
+
+    if turn_buffer:
+        for turn in turn_buffer:
+            previous_npc = str(turn.get("npc_text") or "")
+            previous_player = str(turn.get("player_text") or "")
+            if _mentions_pen_request(previous_npc) or _mentions_pen_resolution(previous_player):
+                return True
 
     dialogue_history = normalized.get("dialogue_history") or []
     for turn in dialogue_history:
@@ -543,19 +551,24 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
         # retry/clarify 분기일 경우 룰베이스 대사 변주 적용
         branch_type = normalized.get("branch_type")
         dialogue_history = normalized.get("dialogue_history") or []
+        turn_buffer = state.get("turn_buffer") or []
         surface_goal = normalized.get("dialogue_seed", {}).get("surface_goal") or ""
         
-        if branch_type in {"retry", "clarify"} and dialogue_history:
+        last_npc_text = ""
+        if turn_buffer:
+            last_npc_text = turn_buffer[-1].get("npc_text") or ""
+        elif dialogue_history:
             last_turn = dialogue_history[-1]
-            last_npc_text = last_turn.get("npc_text_preview", "")
-            if last_npc_text:
-                current_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
-                from backend.app.services.service_a.dialogue_policy_service import get_retry_variation
-                varied_text = get_retry_variation(surface_goal, last_npc_text, current_text)
-                fallback_res["npc_text"] = varied_text
-                fallback_res["text"] = varied_text
-                if "tts_text" in fallback_res:
-                    fallback_res["tts_text"] = varied_text
+            last_npc_text = last_turn.get("npc_text_preview", "") if isinstance(last_turn, dict) else ""
+            
+        if branch_type in {"retry", "clarify"} and last_npc_text:
+            current_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
+            from backend.app.services.service_a.dialogue_policy_service import get_retry_variation
+            varied_text = get_retry_variation(surface_goal, last_npc_text, current_text)
+            fallback_res["npc_text"] = varied_text
+            fallback_res["text"] = varied_text
+            if "tts_text" in fallback_res:
+                fallback_res["tts_text"] = varied_text
         
     use_llm = state.get("use_llm", False)
     surface_goal = normalized.get("dialogue_seed", {}).get("surface_goal") or ""
@@ -809,15 +822,18 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             reaction_part = "Pardon me?"
 
         synthesized = synthesize_fallback_next_question(reaction_part, surface_goal)
+        turn_buffer = state.get("turn_buffer") or []
         dialogue_history = normalized.get("dialogue_history") or []
-        if dialogue_history:
+        last_npc_text = ""
+        if turn_buffer:
+            last_npc_text = turn_buffer[-1].get("npc_text") or ""
+        elif dialogue_history:
             last_turn = dialogue_history[-1]
-            last_npc_text = last_turn.get("npc_text_preview", "")
-            if last_npc_text:
-                from backend.app.services.service_a.dialogue_policy_service import get_retry_variation
-                npc_text = get_retry_variation(surface_goal, last_npc_text, synthesized)
-            else:
-                npc_text = synthesized
+            last_npc_text = last_turn.get("npc_text_preview", "") if isinstance(last_turn, dict) else ""
+
+        if last_npc_text:
+            from backend.app.services.service_a.dialogue_policy_service import get_retry_variation
+            npc_text = get_retry_variation(surface_goal, last_npc_text, synthesized)
         else:
             npc_text = synthesized
 
@@ -982,7 +998,9 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             logger.error(f"Coherence violation: non-sequitur detected or coherent flag missing in llm_reason: {llm_result.get('llm_reason')}")
             return {"error": "coherence_violation_non_sequitur"}
 
-        if _is_repeated_smalltalk_object_request(npc_text, tts_text, normalized):
+        if _is_repeated_smalltalk_object_request(
+            npc_text, tts_text, normalized, turn_buffer=state.get("turn_buffer")
+        ):
             logger.error(
                 "Smalltalk repeated object request detected after history/player correction: %r",
                 npc_text,

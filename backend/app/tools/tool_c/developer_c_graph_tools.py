@@ -48,6 +48,7 @@ from backend.app.services.service_c.openkb_service import OpenKBService, public_
 from backend.app.services.service_c.response_builder import ResponseBuilder
 from backend.app.services.service_c.stt_service import WhisperLargeV3TurboSttService
 from backend.app.services.service_c.validator import Validator
+from backend.app.services.service_c.settings_service import AppSettings, get_settings
 from backend.app.services.service_b.challenge_assignment_service import (
     pick_customs_item,
     pick_location,
@@ -132,6 +133,7 @@ class DeveloperCGraphTools:
         session_record_reader: OpenKBFinalResultRecordReader | None = None,
         dialogue_history_service: DialogueHistoryService | None = None,
         agent_run_root: Path | None = None,
+        settings: AppSettings | None = None,
     ) -> None:
         self.stt_service = stt_service or WhisperLargeV3TurboSttService()
         self.openkb_service = openkb_service or OpenKBService()
@@ -144,6 +146,7 @@ class DeveloperCGraphTools:
         self.agent_run_middleware = agent_run_middleware or DeveloperCAgentRunMiddleware(agent_run_root)
         self.session_record_reader = session_record_reader or OpenKBFinalResultRecordReader()
         self.dialogue_history_service = dialogue_history_service or DialogueHistoryService()
+        self.settings = settings or get_settings()
         self.active_agent_run: dict[str, Any] | None = None
         self.structured_tools: dict[str, StructuredTool] = self._build_structured_tools()
 
@@ -430,13 +433,19 @@ class DeveloperCGraphTools:
             game_state,
             dev_b_output.dialogue_seed,
         )
-        dialogue_history = _sync_dialogue_history_to_dialogue_seed(
-            self.session_record_reader.read_session_records(request.turn.session.session_id),
-            self.dialogue_history_service.read_session_records(request.turn.session.session_id),
-            dev_b_output.dialogue_seed,
-            current_request_id=request.turn.request_id,
-            current_turn_index=request.turn.session.turn_index,
-        )
+        if self.settings.murphy_c_legacy_history:
+            dialogue_history = _sync_dialogue_history_to_dialogue_seed(
+                self.session_record_reader.read_session_records(request.turn.session.session_id),
+                self.dialogue_history_service.read_session_records(request.turn.session.session_id),
+                dev_b_output.dialogue_seed,
+                current_request_id=request.turn.request_id,
+                current_turn_index=request.turn.session.turn_index,
+            )
+        else:
+            dialogue_history = []
+            if dev_b_output.dialogue_seed is not None:
+                dev_b_output.dialogue_seed.dialogue_history = []
+
 
         self.agent_run_middleware.record_event(
             agent_run,
