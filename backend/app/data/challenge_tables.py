@@ -42,8 +42,8 @@ class CustomsItemEntry:
     suspicion_reason: str
 
 
-# List of 17 locations. Note: Difficulty 3 has no items, as specified in the workplan.
-# Counts: 12x2, 11x2, 10x1, 9x2, 8x2, 7x2, 6x2, 5x1, 4x1, 2x1, 1x1. Total = 17 items.
+# List of 24 locations covering difficulties 1 to 12, two entries per difficulty.
+# Counts: 12x2, 11x2, 10x2, 9x2, 8x2, 7x2, 6x2, 5x2, 4x2, 3x2, 2x2, 1x2. Total = 24 items.
 LOCATIONS: list[LocationEntry] = [
     LocationEntry(
         "LOC_SECRET_SOCIETY",
@@ -79,6 +79,13 @@ LOCATIONS: list[LocationEntry] = [
         "현역 군사 기지",
         10,
         "군사 작전이 수행 중인 보안 구역 내 숙소입니다.",
+    ),
+    LocationEntry(
+        "LOC_BORDER_CHECKPOINT",
+        "Restricted Border Checkpoint",
+        "통제 국경 검문소",
+        10,
+        "민간 출입이 통제되는 국경 검문소 인접 구역입니다.",
     ),
     LocationEntry(
         "LOC_REMOTE_ISLAND",
@@ -144,11 +151,39 @@ LOCATIONS: list[LocationEntry] = [
         "현지 상인들이 임시로 거주하는 벼룩시장 내부입니다.",
     ),
     LocationEntry(
+        "LOC_NIGHT_DISTRICT",
+        "Late-night Entertainment District",
+        "심야 유흥가",
+        5,
+        "야간 영업 시설이 밀집한 유흥가 인근 숙소입니다.",
+    ),
+    LocationEntry(
         "LOC_BUDGET_HOSTEL",
         "Ultra Budget Guest House",
         "초저가 게스트하우스",
         4,
         "안전 등급이 극히 낮은 도시 외곽의 게스트하우스입니다.",
+    ),
+    LocationEntry(
+        "LOC_UNLICENSED_HOMESTAY",
+        "Unlicensed Homestay",
+        "무허가 민박",
+        4,
+        "정식 숙박업 허가가 없는 개인 운영 민박입니다.",
+    ),
+    LocationEntry(
+        "LOC_BACKPACKER_HOSTEL",
+        "Backpacker Hostel",
+        "배낭여행자 공용 호스텔",
+        3,
+        "투숙객 신원 관리가 느슨한 공용 도미토리 호스텔입니다.",
+    ),
+    LocationEntry(
+        "LOC_ROADSIDE_MOTEL",
+        "Roadside Motel",
+        "도로변 모텔",
+        3,
+        "장기 투숙객이 잦은 도시 외곽의 도로변 모텔입니다.",
     ),
     LocationEntry(
         "LOC_FRIENDS_HOUSE",
@@ -158,11 +193,25 @@ LOCATIONS: list[LocationEntry] = [
         "보증인이 명확하지 않은 지인의 개인 자택입니다.",
     ),
     LocationEntry(
+        "LOC_RELATIVE_APARTMENT",
+        "Relative's Apartment",
+        "친척 아파트",
+        2,
+        "보증인 확인이 필요한 친척의 개인 거주지입니다.",
+    ),
+    LocationEntry(
         "LOC_DOWNTOWN_HOTEL",
         "Downtown Luxury Hotel",
         "시내 중심 호텔",
         1,
         "예약 정보가 신뢰할 수 있는 일반 관광용 도심 호텔입니다.",
+    ),
+    LocationEntry(
+        "LOC_AIRPORT_HOTEL",
+        "Airport Transit Hotel",
+        "공항 환승 호텔",
+        1,
+        "공식 등록된 공항 내 환승 전용 호텔입니다.",
     ),
 ]
 
