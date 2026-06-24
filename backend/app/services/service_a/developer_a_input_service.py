@@ -51,6 +51,9 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
     social_context = understanding.get("social_context") or payload.get("social_context") or {}
     if social_context is not None and hasattr(social_context, "model_dump"):
         social_context = social_context.model_dump()
+    social_context = dict(social_context) if isinstance(social_context, dict) else {}
+    branch_reason = _optional_text(branch.get("branch_reason"))
+    _apply_social_lifecycle_from_branch(social_context, branch_reason)
 
     suspicion_scope = dialogue_seed.get("suspicion_scope") or "none"
     dialogue_history = list(dialogue_seed.get("dialogue_history") or [])
@@ -86,12 +89,12 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
         ),
         "branch_type": _optional_text(branch.get("branch_type")),
         "next_node_id": _optional_text(branch.get("next_node_id")),
-        "branch_reason": _optional_text(branch.get("branch_reason")),
+        "branch_reason": branch_reason,
         "dialogue_purpose": _optional_text(dialogue_directive.get("purpose")),
         "tone_hint": _optional_text(dialogue_directive.get("tone_hint")) or "neutral",
         "target_slot": _optional_text(dialogue_directive.get("target_slot")),
         "player_emotion": _optional_text(understanding.get("emotion")),  # 플레이어 원본 감정 상태 연동
-        "social_context": social_context if isinstance(social_context, dict) else {},
+        "social_context": social_context,
         "dialogue_seed": dialogue_seed,
         "random_customs_item": _optional_text(random_item_name),
         "random_customs_item_difficulty": int(random_item_difficulty),
@@ -125,6 +128,44 @@ def _optional_text(value: Any) -> str:
     if value is None:
         return ""
     return str(value)
+
+
+def _apply_social_lifecycle_from_branch(
+    social_context: dict[str, Any],
+    branch_reason: str,
+) -> None:
+    if not branch_reason:
+        return
+
+    lifecycle = ""
+    should_close_hook = False
+    if "social_pause_closed" in branch_reason or "engagement_give_space" in branch_reason:
+        lifecycle = "paused_or_closed"
+        should_close_hook = True
+    elif "engagement_check" in branch_reason:
+        lifecycle = "engagement_checked"
+        should_close_hook = True
+    elif "social_obligation_dropped" in branch_reason:
+        lifecycle = "dropped"
+        should_close_hook = True
+    elif "repeated_social_repair" in branch_reason:
+        lifecycle = "repaired_once"
+    elif "social_obligation_open" in branch_reason:
+        lifecycle = "open"
+
+    if lifecycle:
+        social_context["social_obligation_lifecycle"] = lifecycle
+    if should_close_hook:
+        _append_unique(social_context, "closed_hooks", "seatmate_pen_request")
+        _append_unique(social_context, "do_not_reopen", "seatmate_pen_request")
+
+
+def _append_unique(target: dict[str, Any], key: str, value: str) -> None:
+    existing = target.get(key)
+    values = list(existing) if isinstance(existing, list) else []
+    if value not in values:
+        values.append(value)
+    target[key] = values
 
 
 def _optional_int(value: Any) -> int:

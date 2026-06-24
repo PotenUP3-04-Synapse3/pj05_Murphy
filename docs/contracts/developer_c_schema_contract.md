@@ -579,6 +579,12 @@ Runtime modes:
   as dialogue context. The card may include additive pragmatics fields such as
   `prior_turn_relation`, `social_pattern`, and `pragmatics_confidence`; consumers
   must treat them as evidence, not branch authority.
+- The social context card may also carry a soft-obligation lifecycle memo:
+  `social_obligation_lifecycle` is one of `none`, `open`, `repaired_once`,
+  `dropped`, `engagement_checked`, or `paused_or_closed`. `closed_hooks` and
+  `do_not_reopen` are additive string lists that tell Developer A which
+  conversational hooks are socially closed for the session. These fields are
+  dialogue context only; Developer B remains the branch authority.
 - A social obligation may be soft rather than mission-blocking. For Flight
   seatmate smalltalk, Developer B may advance with
   `branch_reason="flight_smalltalk_social_obligation_dropped"` after repeated
@@ -586,9 +592,13 @@ Runtime modes:
   human-like give-up, space-giving, or light pivot line.
 - If the player keeps giving low-cooperation social turns after that dropped
   favor, Developer B may emit `flight_smalltalk_engagement_check` or
-  `flight_smalltalk_engagement_give_space`. Those branch reasons mean the NPC
-  should respond to stalled social engagement itself, not continue normal travel
-  probes.
+  `flight_smalltalk_engagement_give_space`. `flight_smalltalk_engagement_check`
+  keeps the current node open for one human-like engagement check.
+  `flight_smalltalk_engagement_give_space` closes the smalltalk chapter with
+  `next_action="COMPLETE_CHAPTER"`. If a later turn arrives after give-space,
+  Developer B may return `flight_smalltalk_social_pause_closed`; Developer A
+  should keep the response short and must not re-open the pen request or start a
+  new travel probe.
 - Alpha 2 uses a generic slot evidence contract. The LLM may propose slot
   evidence for `node_context.required_slots`, `node_context.optional_slots`, and
   `node_context.critical_slots`. Developer C filters that evidence to allowed

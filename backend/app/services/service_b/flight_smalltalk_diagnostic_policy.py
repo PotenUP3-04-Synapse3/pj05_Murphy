@@ -371,13 +371,57 @@ def _social_repair_decision(
     if not _is_social_stall_move(payload.player_text, social_context):
         return None
 
-    social_stall_streak = _social_stall_streak(payload, flight_records)
-    if social_stall_streak >= 5:
+    lifecycle = _social_obligation_lifecycle(flight_records)
+    if lifecycle == "paused_or_closed":
+        return ScenarioDecision(
+            verdict="SUCCESS",
+            branch_type="success",
+            next_action="COMPLETE_CHAPTER",
+            next_node_id="FLIGHT_999_COMPLETE",
+            branch_reason="flight_smalltalk_social_pause_closed",
+            patience_delta=0,
+            suspicion_delta=0,
+            retry_count_delta=0,
+            hint_count_delta=0,
+            selected_probe=None,
+            cumulative_confidence=0.0,
+        )
+    if lifecycle == "engagement_checked":
+        return ScenarioDecision(
+            verdict="SUCCESS",
+            branch_type="success",
+            next_action="COMPLETE_CHAPTER",
+            next_node_id="FLIGHT_999_COMPLETE",
+            branch_reason="flight_smalltalk_engagement_give_space",
+            patience_delta=0,
+            suspicion_delta=0,
+            retry_count_delta=0,
+            hint_count_delta=0,
+            selected_probe=None,
+            cumulative_confidence=0.0,
+        )
+    if lifecycle == "dropped":
         return ScenarioDecision(
             verdict="UNCLEAR",
             branch_type="clarify",
             next_action="REASK",
             next_node_id=SCENE_ID,
+            branch_reason="flight_smalltalk_engagement_check",
+            patience_delta=0,
+            suspicion_delta=0,
+            retry_count_delta=0,
+            hint_count_delta=0,
+            selected_probe=None,
+            cumulative_confidence=0.0,
+        )
+
+    social_stall_streak = _social_stall_streak(payload, flight_records)
+    if social_stall_streak >= 5:
+        return ScenarioDecision(
+            verdict="SUCCESS",
+            branch_type="success",
+            next_action="COMPLETE_CHAPTER",
+            next_node_id="FLIGHT_999_COMPLETE",
             branch_reason="flight_smalltalk_engagement_give_space",
             patience_delta=0,
             suspicion_delta=0,
@@ -433,6 +477,25 @@ def _social_repair_decision(
         selected_probe=None,
         cumulative_confidence=0.0,
     )
+
+
+def _social_obligation_lifecycle(flight_records: list[dict[str, Any]]) -> str:
+    """Read the latest seatmate social-obligation stage from B's record trail."""
+
+    for record in reversed(flight_records):
+        branch = record.get("branch") if isinstance(record, dict) else {}
+        branch_reason = str(branch.get("branch_reason") or "") if isinstance(branch, dict) else ""
+        if "social_pause_closed" in branch_reason or "engagement_give_space" in branch_reason:
+            return "paused_or_closed"
+        if "engagement_check" in branch_reason:
+            return "engagement_checked"
+        if "social_obligation_dropped" in branch_reason:
+            return "dropped"
+        if "repeated_social_repair" in branch_reason:
+            return "repaired_once"
+        if "social_obligation_open" in branch_reason:
+            return "open"
+    return "none"
 
 
 def _social_context_dict(understanding: Any) -> dict[str, Any]:

@@ -2004,8 +2004,8 @@ def test_orchestrator_checks_engagement_after_dropped_pen_request(
     assert responses[3].next_action == "REASK"
     assert responses[3].evaluation.verdict == "UNCLEAR"
     assert responses[3].npc.text == "You keep saying hello. Are you okay?"
-    assert responses[4].next_action == "REASK"
-    assert responses[4].evaluation.verdict == "UNCLEAR"
+    assert responses[4].next_action == "COMPLETE_CHAPTER"
+    assert responses[4].evaluation.verdict == "SUCCESS"
     assert responses[4].npc.text == "Okay, I'll give you some space."
 
 

@@ -1,5 +1,71 @@
 # Handoff
 
+## 2026-06-24 Developer A, B, C: Flight Social Obligation Lifecycle Closure
+
+Developer C implemented this as a user-approved cross-owner continuation of the
+Flight smalltalk naturalness sprint. The previous fixes stopped the immediate
+pen-request loop, but repeated low-cooperation turns could still reopen the
+same social hook or keep the scene in a `REASK` loop after Arabella had already
+said she would give the player space. This sprint treats the pen request as a
+soft social obligation lifecycle instead of another utterance-specific rule.
+
+Sprint notes:
+
+- **Sprint 1 - RED lifecycle coverage**:
+  Added regressions for two missing states: after an engagement check, the next
+  repeated social stall should close the chapter with
+  `flight_smalltalk_engagement_give_space`; after give-space has already been
+  emitted, a later stalled turn should stay closed with
+  `flight_smalltalk_social_pause_closed`. Added A-side coverage proving the LLM
+  payload must receive `closed_hooks` / `do_not_reopen` evidence for the
+  dropped pen request.
+- **Sprint 2 - Lifecycle propagation**:
+  Extended `SocialContextCard` with `social_obligation_lifecycle`,
+  `closed_hooks`, and `do_not_reopen`. Developer A input normalization derives
+  those fields from B branch reasons, session context cards carry them forward,
+  and the A LLM payload now exposes them beside `open_hooks`.
+- **Sprint 3 - Closure behavior**:
+  Developer B now reads prior Flight branch reasons as a lifecycle:
+  `open -> repaired_once -> dropped -> engagement_checked -> paused_or_closed`.
+  `dropped` cannot fall back to opening or re-asking the pen; it moves to an
+  engagement check. `engagement_checked` closes through give-space, and
+  `paused_or_closed` stays complete. A prompts/fallbacks now treat
+  `flight_smalltalk_social_pause_closed` like give-space and explicitly avoid
+  reopening the pen or starting a new travel probe.
+
+Changed files:
+
+- `backend/app/schemas/game_turn.py`
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`
+- `backend/app/services/service_a/developer_a_input_service.py`
+- `backend/app/services/service_a/session_context_card_service.py`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/contracts/developer_c_schema_contract.md`
+- `docs/handoff.md`
+
+Verification:
+
+- RED confirmed:
+  `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_after_engagement_give_space_closes backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_after_give_space_stays_closed backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_obligation_payload_marks_pen_closed backend/tests/test_preprototype_flow.py::test_orchestrator_checks_engagement_after_dropped_pen_request -q`:
+  failed with expected assertions: B still returned `UNCLEAR/REASK` for
+  give-space closure, A did not expose `closed_hooks`, and C still returned
+  `REASK` on the fifth repeated greeting.
+- GREEN targeted:
+  same command after implementation: PASS, 4 passed, 1 warning (`audioop`
+  deprecation).
+- Regression subset:
+  `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_social_context_open_falls_back_to_repair_request backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_check_fallback_asks_if_player_is_okay backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_check_fallback_does_not_assume_greeting backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_give_space_fallback_stops_pushing_conversation backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_obligation_payload_marks_pen_closed backend/tests/test_preprototype_flow.py::test_orchestrator_drops_soft_pen_request_after_repeated_greetings backend/tests/test_preprototype_flow.py::test_orchestrator_checks_engagement_after_dropped_pen_request -q`:
+  PASS, 29 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`: PASS, all checks passed.
+- `uv run mypy .`: PASS, no issues found in 139 source files.
+- `uv run pytest -q`: PASS, 420 passed, 1 warning (`audioop` deprecation).
+
 ## 2026-06-24 Developer A, B, C: General Social-Stall Pragmatics for Flight Smalltalk
 
 Developer C implemented this as a user-approved continuation of the Flight

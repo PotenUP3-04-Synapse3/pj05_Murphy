@@ -1805,6 +1805,57 @@ def test_smalltalk_engagement_give_space_fallback_stops_pushing_conversation() -
     assert "give you some space" in text
 
 
+def test_smalltalk_dropped_obligation_payload_marks_pen_closed() -> None:
+    captured: dict[str, Any] = {}
+
+    generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello. Hello.",
+            "node_context": {"recommended_expression": "Sure, here you go."},
+            "understanding": {
+                "social_context": {
+                    "scene_norm": "peer_smalltalk",
+                    "conversation_move": "repeated_greeting",
+                    "pending_social_obligation": "seatmate_pen_request",
+                    "obligation_status": "ignored",
+                    "engagement_quality": "stalled",
+                    "recommended_npc_move": "playful_boundary",
+                    "reason": "The player kept greeting after the pen request was dropped.",
+                }
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.3},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "success",
+                "next_action": "ADVANCE",
+                "branch_reason": "flight_smalltalk_social_obligation_dropped",
+            },
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "tone_hint": "warm_social_repair",
+                "target_slot": None,
+                "topic_switch": False,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "estimate_user_travel_speaking_level",
+                "required_slots": [],
+            },
+        },
+        use_llm=True,
+        llm_client=_CapturingLLMClient(captured),
+    )
+
+    payload = captured["payload"]
+    assert "seatmate_pen_request" in payload["closed_hooks"]
+    assert "seatmate_pen_request" in payload["do_not_reopen"]
+    assert payload["social_obligation_lifecycle"] == "dropped"
+    assert "seatmate_pen_request" not in payload["open_hooks"]
+
+
 class _CapturingLLMClient:
     model = "fake-model"
 

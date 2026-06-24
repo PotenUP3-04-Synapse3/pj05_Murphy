@@ -339,6 +339,16 @@ class SocialContextCard(BaseModel):
     ] = "none"
     pending_social_obligation: str | None = None
     obligation_status: Literal["none", "open", "addressed", "ignored", "unclear"] = "none"
+    social_obligation_lifecycle: Literal[
+        "none",
+        "open",
+        "repaired_once",
+        "dropped",
+        "engagement_checked",
+        "paused_or_closed",
+    ] = "none"
+    closed_hooks: list[str] = Field(default_factory=list)
+    do_not_reopen: list[str] = Field(default_factory=list)
     engagement_quality: Literal["useful", "thin", "stalled", "unclear"] = "unclear"
     recommended_npc_move: Literal[
         "continue",

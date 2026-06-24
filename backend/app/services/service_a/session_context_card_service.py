@@ -296,11 +296,36 @@ def build_session_context_card(
                             topic_thread.append(w)
         topic_thread = list(dict.fromkeys(topic_thread))[:10]
 
+    social_context = normalized.get("social_context") if isinstance(normalized, dict) else {}
+    social_context = social_context if isinstance(social_context, dict) else {}
+    closed_hooks = _unique_texts(social_context.get("closed_hooks"))
+    do_not_reopen = _unique_texts(social_context.get("do_not_reopen"))
+    open_hooks = [hook for hook in open_hooks if hook not in set(do_not_reopen)]
+
     return {
         "confirmed_facts": confirmed_facts,
         "forbidden_repeat_questions": forbidden_repeat_questions,
         "open_hooks": open_hooks,
+        "closed_hooks": closed_hooks,
+        "do_not_reopen": do_not_reopen,
+        "social_obligation_lifecycle": social_context.get("social_obligation_lifecycle", "none"),
         "last_npc_intent": last_npc_intent,
         "recent_turns_compact": recent_turns_compact,
         "topic_thread": topic_thread,
     }
+
+
+def _unique_texts(value: Any) -> list[str]:
+    if isinstance(value, str):
+        candidates = [value]
+    elif isinstance(value, list):
+        candidates = value
+    else:
+        candidates = []
+
+    result: list[str] = []
+    for item in candidates:
+        text = str(item).strip()
+        if text and text not in result:
+            result.append(text)
+    return result
