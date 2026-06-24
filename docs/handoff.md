@@ -1,5 +1,81 @@
 # Handoff
 
+## 2026-06-24 Developer A/C: Debug NPC Selection and Speaker Alias Repair
+
+The attached Baggage run showed the respond-dialog debug page displaying
+`Officer Dan` for a manual interaction while the backend response came back as
+`Brielle`:
+
+`BAG_001_REPORT_MISSING_AT_DESK -> BAG_001_RETRY_REPORT_MISSING_AT_DESK | GIVE_HINT | FAIL`
+
+Root cause:
+
+- The debug page changed only `turn.npc.npc_id` / `npc_role` when the NPC
+  dropdown changed. It did not change `session.current_node_id`,
+  `client_allowed_next_nodes`, `last_npc_message`, or the first NPC question.
+- Therefore selecting Dan inside the Baggage chapter could create a mixed turn:
+  `npc_id=dan` but `current_node_id=BAG_001_REPORT_MISSING_AT_DESK`, which is
+  a Brielle/service-desk node.
+- Developer C then correctly normalized `BAG_001` through `BAG_004` to
+  `BAGGAGE_STAFF`, and Developer A generated a Brielle baggage-service line.
+- The previous `npc_speaker_mismatch` diagnostic also treated canonical aliases
+  (`BAGGAGE_STAFF -> Brielle`, `CUSTOMS_OFFICER -> Officer Dan`) as mismatches,
+  creating noisy warnings in otherwise valid turns.
+
+Sprint notes:
+
+- **Sprint 1 - RED coverage**:
+  Added regressions for the debug roster metadata, respond-dialog NPC switch
+  behavior, and canonical speaker alias diagnostics. RED confirmed that roster
+  entries did not expose NPC start nodes and that `BAGGAGE_STAFF/Brielle`
+  emitted a false mismatch.
+- **Sprint 2 - Debug-page data flow repair**:
+  `/api/game/ai/demo/npc-roster` now returns `start_node_id` and `scene_id` for
+  each demo NPC. In Baggage, Brielle starts at
+  `BAG_001_REPORT_MISSING_AT_DESK`; Dan starts at
+  `BAG_005_CUSTOMS_HOLD_EXPLANATION`.
+- **Sprint 3 - UI state repair**:
+  Changing the NPC dropdown now starts a fresh debug session on that NPC's
+  compatible node instead of only repainting the speaker name. This keeps
+  `npc_id`, `npc_role`, `current_node_id`, `client_allowed_next_nodes`, and
+  `last_npc_message` aligned.
+- **Sprint 4 - A prompt and diagnostics polish**:
+  C speaker diagnostics now accept `BAGGAGE_STAFF/Brielle` and
+  `CUSTOMS_OFFICER/Officer Dan` as canonical alias pairs while still warning on
+  real mismatches. A's long and short dialogue prompts now tell the LLM not to
+  quote isolated words from off-topic requests like "Can you rap for me"; it
+  should briefly decline and redirect to the current procedure.
+
+Changed files:
+
+- `backend/app/api/ai_respond.py`
+- `demo/respond-dialog/index.html`
+- `backend/app/integrations/dev_a_npc_dialogue_client.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/tests/test_demo_ai_respond_page.py`
+- `backend/tests/test_preprototype_flow.py`
+- `backend/tests/test_developer_a_prompt_rendering.py`
+- `docs/handoff.md`
+
+Verification:
+
+- RED confirmed:
+  `uv run pytest backend/tests/test_demo_ai_respond_page.py::test_respond_dialog_page_is_served_without_changing_original_demo backend/tests/test_demo_ai_respond_page.py::test_demo_npc_roster_endpoint backend/tests/test_preprototype_flow.py::test_dev_a_adapter_speaker_diagnostic_accepts_baggage_customs_aliases -q`:
+  failed with expected assertions.
+- RED confirmed:
+  `uv run pytest backend/tests/test_developer_a_prompt_rendering.py::test_prompt_blocks_isolated_word_mirroring_for_off_topic_requests -q`:
+  failed with expected assertion.
+- Targeted GREEN:
+  `uv run pytest backend/tests/test_demo_ai_respond_page.py::test_respond_dialog_page_is_served_without_changing_original_demo backend/tests/test_demo_ai_respond_page.py::test_demo_npc_roster_endpoint backend/tests/test_preprototype_flow.py::test_dev_a_adapter_speaker_diagnostic_accepts_baggage_customs_aliases backend/tests/test_developer_a_prompt_rendering.py::test_prompt_blocks_isolated_word_mirroring_for_off_topic_requests -q`:
+  PASS, 4 passed, 1 warning (`audioop` deprecation).
+- Related regression subset:
+  `uv run pytest backend/tests/test_demo_ai_respond_page.py backend/tests/test_developer_a_prompt_rendering.py backend/tests/test_preprototype_flow.py::test_dev_a_adapter_reports_speaker_mismatch_diagnostic backend/tests/test_preprototype_flow.py::test_dev_a_adapter_speaker_diagnostic_accepts_baggage_customs_aliases backend/tests/test_preprototype_flow.py::test_orchestrator_passes_random_customs_item_and_routes_customs_npc_to_developer_a -q`:
+  PASS, 17 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`: PASS, all checks passed.
+- `uv run mypy .`: PASS, no issues found in 139 source files.
+- `uv run pytest -q`: PASS, 429 passed, 1 warning (`audioop` deprecation).
+
 ## 2026-06-24 Developer A, B, C: Immigration Passport Refusal Handling
 
 Developer C implemented this as a user-approved cross-owner follow-up after the

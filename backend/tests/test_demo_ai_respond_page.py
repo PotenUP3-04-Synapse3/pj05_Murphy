@@ -65,6 +65,9 @@ def test_respond_dialog_page_is_served_without_changing_original_demo() -> None:
     assert 'body.npc?.speaker || "Officer Hale"' in response.text
     assert "Officer Miller" not in response.text
     assert 'nextNodeId.startsWith("FLIGHT_")' in response.text
+    assert "preferredNpcId" in response.text
+    assert "selectedNpc?.start_node_id || chapter.nodeId" in response.text
+    assert "startChapter(dialogState.selectedChapterId, selectedNpcId)" in response.text
     assert "function startChapter" in response.text
     assert "Upload WAV" in response.text
     assert "Recorded or Next WAV" in response.text
@@ -481,6 +484,10 @@ def test_demo_npc_roster_endpoint() -> None:
     assert "CH0_04_BAGGAGE_CLAIM" in data
     assert any(npc["id"] == "hale" for npc in data["CH0_03_IMMIGRATION_CHECK"])
     assert any(npc["id"] == "brielle" for npc in data["CH0_04_BAGGAGE_CLAIM"])
+    baggage_by_id = {npc["id"]: npc for npc in data["CH0_04_BAGGAGE_CLAIM"]}
+    assert baggage_by_id["brielle"]["start_node_id"] == "BAG_001_REPORT_MISSING_AT_DESK"
+    assert baggage_by_id["dan"]["start_node_id"] == "BAG_005_CUSTOMS_HOLD_EXPLANATION"
+    assert baggage_by_id["dan"]["scene_id"] == "JFK_BAGGAGE_CLAIM"
 
 
 def test_demo_eokkka_options_endpoint() -> None:

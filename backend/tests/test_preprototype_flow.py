@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from backend.app.agents.agent_c.understanding_agent import UnderstandingAgent
+from backend.app.integrations import dev_a_npc_dialogue_client as dev_a_dialogue_module
 from backend.app.integrations.dev_a_npc_dialogue_client import DevANpcDialogueClient
 from backend.app.main import app
 from backend.app.schemas.game_turn import (
@@ -15,6 +16,7 @@ from backend.app.schemas.game_turn import (
     DevADialogueOutput,
     IncivilityClassification,
     MockAudioInput,
+    NpcContext,
     PrePrototypeRequest,
     UnderstandingOutput,
     UnrealTurnRequest,
@@ -2258,6 +2260,32 @@ def test_dev_a_adapter_reports_speaker_mismatch_diagnostic() -> None:
             "expected_npc_id": "BAGGAGE_STAFF",
             "expected_npc_role": "baggage_service_staff",
             "actual_speaker": "Officer Miller",
+        }
+    ]
+
+
+def test_dev_a_adapter_speaker_diagnostic_accepts_baggage_customs_aliases() -> None:
+    baggage_staff = NpcContext(
+        npc_id="BAGGAGE_STAFF",
+        npc_role="baggage_service_staff",
+        last_npc_message="Hi. How can I help you?",
+    )
+    customs_officer = NpcContext(
+        npc_id="CUSTOMS_OFFICER",
+        npc_role="customs_officer",
+        last_npc_message="Please step aside for inspection.",
+    )
+
+    assert dev_a_dialogue_module._speaker_mismatch_diagnostics(baggage_staff, "Brielle") == []
+    assert dev_a_dialogue_module._speaker_mismatch_diagnostics(customs_officer, "Officer Dan") == []
+    assert dev_a_dialogue_module._speaker_mismatch_diagnostics(baggage_staff, "Officer Dan") == [
+        {
+            "code": "npc_speaker_mismatch",
+            "severity": "warning",
+            "message": "Developer A returned a speaker that does not match the requested NPC context.",
+            "expected_npc_id": "BAGGAGE_STAFF",
+            "expected_npc_role": "baggage_service_staff",
+            "actual_speaker": "Officer Dan",
         }
     ]
 

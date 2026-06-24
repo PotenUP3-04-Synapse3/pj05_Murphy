@@ -1561,7 +1561,7 @@
       await startChapter(dialogState.selectedChapterId || defaultChapterId);
     }
 
-    async function startChapter(chapterId) {
+    async function startChapter(chapterId, preferredNpcId) {
       const chapter = chapterStarts[chapterId] || chapterStarts[defaultChapterId];
       dialogState.selectedChapterId = Object.prototype.hasOwnProperty.call(chapterStarts, chapterId)
         ? chapterId
@@ -1572,21 +1572,23 @@
       clearTiming();
       clearQuickRecordingFile();
       
-      updateNpcSelect(dialogState.selectedChapterId);
+      updateNpcSelect(dialogState.selectedChapterId, preferredNpcId);
 
-      const node = await loadNode(chapter.nodeId);
+      const candidates = npcRoster[dialogState.selectedChapterId] || [];
+      const selectedNpc = candidates.find((npc) => npc.id === preferredNpcId)
+        || candidates.find((npc) => npc.id === chapter.npcId)
+        || null;
+      const node = await loadNode(selectedNpc?.start_node_id || chapter.nodeId);
       const turn = buildDefaultTurn(chapter, node);
       
       let speakerName = chapter.speaker;
-      const select = document.getElementById("npcSelect");
-      if (select && select.value) {
-        const candidates = npcRoster[dialogState.selectedChapterId] || [];
-        const npc = candidates.find(item => item.id === select.value);
-        if (npc) {
-          turn.npc.npc_id = npc.id;
-          turn.npc.npc_role = npc.role;
-          speakerName = npc.display_name;
+      if (selectedNpc) {
+        turn.npc.npc_id = selectedNpc.id;
+        turn.npc.npc_role = selectedNpc.role;
+        if (selectedNpc.scene_id) {
+          turn.session.scene_id = selectedNpc.scene_id;
         }
+        speakerName = selectedNpc.display_name;
       }
 
       applyNodeToTurn(turn, node);
@@ -1875,7 +1877,7 @@
       }
     }
 
-    function updateNpcSelect(chapterId) {
+    function updateNpcSelect(chapterId, preferredNpcId) {
       const select = document.getElementById("npcSelect");
       const container = document.getElementById("npcSelectContainer");
       if (!select) return;
@@ -1889,12 +1891,15 @@
       select.innerHTML = "";
 
       const chapterDefault = chapterStarts[chapterId];
+      const selectedNpcId = candidates.some((npc) => npc.id === preferredNpcId)
+        ? preferredNpcId
+        : chapterDefault.npcId;
 
       candidates.forEach((npc) => {
         const option = document.createElement("option");
         option.value = npc.id;
         option.textContent = npc.display_name + " (" + npc.role + ")";
-        if (npc.id === chapterDefault.npcId) {
+        if (npc.id === selectedNpcId) {
           option.selected = true;
         }
         select.appendChild(option);
@@ -1910,21 +1915,10 @@
         const npc = candidates.find(item => item.id === selectedNpcId);
         if (!npc) return;
 
-        let turn;
-        try {
-          turn = parseTurn();
-        } catch (error) {
-          return;
-        }
-
-        turn.npc.npc_id = npc.id;
-        turn.npc.npc_role = npc.role;
-        writeTurn(turn);
-
-        const firstSpeaker = refs.transcript.querySelector(".message.npc .speaker");
-        if (firstSpeaker) {
-          firstSpeaker.textContent = npc.display_name;
-        }
+        startChapter(dialogState.selectedChapterId, selectedNpcId).catch((error) => {
+          setStatus("NPC Failed", "error");
+          refs.rawJson.textContent = String(error);
+        });
       });
     }
 
