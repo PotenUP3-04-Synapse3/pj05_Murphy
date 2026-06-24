@@ -50,6 +50,7 @@ class AppSettings(BaseSettings):
     elevenlabs_realtime_commit_timeout_s: float = 3.0
     elevenlabs_realtime_estimated_cost_per_minute_usd: float = 0.0
     murphy_stt_debug_log_mode: Literal["off", "debug"] = "off"
+    murphy_c_legacy_history: bool = False
 
     @classmethod
     def from_env_file(cls, env_file: str | Path) -> "AppSettings":

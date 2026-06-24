@@ -976,6 +976,12 @@ Rules:
   B's Focus-on-Form learning-card payload. Developer C treats this object as
   additive learning metadata only; it must not affect branch, verdict, score,
   next node, or state delta authority.
+- **Scoreboard Unification Rule:** For final scoreboard display (including both
+  regular completion at `ALPHA_999_FINAL_SCOREBOARD` and bad endings like
+  `SHOW_BAD_END_SCOREBOARD`), Unreal is required to retrieve the full final
+  session report and scoreboard fields by calling `GET /api/game/ai/result/{session_id}`.
+  The `final_result` inside per-turn `/respond` is provided for backwards
+  compatibility and debug verification only.
 
 Dedicated result UI endpoint:
 
@@ -992,6 +998,7 @@ Response envelope:
   "final_result": {
     "final_recommendation": "PASS",
     "rank": "Silver Pass",
+    "tier": "Silver",
     "final_score_100": 87,
     "reason_tags": ["score_at_least_80"],
     "quantitative_scores": {
@@ -1069,13 +1076,18 @@ Developer C validator must enforce at least these rules:
     `final_result.quantitative_scores.overall`.
 18. Developer B optional `final_result.quantitative_scores.scoring_policy` must
     be `simple_average` or `scene_normalized_dimension_average`.
-19. `ALPHA_999_FINAL_SCOREBOARD` is the Alpha final-result trigger.
+19. Developer B optional `final_result.tier` is the Unreal-facing 4-step tier and
+    must be one of `Gold` / `Silver` / `Bronze` / `Iron`. It is derived from
+    `rank`: pass ranks map to `Gold`/`Silver`/`Bronze` and every non-pass outcome
+    (`Secondary Review`, `Comic Fail`, `Unranked`) maps to `Iron`. `rank` remains
+    the UI display label; `tier` is for result-screen game logic.
+20. `ALPHA_999_FINAL_SCOREBOARD` is the Alpha final-result trigger.
     `IMM_007_FINAL_DECISION` is an immigration-clearance transition into
     baggage claim, not an Alpha final-result trigger.
-20. Developer C may expose `final_result` inside `/respond` on final branches
+21. Developer C may expose `final_result` inside `/respond` on final branches
     and through `GET /api/game/ai/result/{session_id}`.
-21. Developer C may expose B-owned `out_game_feedback` through
+22. Developer C may expose B-owned `out_game_feedback` through
     `GET /api/game/ai/result/{session_id}` as learning metadata only.
-22. Realtime STT WebSocket events must use `dev_c_realtime_stt.v1`, start with
+23. Realtime STT WebSocket events must use `dev_c_realtime_stt.v1`, start with
     `session_start`, keep monotonically increasing `sequence`, and never route
     partial transcript events into Developer B, Developer A, or TTS.

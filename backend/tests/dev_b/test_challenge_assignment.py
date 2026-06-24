@@ -108,10 +108,9 @@ def test_table_covers_all_tiers() -> None:
         locs_pool = [loc for loc in LOCATIONS if TSL_TO_DIFFICULTY_RANGE[tsl][0] <= loc.difficulty <= TSL_TO_DIFFICULTY_RANGE[tsl][1]]
         items_pool = [item for item in CUSTOMS_ITEMS if TSL_TO_DIFFICULTY_RANGE[tsl][0] <= item.difficulty <= TSL_TO_DIFFICULTY_RANGE[tsl][1]]
 
-        # Each TSL spans 3 difficulties with two locations each = 6 entries per tier.
+        # Each TSL spans 3 difficulties with two entries each = 6 per tier.
         assert len(locs_pool) == 6
-
-        assert len(items_pool) >= 1
+        assert len(items_pool) == 6
 
 
 def test_to_context_helper_maps_fields() -> None:
@@ -122,7 +121,7 @@ def test_to_context_helper_maps_fields() -> None:
         name_ko="테스트 아이템",
         item_category="electronics",
         difficulty=5,
-        suspicion_reason="This looks like a test payload."
+        suspicion_reason="This looks like a test payload.",
     )
     context = to_random_customs_item_context(entry)
     assert isinstance(context, RandomCustomsItemContext)

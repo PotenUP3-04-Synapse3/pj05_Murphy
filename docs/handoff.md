@@ -1,5 +1,57 @@
 # Handoff
 
+## 2026-06-24 Developer C: Gating Legacy History and Resolving Change Requests
+
+Developer C completed the implementation of `[CR-A-HISTORY-DEPRECATION]` Stage 2 and updated tracking files to mark open change requests as resolved.
+
+Changed:
+- `backend/app/tools/tool_c/developer_c_graph_tools.py`:
+  - Gated the call to `_sync_dialogue_history_to_dialogue_seed` in `validate_dev_b_policy_tool` so that it is only executed when the environment variable `MURPHY_C_LEGACY_HISTORY=1` is set.
+  - When the variable is not set, history delivery is disabled and defaulted to `[]`.
+- `backend/tests/test_preprototype_flow.py`:
+  - Added `monkeypatch.setenv("MURPHY_C_LEGACY_HISTORY", "1")` in `test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop` to ensure its history check passes.
+- `docs/contracts/change_requests.md`:
+  - Updated statuses of the following change requests to `Resolved`:
+    - `[CR-A-SESSION-ID-REQUIRED]`
+    - `[CR-A-HISTORY-DEPRECATION]`
+    - `[CR-B-CONV-A]`
+    - `[CR-C-SCOREBOARD-REDUNDANCY-ALIGNMENT]`
+
+Verification:
+- Run `uv run pytest`: PASS (all 399 tests pass successfully).
+- Run `uv run ruff check .` and `uv run mypy .`: PASS.
+
+## 2026-06-24 Developer C: Unification of Scoreboard Retrieval and Alignment of Scoring Policy Label
+
+Developer C integrated the final result scoreboard payload fixes as requested by `docs/workplan-final-result-scoreboard-remaining.md`.
+
+Root cause:
+- **scoring_policy 라벨 모순:** 종합 성적 산출은 scene-normalized 방식(flight 20, immigration 50, baggage 30)으로 계산되고 있었으나, 응답 스키마 상의 `scoring_policy` 라벨이 여전히 `"simple_average"`로 하드코딩되어 `reason_tags` 내 `"scene_normalized_dimension_average_policy"`와 모순을 빚고 있었습니다.
+- **bad-end 결과 비대칭:** 입국 강제반려 등 배드엔딩 노드 도달 시 per-turn `/respond` 응답에 `final_result`가 실리지 않아, Unreal이 결과를 화면에 렌더링하기 위해 2회 호출(/respond + /result)이 필수적이거나 결과 수집 경로가 비대칭적이었습니다.
+
+Changed:
+- `backend/app/services/service_b/final_result_score_policy.py`:
+  - Updated `_quantitative_scores()` to return `scoring_policy = "scene_normalized_dimension_average"`.
+  - Updated `_unranked_result()` to return `scoring_policy = "scene_normalized_dimension_average"` for unranked sessions (0 scored records).
+- `backend/tests/dev_b/test_final_result_score_policy.py`:
+  - Updated assertions to expect `"scene_normalized_dimension_average"` instead of `"simple_average"`.
+- `backend/tests/test_final_result_payload.py`:
+  - Updated the mock `_final_result()` helper's `scoring_policy` value to `"scene_normalized_dimension_average"`.
+  - Added a new integration test `test_result_endpoint_returns_bad_end_comic_fail_from_real_records` that writes a real bad-end session record (verbal abuse) to `backend/runtime/openkb/dev_b/` and calls the `/result/{session_id}` endpoint to verify it returns a valid `Comic Fail` with `Iron` tier.
+- `docs/contracts/developer_c_schema_contract.md`:
+  - Documented the **Scoreboard Unification Rule (Option A)** specifying that Unreal should retrieve final scoreboard results via the `GET /api/game/ai/result/{session_id}` endpoint for both regular completion and bad endings.
+- `docs/contracts/change_requests.md`:
+  - Appended `[CR-C-SCOREBOARD-REDUNDANCY-ALIGNMENT]` detailing the contract alignment and retrieval unification.
+
+Team impact:
+- Developer B: B's score policy labels have been updated. The change was executed directly on B-owned files by Developer C under explicit user approval to resolve the scoring policy inconsistencies.
+- Developer C: C has updated the schemas, documentation, and added test coverage for bad endings on the result retrieval endpoint. The scoreboard retrieval is now unified.
+
+Verification:
+- `uv run pytest backend/tests/dev_b/test_final_result_score_policy.py backend/tests/test_final_result_payload.py`: PASS.
+- `uv run pytest`: PASS (all 399 tests pass successfully).
+- `uv run ruff check .` and `uv run mypy .`: PASS.
+
 ## 2026-06-21 Developer C, A: Immigration Prompt Alignment and Slot Repair Fix
 
 Developer C traced a unified AgentRun where Immigration technically progressed

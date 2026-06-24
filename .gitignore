@@ -23,3 +23,4 @@ wheels/
 # data
 data/assets/
 backend/runtime/
+backend/tests/eval_harness/reports/
