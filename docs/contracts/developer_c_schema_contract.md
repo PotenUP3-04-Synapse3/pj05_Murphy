@@ -572,17 +572,20 @@ Runtime modes:
   behavior.
 - Developer C attaches additive `social_context` evidence after both rule and
   LLM Understanding paths. This is a conversation-pragmatics card for signals
-  such as greeting-only answers, unresolved requests, off-topic evasion, and
-  recommended repair moves. Developer C does not turn it into a branch or NPC
-  line; Developer B may use it as soft progression evidence and Developer A may
-  use it as dialogue context.
+  such as greeting-only answers, clarification-only turns (`What?`), low-content
+  non-answers (`Fine.`), unresolved requests, off-topic evasion, and recommended
+  repair moves. Developer C does not turn it into a branch or NPC line;
+  Developer B may use it as soft progression evidence and Developer A may use it
+  as dialogue context. The card may include additive pragmatics fields such as
+  `prior_turn_relation`, `social_pattern`, and `pragmatics_confidence`; consumers
+  must treat them as evidence, not branch authority.
 - A social obligation may be soft rather than mission-blocking. For Flight
   seatmate smalltalk, Developer B may advance with
   `branch_reason="flight_smalltalk_social_obligation_dropped"` after repeated
   non-answers so Developer A can stop re-asking the same favor and produce a
   human-like give-up, space-giving, or light pivot line.
-- If the player keeps repeating greetings after that dropped favor, Developer B
-  may emit `flight_smalltalk_engagement_check` or
+- If the player keeps giving low-cooperation social turns after that dropped
+  favor, Developer B may emit `flight_smalltalk_engagement_check` or
   `flight_smalltalk_engagement_give_space`. Those branch reasons mean the NPC
   should respond to stalled social engagement itself, not continue normal travel
   probes.

@@ -1757,7 +1757,7 @@ def test_orchestrator_drops_soft_pen_request_after_repeated_greetings(
 
     assert [payload["branch"]["branch_reason"] for payload in builder_payloads] == [
         "flight_smalltalk_social_obligation_open",
-        "flight_smalltalk_repeated_greeting_social_repair",
+        "flight_smalltalk_repeated_social_repair",
         "flight_smalltalk_social_obligation_dropped",
     ]
     assert responses[-1].next_action == "ADVANCE"
@@ -1789,7 +1789,7 @@ def test_orchestrator_checks_engagement_after_dropped_pen_request(
         branch_reason = payload["branch"]["branch_reason"]
         npc_text_by_reason = {
             "flight_smalltalk_social_obligation_open": "Hi there. Could I borrow your pen, please?",
-            "flight_smalltalk_repeated_greeting_social_repair": (
+            "flight_smalltalk_repeated_social_repair": (
                 "Sorry, did you hear me? I was asking about the pen."
             ),
             "flight_smalltalk_social_obligation_dropped": "No worries. I'll ask someone else.",
@@ -1836,7 +1836,7 @@ def test_orchestrator_checks_engagement_after_dropped_pen_request(
 
     assert [payload["branch"]["branch_reason"] for payload in builder_payloads] == [
         "flight_smalltalk_social_obligation_open",
-        "flight_smalltalk_repeated_greeting_social_repair",
+        "flight_smalltalk_repeated_social_repair",
         "flight_smalltalk_social_obligation_dropped",
         "flight_smalltalk_engagement_check",
         "flight_smalltalk_engagement_give_space",

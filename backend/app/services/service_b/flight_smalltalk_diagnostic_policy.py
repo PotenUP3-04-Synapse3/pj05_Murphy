@@ -364,16 +364,15 @@ def _social_repair_decision(
     social_context = _social_context_dict(payload.understanding)
     obligation_status = str(social_context.get("obligation_status") or "")
     pending_obligation = str(social_context.get("pending_social_obligation") or "")
-    conversation_move = str(social_context.get("conversation_move") or "")
     if pending_obligation != "seatmate_pen_request":
         return None
     if obligation_status not in {"open", "ignored", "unclear"}:
         return None
-    if conversation_move not in {"greeting_only", "repeated_greeting", "filler", "off_topic", "unknown"}:
+    if not _is_social_stall_move(payload.player_text, social_context):
         return None
 
-    greeting_streak = _greeting_streak(payload, flight_records)
-    if greeting_streak >= 5:
+    social_stall_streak = _social_stall_streak(payload, flight_records)
+    if social_stall_streak >= 5:
         return ScenarioDecision(
             verdict="UNCLEAR",
             branch_type="clarify",
@@ -387,7 +386,7 @@ def _social_repair_decision(
             selected_probe=None,
             cumulative_confidence=0.0,
         )
-    if greeting_streak >= 4:
+    if social_stall_streak >= 4:
         return ScenarioDecision(
             verdict="UNCLEAR",
             branch_type="clarify",
@@ -401,7 +400,7 @@ def _social_repair_decision(
             selected_probe=None,
             cumulative_confidence=0.0,
         )
-    if greeting_streak >= 3:
+    if social_stall_streak >= 3:
         return ScenarioDecision(
             verdict="SUCCESS",
             branch_type="success",
@@ -417,8 +416,8 @@ def _social_repair_decision(
         )
 
     branch_reason = (
-        "flight_smalltalk_repeated_greeting_social_repair"
-        if greeting_streak >= 2
+        "flight_smalltalk_repeated_social_repair"
+        if social_stall_streak >= 2
         else "flight_smalltalk_social_obligation_open"
     )
     return ScenarioDecision(
@@ -445,20 +444,44 @@ def _social_context_dict(understanding: Any) -> dict[str, Any]:
     return {}
 
 
-def _greeting_streak(
+def _social_stall_streak(
     payload: DevBPolicyInput,
     flight_records: list[dict[str, Any]],
 ) -> int:
-    count = 1 if _is_greeting_move(payload.player_text, _social_context_dict(payload.understanding)) else 0
+    count = 1 if _is_social_stall_move(payload.player_text, _social_context_dict(payload.understanding)) else 0
     for record in reversed(flight_records):
         understanding = record.get("understanding") if isinstance(record, dict) else {}
         social_context = understanding.get("social_context") if isinstance(understanding, dict) else {}
         player_text = str(record.get("player_text") or "") if isinstance(record, dict) else ""
-        if _is_greeting_move(player_text, social_context if isinstance(social_context, dict) else {}):
+        if _is_social_stall_move(player_text, social_context if isinstance(social_context, dict) else {}):
             count += 1
             continue
         break
     return count
+
+
+def _is_social_stall_move(player_text: str, social_context: dict[str, Any]) -> bool:
+    conversation_move = str(social_context.get("conversation_move") or "")
+    if conversation_move in {"meaningful_answer", "refusal"}:
+        return False
+    if conversation_move in {
+        "greeting_only",
+        "repeated_greeting",
+        "low_content_non_answer",
+        "filler",
+        "off_topic",
+        "clarification_request",
+        "unknown",
+    }:
+        return True
+    engagement_quality = str(social_context.get("engagement_quality") or "")
+    obligation_status = str(social_context.get("obligation_status") or "")
+    if engagement_quality in {"thin", "stalled"} and obligation_status in {"open", "ignored", "unclear"}:
+        return True
+    normalized = " ".join(player_text.lower().replace("?", " ").replace(".", " ").split())
+    if normalized in {"what", "what what", "what what what", "fine", "fine fine", "fine fine fine"}:
+        return True
+    return _is_greeting_move(player_text, social_context)
 
 
 def _is_greeting_move(player_text: str, social_context: dict[str, Any]) -> bool:

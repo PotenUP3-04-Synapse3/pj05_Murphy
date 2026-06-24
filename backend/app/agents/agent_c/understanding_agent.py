@@ -235,6 +235,12 @@ FLIGHT_SMALLTALK_FILLER_ONLY_PHRASES = {
     "pardon",
     "sorry",
 }
+FLIGHT_SMALLTALK_LOW_CONTENT_NON_ANSWER_PHRASES = {
+    "fine",
+    "fine fine",
+    "fine fine fine",
+    "whatever",
+}
 
 
 class UnderstandingAgent:
@@ -559,10 +565,13 @@ def _build_social_context_card(
         return SocialContextCard(
             scene_norm=scene_norm,
             conversation_move="refusal" if _looks_like_refusal(player_text) else "meaningful_answer",
+            prior_turn_relation="answered",
+            social_pattern="none",
             pending_social_obligation="seatmate_pen_request",
             obligation_status="addressed",
             engagement_quality="useful",
             recommended_npc_move="acknowledge_then_progress",
+            pragmatics_confidence=0.9,
             reason="The player addressed the seatmate's pen request.",
         )
 
@@ -570,21 +579,55 @@ def _build_social_context_card(
         return SocialContextCard(
             scene_norm=scene_norm,
             conversation_move="greeting_only",
+            prior_turn_relation="non_answer",
+            social_pattern="greeting",
             pending_social_obligation=pending_obligation,
             obligation_status="open" if pending_obligation else "none",
             engagement_quality="thin",
             recommended_npc_move=_repair_move_for_scene(scene_norm),
+            pragmatics_confidence=0.86,
             reason="The player greeted but did not answer the active request.",
+        )
+
+    if _is_clarification_request_only(player_text):
+        return SocialContextCard(
+            scene_norm=scene_norm,
+            conversation_move="clarification_request",
+            prior_turn_relation="asked_to_clarify",
+            social_pattern="clarification_request",
+            pending_social_obligation=pending_obligation,
+            obligation_status="unclear" if pending_obligation else "none",
+            engagement_quality="thin",
+            recommended_npc_move="clarify",
+            pragmatics_confidence=0.84,
+            reason="The player asked for clarification instead of answering the active request.",
+        )
+
+    if _is_low_content_non_answer(player_text):
+        return SocialContextCard(
+            scene_norm=scene_norm,
+            conversation_move="low_content_non_answer",
+            prior_turn_relation="non_answer",
+            social_pattern="low_content_non_answer",
+            pending_social_obligation=pending_obligation,
+            obligation_status="ignored" if pending_obligation else "none",
+            engagement_quality="thin",
+            recommended_npc_move=_repair_move_for_scene(scene_norm),
+            pragmatics_confidence=0.78,
+            reason="The player gave a thin everyday response that did not answer the active request.",
         )
 
     if _is_filler_only(player_text):
         return SocialContextCard(
             scene_norm=scene_norm,
             conversation_move="filler",
+            prior_turn_relation="non_answer",
+            social_pattern="filler",
             pending_social_obligation=pending_obligation,
             obligation_status="unclear" if pending_obligation else "none",
             engagement_quality="thin",
             recommended_npc_move="clarify",
+            pragmatics_confidence=0.74,
             reason="The player gave only filler or hesitation.",
         )
 
@@ -592,10 +635,13 @@ def _build_social_context_card(
         return SocialContextCard(
             scene_norm=scene_norm,
             conversation_move="off_topic",
+            prior_turn_relation="ignored",
+            social_pattern="off_topic",
             pending_social_obligation=pending_obligation,
             obligation_status="ignored" if pending_obligation else "none",
             engagement_quality="stalled",
             recommended_npc_move=_repair_move_for_scene(scene_norm),
+            pragmatics_confidence=0.76,
             reason="The player did not address the active conversational obligation.",
         )
 
@@ -603,20 +649,26 @@ def _build_social_context_card(
         return SocialContextCard(
             scene_norm=scene_norm,
             conversation_move="meaningful_answer",
+            prior_turn_relation="answered",
+            social_pattern="none",
             pending_social_obligation=pending_obligation,
             obligation_status="addressed" if pending_obligation else "none",
             engagement_quality="useful",
             recommended_npc_move="continue",
+            pragmatics_confidence=0.82,
             reason="The player gave usable conversational content.",
         )
 
     return SocialContextCard(
         scene_norm=scene_norm,
         conversation_move="unknown",
+        prior_turn_relation="unknown",
+        social_pattern="none",
         pending_social_obligation=pending_obligation,
         obligation_status="unclear" if pending_obligation else "none",
         engagement_quality="unclear",
         recommended_npc_move="clarify",
+        pragmatics_confidence=0.35,
         reason="The player's social move was unclear.",
     )
 
@@ -665,6 +717,26 @@ def _is_filler_only(player_text: str) -> bool:
     normalized = _normalize_for_keyword_match(player_text)
     words = re.findall(r"[a-z0-9']+", normalized)
     return not words or " ".join(words) in FLIGHT_SMALLTALK_FILLER_ONLY_PHRASES
+
+
+def _is_clarification_request_only(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    words = re.findall(r"[a-z0-9']+", normalized)
+    if not words:
+        return False
+    clarification_words = {"what", "pardon", "sorry", "huh"}
+    soft_words = {"again", "please", "me"}
+    return any(word in clarification_words for word in words) and all(
+        word in clarification_words or word in soft_words for word in words
+    )
+
+
+def _is_low_content_non_answer(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    words = re.findall(r"[a-z0-9']+", normalized)
+    if not words:
+        return False
+    return " ".join(words) in FLIGHT_SMALLTALK_LOW_CONTENT_NON_ANSWER_PHRASES
 
 
 def _flight_pen_obligation_addressed(player_text: str) -> bool:
@@ -1515,6 +1587,26 @@ def _flight_smalltalk_free_response(player_text: str, node_context: NodeContext)
             "ambiguity_type": "social_obligation_unanswered",
             "needs_clarification": True,
             "judgment_reason": "The player only greeted and did not answer the seatmate's pending request.",
+        }
+
+    if _is_clarification_request_only(player_text):
+        return {
+            "intent_success": False,
+            "confidence": 0.36,
+            "answer_relevance": "partially_related",
+            "ambiguity_type": "clarification_request",
+            "needs_clarification": True,
+            "judgment_reason": "The player asked for clarification instead of answering the seatmate's pending request.",
+        }
+
+    if _is_low_content_non_answer(player_text):
+        return {
+            "intent_success": False,
+            "confidence": 0.34,
+            "answer_relevance": "partially_related",
+            "ambiguity_type": "low_content_non_answer",
+            "needs_clarification": True,
+            "judgment_reason": "The player gave a thin everyday response instead of answering the seatmate's pending request.",
         }
 
     if not words or " ".join(words) in FLIGHT_SMALLTALK_FILLER_ONLY_PHRASES:

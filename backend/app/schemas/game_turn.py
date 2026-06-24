@@ -322,11 +322,21 @@ class SocialContextCard(BaseModel):
         "meaningful_answer",
         "greeting_only",
         "repeated_greeting",
+        "low_content_non_answer",
         "filler",
         "off_topic",
         "clarification_request",
         "refusal",
     ] = "unknown"
+    prior_turn_relation: Literal["unknown", "answered", "ignored", "asked_to_clarify", "non_answer"] = "unknown"
+    social_pattern: Literal[
+        "none",
+        "greeting",
+        "filler",
+        "clarification_request",
+        "low_content_non_answer",
+        "off_topic",
+    ] = "none"
     pending_social_obligation: str | None = None
     obligation_status: Literal["none", "open", "addressed", "ignored", "unclear"] = "none"
     engagement_quality: Literal["useful", "thin", "stalled", "unclear"] = "unclear"
@@ -339,6 +349,7 @@ class SocialContextCard(BaseModel):
         "service_repair",
         "clarify",
     ] = "continue"
+    pragmatics_confidence: float = Field(default=0.0, ge=0, le=1)
     reason: str = ""
 
 

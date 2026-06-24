@@ -203,11 +203,27 @@ def _social_context_fallback_text(normalized: dict[str, Any]) -> str:
         if "engagement_give_space" in branch_reason:
             return "Okay, I'll give you some space."
         if "engagement_check" in branch_reason:
-            return "You keep saying hello. Are you okay?"
+            if conversation_move == "clarification_request":
+                return "You keep asking what. Are you having trouble hearing me?"
+            if conversation_move == "low_content_non_answer":
+                return "I'm not sure if you're joking with me. Are you okay?"
+            if conversation_move in {"greeting_only", "repeated_greeting"}:
+                return "You keep saying hello. Are you okay?"
+            return "I'm not sure we're connecting. Are you okay?"
         if "social_obligation_dropped" in branch_reason:
             return "No worries. I'll ask someone else."
+        if "repeated_social_repair" in branch_reason:
+            if conversation_move == "clarification_request":
+                return "I mean the pen. Could I borrow it for a moment?"
+            if conversation_move == "low_content_non_answer":
+                return "I still need a yes or no about the pen."
+            return "Sorry, did you hear me? I was asking about the pen."
         if conversation_move == "repeated_greeting" or "repeated_greeting" in branch_reason:
             return "Sorry, did you hear me? I was asking about the pen."
+        if conversation_move == "clarification_request":
+            return "Oh, I was asking if I could borrow your pen."
+        if conversation_move == "low_content_non_answer":
+            return "I still need your answer. Could I borrow your pen?"
         return "Hi. I mean, could I borrow your pen for this form?"
 
     fallback_question = SURFACE_GOAL_FALLBACK_TEXTS.get(surface_goal, "").strip()

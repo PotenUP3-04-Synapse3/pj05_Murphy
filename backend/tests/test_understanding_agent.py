@@ -60,6 +60,36 @@ def test_understanding_agent_flight_hello_marks_open_social_obligation() -> None
     assert output.social_context.recommended_npc_move == "acknowledge_and_retry_request"
 
 
+def test_understanding_agent_flight_what_marks_clarification_request() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text("What?", _flight_smalltalk_node_context())
+
+    assert output.intent_success is False
+    assert output.needs_clarification is True
+    assert output.social_context.scene_norm == "peer_smalltalk"
+    assert output.social_context.conversation_move == "clarification_request"
+    assert output.social_context.pending_social_obligation == "seatmate_pen_request"
+    assert output.social_context.obligation_status == "unclear"
+    assert output.social_context.engagement_quality == "thin"
+    assert output.social_context.recommended_npc_move == "clarify"
+
+
+def test_understanding_agent_flight_fine_marks_low_content_non_answer() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text("Fine.", _flight_smalltalk_node_context())
+
+    assert output.intent_success is False
+    assert output.needs_clarification is True
+    assert output.social_context.scene_norm == "peer_smalltalk"
+    assert output.social_context.conversation_move == "low_content_non_answer"
+    assert output.social_context.pending_social_obligation == "seatmate_pen_request"
+    assert output.social_context.obligation_status == "ignored"
+    assert output.social_context.engagement_quality == "thin"
+    assert output.social_context.recommended_npc_move == "acknowledge_and_retry_request"
+
+
 def test_understanding_agent_uses_llm_client_in_llm_mode() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {

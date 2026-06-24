@@ -1,5 +1,67 @@
 # Handoff
 
+## 2026-06-24 Developer A, B, C: General Social-Stall Pragmatics for Flight Smalltalk
+
+Developer C implemented this as a user-approved continuation of the Flight
+smalltalk naturalness work across A/B/C surfaces. The previous patch used
+`greeting_streak` to handle repeated `Hello` loops. This sprint generalizes the
+same behavior so Arabella can react to low-cooperation everyday turns such as
+`What?`, `Fine.`, or repeated thin non-answers without hard-coding only greeting
+loops.
+
+Sprint notes:
+
+- **Sprint 1 - RED behavior coverage**:
+  Added tests proving the gap: C treated `What?` as filler, treated `Fine.` as a
+  successful free smalltalk answer, B continued instead of dropping/checking the
+  social stall, and A's engagement fallback assumed the user was saying hello.
+- **Sprint 2 - Generalized social context and policy**:
+  Extended `SocialContextCard` with additive pragmatics evidence
+  (`prior_turn_relation`, `social_pattern`, `pragmatics_confidence`) and added
+  `low_content_non_answer`. C now classifies clarification-only turns and
+  low-content non-answers before generic filler/free-response success. B replaced
+  `greeting_streak` with a generic `social_stall_streak` over thin/stalled
+  social moves.
+- **Sprint 3 - NPC response and prompt repair**:
+  A fallback no longer assumes all engagement checks are greeting loops.
+  Clarification loops can produce a hearing/understanding check, low-content
+  loops can produce a gentle joking/okay check, and greeting loops still keep the
+  existing hello-specific fallback. A prompts now describe low-cooperation social
+  turns instead of repeated greetings only.
+
+Changed files:
+
+- `backend/app/schemas/game_turn.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/contracts/developer_c_schema_contract.md`
+- `docs/handoff.md`
+
+Verification:
+
+- RED confirmed:
+  `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_flight_what_marks_clarification_request backend/tests/test_understanding_agent.py::test_understanding_agent_flight_fine_marks_low_content_non_answer backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_clarification_drops_soft_pen_request backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_low_content_after_drop_checks_engagement backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_check_fallback_does_not_assume_greeting -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  failed with expected assertions.
+- GREEN targeted:
+  same command after implementation: PASS, 5 passed, 1 warning (`audioop`
+  deprecation).
+- Regression subset:
+  `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/test_understanding_agent.py::test_understanding_agent_flight_hello_marks_open_social_obligation backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_social_context_open_falls_back_to_repair_request backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_check_fallback_asks_if_player_is_okay backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_give_space_fallback_stops_pushing_conversation backend/tests/test_preprototype_flow.py::test_orchestrator_checks_engagement_after_dropped_pen_request -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 25 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run ruff check .`:
+  PASS, all checks passed.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run mypy .`:
+  PASS, no issues found in 139 source files.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 413 passed, 1 warning (`audioop` deprecation).
+
 ## 2026-06-24 Developer A, B, C: Engagement Check After Flight Hello Loops
 
 Developer C implemented this as a user-approved follow-up cross-owner change
