@@ -5,7 +5,13 @@ repository state as of the latest handoff entry.
 
 ## Change Request - 2026-06-19 - [CR-A-SESSION-ID-REQUIRED] 페이로드 session_id 의무화
 
-Status: Open (Developer A 제기 - 2026-06-19; Developer C 구현 영역).
+Status: Resolved (Developer C implementation complete - 2026-06-19).
+
+### Developer C Resolution - 2026-06-19
+
+- Pydantic schemas in `backend/app/schemas/game_turn.py` (`SessionContext`, `NpcContext`) require non-empty/non-whitespace `session_id` and `npc_id` via a `@model_validator(mode="after")`.
+- `DevANpcDialogueClient` validates both parameters and raises a 400 `HTTPException` if missing.
+- Regression test `test_session_id_and_npc_id_required_validation` verifies 400 responses.
 
 ### Requested By
 
@@ -60,7 +66,13 @@ npc_id are required for memory isolation")` 를 던진다. 폴백 키(`"anon"`/
 
 ## Change Request - 2026-06-19 - [CR-A-HISTORY-DEPRECATION] dialogue_history 의무 전송 폐지 검토
 
-Status: Open (Developer A 제기 - 2026-06-19; Developer C 구현 영역).
+Status: Resolved (Developer C implementation complete - 2026-06-24).
+
+### Developer C Resolution - 2026-06-24
+
+- Gated the call to `_sync_dialogue_history_to_dialogue_seed` in `validate_dev_b_policy_tool` under the `MURPHY_C_LEGACY_HISTORY=1` environment check.
+- When `MURPHY_C_LEGACY_HISTORY` is not `"1"`, history delivery is skipped and defaulted to `[]`.
+- Regression tests that verify dialogue history behavior set `MURPHY_C_LEGACY_HISTORY=1`.
 
 ### Requested By
 
@@ -526,7 +538,14 @@ filled_slots }`. (full raw text 대신 preview, 기존 로깅 정책 준수)
 
 ## Change Request - 2026-06-18 - [CR-B-CONV-A] 트집 게이팅·히스토리 소비·대사 변주
 
-Status: Open.
+Status: Resolved (Developer A implementation complete - 2026-06-18).
+
+### Developer A Resolution - 2026-06-18
+
+- Updated the SUSPICION MODE activation condition to check `dialogue_seed.suspicion_scope` (`location`/`declaration`/`none`) instead of just `assigned_visit_location` presence.
+- Prohibited premature suspicion blurting, ensuring suspicion remarks happen after the player responds to the relevant slot.
+- Relaxed Rule 3 verbatim constraints for a more natural integration of the customs items and locations in the dialog.
+- Allowed dialogue history consumption in all dialogue purpose modes by injecting it into the LLM payload.
 
 ### Requested By
 
@@ -2748,3 +2767,38 @@ A 측에서 대사 후처리 가드로 차단하였으나, 근본적인 대화 �
 ### Compatibility Impact
 
 단순 인사에 대한 슬롯 채점 엄격화는 게임의 대화 타당성(Coherence)을 높이는 작업이며, 기존의 올바른 펜 대여 수락 발화에 영향을 미치지 않으므로 하위 호환성을 깨뜨리지 않습니다.
+
+
+## Change Request - 2026-06-24 - [CR-C-SCOREBOARD-REDUNDANCY-ALIGNMENT] 최종 결과 채점 정책 라벨 및 결과 전달 단일화
+
+Status: Resolved (Developer C direct implementation complete - 2026-06-24).
+
+### Requested By
+
+Developer C / Sean Han
+
+### Affected Owner
+
+Developer B / policy owner
+
+### Reason
+
+1. **scoring_policy 라벨 모순 해결:** 게임 완료 시점의 정량 점수는 scene-normalized 방식(flight 20, immigration 50, baggage 30)으로 산출되고 있으나, 응답에 나가는 라벨은 `"simple_average"`로 고정되어 있었습니다. 이는 `reason_tags`에 기록되는 `"scene_normalized_dimension_average_policy"`와 모순을 일으킵니다. 따라서 라벨 문자열을 `"scene_normalized_dimension_average"`로 교체하여 정합성을 맞춰야 합니다.
+2. **`_unranked_result` 라벨 통일:** 턴 로그가 전혀 없을 때(UNRANKED)도 일관성을 위해 scoring_policy 라벨을 `"scene_normalized_dimension_average"`로 통일합니다.
+3. **결과 수집 경로 단일화:** bad-end 엔딩(`unreal_event = SHOW_BAD_END_SCOREBOARD`) 도달 시 per-turn `/respond` 응답에 `final_result`가 실리지 않아 Unreal 결과 화면 구성에 비대칭성이 발생하고 있었습니다. 이를 해소하기 위해 "결과 화면 완성에 필요한 데이터는 항상 `GET /api/game/ai/result/{session_id}` 엔드포인트에서만 일관되게 수집한다"는 단일 결과조회 규약(Scoreboard Unification Rule)으로 정리합니다.
+
+### Proposed Contract Change
+
+1. `backend/app/services/service_b/final_result_score_policy.py`의 `_quantitative_scores()` 및 `_unranked_result()`에서 반환하는 `QuantitativeScores`의 `scoring_policy` 문자열을 `"simple_average"`에서 `"scene_normalized_dimension_average"`로 변경합니다.
+2. `backend/tests/dev_b/test_final_result_score_policy.py` 내의 테스트 단언문들도 `"scene_normalized_dimension_average"`를 비교하도록 갱신합니다.
+3. `docs/contracts/developer_c_schema_contract.md`에 결과조회 단일화(Scoreboard Unification Rule) 정책 및 bad-end 통합 내용을 명시합니다.
+
+### Compatibility Impact
+
+- `scoring_policy` 값의 수정은 단순 라벨 교체이므로, Unreal 내부 분기 로직에서 이 라벨 문자열의 하드코딩 여부를 확인해야 하나 백엔드 가동 자체에는 안전함.
+- `GET /result/{session_id}` 결과조회 단일화는 Unreal 호출 패턴을 정리하므로 기존의 `/respond` 응답 하위호환 필드는 유지되지만, 결과 화면 로딩 시 `/result` 조회를 필수로 고정하는 규약 정리에 해당함.
+- 회귀 테스트 12종 및 E2E 테스트 398종 모두 정상 동작 검증 완료.
+
+### Temporary Workaround
+
+Developer C가 본 CR 합의에 따라 Developer B 소유 파일(`final_result_score_policy.py`, `test_final_result_score_policy.py`)을 직접 업데이트하여 정합성을 완료했습니다.
