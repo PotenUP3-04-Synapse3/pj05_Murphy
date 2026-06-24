@@ -254,7 +254,7 @@
 - Expected NPC Output:
 ```json
 {
-  "speaker": "Emily",
+  "speaker": "Arabella",
   "npc_text": "Sorry, I just need your pen for a moment. Could I borrow it?",
   "tts_text": "Sorry, <break time='0.3s'/> I just need your pen for a moment. Could I borrow it?",
   "feedback_kr": "Good.",
