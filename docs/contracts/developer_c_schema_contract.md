@@ -581,6 +581,11 @@ Runtime modes:
   `branch_reason="flight_smalltalk_social_obligation_dropped"` after repeated
   non-answers so Developer A can stop re-asking the same favor and produce a
   human-like give-up, space-giving, or light pivot line.
+- If the player keeps repeating greetings after that dropped favor, Developer B
+  may emit `flight_smalltalk_engagement_check` or
+  `flight_smalltalk_engagement_give_space`. Those branch reasons mean the NPC
+  should respond to stalled social engagement itself, not continue normal travel
+  probes.
 - Alpha 2 uses a generic slot evidence contract. The LLM may propose slot
   evidence for `node_context.required_slots`, `node_context.optional_slots`, and
   `node_context.critical_slots`. Developer C filters that evidence to allowed

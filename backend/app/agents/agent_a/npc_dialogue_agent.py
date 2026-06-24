@@ -432,6 +432,8 @@ def _ignores_open_smalltalk_social_obligation(
         return False
     if "social_obligation_dropped" in str(normalized.get("branch_reason") or ""):
         return False
+    if "flight_smalltalk_engagement_" in str(normalized.get("branch_reason") or ""):
+        return False
 
     combined = _normalize_for_echo_match(f"{npc_text} {tts_text}")
     request_repair_markers = (

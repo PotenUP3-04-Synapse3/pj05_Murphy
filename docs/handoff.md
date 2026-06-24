@@ -1,5 +1,63 @@
 # Handoff
 
+## 2026-06-24 Developer A, B, C: Engagement Check After Flight Hello Loops
+
+Developer C implemented this as a user-approved follow-up cross-owner change
+after the soft pen-request drop fix. The previous fix stopped Arabella from
+asking for the pen forever, but the next attached run showed a new awkwardness:
+after the pen request was dropped, repeated `Hello` inputs were still treated as
+normal `ADVANCE/SUCCESS` smalltalk and Arabella kept asking travel probes like
+"do you travel often?"
+
+Changed files:
+
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`:
+  Extended repeated-greeting handling after the soft pen-request drop. The
+  third greeting still drops the soft pen obligation, but the fourth greeting
+  now emits `flight_smalltalk_engagement_check` with `UNCLEAR/REASK`, and the
+  fifth-or-later greeting emits `flight_smalltalk_engagement_give_space` with
+  `UNCLEAR/REASK`. This prevents repeated `Hello` from being counted as normal
+  diagnostic progress.
+- `backend/app/services/service_a/developer_a_fallback_service.py`:
+  Added social-context fallback lines for the new engagement branches:
+  `You keep saying hello. Are you okay?` and
+  `Okay, I'll give you some space.`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`:
+  Allows engagement branch output through the smalltalk social-obligation guard
+  without requiring another pen-related repair.
+- `backend/app/prompts/npc_dialogue_prompt.md` and
+  `backend/app/prompts/npc_dialogue_prompt.short.md`:
+  Instructed the LLM not to ask travel probes on engagement-check/give-space
+  branches; it should respond to the stalled social engagement itself.
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`:
+  Added a RED/GREEN regression for the post-drop repeated greeting case.
+- `backend/tests/test_developer_a_npc_dialogue.py`:
+  Added fallback tests for engagement check and give-space outputs so A does
+  not mention the pen or travel probes in those states.
+- `backend/tests/test_preprototype_flow.py`:
+  Added integrated C flow coverage for five repeated greetings:
+  `social_obligation_open` -> `repeated_greeting_social_repair` ->
+  `social_obligation_dropped` -> `engagement_check` -> `engagement_give_space`.
+- `docs/contracts/developer_c_schema_contract.md`:
+  Documented the two new branch reasons and their intended A-side meaning.
+
+Verification:
+
+- RED confirmed:
+  `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_after_drop_checks_engagement backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_check_fallback_asks_if_player_is_okay backend/tests/test_preprototype_flow.py::test_orchestrator_checks_engagement_after_dropped_pen_request -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  failed with expected assertions: B still returned `SUCCESS`, A still mentioned
+  `pen`, and C still emitted `flight_smalltalk_social_obligation_dropped`.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_drops_soft_pen_request backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_after_drop_checks_engagement backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_check_fallback_asks_if_player_is_okay backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_give_space_fallback_stops_pushing_conversation backend/tests/test_preprototype_flow.py::test_orchestrator_drops_soft_pen_request_after_repeated_greetings backend/tests/test_preprototype_flow.py::test_orchestrator_checks_engagement_after_dropped_pen_request -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 7 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run ruff check .`:
+  PASS, all checks passed.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run mypy .`:
+  PASS, no issues found in 139 source files.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_check_fallback_asks_if_player_is_okay backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_engagement_give_space_fallback_stops_pushing_conversation backend/tests/test_preprototype_flow.py::test_orchestrator_drops_soft_pen_request_after_repeated_greetings backend/tests/test_preprototype_flow.py::test_orchestrator_checks_engagement_after_dropped_pen_request -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 22 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; $env:TMP='C:\potenup3\pj05-Murphy\.tmp'; $env:TEMP='C:\potenup3\pj05-Murphy\.tmp'; $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); uv run pytest -q --basetemp=".tmp\pytest-$stamp" -o cache_dir=".tmp\pytest-cache-$stamp"`:
+  PASS, 408 passed, 1 warning (`audioop` deprecation).
+
 ## 2026-06-24 Developer A, B, C: Soft Social Obligation Drop for Flight Greeting Loops
 
 Developer C implemented this as a user-approved one-time cross-owner change

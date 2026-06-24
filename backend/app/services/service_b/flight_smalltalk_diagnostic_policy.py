@@ -373,6 +373,34 @@ def _social_repair_decision(
         return None
 
     greeting_streak = _greeting_streak(payload, flight_records)
+    if greeting_streak >= 5:
+        return ScenarioDecision(
+            verdict="UNCLEAR",
+            branch_type="clarify",
+            next_action="REASK",
+            next_node_id=SCENE_ID,
+            branch_reason="flight_smalltalk_engagement_give_space",
+            patience_delta=0,
+            suspicion_delta=0,
+            retry_count_delta=0,
+            hint_count_delta=0,
+            selected_probe=None,
+            cumulative_confidence=0.0,
+        )
+    if greeting_streak >= 4:
+        return ScenarioDecision(
+            verdict="UNCLEAR",
+            branch_type="clarify",
+            next_action="REASK",
+            next_node_id=SCENE_ID,
+            branch_reason="flight_smalltalk_engagement_check",
+            patience_delta=0,
+            suspicion_delta=0,
+            retry_count_delta=0,
+            hint_count_delta=0,
+            selected_probe=None,
+            cumulative_confidence=0.0,
+        )
     if greeting_streak >= 3:
         return ScenarioDecision(
             verdict="SUCCESS",

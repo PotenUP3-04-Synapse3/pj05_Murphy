@@ -200,6 +200,10 @@ def _social_context_fallback_text(normalized: dict[str, Any]) -> str:
     surface_goal = str((normalized.get("dialogue_seed") or {}).get("surface_goal") or "")
 
     if pending_obligation == "seatmate_pen_request":
+        if "engagement_give_space" in branch_reason:
+            return "Okay, I'll give you some space."
+        if "engagement_check" in branch_reason:
+            return "You keep saying hello. Are you okay?"
         if "social_obligation_dropped" in branch_reason:
             return "No worries. I'll ask someone else."
         if conversation_move == "repeated_greeting" or "repeated_greeting" in branch_reason:

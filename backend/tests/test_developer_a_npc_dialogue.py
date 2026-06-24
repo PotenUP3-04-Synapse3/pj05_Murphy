@@ -1489,6 +1489,102 @@ def test_smalltalk_dropped_social_obligation_fallback_stops_asking_pen() -> None
     assert "ask someone else" in text
 
 
+def test_smalltalk_engagement_check_fallback_asks_if_player_is_okay() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello?",
+            "node_context": {"recommended_expression": "Sure, here you go."},
+            "understanding": {
+                "social_context": {
+                    "scene_norm": "peer_smalltalk",
+                    "conversation_move": "repeated_greeting",
+                    "pending_social_obligation": "seatmate_pen_request",
+                    "obligation_status": "ignored",
+                    "engagement_quality": "stalled",
+                    "recommended_npc_move": "playful_boundary",
+                    "reason": "The player keeps greeting after the pen request was dropped.",
+                }
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.3},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "branch_reason": "flight_smalltalk_engagement_check",
+            },
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "tone_hint": "warm_social_repair",
+                "target_slot": None,
+                "topic_switch": False,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "estimate_user_travel_speaking_level",
+                "required_slots": [],
+            },
+        },
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "social_context_fallback"
+    assert "pen" not in text
+    assert "travel" not in text
+    assert "are you okay" in text
+
+
+def test_smalltalk_engagement_give_space_fallback_stops_pushing_conversation() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello.",
+            "node_context": {"recommended_expression": "Sure, here you go."},
+            "understanding": {
+                "social_context": {
+                    "scene_norm": "peer_smalltalk",
+                    "conversation_move": "repeated_greeting",
+                    "pending_social_obligation": "seatmate_pen_request",
+                    "obligation_status": "ignored",
+                    "engagement_quality": "stalled",
+                    "recommended_npc_move": "playful_boundary",
+                    "reason": "The player keeps greeting after engagement was checked.",
+                }
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.3},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "branch_reason": "flight_smalltalk_engagement_give_space",
+            },
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "tone_hint": "warm_social_repair",
+                "target_slot": None,
+                "topic_switch": False,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "estimate_user_travel_speaking_level",
+                "required_slots": [],
+            },
+        },
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "social_context_fallback"
+    assert "pen" not in text
+    assert "travel" not in text
+    assert "give you some space" in text
+
+
 class _CapturingLLMClient:
     model = "fake-model"
 
