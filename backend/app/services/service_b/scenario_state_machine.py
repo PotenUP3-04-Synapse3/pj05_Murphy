@@ -332,6 +332,15 @@ class ScenarioStateMachine:
             payload.understanding.risk_delta >= 20
             or risk_total >= 50
             or bool(critical_tags.intersection(payload.understanding.risk_tags))
+            or self._has_passport_submission_refusal(payload)
+        )
+
+    def _has_passport_submission_refusal(self, payload: DevBPolicyInput) -> bool:
+        extracted = payload.understanding.extracted_slots or {}
+        value = str(extracted.get("refuse_submission") or "").strip().lower()
+        return (
+            "refuse_submission" in payload.node_context.critical_slots
+            and value in {"true", "yes", "refused", "refuse"}
         )
 
     def _success(
@@ -432,7 +441,11 @@ class ScenarioStateMachine:
             branch_type=branch_type,
             next_action=next_action,
             next_node_id=next_node_id,
-            branch_reason="Risk expression increased immigration suspicion.",
+            branch_reason=(
+                "passport_submission_refused"
+                if self._has_passport_submission_refusal(payload)
+                else "Risk expression increased immigration suspicion."
+            ),
             patience_delta=-20,
             suspicion_delta=max(payload.understanding.risk_delta, 20),
             retry_count_delta=1,

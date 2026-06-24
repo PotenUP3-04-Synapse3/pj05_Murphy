@@ -842,6 +842,98 @@ def test_immigration_retry_llm_hook_prefix_falls_back_to_direct_question() -> No
     assert "mentioned" not in result["npc_text"].lower()
 
 
+def test_passport_refusal_warning_fallback_does_not_ask_for_clear_answer() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_001_PASSPORT",
+            "player_text": "I answered the question. The answer is no.",
+            "node_context": {"recommended_expression": "Here you are."},
+            "evaluation_summary": {"task_success": False, "clarity": 0.9},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "bad_end",
+                "next_action": "FAIL_END",
+                "next_node_id": "END_SECONDARY_INSPECTION",
+                "branch_reason": "passport_submission_refused",
+            },
+            "dialogue_directive": {
+                "purpose": "warn_and_control_risk",
+                "target_slot": "passport_submission_status",
+            },
+            "dialogue_seed": {
+                "surface_goal": "request_passport_submission",
+                "required_slots": ["passport_submission_status"],
+            },
+        },
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert "clear answer" not in text
+    assert "may i see your passport" not in text
+    assert "refuse" in text or "secondary inspection" in text
+
+
+def test_passport_refusal_llm_output_is_not_overridden_back_to_passport_question() -> None:
+    class RefusalWarningLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Officer Hale",
+                "npc_text": (
+                    "I understand. Refusing to present your passport means "
+                    "I must send you to secondary inspection."
+                ),
+                "tts_text": (
+                    "I understand. Refusing to present your passport means "
+                    "I must send you to secondary inspection."
+                ),
+                "feedback_kr": "At immigration, refusing to present a passport is serious.",
+                "tone": "formal_warning",
+                "animation": "officer_warning",
+                "npc_emotion": "suspicion",
+                "llm_reason": "[COHERENT] The player explicitly refused to present the passport.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_001_PASSPORT",
+            "player_text": "I answered the question. The answer is no.",
+            "node_context": {"recommended_expression": "Here you are."},
+            "evaluation_summary": {"task_success": False, "clarity": 0.9},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "bad_end",
+                "next_action": "FAIL_END",
+                "next_node_id": "END_SECONDARY_INSPECTION",
+                "branch_reason": "passport_submission_refused",
+            },
+            "dialogue_directive": {
+                "purpose": "warn_and_control_risk",
+                "target_slot": "passport_submission_status",
+            },
+            "dialogue_seed": {
+                "surface_goal": "request_passport_submission",
+                "required_slots": ["passport_submission_status"],
+            },
+        },
+        use_llm=True,
+        llm_client=RefusalWarningLLMClient(),
+    )
+
+    text = result["npc_text"].lower()
+    assert result["llm"]["used"] is True
+    assert "clear answer" not in text
+    assert "may i see your passport" not in text
+    assert "secondary inspection" in text
+
+
 def test_immigration_non_advance_override_does_not_add_open_hook_prefix() -> None:
     class NeutralRetryLLMClient:
         model = "fake-model"

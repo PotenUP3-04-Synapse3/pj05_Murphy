@@ -599,6 +599,15 @@ Runtime modes:
   Developer B may return `flight_smalltalk_social_pause_closed`; Developer A
   should keep the response short and must not re-open the pen request or start a
   new travel probe.
+- Immigration passport submission is a compliance obligation, not a soft
+  social obligation. On `IMM_001_PASSPORT`, explicit refusals such as `No` or
+  `The answer is no` should be represented by C as
+  `extracted_slots.refuse_submission = "true"`, `risk_tags` containing
+  `refuse_submission`, `missing_slots = []`, and `social_context.conversation_move
+  = "refusal"`. Developer B treats this as critical evidence and may emit
+  `branch_reason="passport_submission_refused"` with `WARNING` or `FAIL_END`.
+  Developer A must not say the answer was unclear or re-ask `May I see your
+  passport?`; it should issue a formal refusal/secondary-inspection line.
 - Alpha 2 uses a generic slot evidence contract. The LLM may propose slot
   evidence for `node_context.required_slots`, `node_context.optional_slots`, and
   `node_context.critical_slots`. Developer C filters that evidence to allowed

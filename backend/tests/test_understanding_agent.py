@@ -694,6 +694,29 @@ def test_understanding_agent_llm_mode_upgrades_here_you_go_passport_handover() -
     assert agent.last_trace["postprocessing"]["passport_handover_repair_applied"] is True
 
 
+def test_understanding_agent_passport_no_marks_explicit_submission_refusal() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text(
+        "I answered the question. The answer is no.",
+        _alpha_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_001_PASSPORT"),
+    )
+
+    assert output.intent == "submit_passport"
+    assert output.intent_success is False
+    assert output.intent_satisfied is False
+    assert output.answer_relevance == "on_topic"
+    assert output.needs_clarification is False
+    assert output.missing_slots == []
+    assert output.extracted_slots["refuse_submission"] == "true"
+    assert "refuse_submission" in output.risk_tags
+    assert output.social_context.scene_norm == "institutional_check"
+    assert output.social_context.conversation_move == "refusal"
+    assert output.social_context.pending_social_obligation == "answer_request_passport_submission"
+    assert output.social_context.obligation_status == "addressed"
+    assert output.social_context.recommended_npc_move == "firm_redirect"
+
+
 def test_understanding_agent_llm_mode_repairs_first_visit_prior_visit_phrase() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {

@@ -78,9 +78,14 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
     purpose = normalized.get("dialogue_purpose") or ""
     reason = "missing_or_blocked_candidate_text"
     social_context_text = _social_context_fallback_text(normalized)
+    passport_refusal_text = _passport_submission_refusal_text(normalized)
     
     # 1. transition_status == complete_chapter 또는 next_action == COMPLETE_CHAPTER
-    if transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER":
+    if passport_refusal_text:
+        text = passport_refusal_text
+        reason = "passport_submission_refusal_fallback"
+
+    elif transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER":
         if npc_role == "seatmate":
             text = "Enjoy your trip!"
         elif npc_role == "immigration_officer":
@@ -234,6 +239,17 @@ def _social_context_fallback_text(normalized: dict[str, Any]) -> str:
     if fallback_question:
         return f"Let me ask that again. {fallback_question}"
     return ""
+
+
+def _passport_submission_refusal_text(normalized: dict[str, Any]) -> str:
+    branch_reason = str(normalized.get("branch_reason") or "")
+    if "passport_submission_refused" not in branch_reason:
+        return ""
+
+    next_action = str(normalized.get("next_action") or "")
+    if next_action == "FAIL_END":
+        return "Since you refuse to present your passport, I have to send you to secondary inspection."
+    return "I understand, but I cannot process you without your passport. If you refuse, you may be sent to secondary inspection."
 
 
 def build_audio_fallback(provider: str, voice_id: str, reason: str) -> dict[str, Any]:

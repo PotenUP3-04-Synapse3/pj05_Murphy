@@ -1,5 +1,64 @@
 # Handoff
 
+## 2026-06-24 Developer A, B, C: Immigration Passport Refusal Handling
+
+Developer C implemented this as a user-approved cross-owner follow-up after the
+Flight social lifecycle work. The attached Immigration run showed Officer Hale
+treating repeated `No` answers to `Passport, please.` as unclear speech, leading
+to repeated lines like `I need a clear answer. May I see your passport?` even
+after the player explicitly said `I answered the question. The answer is no.`
+
+Sprint notes:
+
+- **Sprint 1 - RED refusal coverage**:
+  Added regressions for C, B, A, and the integrated C orchestrator path. The RED
+  failures confirmed the root cause: C still had missing slots, B ignored
+  `extracted_slots.refuse_submission=true` unless it appeared as a risk tag or
+  high `risk_delta`, and A's non-advance guard synthesized the passport question
+  again.
+- **Sprint 2 - Semantic refusal evidence**:
+  C now treats explicit passport refusal on `IMM_001_PASSPORT` as an on-topic
+  refusal, not unclear speech. Rule and LLM paths normalize it to
+  `extracted_slots.refuse_submission="true"`, `risk_tags=["refuse_submission"]`,
+  no missing slots, and `social_context.conversation_move="refusal"`.
+- **Sprint 3 - B policy and A dialogue repair**:
+  B now recognizes `refuse_submission=true` in the node's critical slots and
+  routes it through the existing critical branch. Repeated refusal can now reach
+  `FAIL_END / END_SECONDARY_INSPECTION` with
+  `branch_reason="passport_submission_refused"`. A fallback and LLM postprocess
+  skip the generic `May I see your passport?` re-ask for that branch and produce
+  a formal refusal/secondary-inspection line instead.
+
+Changed files:
+
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/services/service_b/scenario_state_machine.py`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/contracts/developer_c_schema_contract.md`
+- `docs/handoff.md`
+
+Verification:
+
+- RED confirmed:
+  `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_passport_no_marks_explicit_submission_refusal backend/tests/dev_b/test_developer_b_policy_engine.py::test_passport_submission_refusal_uses_critical_branch_not_retry_or_hint backend/tests/test_developer_a_npc_dialogue.py::test_passport_refusal_warning_fallback_does_not_ask_for_clear_answer backend/tests/test_developer_a_npc_dialogue.py::test_passport_refusal_llm_output_is_not_overridden_back_to_passport_question backend/tests/test_preprototype_flow.py::test_orchestrator_treats_passport_no_as_submission_refusal_not_hint -q`:
+  failed with expected assertions.
+- GREEN targeted:
+  same command after implementation: PASS, 5 passed, 1 warning (`audioop`
+  deprecation).
+- Related regression subset:
+  `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_mode_upgrades_here_you_go_passport_handover backend/tests/test_understanding_agent.py::test_understanding_agent_passport_no_marks_explicit_submission_refusal backend/tests/dev_b/test_developer_b_policy_engine.py::test_risky_answer_warns_or_goes_to_bad_end backend/tests/dev_b/test_developer_b_policy_engine.py::test_passport_submission_refusal_uses_critical_branch_not_retry_or_hint backend/tests/test_developer_a_npc_dialogue.py::test_immigration_retry_llm_hook_prefix_falls_back_to_direct_question backend/tests/test_developer_a_npc_dialogue.py::test_passport_refusal_warning_fallback_does_not_ask_for_clear_answer backend/tests/test_developer_a_npc_dialogue.py::test_passport_refusal_llm_output_is_not_overridden_back_to_passport_question backend/tests/test_preprototype_flow.py::test_orchestrator_allows_incivility_bad_end_branch_outside_normal_next_nodes backend/tests/test_preprototype_flow.py::test_orchestrator_treats_passport_no_as_submission_refusal_not_hint -q`:
+  PASS, 9 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`: PASS, all checks passed.
+- `uv run mypy .`: PASS, no issues found in 139 source files.
+- `uv run pytest -q`: PASS, 427 passed, 1 warning (`audioop` deprecation).
+
 ## 2026-06-24 Developer A, B, C: Flight Social Obligation Lifecycle Closure
 ## 2026-06-24 Developer A: 응답 품질 가드 추가 (Hale 22턴 회귀 대응)
 
@@ -18,7 +77,6 @@ same social hook or keep the scene in a `REASK` loop after Arabella had already
 said she would give the player space. This sprint treats the pen request as a
 soft social obligation lifecycle instead of another utterance-specific rule.
 
-<<<<<<< HEAD
 Sprint notes:
 
 - **Sprint 1 - RED lifecycle coverage**:
@@ -60,7 +118,6 @@ Changed files:
 - `docs/handoff.md`
 
 Verification:
-=======
 Changed:
 
 - `backend/app/tools/tool_c/developer_c_graph_tools.py`:
@@ -79,7 +136,6 @@ Verification:
 
 - Run `uv run pytest`: PASS (all 399 tests pass successfully).
 - Run `uv run ruff check .` and `uv run mypy .`: PASS.
->>>>>>> origin
 
 - RED confirmed:
   `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_repeated_greeting_after_engagement_give_space_closes backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_flight_smalltalk_after_give_space_stays_closed backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_dropped_obligation_payload_marks_pen_closed backend/tests/test_preprototype_flow.py::test_orchestrator_checks_engagement_after_dropped_pen_request -q`:
@@ -297,7 +353,6 @@ the system treated each thin greeting as successful free smalltalk until the
 chapter completed.
 
 Root cause:
-<<<<<<< HEAD
 - C's Flight diagnostic understanding treated a greeting-only answer such as
   `Hello?` as meaningful free smalltalk.
 - B's Flight diagnostic policy optimized for free-form level sampling and turn
@@ -341,7 +396,6 @@ Changed:
   Added social context variables to the LLM payload/prompt and a postprocessing
   guard that rejects smalltalk LLM output if it jumps topics while a seatmate
   pen request is still open.
-=======
 
 - **scoring_policy 라벨 모순:** 종합 성적 산출은 scene-normalized 방식(flight 20, immigration 50, baggage 30)으로 계산되고 있었으나, 응답 스키마 상의 `scoring_policy` 라벨이 여전히 `"simple_average"`로 하드코딩되어 `reason_tags` 내 `"scene_normalized_dimension_average_policy"`와 모순을 빚고 있었습니다.
 - **bad-end 결과 비대칭:** 입국 강제반려 등 배드엔딩 노드 도달 시 per-turn `/respond` 응답에 `final_result`가 실리지 않아, Unreal이 결과를 화면에 렌더링하기 위해 2회 호출(/respond + /result)이 필수적이거나 결과 수집 경로가 비대칭적이었습니다.
@@ -356,11 +410,9 @@ Changed:
 - `backend/tests/test_final_result_payload.py`:
   - Updated the mock `_final_result()` helper's `scoring_policy` value to `"scene_normalized_dimension_average"`.
   - Added a new integration test `test_result_endpoint_returns_bad_end_comic_fail_from_real_records` that writes a real bad-end session record (verbal abuse) to `backend/runtime/openkb/dev_b/` and calls the `/result/{session_id}` endpoint to verify it returns a valid `Comic Fail` with `Iron` tier.
->>>>>>> origin
 - `docs/contracts/developer_c_schema_contract.md`:
   Documented `social_context` as additive Understanding evidence for B/A.
 
-<<<<<<< HEAD
 Expected behavior now:
 - Flight: `Hello?` after Arabella's pen request does not count as successful
   smalltalk evidence and cannot complete the chapter. Arabella should repair
@@ -379,7 +431,6 @@ Verification:
 - `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run mypy .`: PASS, 139 source files.
 - `git diff --check`: PASS, with existing Windows LF-to-CRLF working-copy
   warnings only.
-=======
 Team impact:
 
 - Developer B: B's score policy labels have been updated. The change was executed directly on B-owned files by Developer C under explicit user approval to resolve the scoring policy inconsistencies.
@@ -406,7 +457,6 @@ Verification:
 - .env에 MURPHY_ELEVENLABS_SPEED=0.82 추가하여 모든 NPC 발화 속도 통일.
 - 코드 변경 없음. voice_output_service.py:459의 기존 \_env_float 경로 활용.
 - 영구 적용 시 EMOTION_TTS_PARAMETERS 하향(옵션 B) 또는 프롬프트 가이드(옵션 C)로 전환 예정.
->>>>>>> origin
 
 ## 2026-06-21 Developer C, A: Immigration Prompt Alignment and Slot Repair Fix
 

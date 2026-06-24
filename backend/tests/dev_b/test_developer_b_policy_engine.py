@@ -276,6 +276,36 @@ def test_risky_answer_warns_or_goes_to_bad_end(tmp_path: Path) -> None:
     assert result.npc_emotion == "Suspicion"
 
 
+def test_passport_submission_refusal_uses_critical_branch_not_retry_or_hint(tmp_path: Path) -> None:
+    context = _node_context("IMM_001_PASSPORT")
+
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="I answered the question. The answer is no.",
+            intent_success=False,
+            confidence=0.89,
+            answer_relevance="on_topic",
+            risk_delta=2,
+            risk_tags=[],
+            extracted_slots={
+                "passport_submission_status": "available",
+                "refuse_submission": "true",
+            },
+            missing_slots=[],
+            retry_count=4,
+            client_allowed_next_nodes=context.allowed_next_nodes,
+        )
+    )
+
+    assert result.evaluation.verdict == "CRITICAL_FAIL"
+    assert result.branch.branch_type == "bad_end"
+    assert result.branch.next_action == "FAIL_END"
+    assert result.branch.next_node_id == "END_SECONDARY_INSPECTION"
+    assert result.branch.branch_reason == "passport_submission_refused"
+    assert result.state_delta.suspicion_delta >= 20
+
+
 def test_branch_next_node_stays_within_allowed_next_nodes(tmp_path: Path) -> None:
     payload = _policy_input(client_allowed_next_nodes=["IMM_003_DURATION"])
 
