@@ -5,6 +5,7 @@ import pytest
 from backend.app.services.service_b.flight_smalltalk_diagnostic_policy import (
     FlightSmallTalkDiagnosticPolicy,
 )
+from backend.app.schemas.game_turn import SocialContextCard
 from backend.tests.dev_b.test_developer_b_policy_engine import _policy_input, _node_context, _agent
 
 
@@ -67,7 +68,7 @@ def test_flight_smalltalk_missing_slot_still_advances(tmp_path: Path) -> None:
     context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
     payload = _policy_input(
         node_context=context,
-        player_text="Hello",
+        player_text="Nice to meet you. I am going to New York.",
         intent_success=False,
         missing_slots=["polite_response"],
         confidence=0.8,
@@ -79,6 +80,42 @@ def test_flight_smalltalk_missing_slot_still_advances(tmp_path: Path) -> None:
     assert result.branch.branch_type == "success"
     assert result.branch.next_action == "ADVANCE"
     assert result.branch.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+
+
+def test_flight_smalltalk_greeting_only_keeps_social_obligation_open(tmp_path: Path) -> None:
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(
+        node_context=context,
+        player_text="Hello?",
+        intent_success=False,
+        missing_slots=[],
+        confidence=0.48,
+    )
+    payload = payload.model_copy(
+        update={
+            "understanding": payload.understanding.model_copy(
+                update={
+                    "social_context": SocialContextCard(
+                        scene_norm="peer_smalltalk",
+                        conversation_move="greeting_only",
+                        pending_social_obligation="seatmate_pen_request",
+                        obligation_status="open",
+                        engagement_quality="thin",
+                        recommended_npc_move="acknowledge_and_retry_request",
+                        reason="The player greeted but did not answer the seatmate's pen request.",
+                    )
+                }
+            )
+        }
+    )
+
+    result = _agent(tmp_path).evaluate_turn(payload)
+
+    assert result.evaluation.verdict == "UNCLEAR"
+    assert result.branch.branch_type == "clarify"
+    assert result.branch.next_action == "REASK"
+    assert result.branch.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+    assert result.branch.branch_reason == "flight_smalltalk_social_obligation_open"
 
 
 def test_flight_smalltalk_no_penalty_delta(tmp_path: Path) -> None:

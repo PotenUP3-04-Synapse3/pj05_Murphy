@@ -570,6 +570,12 @@ Runtime modes:
   Understanding paths. This is a semantic safety signal only. Developer C does
   not turn it into a branch, score, penalty, bad ending, NPC dialogue, or TTS
   behavior.
+- Developer C attaches additive `social_context` evidence after both rule and
+  LLM Understanding paths. This is a conversation-pragmatics card for signals
+  such as greeting-only answers, unresolved requests, off-topic evasion, and
+  recommended repair moves. Developer C does not turn it into a branch or NPC
+  line; Developer B may use it as soft progression evidence and Developer A may
+  use it as dialogue context.
 - Alpha 2 uses a generic slot evidence contract. The LLM may propose slot
   evidence for `node_context.required_slots`, `node_context.optional_slots`, and
   `node_context.critical_slots`. Developer C filters that evidence to allowed
@@ -608,6 +614,15 @@ Runtime modes:
     "confidence": 0.0,
     "category": "none",
     "source": "rule"
+  },
+  "social_context": {
+    "scene_norm": "institutional_check",
+    "conversation_move": "meaningful_answer",
+    "pending_social_obligation": "answer_ask_visit_purpose",
+    "obligation_status": "addressed",
+    "engagement_quality": "useful",
+    "recommended_npc_move": "continue",
+    "reason": "The player gave usable conversational content."
   },
   "intent_satisfied": true,
   "judgment_reason": "The purpose is clear."

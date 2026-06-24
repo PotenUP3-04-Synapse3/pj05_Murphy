@@ -13,7 +13,7 @@ import logging
 from pydantic import ValidationError as PydanticValidationError
 import re
 from time import perf_counter
-from typing import Any
+from typing import Any, Literal
 
 from backend.app.agents.agent_c.llm_cost_estimator import build_model_usage_summary
 from backend.app.agents.agent_c.understanding_llm_client import (
@@ -23,12 +23,23 @@ from backend.app.agents.agent_c.understanding_llm_client import (
     normalize_understanding_llm_result,
 )
 from backend.app.agents.agent_c.visit_purpose_classifier import classify_visit_purpose
-from backend.app.schemas.game_turn import NodeContext, SlotEvidence, UnderstandingOutput
+from backend.app.schemas.game_turn import NodeContext, SlotEvidence, SocialContextCard, UnderstandingOutput
 from backend.app.schemas.slot_policy import get_slot_policy
 from backend.app.services.service_c.incivility_classifier import classify_incivility_rule
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
 
 _LOGGER = logging.getLogger(__name__)
+
+SceneNorm = Literal["general", "peer_smalltalk", "institutional_check", "service_recovery"]
+RecommendedNPCMove = Literal[
+    "continue",
+    "acknowledge_then_progress",
+    "acknowledge_and_retry_request",
+    "playful_boundary",
+    "firm_redirect",
+    "service_repair",
+    "clarify",
+]
 
 
 FORBIDDEN_UNDERSTANDING_LLM_KEYS = {
@@ -255,6 +266,7 @@ class UnderstandingAgent:
                 )
                 output = self._analyze_with_rules(player_text, node_context)
                 output = _attach_incivility_classification(output, player_text)
+                output = _attach_social_context(output, player_text, node_context)
                 self.last_trace = _build_fallback_trace(
                     player_text=player_text,
                     node_context=node_context,
@@ -281,6 +293,7 @@ class UnderstandingAgent:
                 output = output.model_copy(update={"intent_success": output.intent_satisfied})
 
             output = _attach_incivility_classification(output, player_text)
+            output = _attach_social_context(output, player_text, node_context)
             postprocessing = _merge_postprocessing(
                 slot_evidence_postprocessing,
                 slot_repair_postprocessing,
@@ -298,6 +311,7 @@ class UnderstandingAgent:
 
         output = self._analyze_with_rules(player_text, node_context)
         output = _attach_incivility_classification(output, player_text)
+        output = _attach_social_context(output, player_text, node_context)
         self.last_trace = _build_rule_trace(output)
         return output
 
@@ -513,6 +527,175 @@ def _attach_incivility_classification(
         return output
 
     return output.model_copy(update={"incivility": rule_incivility})
+
+
+def _attach_social_context(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> UnderstandingOutput:
+    """Attach a soft social-pragmatics card without changing branch authority."""
+
+    return output.model_copy(
+        update={
+            "social_context": _build_social_context_card(
+                output,
+                player_text,
+                node_context,
+            )
+        }
+    )
+
+
+def _build_social_context_card(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> SocialContextCard:
+    scene_norm = _scene_norm_for_node(node_context.node_id)
+    pending_obligation = _pending_social_obligation(node_context)
+
+    if _is_flight_smalltalk_diagnostic_node(node_context) and _flight_pen_obligation_addressed(player_text):
+        return SocialContextCard(
+            scene_norm=scene_norm,
+            conversation_move="refusal" if _looks_like_refusal(player_text) else "meaningful_answer",
+            pending_social_obligation="seatmate_pen_request",
+            obligation_status="addressed",
+            engagement_quality="useful",
+            recommended_npc_move="acknowledge_then_progress",
+            reason="The player addressed the seatmate's pen request.",
+        )
+
+    if _is_greeting_only(player_text):
+        return SocialContextCard(
+            scene_norm=scene_norm,
+            conversation_move="greeting_only",
+            pending_social_obligation=pending_obligation,
+            obligation_status="open" if pending_obligation else "none",
+            engagement_quality="thin",
+            recommended_npc_move=_repair_move_for_scene(scene_norm),
+            reason="The player greeted but did not answer the active request.",
+        )
+
+    if _is_filler_only(player_text):
+        return SocialContextCard(
+            scene_norm=scene_norm,
+            conversation_move="filler",
+            pending_social_obligation=pending_obligation,
+            obligation_status="unclear" if pending_obligation else "none",
+            engagement_quality="thin",
+            recommended_npc_move="clarify",
+            reason="The player gave only filler or hesitation.",
+        )
+
+    if output.answer_relevance == "off_topic":
+        return SocialContextCard(
+            scene_norm=scene_norm,
+            conversation_move="off_topic",
+            pending_social_obligation=pending_obligation,
+            obligation_status="ignored" if pending_obligation else "none",
+            engagement_quality="stalled",
+            recommended_npc_move=_repair_move_for_scene(scene_norm),
+            reason="The player did not address the active conversational obligation.",
+        )
+
+    if output.intent_success or output.intent_satisfied:
+        return SocialContextCard(
+            scene_norm=scene_norm,
+            conversation_move="meaningful_answer",
+            pending_social_obligation=pending_obligation,
+            obligation_status="addressed" if pending_obligation else "none",
+            engagement_quality="useful",
+            recommended_npc_move="continue",
+            reason="The player gave usable conversational content.",
+        )
+
+    return SocialContextCard(
+        scene_norm=scene_norm,
+        conversation_move="unknown",
+        pending_social_obligation=pending_obligation,
+        obligation_status="unclear" if pending_obligation else "none",
+        engagement_quality="unclear",
+        recommended_npc_move="clarify",
+        reason="The player's social move was unclear.",
+    )
+
+
+def _scene_norm_for_node(node_id: str) -> SceneNorm:
+    if node_id.startswith("FLIGHT_"):
+        return "peer_smalltalk"
+    if node_id.startswith("IMM_"):
+        return "institutional_check"
+    if node_id.startswith("BAG_"):
+        return "service_recovery"
+    return "general"
+
+
+def _pending_social_obligation(node_context: NodeContext) -> str | None:
+    if _is_flight_smalltalk_diagnostic_node(node_context):
+        return "seatmate_pen_request"
+    if node_context.npc_question_goal:
+        return f"answer_{node_context.npc_question_goal}"
+    return None
+
+
+def _repair_move_for_scene(scene_norm: SceneNorm) -> RecommendedNPCMove:
+    if scene_norm == "peer_smalltalk":
+        return "acknowledge_and_retry_request"
+    if scene_norm == "institutional_check":
+        return "firm_redirect"
+    if scene_norm == "service_recovery":
+        return "service_repair"
+    return "clarify"
+
+
+def _is_greeting_only(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    words = re.findall(r"[a-z0-9']+", normalized)
+    if not words:
+        return False
+    greeting_words = {"hello", "hi", "hey", "hiya"}
+    soft_fillers = {"there", "again", "um", "uh", "uhm", "ah"}
+    return any(word in greeting_words for word in words) and all(
+        word in greeting_words or word in soft_fillers for word in words
+    )
+
+
+def _is_filler_only(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    words = re.findall(r"[a-z0-9']+", normalized)
+    return not words or " ".join(words) in FLIGHT_SMALLTALK_FILLER_ONLY_PHRASES
+
+
+def _flight_pen_obligation_addressed(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    if not normalized:
+        return False
+    tokens = set(normalized.split())
+    if tokens.intersection({"sure", "no", "nope", "cant", "can't"}):
+        return True
+    addressed_markers = (
+        "of course",
+        "here you go",
+        "here you are",
+        "take it",
+        "use this",
+        "you can use",
+        "no problem",
+        "sorry no",
+        "sorry i need",
+        "i need it",
+    )
+    return any(marker in normalized for marker in addressed_markers)
+
+
+def _looks_like_refusal(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    tokens = set(normalized.split())
+    if tokens.intersection({"no", "nope", "cant", "can't"}):
+        return True
+    refusal_markers = ("sorry no", "i need it")
+    return any(marker in normalized for marker in refusal_markers)
 
 
 def _extract_generic_required_slot(
@@ -1324,6 +1507,16 @@ def _flight_smalltalk_free_response(player_text: str, node_context: NodeContext)
 
     normalized_text = _normalize_for_keyword_match(player_text)
     words = re.findall(r"[a-z0-9']+", normalized_text)
+    if _is_greeting_only(player_text):
+        return {
+            "intent_success": False,
+            "confidence": 0.48,
+            "answer_relevance": "partially_related",
+            "ambiguity_type": "social_obligation_unanswered",
+            "needs_clarification": True,
+            "judgment_reason": "The player only greeted and did not answer the seatmate's pending request.",
+        }
+
     if not words or " ".join(words) in FLIGHT_SMALLTALK_FILLER_ONLY_PHRASES:
         return {
             "intent_success": False,

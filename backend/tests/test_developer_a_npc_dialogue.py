@@ -1373,6 +1373,74 @@ def test_smalltalk_diagnostic_blocks_repeated_pen_request_after_history() -> Non
     assert "borrow your pen" not in result["npc_text"].lower()
 
 
+def test_smalltalk_social_context_open_falls_back_to_repair_request() -> None:
+    class TravelQuestionLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Arabella",
+                "npc_text": "Hi again. Do you travel often?",
+                "tts_text": "Hi again. Do you travel often?",
+                "feedback_kr": "Good.",
+                "tone": "formal_neutral",
+                "animation": "move",
+                "npc_emotion": "confusion",
+                "stability": 0.75,
+                "style": 0.45,
+                "speed": 1.0,
+                "similarity_boost": 0.85,
+                "llm_reason": "[COHERENT] The player greeted again, then I pivoted to a travel question.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Hello?",
+            "node_context": {"recommended_expression": "Sure, here you go."},
+            "understanding": {
+                "social_context": {
+                    "scene_norm": "peer_smalltalk",
+                    "conversation_move": "greeting_only",
+                    "pending_social_obligation": "seatmate_pen_request",
+                    "obligation_status": "open",
+                    "engagement_quality": "thin",
+                    "recommended_npc_move": "acknowledge_and_retry_request",
+                    "reason": "The player greeted but did not answer the seatmate's pen request.",
+                }
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.3},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "branch_reason": "flight_smalltalk_social_obligation_open",
+            },
+            "dialogue_directive": {
+                "purpose": "smalltalk_diagnostic",
+                "tone_hint": "warm_social_repair",
+                "target_slot": None,
+                "topic_switch": False,
+                "length_target": 10,
+            },
+            "dialogue_seed": {
+                "surface_goal": "estimate_user_travel_speaking_level",
+                "required_slots": [],
+            },
+        },
+        use_llm=True,
+        llm_client=TravelQuestionLLMClient(),
+    )
+
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "smalltalk_social_obligation_ignored"
+    assert "pen" in result["npc_text"].lower()
+    assert "travel often" not in result["npc_text"].lower()
+
+
 class _CapturingLLMClient:
     model = "fake-model"
 

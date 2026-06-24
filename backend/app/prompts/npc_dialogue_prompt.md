@@ -30,6 +30,11 @@ You are Developer A's NPC Dialogue Agent for Murphy's Trippin, an English-learni
   {% if purpose == 'smalltalk_diagnostic' %}
 - Current Mode: smalltalk_diagnostic.
 - The `surface_goal` is NOT a raw question, but an intent tag: {{ surface_goal }}. NEVER output this tag verbatim.
+{% if social_obligation_status in ['open', 'ignored', 'unclear'] %}
+- Social context card says there is an unresolved conversational obligation: {{ social_pending_obligation }}.
+- Recommended NPC move: {{ social_recommended_npc_move }}.
+- Resolve that obligation before changing topics. If the player only greeted or dodged the request, react naturally and ask for an answer to the request instead of asking a new travel question.
+{% endif %}
 - NPC Dialogue must follow: [Reaction to player's prior turn] + [Transition] + [Natural followup question/statement to prompt the competency/topic indicated by the intent tag].
 - If `topic_switch` is True, you MUST start the transition/followup with a conversational pivot (e.g. "Anyway, ...", "By the way, ...").
 - Topic management:

@@ -1,5 +1,79 @@
 # Handoff
 
+## 2026-06-24 Developer A, B, C: Social Context Card for Flight Greeting Loops
+
+Developer C implemented this as a user-approved one-time cross-owner change
+covering A/B/C responsibilities. The immediate bug was the Flight seatmate run
+where Arabella asked to borrow a pen, the player repeatedly said `Hello?`, and
+the system treated each thin greeting as successful free smalltalk until the
+chapter completed.
+
+Root cause:
+- C's Flight diagnostic understanding treated a greeting-only answer such as
+  `Hello?` as meaningful free smalltalk.
+- B's Flight diagnostic policy optimized for free-form level sampling and turn
+  coverage, so an unresolved social request could still self-loop or complete.
+- A's prompt had a weak smalltalk instruction for non-answers, but B kept
+  sending success/probe metadata and A had no hard input signal or guard to
+  stop topic jumps like `Do you travel often?`.
+
+Changed:
+- `backend/app/schemas/game_turn.py`:
+  Added additive `SocialContextCard` and `UnderstandingOutput.social_context`.
+  This card records scene norm, player conversation move, unresolved social
+  obligation, engagement quality, and recommended repair move. It is semantic
+  evidence only; it does not own branch decisions or NPC text.
+- `backend/app/agents/agent_c/understanding_agent.py`:
+  Added social-context attachment after both rule and LLM understanding paths.
+  Flight `Hello?`/`Hi`-only answers now become low-confidence, clarification
+  needed responses with `pending_social_obligation=seatmate_pen_request`.
+  The same card also classifies institutional and baggage-service scenes so A
+  can speak in the right tone when a player greets or dodges instead of
+  answering.
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`:
+  Added a soft social-repair gate before Flight probe selection/completion.
+  If the current turn has an open seatmate pen obligation and the player only
+  greets/fillers/off-topic, B returns `UNCLEAR / REASK` on the same node instead
+  of `SUCCESS / ADVANCE` or `COMPLETE_CHAPTER`. Repeated greeting history is
+  detected from B OpenKB records and marked with
+  `flight_smalltalk_repeated_greeting_social_repair`.
+- `backend/app/agents/agent_b/english_level_hint_agent.py`:
+  Passes B writer `runtime_root` into the Flight diagnostic policy so the policy
+  reads the same session history that B writes during tests/runtime.
+- `backend/app/services/service_a/developer_a_input_service.py`:
+  Forwards `understanding.social_context` and `branch_reason` into A's
+  normalized payload.
+- `backend/app/services/service_a/developer_a_fallback_service.py`:
+  Added social-repair fallback text. Flight falls back to a natural pen-request
+  repair line; Immigration uses a firm official re-ask; Baggage uses a helpful
+  service re-ask.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py` and
+  `backend/app/prompts/npc_dialogue_prompt*.md`:
+  Added social context variables to the LLM payload/prompt and a postprocessing
+  guard that rejects smalltalk LLM output if it jumps topics while a seatmate
+  pen request is still open.
+- `docs/contracts/developer_c_schema_contract.md`:
+  Documented `social_context` as additive Understanding evidence for B/A.
+
+Expected behavior now:
+- Flight: `Hello?` after Arabella's pen request does not count as successful
+  smalltalk evidence and cannot complete the chapter. Arabella should repair
+  the social obligation first, e.g. asking whether the player heard her pen
+  request, before moving to travel topics.
+- Immigration: greeting-only/dodging still stays formal and answer-seeking.
+- Baggage: greeting-only/dodging can be recovered with a helpful service tone
+  while still asking for the needed detail.
+
+Verification:
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_allows_flight_rude_refusal_to_continue_smalltalk backend/tests/test_preprototype_flow.py::test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller -q`: PASS, 91 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py -q`: PASS, 111 passed.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run pytest backend/tests/test_preprototype_flow.py -q`: PASS, 41 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run pytest -q`: PASS, 401 passed, 1 warning (`audioop` deprecation).
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run ruff check .`: PASS.
+- `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run mypy .`: PASS, 139 source files.
+- `git diff --check`: PASS, with existing Windows LF-to-CRLF working-copy
+  warnings only.
+
 ## 2026-06-21 Developer C, A: Immigration Prompt Alignment and Slot Repair Fix
 
 Developer C traced a unified AgentRun where Immigration technically progressed

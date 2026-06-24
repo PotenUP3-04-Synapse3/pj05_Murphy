@@ -165,6 +165,10 @@ class FlightSmallTalkDiagnosticPolicy:
 
         turns = len(flight_records) + 1
 
+        social_repair = _social_repair_decision(payload, flight_records)
+        if social_repair is not None:
+            return social_repair
+
         # Identify covered competencies from history early
         covered_competencies = set()
         for r in flight_records:
@@ -351,3 +355,78 @@ class FlightSmallTalkDiagnosticPolicy:
             selected_probe=selected_probe,
             cumulative_confidence=cumulative_confidence,
         )
+
+
+def _social_repair_decision(
+    payload: DevBPolicyInput,
+    flight_records: list[dict[str, Any]],
+) -> ScenarioDecision | None:
+    social_context = _social_context_dict(payload.understanding)
+    obligation_status = str(social_context.get("obligation_status") or "")
+    pending_obligation = str(social_context.get("pending_social_obligation") or "")
+    conversation_move = str(social_context.get("conversation_move") or "")
+    if pending_obligation != "seatmate_pen_request":
+        return None
+    if obligation_status not in {"open", "ignored", "unclear"}:
+        return None
+    if conversation_move not in {"greeting_only", "repeated_greeting", "filler", "off_topic", "unknown"}:
+        return None
+
+    greeting_streak = _greeting_streak(payload, flight_records)
+    branch_reason = (
+        "flight_smalltalk_repeated_greeting_social_repair"
+        if greeting_streak >= 2
+        else "flight_smalltalk_social_obligation_open"
+    )
+    return ScenarioDecision(
+        verdict="UNCLEAR",
+        branch_type="clarify",
+        next_action="REASK",
+        next_node_id=SCENE_ID,
+        branch_reason=branch_reason,
+        patience_delta=0,
+        suspicion_delta=0,
+        retry_count_delta=0,
+        hint_count_delta=0,
+        selected_probe=None,
+        cumulative_confidence=0.0,
+    )
+
+
+def _social_context_dict(understanding: Any) -> dict[str, Any]:
+    social_context = getattr(understanding, "social_context", None)
+    if isinstance(social_context, dict):
+        return social_context
+    if social_context is not None and hasattr(social_context, "model_dump"):
+        return social_context.model_dump()
+    return {}
+
+
+def _greeting_streak(
+    payload: DevBPolicyInput,
+    flight_records: list[dict[str, Any]],
+) -> int:
+    count = 1 if _is_greeting_move(payload.player_text, _social_context_dict(payload.understanding)) else 0
+    for record in reversed(flight_records):
+        understanding = record.get("understanding") if isinstance(record, dict) else {}
+        social_context = understanding.get("social_context") if isinstance(understanding, dict) else {}
+        player_text = str(record.get("player_text") or "") if isinstance(record, dict) else ""
+        if _is_greeting_move(player_text, social_context if isinstance(social_context, dict) else {}):
+            count += 1
+            continue
+        break
+    return count
+
+
+def _is_greeting_move(player_text: str, social_context: dict[str, Any]) -> bool:
+    if str(social_context.get("conversation_move") or "") in {"greeting_only", "repeated_greeting"}:
+        return True
+    normalized = " ".join(player_text.lower().replace("?", " ").replace(".", " ").split())
+    if not normalized:
+        return False
+    words = normalized.split()
+    greeting_words = {"hello", "hi", "hey", "hiya"}
+    soft_fillers = {"there", "again", "um", "uh", "uhm", "ah"}
+    return any(word in greeting_words for word in words) and all(
+        word in greeting_words or word in soft_fillers for word in words
+    )

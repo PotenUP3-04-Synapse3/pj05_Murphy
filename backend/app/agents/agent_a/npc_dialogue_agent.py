@@ -414,6 +414,37 @@ def _mentions_repeat_complaint(text: str) -> bool:
     return any(marker in normalized for marker in complaint_markers)
 
 
+def _ignores_open_smalltalk_social_obligation(
+    npc_text: str,
+    tts_text: str,
+    normalized: dict[str, Any],
+) -> bool:
+    """Return True when an LLM jumps topics before resolving an open request."""
+
+    if str(normalized.get("dialogue_purpose") or "") != "smalltalk_diagnostic":
+        return False
+    social_context = normalized.get("social_context") or {}
+    if not isinstance(social_context, dict):
+        return False
+    if str(social_context.get("pending_social_obligation") or "") != "seatmate_pen_request":
+        return False
+    if str(social_context.get("obligation_status") or "") not in {"open", "ignored", "unclear"}:
+        return False
+
+    combined = _normalize_for_echo_match(f"{npc_text} {tts_text}")
+    request_repair_markers = (
+        "pen",
+        "borrow",
+        "did you hear",
+        "do you mean",
+        "are you saying",
+        "answer",
+        "playing with me",
+        "teasing me",
+    )
+    return not any(marker in combined for marker in request_repair_markers)
+
+
 # LangGraph 에이전트의 내부 공유 상태(Shared State) 명세를 정의하는 TypedDict 클래스입니다.
 class NPCDialogueState(TypedDict):
     # payload: 개발자 C의 어댑터로부터 넘겨받은 원본 입력 데이터(Raw Input Payload)입니다.
@@ -673,6 +704,10 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "last_npc_intent": session_context_card.get("last_npc_intent", ""),
             "recent_turns_compact": session_context_card.get("recent_turns_compact", []),
             "topic_thread": session_context_card.get("topic_thread", []),
+            "social_context": normalized.get("social_context", {}),
+            "social_obligation_status": (normalized.get("social_context") or {}).get("obligation_status", ""),
+            "social_pending_obligation": (normalized.get("social_context") or {}).get("pending_social_obligation", ""),
+            "social_recommended_npc_move": (normalized.get("social_context") or {}).get("recommended_npc_move", ""),
             
             # 정책 관련 변수들
             "policy_action": policy.action,
@@ -948,6 +983,13 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
                 npc_text,
             )
             return {"error": "smalltalk_repeated_object_request"}
+
+        if _ignores_open_smalltalk_social_obligation(npc_text, tts_text, normalized):
+            logger.error(
+                "Smalltalk LLM output ignored an open social obligation: %r",
+                npc_text,
+            )
+            return {"error": "smalltalk_social_obligation_ignored"}
 
     # topic_switch 전환구 강제 보정 (smalltalk_diagnostic 전용)
     topic_switch = payload.get("dialogue_directive", {}).get("topic_switch", False)

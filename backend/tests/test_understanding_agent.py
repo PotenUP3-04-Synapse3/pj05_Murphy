@@ -42,6 +42,24 @@ def _alpha_node_context(chapter_id: str, node_id: str):
     return OpenKBService().get_node_context(chapter_id, node_id)
 
 
+def _flight_smalltalk_node_context():
+    return _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK")
+
+
+def test_understanding_agent_flight_hello_marks_open_social_obligation() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text("Hello?", _flight_smalltalk_node_context())
+
+    assert output.intent_success is False
+    assert output.needs_clarification is True
+    assert output.social_context.scene_norm == "peer_smalltalk"
+    assert output.social_context.conversation_move == "greeting_only"
+    assert output.social_context.pending_social_obligation == "seatmate_pen_request"
+    assert output.social_context.obligation_status == "open"
+    assert output.social_context.recommended_npc_move == "acknowledge_and_retry_request"
+
+
 def test_understanding_agent_uses_llm_client_in_llm_mode() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {

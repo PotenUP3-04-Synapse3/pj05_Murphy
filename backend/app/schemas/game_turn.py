@@ -305,6 +305,43 @@ class IncivilityClassification(BaseModel):
     source: Literal["none", "rule", "llm"] = "none"
 
 
+class SocialContextCard(BaseModel):
+    """Small conversation-pragmatics memo C can pass to B and A.
+
+    Beginner guide:
+    This card does not decide a scenario branch or write NPC dialogue. It is a
+    compact note about the social shape of the player's latest utterance: did
+    they answer, only greet, avoid a pending request, or need repair? Developer
+    B may use it as soft progression evidence, and Developer A may use it as
+    dialogue context.
+    """
+
+    scene_norm: Literal["general", "peer_smalltalk", "institutional_check", "service_recovery"] = "general"
+    conversation_move: Literal[
+        "unknown",
+        "meaningful_answer",
+        "greeting_only",
+        "repeated_greeting",
+        "filler",
+        "off_topic",
+        "clarification_request",
+        "refusal",
+    ] = "unknown"
+    pending_social_obligation: str | None = None
+    obligation_status: Literal["none", "open", "addressed", "ignored", "unclear"] = "none"
+    engagement_quality: Literal["useful", "thin", "stalled", "unclear"] = "unclear"
+    recommended_npc_move: Literal[
+        "continue",
+        "acknowledge_then_progress",
+        "acknowledge_and_retry_request",
+        "playful_boundary",
+        "firm_redirect",
+        "service_repair",
+        "clarify",
+    ] = "continue"
+    reason: str = ""
+
+
 class UnderstandingOutput(BaseModel):
     intent: str
     intent_success: bool
@@ -321,6 +358,7 @@ class UnderstandingOutput(BaseModel):
     missing_slots: list[str]
     needs_clarification: bool
     incivility: IncivilityClassification | None = None
+    social_context: SocialContextCard = Field(default_factory=SocialContextCard)
     intent_satisfied: bool | None = None
     judgment_reason: str = ""
 

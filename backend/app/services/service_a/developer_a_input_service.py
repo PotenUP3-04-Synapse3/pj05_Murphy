@@ -47,6 +47,10 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
     dialogue_seed = payload.get("dialogue_seed") or {}
     game_state = payload.get("game_state") or {}
+    understanding = payload.get("understanding") or {}
+    social_context = understanding.get("social_context") or payload.get("social_context") or {}
+    if social_context is not None and hasattr(social_context, "model_dump"):
+        social_context = social_context.model_dump()
 
     suspicion_scope = dialogue_seed.get("suspicion_scope") or "none"
     dialogue_history = list(dialogue_seed.get("dialogue_history") or [])
@@ -82,10 +86,12 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
         ),
         "branch_type": _optional_text(branch.get("branch_type")),
         "next_node_id": _optional_text(branch.get("next_node_id")),
+        "branch_reason": _optional_text(branch.get("branch_reason")),
         "dialogue_purpose": _optional_text(dialogue_directive.get("purpose")),
         "tone_hint": _optional_text(dialogue_directive.get("tone_hint")) or "neutral",
         "target_slot": _optional_text(dialogue_directive.get("target_slot")),
-        "player_emotion": _optional_text(payload.get("understanding", {}).get("emotion")),  # 플레이어 원본 감정 상태 연동
+        "player_emotion": _optional_text(understanding.get("emotion")),  # 플레이어 원본 감정 상태 연동
+        "social_context": social_context if isinstance(social_context, dict) else {},
         "dialogue_seed": dialogue_seed,
         "random_customs_item": _optional_text(random_item_name),
         "random_customs_item_difficulty": int(random_item_difficulty),
