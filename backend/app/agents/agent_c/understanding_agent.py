@@ -473,6 +473,25 @@ class UnderstandingAgent:
                 judgment_reason="The purpose is clear.",
             )
 
+        if _is_low_content_non_answer(player_text) and node_context.required_slots:
+            return UnderstandingOutput(
+                intent=_required_intent_for_slot(node_context, primary_required_slot or "unknown"),
+                intent_success=False,
+                confidence=0.34,
+                meaning_summary_kr="The player gave a thin everyday response that did not answer the required slot.",
+                emotion="nervous",
+                answer_relevance=_missing_required_slot_answer_relevance(player_text, node_context),
+                ambiguity_type="low_content_non_answer",
+                risk_delta=0,
+                risk_reason="No risk expression was found.",
+                risk_tags=[],
+                extracted_slots={},
+                missing_slots=node_context.required_slots,
+                needs_clarification=True,
+                intent_satisfied=False,
+                judgment_reason="The player gave a low-content social response instead of the required answer.",
+            )
+
         generic_slot = _extract_generic_required_slot(player_text, node_context)
         if generic_slot is not None:
             slot_name, slot_value = generic_slot
@@ -785,7 +804,29 @@ def _is_low_content_non_answer(player_text: str) -> bool:
     words = re.findall(r"[a-z0-9']+", normalized)
     if not words:
         return False
-    return " ".join(words) in FLIGHT_SMALLTALK_LOW_CONTENT_NON_ANSWER_PHRASES
+    joined = " ".join(words)
+    if joined in FLIGHT_SMALLTALK_LOW_CONTENT_NON_ANSWER_PHRASES:
+        return True
+    if len(words) <= 4:
+        everyday_words = {
+            "okay",
+            "ok",
+            "alright",
+            "hello",
+            "hi",
+            "hey",
+            "fine",
+            "yeah",
+            "yes",
+            "no",
+            "um",
+            "uh",
+            "uhm",
+            "ah",
+        }
+        has_greeting = any(word in {"hello", "hi", "hey"} for word in words)
+        return has_greeting and all(word in everyday_words for word in words)
+    return False
 
 
 def _flight_pen_obligation_addressed(player_text: str) -> bool:

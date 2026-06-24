@@ -232,6 +232,34 @@ def _social_context_fallback_text(normalized: dict[str, Any]) -> str:
         return "Hi. I mean, could I borrow your pen for this form?"
 
     fallback_question = SURFACE_GOAL_FALLBACK_TEXTS.get(surface_goal, "").strip()
+    if scene_norm == "service_recovery":
+        if "procedure_warning" in branch_reason:
+            return "I cannot continue the inspection without your cooperation."
+        if "engagement_check" in branch_reason:
+            if conversation_move == "clarification_request":
+                return "Are you having trouble understanding me? I need your cooperation to continue."
+            return "I need to check that you understand me before we continue."
+        if "repeated_social_repair" in branch_reason:
+            if fallback_question:
+                return f"I'm not sure you heard me. {fallback_question}"
+            return "I'm not sure you heard me. I still need your response."
+        if "social_obligation_open" in branch_reason:
+            if fallback_question:
+                return f"I need a response so we can continue. {fallback_question}"
+            return "I need a response so we can continue."
+
+    if scene_norm == "institutional_check":
+        if "procedure_warning" in branch_reason:
+            return "I cannot continue this process without your cooperation."
+        if "engagement_check" in branch_reason:
+            if conversation_move == "clarification_request":
+                return "Are you having trouble understanding the question?"
+            return "I need to make sure you understand the question before we continue."
+        if "repeated_social_repair" in branch_reason:
+            return "I need a direct answer to continue this process."
+        if "social_obligation_open" in branch_reason:
+            return "Please answer the current question so we can continue."
+
     if scene_norm == "institutional_check" and fallback_question:
         return f"I need you to answer the question, please. {fallback_question}"
     if scene_norm == "service_recovery" and fallback_question:

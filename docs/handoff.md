@@ -1,5 +1,79 @@
 # Handoff
 
+## 2026-06-24 Developer A, B, C: General Social-Stall Lifecycle for Customs
+
+Developer C implemented this as a user-approved cross-owner follow-up after the
+latest Baggage/Customs run. The attached run improved the wrong-question issue,
+but Officer Dan still repeated lines like `No worries. I still need that detail
+so I can help. Please check the contents of the suitcase now.` for repeated
+`Hello.` turns.
+
+Root cause:
+
+- C could still let mixed low-content social turns such as `Okay. Hello?`
+  satisfy a customs acknowledgement slot because `okay` was treated as valid
+  slot evidence before social non-answer detection.
+- B had Flight-only social lifecycle handling, but service/institutional scenes
+  still fell back to generic retry/hint policy. In BAG_005 this produced a
+  `GIVE_HINT | FAIL` loop instead of escalating the conversation naturally.
+- A fallback had one service-recovery template for all unresolved obligations,
+  so repeated social stalls sounded identical even when B/C had enough context
+  to ask whether the player understood or to set a procedural boundary.
+
+Sprint notes:
+
+- **Sprint 1 - RED coverage**:
+  Added regressions for C mixed everyday non-answers, B customs social-stall
+  lifecycle over `Hello.`, `What?`, `Fine.`, and `Can you rap for me?`, and A
+  fallback wording for engagement-check and procedure-warning stages.
+- **Sprint 2 - C social non-answer guard**:
+  C now detects short everyday/greeting mixtures before generic slot repair, so
+  `Okay. Hello?` no longer satisfies `customs_hold_acknowledgement`. It becomes
+  `low_content_non_answer` with the existing
+  `pending_social_obligation=check_suitcase_contents`.
+- **Sprint 3 - B service/institutional lifecycle**:
+  Added `SocialObligationLifecyclePolicy`, which reads prior OpenKB turn
+  records and routes repeated non-answers through
+  `social_obligation_open -> repeated_social_repair -> engagement_check ->
+  procedure_warning`. This intercepts service/institutional social stalls before
+  generic hint policy, avoiding the BAG_005 `GIVE_HINT` loop.
+- **Sprint 4 - A lifecycle-aware repair**:
+  Service/institutional fallback dialogue now varies by lifecycle stage:
+  early repair asks for a response, repeated repair varies the wording,
+  engagement check asks whether the player understands, and procedure warning
+  sets a calm boundary. Long and short NPC prompts now explain these branch
+  reasons to the LLM path too.
+
+Changed files:
+
+- `backend/app/agents/agent_b/english_level_hint_agent.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/app/services/service_b/social_obligation_lifecycle_policy.py`
+- `backend/app/tools/tool_b/developer_b_policy_graph_tools.py`
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/test_understanding_agent.py`
+- `docs/handoff.md`
+
+Verification:
+
+- RED confirmed:
+  `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_customs_hold_mixed_everyday_non_answer_marks_low_content backend/tests/dev_b/test_developer_b_policy_engine.py::test_customs_hold_social_stall_lifecycle_uses_repair_not_hint_loop backend/tests/test_developer_a_npc_dialogue.py::test_customs_social_engagement_check_fallback_checks_understanding_without_repeating_template backend/tests/test_developer_a_npc_dialogue.py::test_customs_social_warning_fallback_sets_boundary_without_repeating_contents_prompt -q`:
+  failed with expected assertions.
+- Targeted GREEN:
+  same command after implementation: PASS, 4 passed, 1 warning (`audioop`
+  deprecation).
+- Related regression subset:
+  `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/dev_b/test_developer_b_policy_engine.py -q`:
+  PASS, 204 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`: PASS, all checks passed.
+- `uv run mypy .`: PASS, no issues found in 140 source files.
+- `uv run pytest -q`: PASS, 436 passed, 1 warning (`audioop`
+  deprecation).
+
 ## 2026-06-24 Developer A, B, C: Baggage Customs Social Repair and Deterministic Dialogue Drift
 
 Developer C implemented this as a user-approved cross-owner follow-up after the

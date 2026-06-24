@@ -929,6 +929,87 @@ def test_customs_hold_greeting_retry_uses_procedure_not_hook_or_wrong_question()
     assert "contents" in text
 
 
+def _customs_hold_social_payload(
+    *,
+    branch_reason: str,
+    conversation_move: str,
+    player_text: str,
+) -> dict[str, Any]:
+    return {
+        "npc": {"npc_id": "dan", "npc_role": "customs_officer"},
+        "node_id": "BAG_005_CUSTOMS_HOLD_EXPLANATION",
+        "player_text": player_text,
+        "node_context": {
+            "node_id": "BAG_005_CUSTOMS_HOLD_EXPLANATION",
+            "recommended_expression": "Okay, I'll open it and check the contents.",
+        },
+        "understanding": {
+            "answer_relevance": "off_topic",
+            "missing_slots": ["customs_hold_acknowledgement"],
+            "social_context": {
+                "scene_norm": "service_recovery",
+                "conversation_move": conversation_move,
+                "pending_social_obligation": "check_suitcase_contents",
+                "obligation_status": "ignored",
+                "engagement_quality": "stalled",
+                "recommended_npc_move": "service_repair",
+            },
+        },
+        "evaluation_summary": {"task_success": False, "clarity": 0.2},
+        "level_hint": {"english_level": "beginner"},
+        "in_game_feedback": {"npc_recast_line_candidate": None},
+        "branch": {
+            "branch_type": "clarify",
+            "next_action": "REASK",
+            "next_node_id": "BAG_005_RETRY_CUSTOMS_HOLD_EXPLANATION",
+            "branch_reason": branch_reason,
+        },
+        "dialogue_directive": {
+            "purpose": "support_retry",
+            "target_slot": "customs_hold_acknowledgement",
+        },
+        "dialogue_seed": {
+            "surface_goal": "customs_hold_explanation_before_unlock",
+            "required_slots": ["customs_hold_acknowledgement"],
+        },
+    }
+
+
+def test_customs_social_engagement_check_fallback_checks_understanding_without_repeating_template() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        _customs_hold_social_payload(
+            branch_reason="service_recovery_engagement_check",
+            conversation_move="clarification_request",
+            player_text="What?",
+        ),
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "social_context_fallback"
+    assert "no worries. i still need that detail" not in text
+    assert "hello" not in text
+    assert "trouble understanding" in text
+
+
+def test_customs_social_warning_fallback_sets_boundary_without_repeating_contents_prompt() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        _customs_hold_social_payload(
+            branch_reason="service_recovery_procedure_warning",
+            conversation_move="off_topic",
+            player_text="Can you rap for me?",
+        ),
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "social_context_fallback"
+    assert "no worries. i still need that detail" not in text
+    assert "please check the contents of the suitcase now" not in text
+    assert "cannot continue" in text
+    assert "cooperation" in text
+
+
 def test_passport_refusal_warning_fallback_does_not_ask_for_clear_answer() -> None:
     result = generate_npc_dialogue_from_level_design(
         {

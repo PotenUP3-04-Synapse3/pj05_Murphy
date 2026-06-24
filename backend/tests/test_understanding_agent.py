@@ -78,6 +78,20 @@ def test_understanding_agent_customs_hold_hello_marks_open_procedural_obligation
     assert output.social_context.recommended_npc_move == "service_repair"
 
 
+def test_understanding_agent_customs_hold_mixed_everyday_non_answer_marks_low_content() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text("Okay. Hello?", _baggage_customs_hold_node_context())
+
+    assert output.intent_success is False
+    assert output.answer_relevance == "off_topic"
+    assert output.social_context.scene_norm == "service_recovery"
+    assert output.social_context.conversation_move == "low_content_non_answer"
+    assert output.social_context.pending_social_obligation == "check_suitcase_contents"
+    assert output.social_context.obligation_status == "ignored"
+    assert output.social_context.recommended_npc_move == "service_repair"
+
+
 def test_understanding_agent_flight_what_marks_clarification_request() -> None:
     agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
 
