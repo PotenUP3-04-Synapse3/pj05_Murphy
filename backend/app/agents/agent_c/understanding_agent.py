@@ -508,7 +508,7 @@ class UnderstandingAgent:
             confidence=0.55,
             meaning_summary_kr="The player answer did not clearly fill the required slot.",
             emotion="nervous",
-            answer_relevance="partially_related",
+            answer_relevance=_missing_required_slot_answer_relevance(player_text, node_context),
             ambiguity_type="unclear_required_slot",
             risk_delta=0,
             risk_reason="No risk expression was found.",
@@ -715,9 +715,29 @@ def _scene_norm_for_node(node_id: str) -> SceneNorm:
 def _pending_social_obligation(node_context: NodeContext) -> str | None:
     if _is_flight_smalltalk_diagnostic_node(node_context):
         return "seatmate_pen_request"
+    if _has_customs_hold_contents_obligation(node_context):
+        return "check_suitcase_contents"
     if node_context.npc_question_goal:
         return f"answer_{node_context.npc_question_goal}"
     return None
+
+
+def _has_customs_hold_contents_obligation(node_context: NodeContext) -> bool:
+    return (
+        node_context.node_id.startswith("BAG_005")
+        or node_context.npc_question_goal == "customs_hold_explanation_before_unlock"
+        or "customs_hold_acknowledgement" in node_context.required_slots
+    )
+
+
+def _missing_required_slot_answer_relevance(
+    player_text: str,
+    node_context: NodeContext,
+) -> Literal["partially_related", "off_topic"]:
+    if _scene_norm_for_node(node_context.node_id) == "service_recovery" and node_context.required_slots:
+        return "off_topic"
+    _ = player_text
+    return "partially_related"
 
 
 def _repair_move_for_scene(scene_norm: SceneNorm) -> RecommendedNPCMove:

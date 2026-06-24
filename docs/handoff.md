@@ -1,5 +1,75 @@
 # Handoff
 
+## 2026-06-24 Developer A, B, C: Baggage Customs Social Repair and Deterministic Dialogue Drift
+
+Developer C implemented this as a user-approved cross-owner follow-up after the
+Baggage/Customs debug run. The attached run showed Officer Dan responding to
+`Hello.` with lines like `Understood. You mentioned hello - What brings you to
+the customs hold area?` even though the active customs obligation was already
+stated: the player should acknowledge unlocking the suitcase and checking the
+contents.
+
+Root cause:
+
+- Developer A's deterministic fallback synthesis could quote low-content
+  `open_hooks` directly, producing `You mentioned hello` / `You mentioned can`
+  style text before the LLM or fallback result reached the player.
+- The A fallback question table mapped
+  `customs_hold_explanation_before_unlock` to `What brings you to the customs
+  hold area?`, which belongs to arrival/orientation, not the current suitcase
+  inspection step.
+- Developer C's social context card exposed the customs obligation as the
+  abstract `answer_customs_hold_explanation_before_unlock` instead of the
+  concrete social/procedural obligation `check_suitcase_contents`.
+
+Sprint notes:
+
+- **Sprint 1 - RED coverage**:
+  Added regressions proving fallback synthesis must not quote low-content
+  hooks, BAG_005 LLM drift must not leak `You mentioned hello` or ask `What
+  brings you...`, and C must mark a customs-hold greeting as an open
+  `check_suitcase_contents` obligation.
+- **Sprint 2 - A guardrail cleanup**:
+  `synthesize_fallback_next_question` now keeps `open_hooks` for API
+  compatibility but no longer uses them to author visible dialogue. Retry hook
+  leak detection now applies to non-immigration retry/hint turns too, while
+  preserving the existing immigration diagnostic reason string.
+- **Sprint 3 - Customs procedural goal alignment**:
+  The customs-hold surface goal now points back to checking the suitcase
+  contents, and retry paraphrases use that procedural action instead of asking
+  why the player is in the customs hold area.
+- **Sprint 4 - C social context alignment**:
+  C now labels BAG_005 as `service_recovery` with
+  `pending_social_obligation=check_suitcase_contents`; service-recovery missing
+  required-slot answers are treated as off-topic non-answers in rule mode, so A
+  receives a clearer repair signal.
+
+Changed files:
+
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/app/services/service_a/dialogue_policy_service.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/test_understanding_agent.py`
+- `docs/handoff.md`
+
+Verification:
+
+- RED confirmed:
+  `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_fallback_question_synthesis_does_not_quote_low_content_hooks backend/tests/test_developer_a_npc_dialogue.py::test_customs_hold_greeting_retry_uses_procedure_not_hook_or_wrong_question backend/tests/test_understanding_agent.py::test_understanding_agent_customs_hold_hello_marks_open_procedural_obligation -q`:
+  failed with expected assertions.
+- Targeted GREEN:
+  `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_fallback_question_synthesis_does_not_quote_low_content_hooks backend/tests/test_developer_a_npc_dialogue.py::test_customs_hold_greeting_retry_uses_procedure_not_hook_or_wrong_question backend/tests/test_understanding_agent.py::test_understanding_agent_customs_hold_hello_marks_open_procedural_obligation backend/tests/test_developer_a_npc_dialogue.py::test_immigration_retry_llm_hook_prefix_falls_back_to_direct_question -q`:
+  PASS, 4 passed, 1 warning (`audioop` deprecation).
+- Related regression subset:
+  `uv run pytest backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_understanding_agent.py -q`:
+  PASS, 88 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`: PASS, all checks passed.
+- `uv run mypy .`: PASS, no issues found in 139 source files.
+- `uv run pytest -q`: PASS, 432 passed, 1 warning (`audioop`
+  deprecation).
+
 ## 2026-06-24 Developer A/C: Debug NPC Selection and Speaker Alias Repair
 
 The attached Baggage run showed the respond-dialog debug page displaying

@@ -46,6 +46,10 @@ def _flight_smalltalk_node_context():
     return _alpha_node_context("CH0_01_FLIGHT_SMALLTALK", "FLIGHT_A_001_SEATMATE_SMALLTALK")
 
 
+def _baggage_customs_hold_node_context():
+    return _alpha_node_context("CH0_04_BAGGAGE_CLAIM", "BAG_005_CUSTOMS_HOLD_EXPLANATION")
+
+
 def test_understanding_agent_flight_hello_marks_open_social_obligation() -> None:
     agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
 
@@ -58,6 +62,20 @@ def test_understanding_agent_flight_hello_marks_open_social_obligation() -> None
     assert output.social_context.pending_social_obligation == "seatmate_pen_request"
     assert output.social_context.obligation_status == "open"
     assert output.social_context.recommended_npc_move == "acknowledge_and_retry_request"
+
+
+def test_understanding_agent_customs_hold_hello_marks_open_procedural_obligation() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text("Hello.", _baggage_customs_hold_node_context())
+
+    assert output.intent_success is False
+    assert output.answer_relevance == "off_topic"
+    assert output.social_context.scene_norm == "service_recovery"
+    assert output.social_context.conversation_move == "greeting_only"
+    assert output.social_context.pending_social_obligation == "check_suitcase_contents"
+    assert output.social_context.obligation_status == "open"
+    assert output.social_context.recommended_npc_move == "service_repair"
 
 
 def test_understanding_agent_flight_what_marks_clarification_request() -> None:

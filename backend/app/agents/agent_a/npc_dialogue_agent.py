@@ -171,6 +171,14 @@ def _has_immigration_retry_hook_leak(
     tts_text: str,
     normalized: dict[str, Any],
 ) -> bool:
+    return _has_retry_hook_leak(npc_text, tts_text, normalized)
+
+
+def _has_retry_hook_leak(
+    npc_text: str,
+    tts_text: str,
+    normalized: dict[str, Any],
+) -> bool:
     branch_type = str(normalized.get("branch_type") or "").lower()
     next_action = str(normalized.get("next_action") or "").upper()
     if branch_type not in {"retry", "clarify"} and next_action not in {"REASK", "GIVE_HINT"}:
@@ -772,16 +780,21 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     npc_text = str(llm_result.get("npc_text") or "").strip()
     tts_text = str(llm_result.get("tts_text") or "").strip()
 
-    if _is_immigration_turn(normalized) and _has_immigration_retry_hook_leak(
+    if _has_retry_hook_leak(
         npc_text,
         tts_text,
         normalized,
     ):
         logger.error(
-            "Immigration retry LLM output leaked a callback hook. npc_text=%r",
+            "Retry LLM output leaked a callback hook. npc_text=%r",
             npc_text,
         )
-        return {"error": "immigration_retry_hook_violation"}
+        reason = (
+            "immigration_retry_hook_violation"
+            if _is_immigration_turn(normalized)
+            else "retry_hook_violation"
+        )
+        return {"error": reason}
     
     # [5.2단계] retry/clarify 분기일 경우 긍정 리액션 차단, 톤 보정 및 피드백 보정 가드 적용
     branch_type = normalized.get("branch_type")

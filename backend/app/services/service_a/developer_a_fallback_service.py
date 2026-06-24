@@ -54,7 +54,7 @@ SURFACE_GOAL_FALLBACK_TEXTS = {
     "redirect_to_customs_hold_area": "I'm sorry, but we don't have it here. It seems your bag is held in the customs area. You must go there.",
     
     # Baggage Customs 챕터
-    "customs_hold_explanation_before_unlock": "Please step forward.",
+    "customs_hold_explanation_before_unlock": "Please check the contents of the suitcase now.",
     "complete_customs_baggage_clearance": "Everything looks fine. You are good to go.",
     "complete_baggage_claim_transition": "You're all set. Have a nice day.",
     
