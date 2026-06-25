@@ -601,6 +601,7 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
             original_text,
             surface_goal,
             _open_hooks_for_fallback_synthesis(normalized, session_context_card),
+            branch_type=normalized.get("branch_type"),
         )
         fallback_res["npc_text"] = synthesized_text
         fallback_res["text"] = synthesized_text
@@ -715,6 +716,10 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "non_verbal_palette": npc_profile.non_verbal_palette,
             "allowed_mild": allowed_mild,
             "allowed_strong": allowed_strong,
+            "room_id": payload.get("room_id"),
+            "speaker_player_id": payload.get("speaker_player_id"),
+            "bag_owner_player_id": payload.get("bag_owner_player_id"),
+            "addressed_player_id": payload.get("addressed_player_id"),
             
             # smalltalk_diagnostic 변수들
             "purpose": purpose,
@@ -853,7 +858,11 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         if not reaction_part:
             reaction_part = "Pardon me?"
 
-        synthesized = synthesize_fallback_next_question(reaction_part, surface_goal)
+        synthesized = synthesize_fallback_next_question(
+            reaction_part,
+            surface_goal,
+            branch_type=normalized.get("branch_type"),
+        )
         turn_buffer = state.get("turn_buffer") or []
         dialogue_history = normalized.get("dialogue_history") or []
         last_npc_text = ""
@@ -1059,6 +1068,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             reaction_part,
             str(surface_goal),
             _open_hooks_for_fallback_synthesis(normalized, session_context_card),
+            branch_type=normalized.get("branch_type"),
         )
         npc_text = overridden_text
         tts_text = overridden_text
@@ -1272,10 +1282,15 @@ def node_persist_memory(state: NPCDialogueState) -> dict[str, Any]:
     player_text = normalized.get("player_text") or ""
     npc_emotion = result.get("npc_emotion") or ""
     
+    speaker_player_id = (
+        payload.get("speaker_player_id")
+        or payload.get("turn", {}).get("speaker_player_id")
+    )
+
     base_memory = {
         "turn_buffer": state.get("turn_buffer") or [],
     }
-    
+
     updated_memory = append_turn(
         base_memory,
         node_id=node_id,
@@ -1284,7 +1299,8 @@ def node_persist_memory(state: NPCDialogueState) -> dict[str, Any]:
         player_text=player_text,
         npc_text=npc_text,
         filled_slots=incoming_slots,
-        npc_emotion=npc_emotion
+        npc_emotion=npc_emotion,
+        speaker_player_id=speaker_player_id,
     )
     
     # last_npc_intent 갱신
@@ -1383,17 +1399,28 @@ def generate_npc_dialogue_from_level_design(
     
     graph = _get_compiled_graph()
     
-    # session_id 추출
+    # session_id, room_id, player_id, scope 추출
     session_id = (
         payload.get("session_id")
         or payload.get("turn", {}).get("session", {}).get("session_id")
         or ""
     )
+    room_id = (
+        payload.get("room_id")
+        or payload.get("turn", {}).get("session", {}).get("room_id")
+        or session_id
+    )
+    player_id = (
+        payload.get("player_id")
+        or payload.get("turn", {}).get("session", {}).get("player_id")
+    )
+    scope = payload.get("scope", "player")
+
     # npc_id 추출 및 정규화
     npc_id = _npc_id_from_payload(payload) or ""
-    
+
     # thread_id 빌드 (fail-fast: 누락 시 ValueError)
-    thread_id = build_thread_id(session_id, npc_id)
+    thread_id = build_thread_id(room_id, npc_id, player_id=player_id, scope=scope)
     
     config = {
         "configurable": {

@@ -40,6 +40,7 @@ from backend.app.schemas.game_turn import (
     TurnTimingMs,
     UnderstandingOutput,
     UnrealResponse,
+    is_shared_baggage,
 )
 from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader
 from backend.app.services.service_c.dialogue_history_service import DialogueHistoryService
@@ -560,6 +561,8 @@ class DeveloperCGraphTools:
                 contract_version="dev_a_dialogue.v1",
                 request_id=request.turn.request_id,
                 session_id=request.turn.session.session_id,
+                room_id=request.turn.session.room_id,
+                player_id=request.turn.session.player_id,
                 current_node_id=request.turn.session.current_node_id,
                 player_text=normalized_input.player_text,
                 npc=request.turn.npc,
@@ -569,6 +572,10 @@ class DeveloperCGraphTools:
                 transition=transition,
                 random_customs_item=request.turn.game_state.random_customs_item,
                 game_state=request.turn.game_state,
+                speaker_player_id=request.turn.speaker_player_id or request.turn.game_state.speaker_player_id,
+                bag_owner_player_id=request.turn.bag_owner_player_id or request.turn.game_state.bag_owner_player_id,
+                addressed_player_id=request.turn.addressed_player_id or request.turn.game_state.addressed_player_id,
+                scope="room" if is_shared_baggage(request.turn.session) else "player",
             )
         )
         dialogue_history_summary = self.dialogue_history_service.write_turn_dialogue(
@@ -778,6 +785,7 @@ class DeveloperCGraphTools:
             request_id=request.turn.request_id,
             session_id=request.turn.session.session_id,
             player_id=request.turn.session.player_id,
+            room_id=request.turn.session.room_id,
             chapter_id=request.turn.session.chapter_id,
             scene_id=request.turn.session.scene_id,
             current_node_id=request.turn.session.current_node_id,
@@ -793,6 +801,9 @@ class DeveloperCGraphTools:
             previous_node_results=request.turn.previous_node_results,
             client_allowed_next_nodes=request.turn.client_allowed_next_nodes,
             skip_requested=request.turn.skip_requested,
+            speaker_player_id=request.turn.speaker_player_id or request.turn.game_state.speaker_player_id,
+            bag_owner_player_id=request.turn.bag_owner_player_id or request.turn.game_state.bag_owner_player_id,
+            addressed_player_id=request.turn.addressed_player_id or request.turn.game_state.addressed_player_id,
         )
 
 

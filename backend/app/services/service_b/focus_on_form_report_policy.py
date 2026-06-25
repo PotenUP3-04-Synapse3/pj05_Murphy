@@ -82,20 +82,9 @@ class FocusOnFormReportPolicy:
         Returns:
             빌드된 학습 피드백 리포트 딕셔너리
         """
-        jsonl_path = self.runtime_root / f"{session_id}.jsonl"
-        if not jsonl_path.exists():
-            return self.build_report([])
-
-        records: list[dict[str, Any]] = []
-        for line in jsonl_path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(record, dict):
-                records.append(record)
+        from backend.app.services.service_b.final_result_score_policy import OpenKBFinalResultRecordReader
+        reader = OpenKBFinalResultRecordReader(runtime_root=self.runtime_root)
+        records = reader.read_session_records(session_id)
         return self.build_report(records)
 
     def _group_records(

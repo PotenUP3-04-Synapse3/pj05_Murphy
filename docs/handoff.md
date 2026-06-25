@@ -1,5 +1,44 @@
 # Handoff
 
+## 2026-06-25 Developer A: NPC Dialogue Naturalness & Loop Fix (Part A & B)
+
+Developer A has successfully executed the dialogue naturalness and loop fixes as outlined in [dev_a_npc_dialogue_naturalness_plan.md](file:///Users/will/pj05_Murphy/docs/plans/dev_a_npc_dialogue_naturalness_plan.md):
+- **Part B-① - BAG_003 Infinite Loop Resolution**: Realigned `"confirm_carousel_search"` question goal in `dialogue_policy_service.py` to match required slots of node `BAG_003` ("Did you check the carousel carefully before coming to the desk?"), preventing infinite re-asking clarify loops.
+- **Part B-② - Mechanical Hook Gating & Filtering**:
+  - Implemented `OPEN_HOOK_STOPLIST` and private helper `_extract_open_hooks` in `session_context_card_service.py` to prevent mechanical word echoes like `"You mentioned yeah"`.
+  - Added `branch_type` parameter to `synthesize_fallback_next_question` to disable hook prefixes altogether during non-advance turns (`retry`, `clarify`, `warning`).
+- **Part A-④ - Prompt Frequency constraints**: Added interjection frequency guidelines to `npc_dialogue_prompt.md` and `npc_dialogue_prompt.short.md`.
+- **Part A-⑤ - NPC Roster & Palette Alignment**:
+  - Realignment of `arabella`, `brielle`, `hale`, and `dan` persona instructions in `npc_roster_service.py` and synchronization of `non_verbal_palette.py` to remove conversational robot-like keywords (e.g. chat laughing tokens, command interjections, bad SSML text).
+- **Verification**:
+  - Wrote 3 targeted unit tests verifying search goal question mapping, stoplist filtering, and branch-type gating.
+  - Successfully ran the entire test suite (435 passed) and static check verification (`ruff` / `mypy` zero issues).
+
+## 2026-06-24 Developer C: 2P Multiplayer Extension Remediation (R0 - R6)
+
+Developer C has completed the remediation work plan for the 2P Multiplayer Extension, ensuring strict storage typing, robust identity alignment, single scope checker unification, and true round-trip pipeline testing:
+- **WP-R0 - Storage Schema Contract**: Configured `PolicyTurnFeedbackRecord` Pydantic schema validation inside `OpenKBFeedbackWriter` and added the contract validation test suite [test_record_contract.py](file:///c:/potenup3/pj05_Murphy/backend/tests/dev_b/test_record_contract.py). Enabled lenient default values to support parsing legacy and mock logs.
+- **WP-R1 & WP-R2 - Identity & Rubric Attribution**: Logged multiplayer identity fields and attributed rubrics to `speaker_player_id` (falling back to `player_id`). Enhanced log reader in `final_result_score_policy.py` to scan the `runtime_root` directory for sessions stored under cooperative `room_id.jsonl` files.
+- **WP-R3 - Chapter Scope Checker Unification**: Unified chapter checking under `is_shared_baggage(session) -> bool` inside `game_turn.py` to synchronize locking and memory scopes.
+- **WP-R4 - Round-Trip Integration Tests**: Upgraded [test_multiplayer_e2e.py](file:///c:/potenup3/pj05_Murphy/backend/tests/dev_b/test_multiplayer_e2e.py) to process Alice and Bob's turns using real `/respond` pipeline requests instead of mock written records.
+- **WP-R5 - Refactoring & Lock Docs**: Promoted `state_from_records` to public, reused final result reader in focus-on-form, removed dead fallback list in `/result` route, and documented in-process locking limitations in `ai_respond.py`.
+- **WP-R6 - Verification**: Ran the full test suite (434 passed) and validated all checks (ruff/mypy zero errors).
+
+## 2026-06-24 Developer C: 2P Multiplayer Extension Integration
+
+Developer C has designed, implemented, and verified the 2P multiplayer extensions across Developer A, B, and C modules under the user-approved unified work plan. Backward compatibility for the legacy 1P game mode is fully preserved.
+
+Key Implementation Details:
+- **WP1 & WP2 - Room/Player Identity & Scope Foundation**: Added `room_id`, `speaker_player_id`, `bag_owner_player_id`, and `addressed_player_id` to schemas in [game_turn.py](file:///c:/potenup3/pj05_Murphy/backend/app/schemas/game_turn.py). Refactored `build_thread_id` in [npc_short_term_memory_service.py](file:///c:/potenup3/pj05_Murphy/backend/app/services/service_a/npc_short_term_memory_service.py) to segregate conversation history into parallel paths (`room_id:player_id:npc_id` for cabin and immigration) or share cooperative states (`room_id:shared:npc_id` for baggage claim).
+- **WP3 - Baggage Setup API**: Implemented a stateless setup route `POST /api/game/ai/room/baggage/setup` to dynamically and deterministically assign the bag owner (lower speaking level wins) and select a bag matching their difficulty level.
+- **WP4 - Shared Baggage Runtime**: Enhanced prompt templates with player variables so the NPC addresses the bag owner while accepting helper speak inputs. Ensured the graph tools propagate the `"room"` scope for shared suspicion/patience/slot states.
+- **WP5 - Scoring & Report Separation**: Refactored `GET /result/{session_id}` to dynamically split outcomes into a unified team pass/fail verdict plus individual player level feedback reports.
+- **WP6 - Concurrency Lock Guard**: Serialized concurrent turns in cooperative baggage nodes using an async room-level lock registry, preventing lost-update anomalies.
+- **WP7 - Verification**: Added end-to-end integration test [test_multiplayer_e2e.py](file:///c:/potenup3/pj05_Murphy/backend/tests/dev_b/test_multiplayer_e2e.py) verifying setup, shared baggage runtime turns, individual scoring, and concurrency locks.
+
+Verification:
+- `uv run pytest`: PASS (all 432 tests passed successfully, including e2e multiplayer tests).
+- `uv run ruff check .` and `uv run mypy .`: PASS (zero issues found).
 ## 2026-06-24 Developer A, B, C: General Social-Stall Lifecycle for Customs
 
 Developer C implemented this as a user-approved cross-owner follow-up after the
@@ -280,13 +319,13 @@ Verification:
 - `uv run pytest -q`: PASS, 427 passed, 1 warning (`audioop` deprecation).
 
 ## 2026-06-24 Developer A, B, C: Flight Social Obligation Lifecycle Closure
-## 2026-06-24 Developer A: 응답 품질 가드 추가 (Hale 22턴 회귀 대응)
+## 2026-06-24 Developer A: Response Quality Guards Added (Hale 22-Turn Regression Response)
 
-- duplicate_intent_question 가드: 같은 의도 질문 두 번 반복 차단 (예: "What is your job? What is your occupation?").
-- clearance_failure_contradiction 가드: success closing과 fail message가 한 응답에 동시 출현 시 차단 (예: "Go to baggage claim ... we cannot complete").
-- `dialogue_policy_service.py` 내 `synthesize_fallback_next_question` 의미적 중복 질문 합성 제어 로직 확인 완료.
-- 평가 하네스에 `immigration_hale_full_flow.yaml` 시나리오 3건 추가.
-- 검증: `uv run pytest -k duplicate_intent_question` 및 `uv run pytest -k clearance_failure_contradiction` 통과.
+- duplicate_intent_question guard: Blocks repeating questions with the same semantic intent twice (e.g. "What is your job? What is your occupation?").
+- clearance_failure_contradiction guard: Blocks responses that contain both success clearance messages and failure/rejection messages (e.g. "Go to baggage claim ... we cannot complete").
+- Verified semantic duplicate question synthesis control in `synthesize_fallback_next_question` of `dialogue_policy_service.py`.
+- Added 3 scenarios to `immigration_hale_full_flow.yaml` in the evaluation harness.
+- Verification: `pytest -k duplicate_intent_question` and `pytest -k clearance_failure_contradiction` pass cleanly.
 
 ## 2026-06-24 Developer C: Gating Legacy History and Resolving Change Requests
 
@@ -573,6 +612,9 @@ the system treated each thin greeting as successful free smalltalk until the
 chapter completed.
 
 Root cause:
+- C's Flight diagnostic understanding treated a greeting-only answer such as `Hello?` as meaningful free smalltalk.
+- B's Flight diagnostic policy optimized for free-form level sampling and turn coverage, so an unresolved social request could still self-loop or complete.
+- A's prompt had a weak smalltalk instruction for non-answers, but B kept sending success/probe metadata and A had no hard input signal or guard to stop topic jumps like `Do you travel often?`.
 - C's Flight diagnostic understanding treated a greeting-only answer such as
   `Hello?` as meaningful free smalltalk.
 - B's Flight diagnostic policy optimized for free-form level sampling and turn
@@ -621,6 +663,14 @@ Changed:
 - **bad-end 결과 비대칭:** 입국 강제반려 등 배드엔딩 노드 도달 시 per-turn `/respond` 응답에 `final_result`가 실리지 않아, Unreal이 결과를 화면에 렌더링하기 위해 2회 호출(/respond + /result)이 필수적이거나 결과 수집 경로가 비대칭적이었습니다.
 
 Changed:
+- `backend/app/schemas/game_turn.py`: Added additive `SocialContextCard` and `UnderstandingOutput.social_context`. This card records scene norm, player conversation move, unresolved social obligation, engagement quality, and recommended repair move. It is semantic evidence only; it does not own branch decisions or NPC text.
+- `backend/app/agents/agent_c/understanding_agent.py`: Added social-context attachment after both rule and LLM understanding paths. Flight `Hello?`/`Hi`-only answers now become low-confidence, clarification needed responses with `pending_social_obligation=seatmate_pen_request`. The same card also classifies institutional and baggage-service scenes so A can speak in the right tone when a player greets or dodges instead of answering.
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`: Added a soft social-repair gate before Flight probe selection/completion. If the current turn has an open seatmate pen obligation and the player only greets/fillers/off-topic, B returns `UNCLEAR / REASK` on the same node instead of `SUCCESS / ADVANCE` or `COMPLETE_CHAPTER`. Repeated greeting history is detected from B OpenKB records and marked with `flight_smalltalk_repeated_greeting_social_repair`.
+- `backend/app/agents/agent_b/english_level_hint_agent.py`: Passes B writer `runtime_root` into the Flight diagnostic policy so the policy reads the same session history that B writes during tests/runtime.
+- `backend/app/services/service_a/developer_a_input_service.py`: Forwards `understanding.social_context` and `branch_reason` into A's normalized payload.
+- `backend/app/services/service_a/developer_a_fallback_service.py`: Added social-repair fallback text. Flight falls back to a natural pen-request repair line; Immigration uses a firm official re-ask; Baggage uses a helpful service re-ask.
+- `backend/app/agents/agent_a/npc_dialogue_agent.py` and `backend/app/prompts/npc_dialogue_prompt*.md`: Added social context variables to the LLM payload/prompt and a postprocessing guard that rejects smalltalk LLM output if it jumps topics while a seatmate pen request is still open.
+- `docs/contracts/developer_c_schema_contract.md`: Documented `social_context` as additive Understanding evidence for B/A.
 
 - `backend/app/services/service_b/final_result_score_policy.py`:
   - Updated `_quantitative_scores()` to return `scoring_policy = "scene_normalized_dimension_average"`.
@@ -634,13 +684,9 @@ Changed:
   Documented `social_context` as additive Understanding evidence for B/A.
 
 Expected behavior now:
-- Flight: `Hello?` after Arabella's pen request does not count as successful
-  smalltalk evidence and cannot complete the chapter. Arabella should repair
-  the social obligation first, e.g. asking whether the player heard her pen
-  request, before moving to travel topics.
+- Flight: `Hello?` after Arabella's pen request does not count as successful smalltalk evidence and cannot complete the chapter. Arabella should repair the social obligation first, e.g. asking whether the player heard her pen request, before moving to travel topics.
 - Immigration: greeting-only/dodging still stays formal and answer-seeking.
-- Baggage: greeting-only/dodging can be recovered with a helpful service tone
-  while still asking for the needed detail.
+- Baggage: greeting-only/dodging can be recovered with a helpful service tone while still asking for the needed detail.
 
 Verification:
 - `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_flight_seed_and_dialogue_metadata backend/tests/test_preprototype_flow.py::test_dev_a_adapter_allows_flight_rude_refusal_to_continue_smalltalk backend/tests/test_preprototype_flow.py::test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop backend/tests/test_preprototype_flow.py::test_orchestrator_persists_flight_smalltalk_records_for_adaptive_controller -q`: PASS, 91 passed, 1 warning (`audioop` deprecation).
@@ -649,31 +695,46 @@ Verification:
 - `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run pytest -q`: PASS, 401 passed, 1 warning (`audioop` deprecation).
 - `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run ruff check .`: PASS.
 - `$env:UV_CACHE_DIR='C:\potenup3\pj05-Murphy\.tmp\uv-cache'; uv run mypy .`: PASS, 139 source files.
+- `git diff --check`: PASS, with existing Windows LF-to-CRLF working-copy warnings only.
+
+## 2026-06-24 Developer C: Scoring Policy Label and Bad-End Results Alignment
+
+Developer C updated B-owned scoring policy labels and corrected the result retrieval endpoint for bad-end cases under explicit user approval.
+
+- **scoring_policy label contradiction:** The overall score calculation was calculated using the scene-normalized average policy (flight 20, immigration 50, baggage 30), but the scoring_policy label in the response schema was still hardcoded as "simple_average", which contradicted "scene_normalized_dimension_average_policy" in reason_tags.
+- **bad-end result asymmetry:** When a bad ending node (such as deport/rejection) was reached, the per-turn /respond response did not carry the final_result, forcing Unreal to call the API twice (/respond + /result) to render the final results or creating an asymmetric result collection path.
+
+Changed:
+- `backend/app/services/service_b/final_result_score_policy.py`:
+  - Updated `_quantitative_scores()` to return `scoring_policy = "scene_normalized_dimension_average"`.
+  - Updated `_unranked_result()` to return `scoring_policy = "scene_normalized_dimension_average"` for unranked sessions (0 scored records).
+- `backend/tests/dev_b/test_final_result_score_policy.py`:
+  - Updated assertions to expect `"scene_normalized_dimension_average"` instead of `"simple_average"`.
+- `backend/tests/test_final_result_payload.py`:
+  - Updated the mock `_final_result()` helper's `scoring_policy` value to `"scene_normalized_dimension_average"`.
+  - Added a new integration test `test_result_endpoint_returns_bad_end_comic_fail_from_real_records` that writes a real bad-end session record (verbal abuse) to `backend/runtime/openkb/dev_b/` and calls the `/result/{session_id}` endpoint to verify it returns a valid `Comic Fail` with `Iron` tier.
 - `git diff --check`: PASS, with existing Windows LF-to-CRLF working-copy
   warnings only.
 Team impact:
 
+Team impact:
 - Developer B: B's score policy labels have been updated. The change was executed directly on B-owned files by Developer C under explicit user approval to resolve the scoring policy inconsistencies.
 - Developer C: C has updated the schemas, documentation, and added test coverage for bad endings on the result retrieval endpoint. The scoreboard retrieval is now unified.
 
 Verification:
-
 - `uv run pytest backend/tests/dev_b/test_final_result_score_policy.py backend/tests/test_final_result_payload.py`: PASS.
 - `uv run pytest`: PASS (all 399 tests pass successfully).
 - `uv run ruff check .` and `uv run mypy .`: PASS.
 
-## 2026-06-24 Developer A: NPC 페르소나 5섹션 재정렬 (옵션 C)
+## 2026-06-24 Developer A: NPC Persona 5-Section Reordering (Option C)
 
-- 6개 NPC(Arabella, Novak, Hale, Harris, Dan, Brielle)의 persona_instruction을 Background / Tone & Speech / Behavioral Rules / In-Character Rule / Forbidden Phrasings 5섹션 형식으로 재작성.
-- 공통 vs 페르소나 분리 가이드라인을 npc_roster_service.py 모듈 docstring에 명시.
-- Pen Loop Fix 이후 NPC가 immigration-style 질문으로 점프하거나 AI 자백하는 결함을 페르소나 측에서 잡기 위한 1차 조치.
-- 코드 구조 변경 없음 (persona_instruction 문자열만 확장).
-- 평가 하네스에 in_character / domain_consistency 시나리오 추가.
-- 1~2주 운영 후 NPCProfile 필드 분리(옵션 A)로 정식 리팩토링 검토.
-- Emily NPC를 모든 영역(roster, palette, voice_profile, few-shot, 테스트, C 라우팅 풀, eval_harness 시나리오)에서 완전 제거.
+- Rewrote persona_instruction for 6 NPCs (Arabella, Novak, Hale, Harris, Dan, Brielle) into Background / Tone & Speech / Behavioral Rules / In-Character Rule / Forbidden Phrasings 5-section format.
+- Specified public vs persona separation guidelines in npc_roster_service.py module docstrings.
+- Removed Emily NPC completely from all scopes (roster, palette, voice profile, few-shots, tests, routing pool, eval_harness scenarios).
 
-## 2026-06-24 Developer A: TTS 발화 속도 통일 (env override)
+## 2026-06-24 Developer A: TTS Speed Unification (env override)
 
+- Added MURPHY_ELEVENLABS_SPEED=0.82 to .env to unify all NPC speaking speeds.
 - .env에 MURPHY_ELEVENLABS_SPEED=0.82 추가하여 모든 NPC 발화 속도 통일.
 - 코드 변경 없음. voice_output_service.py:459의 기존 \_env_float 경로 활용.
 - 영구 적용 시 EMOTION_TTS_PARAMETERS 하향(옵션 B) 또는 프롬프트 가이드(옵션 C)로 전환 예정.

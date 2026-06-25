@@ -29,6 +29,7 @@ SttRuntimeUsed = Literal[
 class SessionContext(BaseModel):
     session_id: str
     player_id: str | None = None
+    room_id: str | None = None
     chapter_id: str
     scene_id: str
     current_node_id: str
@@ -170,6 +171,11 @@ class GameState(BaseModel):
     visit_location_difficulty: int | None = None
     visit_location_suspicion_reason: str | None = None
 
+    # 2P multiplayer identity fields
+    speaker_player_id: str | None = None
+    bag_owner_player_id: str | None = None
+    addressed_player_id: str | None = None
+
 
 class PreviousNodeResult(BaseModel):
     node_id: str
@@ -199,6 +205,11 @@ class UnrealTurnRequest(BaseModel):
     client_allowed_next_nodes: list[str] = Field(default_factory=list)
     client_context: ClientContext | None = None
     skip_requested: bool = False
+
+    # 2P multiplayer identity fields
+    speaker_player_id: str | None = None
+    bag_owner_player_id: str | None = None
+    addressed_player_id: str | None = None
 
 
 class MockAudioInput(BaseModel):
@@ -413,6 +424,7 @@ class DevBPolicyInput(BaseModel):
     request_id: str
     session_id: str
     player_id: str | None = None
+    room_id: str | None = None
     chapter_id: str
     scene_id: str
     current_node_id: str
@@ -428,6 +440,11 @@ class DevBPolicyInput(BaseModel):
     previous_node_results: list[PreviousNodeResult] = Field(default_factory=list)
     client_allowed_next_nodes: list[str] = Field(default_factory=list)
     skip_requested: bool = False
+
+    # 2P multiplayer identity fields
+    speaker_player_id: str | None = None
+    bag_owner_player_id: str | None = None
+    addressed_player_id: str | None = None
 
 
 class Scores(BaseModel):
@@ -759,6 +776,8 @@ class DevADialogueInput(BaseModel):
     contract_version: Literal["dev_a_dialogue.v1"]
     request_id: str
     session_id: str
+    player_id: str | None = None
+    room_id: str | None = None
     current_node_id: str
     player_text: str
     npc: NpcContext
@@ -768,6 +787,12 @@ class DevADialogueInput(BaseModel):
     transition: TransitionContext | None = None
     random_customs_item: RandomCustomsItemContext | None = None
     game_state: GameState | None = None
+
+    # 2P multiplayer identity fields
+    speaker_player_id: str | None = None
+    bag_owner_player_id: str | None = None
+    addressed_player_id: str | None = None
+    scope: str = "player"
 
 
 class DevADialogueOutput(BaseModel):
@@ -963,3 +988,89 @@ class UnrealResultResponse(BaseModel):
     session_id: str
     final_result: FinalResult
     out_game_feedback: dict[str, Any] | None = None
+
+
+class PlayerRubricReport(BaseModel):
+    player_id: str
+    final_result: FinalResult
+    out_game_feedback: dict[str, Any] | None = None
+
+
+class UnrealRoomResultResponse(BaseModel):
+    contract_version: Literal["dev_c_unreal_room_result.v1"] = "dev_c_unreal_room_result.v1"
+    room_id: str
+    team_outcome: str
+    players: list[PlayerRubricReport]
+
+
+class SetupPlayerProfile(BaseModel):
+    player_id: str
+    nickname: str | None = None
+    english_confidence: Literal["beginner", "intermediate", "advanced"] | None = None
+    tier: Literal["Bronze", "Silver", "Gold"]
+    travel_speaking_level: Literal[
+        "TSL_1_SURVIVAL",
+        "TSL_2_FUNCTIONAL",
+        "TSL_3_INDEPENDENT",
+        "TSL_4_STRATEGIC",
+    ] | None = None
+    total_score: int | None = None
+
+
+class BaggageSetupRequest(BaseModel):
+    room_id: str
+    player1_profile: SetupPlayerProfile
+    player2_profile: SetupPlayerProfile
+
+
+class BaggageSetupResponse(BaseModel):
+    contract_version: Literal["dev_c_baggage_setup.v1"] = "dev_c_baggage_setup.v1"
+    room_id: str
+    bag_owner_player_id: str
+    random_customs_item: RandomCustomsItemContext
+
+
+class PolicyTurnFeedbackRecord(BaseModel):
+    namespace: str = "dev_b"
+    record_schema_version: Literal["dev_b_openkb_record.v2"] = "dev_b_openkb_record.v2"
+    record_kind: Literal["policy_turn_feedback"] = "policy_turn_feedback"
+    record_id: str = ""
+    contract_version: str = ""
+    request_id: str = ""
+    session_id: str = ""
+    player_id: str | None = None
+    room_id: str | None = None
+    chapter_id: str = ""
+    scene_id: str = ""
+    node_id: str = ""
+    turn_index: int = 0
+    player_text: str = ""
+    input_source: dict[str, Any] = Field(default_factory=dict)
+    understanding_summary_kr: str | None = None
+    understanding: dict[str, Any] = Field(default_factory=dict)
+    evaluation: dict[str, Any] = Field(default_factory=dict)
+    level_hint: dict[str, Any] = Field(default_factory=dict)
+    error_capture: dict[str, Any] = Field(default_factory=dict)
+    out_game_feedback_seed: dict[str, Any] = Field(default_factory=dict)
+    report_seed_summary: dict[str, Any] | None = None
+    dialogue_seed: dict[str, Any] | None = None
+    focus_on_form_targets: list[str] = Field(default_factory=list)
+    report_item: dict[str, Any] = Field(default_factory=dict)
+    rubric_scores: dict[str, Any] | None = None
+    difficulty_profile: dict[str, Any] | None = None
+    feedback_generation: dict[str, Any] | None = None
+    branch: dict[str, Any] = Field(default_factory=dict)
+    state_delta: dict[str, Any] = Field(default_factory=dict)
+
+    # 2P multiplayer identity fields
+    speaker_player_id: str | None = None
+    bag_owner_player_id: str | None = None
+    addressed_player_id: str | None = None
+
+
+def is_shared_baggage(session: SessionContext) -> bool:
+    """Helper to check if the session is in the shared baggage claim chapter/nodes."""
+    return (
+        session.current_node_id.startswith("BAG_")
+        or session.chapter_id == "CH0_04_BAGGAGE_CLAIM"
+    )

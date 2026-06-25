@@ -5,7 +5,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from backend.app.schemas.game_turn import DevBPolicyInput, DevBPolicyOutput, OpenKBWriteResult
+from backend.app.schemas.game_turn import (
+    DevBPolicyInput,
+    DevBPolicyOutput,
+    OpenKBWriteResult,
+    PolicyTurnFeedbackRecord,
+)
 
 
 class OpenKBFeedbackWriter:
@@ -56,7 +61,8 @@ class OpenKBFeedbackWriter:
         record_id = str(record["record_id"])
         self.runtime_root.mkdir(parents=True, exist_ok=True)
 
-        jsonl_path = self.runtime_root / f"{payload.session_id}.jsonl"
+        record_file_key = payload.room_id or payload.session_id
+        jsonl_path = self.runtime_root / f"{record_file_key}.jsonl"
         markdown_path = self.runtime_root / f"{record_id}.md"
 
         if not self._record_exists(jsonl_path, record_id):
@@ -102,7 +108,7 @@ class OpenKBFeedbackWriter:
         """
         error_ids = [item.error_id for item in output.error_capture.error_items] or ["no_error"]
         record_id = self._record_id(payload, error_ids)
-        return {
+        record = {
             "namespace": self.namespace,
             "record_schema_version": "dev_b_openkb_record.v2",
             "record_kind": "policy_turn_feedback",
@@ -111,6 +117,7 @@ class OpenKBFeedbackWriter:
             "request_id": payload.request_id,
             "session_id": payload.session_id,
             "player_id": payload.player_id,
+            "room_id": payload.room_id,
             "chapter_id": payload.chapter_id,
             "scene_id": payload.scene_id,
             "node_id": payload.current_node_id,
@@ -132,7 +139,13 @@ class OpenKBFeedbackWriter:
             "feedback_generation": output.feedback_generation.model_dump() if output.feedback_generation else None,
             "branch": output.branch.model_dump(),
             "state_delta": output.state_delta.model_dump(),
+            "speaker_player_id": payload.speaker_player_id,
+            "bag_owner_player_id": payload.bag_owner_player_id,
+            "addressed_player_id": payload.addressed_player_id,
         }
+        # Validate through Pydantic record schema (WP-R0)
+        validated_record = PolicyTurnFeedbackRecord.model_validate(record)
+        return validated_record.model_dump()
 
     def _record_id(self, payload: DevBPolicyInput, error_ids: list[str]) -> str:
         """

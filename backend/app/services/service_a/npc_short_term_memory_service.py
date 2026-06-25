@@ -12,14 +12,31 @@ import logging
 logger = logging.getLogger("backend.app.services.service_a.npc_short_term_memory_service")
 
 # §0.4 Fail-fast 원칙에 따라, 필수 키 누락 시 silently default 대신 ValueError를 발생시킵니다.
-def build_thread_id(session_id: str | None, npc_id: str | None) -> str:
+def build_thread_id(
+    room_id: str | None,
+    npc_id: str | None,
+    *,
+    player_id: str | None = None,
+    scope: str = "player",
+) -> str:
     """
-    (session_id, npc_id) 쌍을 이용해 격리된 메모리 세션을 구분하는 thread_id를 빌드합니다.
-    session_id 또는 npc_id가 없거나 빈 값이면 ValueError를 던집니다. (Fail-fast)
+    (room_id, npc_id) 쌍과 player_id, scope를 이용해 격리된 메모리 세션을 구분하는 thread_id를 빌드합니다.
+    room_id 또는 npc_id가 없거나 빈 값이면 ValueError를 던집니다. (Fail-fast)
+
+    스코프 분기:
+    - scope="room" -> room_id:shared:npc_id
+    - 그 외 -> room_id:player_id:npc_id (player_id가 없으면 room_id:npc_id)
     """
-    if not session_id or not npc_id:
-        raise ValueError("session_id and npc_id are required for memory isolation")
-    return f"{session_id}:{npc_id}"
+    if not room_id or not npc_id:
+        raise ValueError("room_id and npc_id are required for memory isolation")
+
+    if scope == "room":
+        return f"{room_id}:shared:{npc_id}"
+
+    if player_id:
+        return f"{room_id}:{player_id}:{npc_id}"
+
+    return f"{room_id}:{npc_id}"
 
 
 def empty_memory_state() -> dict[str, Any]:
@@ -44,6 +61,7 @@ def append_turn(
     npc_text: str | None,
     filled_slots: dict[str, Any] | None,
     npc_emotion: str | None,
+    speaker_player_id: str | None = None,
 ) -> dict[str, Any]:
     """
     turn_buffer에 새 턴을 기록합니다.
@@ -54,7 +72,7 @@ def append_turn(
         memory = empty_memory_state()
 
     turn_buffer = memory.setdefault("turn_buffer", [])
-    
+
     new_turn = {
         "node_id": node_id,
         "surface_goal": surface_goal,
@@ -63,6 +81,7 @@ def append_turn(
         "npc_text": npc_text,
         "filled_slots": filled_slots or {},
         "npc_emotion": npc_emotion,
+        "speaker_player_id": speaker_player_id,
     }
     turn_buffer.append(new_turn)
 

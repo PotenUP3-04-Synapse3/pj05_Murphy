@@ -52,12 +52,21 @@ class DevBPolicyClient:
         )
         return output.model_copy(update={"final_result": final_result})
 
-    def final_result_for_session(self, session_id: str) -> FinalResult:
-        return self.final_result_policy.build_result(
-            self.final_record_reader.read_session_records(session_id),
-        )
+    def final_result_for_session(self, session_id: str, *, player_id: str | None = None) -> FinalResult:
+        records = self.final_record_reader.read_session_records(session_id)
+        if player_id:
+            player_records = [
+                r for r in records
+                if (r.get("speaker_player_id") or r.get("player_id")) == player_id
+            ]
+            room_state = self.final_result_policy.state_from_records(records)
+            return self.final_result_policy.build_result(
+                player_records,
+                final_state=room_state,
+            )
+        return self.final_result_policy.build_result(records)
 
-    def out_game_feedback_for_session(self, session_id: str) -> dict[str, Any]:
+    def out_game_feedback_for_session(self, session_id: str, *, player_id: str | None = None) -> dict[str, Any]:
         """Build the B-owned out-game learning card report for a session.
 
         Beginner guide:
@@ -66,5 +75,12 @@ class DevBPolicyClient:
         on the final result endpoint as learning metadata.  This method must not
         change branch, score, verdict, next-node, or state-delta authority.
         """
+        records = self.final_record_reader.read_session_records(session_id)
+        if player_id:
+            player_records = [
+                r for r in records
+                if (r.get("speaker_player_id") or r.get("player_id")) == player_id
+            ]
+            return self.focus_on_form_report_policy.build_report(player_records)
 
-        return self.focus_on_form_report_policy.build_session_report(session_id)
+        return self.focus_on_form_report_policy.build_report(records)

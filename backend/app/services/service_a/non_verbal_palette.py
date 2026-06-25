@@ -4,11 +4,11 @@ from typing import Final
 
 # NPC ID 별 사용 가능한 비-텍스트(의성어, 한숨, break 태그 등) 요소 목록
 NPC_NON_VERBAL_PALETTES: Final[dict[str, list[str]]] = {
-    "arabella": ["Haha!", "Aww.", "Hmm...", "<break time='0.5s'/>"],
+    "arabella": ["Oh!", "Aw.", "Wow.", "<break time='0.5s'/>"],
     "novak": ["Hmm.", "Well...", "<break time='0.4s'/>"],
-    "hale": ["Hmph.", "Tsk.", "<break time='0.4s'/>"],
+    "hale": ["<break time='0.4s'/>"],
     "harris": ["Mm-hmm.", "Indeed.", "<break time='0.3s'/>"],
-    "dan": ["Halt.", "Now...", "<break time='0.5s'/>"],
+    "dan": ["<break time='0.5s'/>"],
     "brielle": ["Oh!", "Mm-hmm.", "Let's see...", "<break time='0.4s'/>"],
 }
 

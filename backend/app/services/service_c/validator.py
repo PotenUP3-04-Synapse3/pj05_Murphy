@@ -13,6 +13,7 @@ from backend.app.schemas.game_turn import (
     RealtimeTranscriptClientEvent,
     UnrealResponse,
     UnrealResultResponse,
+    UnrealRoomResultResponse,
 )
 
 ALLOWED_FINAL_RESULT_SCORING_POLICIES = {
@@ -118,6 +119,13 @@ class Validator:
             raise ValidationError("Unreal result contract_version must be dev_c_unreal_result.v1")
 
         self.validate_final_result(response.final_result)
+
+    def validate_unreal_room_result_response(self, response: UnrealRoomResultResponse) -> None:
+        if response.contract_version != "dev_c_unreal_room_result.v1":
+            raise ValidationError("Unreal room result contract_version must be dev_c_unreal_room_result.v1")
+
+        for player_report in response.players:
+            self.validate_final_result(player_report.final_result)
 
     def validate_realtime_transcript_event(
         self,
