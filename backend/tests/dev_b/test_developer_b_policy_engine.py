@@ -16,6 +16,7 @@ from backend.app.schemas.game_turn import (
     PreviousNodeResult,
     RubricScores,
     ScenarioState,
+    SocialContextCard,
     UnderstandingOutput,
 )
 from backend.app.services.service_b.feedback_hint_generator import FeedbackHintGenerator
@@ -75,6 +76,9 @@ def _node_context(node_id: str = "IMM_002_PURPOSE") -> NodeContext:
 
 def _policy_input(
     *,
+    session_id: str = "session_dev_b_test",
+    turn_index: int = 2,
+    scene_id: str = "JFK_IMMIGRATION_HALL",
     player_text: str = "I'm here for tourism.",
     node_context: NodeContext | None = None,
     intent_success: bool = True,
@@ -92,6 +96,7 @@ def _policy_input(
     tier: Literal["Bronze", "Silver", "Gold"] = "Bronze",
     english_confidence: Literal["beginner", "intermediate", "advanced"] = "beginner",
     client_allowed_next_nodes: list[str] | None = None,
+    social_context: dict[str, Any] | None = None,
 ) -> DevBPolicyInput:
     context = node_context or _node_context()
     slots = extracted_slots if extracted_slots is not None else {"visit_purpose": "tourism"}
@@ -101,12 +106,12 @@ def _policy_input(
     return DevBPolicyInput(
         contract_version="dev_b_policy.v1",
         request_id="req_dev_b_test",
-        session_id="session_dev_b_test",
+        session_id=session_id,
         player_id="player_dev_b_test",
         chapter_id=context.chapter_id,
-        scene_id="JFK_IMMIGRATION_HALL",
+        scene_id=scene_id,
         current_node_id=context.node_id,
-        turn_index=2,
+        turn_index=turn_index,
         player_text=player_text,
         input_source=InputSource(
             input_type="voice",
@@ -143,6 +148,7 @@ def _policy_input(
             extracted_slots=slots,
             missing_slots=missing,
             needs_clarification=needs_clarification,
+            social_context=SocialContextCard.model_validate(social_context or {}),
         ),
         previous_node_results=[
             PreviousNodeResult(
@@ -274,6 +280,36 @@ def test_risky_answer_warns_or_goes_to_bad_end(tmp_path: Path) -> None:
     assert result.branch.next_action in {"WARNING", "FAIL_END"}
     assert result.state_delta.suspicion_delta > 0
     assert result.npc_emotion == "Suspicion"
+
+
+def test_passport_submission_refusal_uses_critical_branch_not_retry_or_hint(tmp_path: Path) -> None:
+    context = _node_context("IMM_001_PASSPORT")
+
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="I answered the question. The answer is no.",
+            intent_success=False,
+            confidence=0.89,
+            answer_relevance="on_topic",
+            risk_delta=2,
+            risk_tags=[],
+            extracted_slots={
+                "passport_submission_status": "available",
+                "refuse_submission": "true",
+            },
+            missing_slots=[],
+            retry_count=4,
+            client_allowed_next_nodes=context.allowed_next_nodes,
+        )
+    )
+
+    assert result.evaluation.verdict == "CRITICAL_FAIL"
+    assert result.branch.branch_type == "bad_end"
+    assert result.branch.next_action == "FAIL_END"
+    assert result.branch.next_node_id == "END_SECONDARY_INSPECTION"
+    assert result.branch.branch_reason == "passport_submission_refused"
+    assert result.state_delta.suspicion_delta >= 20
 
 
 def test_branch_next_node_stays_within_allowed_next_nodes(tmp_path: Path) -> None:
@@ -711,6 +747,63 @@ def test_chapter_zero_missing_slot_retries(
     assert result.branch.branch_type == "retry"
     assert result.branch.next_action == "REASK"
     assert result.branch.next_node_id == retry_next_node
+
+
+def _customs_social_context(conversation_move: str) -> dict[str, Any]:
+    return {
+        "scene_norm": "service_recovery",
+        "conversation_move": conversation_move,
+        "pending_social_obligation": "check_suitcase_contents",
+        "obligation_status": "open" if conversation_move in {"greeting_only", "clarification_request"} else "ignored",
+        "engagement_quality": "thin" if conversation_move != "off_topic" else "stalled",
+        "recommended_npc_move": "service_repair",
+    }
+
+
+def test_customs_hold_social_stall_lifecycle_uses_repair_not_hint_loop(tmp_path: Path) -> None:
+    agent = _agent(tmp_path)
+    context = _node_context("BAG_005_CUSTOMS_HOLD_EXPLANATION")
+    session_id = "session_dev_b_customs_social_stall_lifecycle"
+    turns = [
+        ("Hello.", "greeting_only"),
+        ("What?", "clarification_request"),
+        ("Fine.", "low_content_non_answer"),
+        ("Can you rap for me?", "off_topic"),
+    ]
+
+    outputs = []
+    for index, (player_text, conversation_move) in enumerate(turns, start=1):
+        outputs.append(
+            agent.evaluate_turn(
+                _policy_input(
+                    session_id=session_id,
+                    turn_index=index,
+                    scene_id="CUSTOMS_HOLD_AREA",
+                    node_context=context,
+                    player_text=player_text,
+                    intent_success=False,
+                    confidence=0.35,
+                    answer_relevance="off_topic",
+                    ambiguity_type="social_obligation_unanswered",
+                    extracted_slots={},
+                    missing_slots=["customs_hold_acknowledgement"],
+                    needs_clarification=True,
+                    tier="Bronze",
+                    client_allowed_next_nodes=context.allowed_next_nodes,
+                    social_context=_customs_social_context(conversation_move),
+                )
+            )
+        )
+
+    assert [output.branch.branch_reason for output in outputs] == [
+        "service_recovery_social_obligation_open",
+        "service_recovery_repeated_social_repair",
+        "service_recovery_engagement_check",
+        "service_recovery_procedure_warning",
+    ]
+    assert [output.branch.next_action for output in outputs] == ["REASK", "REASK", "REASK", "WARNING"]
+    assert all(output.branch.next_action != "GIVE_HINT" for output in outputs)
+    assert outputs[-1].branch.next_node_id == "END_BAGGAGE_REPORT_INCOMPLETE"
 
 
 def test_openkb_write_creates_jsonl_and_markdown_for_error_turn(tmp_path: Path) -> None:

@@ -171,6 +171,14 @@ def _has_immigration_retry_hook_leak(
     tts_text: str,
     normalized: dict[str, Any],
 ) -> bool:
+    return _has_retry_hook_leak(npc_text, tts_text, normalized)
+
+
+def _has_retry_hook_leak(
+    npc_text: str,
+    tts_text: str,
+    normalized: dict[str, Any],
+) -> bool:
     branch_type = str(normalized.get("branch_type") or "").lower()
     next_action = str(normalized.get("next_action") or "").upper()
     if branch_type not in {"retry", "clarify"} and next_action not in {"REASK", "GIVE_HINT"}:
@@ -234,6 +242,10 @@ def _open_hooks_for_fallback_synthesis(
     if _is_immigration_turn(normalized):
         return []
     return session_context_card.get("open_hooks")
+
+
+def _is_passport_submission_refusal_branch(normalized: dict[str, Any]) -> bool:
+    return "passport_submission_refused" in str(normalized.get("branch_reason") or "")
 
 
 _IMMIGRATION_SURFACE_GOAL_CHECKS = {
@@ -576,7 +588,14 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
     
     purpose = normalized.get("dialogue_purpose") or ""
     # profanity_res가 없을 때만 surface_goal 질문을 합성합니다.
-    if use_llm and surface_goal and not is_complete_chapter and not profanity_res and purpose != "smalltalk_diagnostic":
+    if (
+        use_llm
+        and surface_goal
+        and not is_complete_chapter
+        and not profanity_res
+        and purpose != "smalltalk_diagnostic"
+        and not _is_passport_submission_refusal_branch(normalized)
+    ):
         original_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
         synthesized_text = synthesize_fallback_next_question(
             original_text,
@@ -766,16 +785,21 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     npc_text = str(llm_result.get("npc_text") or "").strip()
     tts_text = str(llm_result.get("tts_text") or "").strip()
 
-    if _is_immigration_turn(normalized) and _has_immigration_retry_hook_leak(
+    if _has_retry_hook_leak(
         npc_text,
         tts_text,
         normalized,
     ):
         logger.error(
-            "Immigration retry LLM output leaked a callback hook. npc_text=%r",
+            "Retry LLM output leaked a callback hook. npc_text=%r",
             npc_text,
         )
-        return {"error": "immigration_retry_hook_violation"}
+        reason = (
+            "immigration_retry_hook_violation"
+            if _is_immigration_turn(normalized)
+            else "retry_hook_violation"
+        )
+        return {"error": reason}
     
     # [5.2단계] retry/clarify 분기일 경우 긍정 리액션 차단, 톤 보정 및 피드백 보정 가드 적용
     branch_type = normalized.get("branch_type")
@@ -815,7 +839,12 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     surface_goal = normalized.get("dialogue_seed", {}).get("surface_goal") or ""
     is_non_advance = (next_action in {"REASK", "GIVE_HINT", "WARNING"}) or (purpose in {"support_retry", "warn_and_control_risk"})
     
-    if is_non_advance and purpose != "smalltalk_diagnostic" and surface_goal:
+    if (
+        is_non_advance
+        and purpose != "smalltalk_diagnostic"
+        and surface_goal
+        and not _is_passport_submission_refusal_branch(normalized)
+    ):
         def _extract_reaction_part(text: str) -> str:
             sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
             reaction_sentences = []
@@ -961,7 +990,11 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     # surface_goal이 존재할 때 물음표 질문이 누락되었는지 검사합니다. (diagnostic 목적 하에서는 해제)
     surface_goal = (payload.get("dialogue_seed") or {}).get("surface_goal")
     purpose = payload.get("dialogue_directive", {}).get("purpose", "")
-    if surface_goal and purpose != "smalltalk_diagnostic":
+    if (
+        surface_goal
+        and purpose != "smalltalk_diagnostic"
+        and not _is_passport_submission_refusal_branch(normalized)
+    ):
         sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
         if len(sentences) <= 1 and "?" not in npc_text:
             return {"error": "missing_followup_question"}
@@ -1023,7 +1056,11 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
     # [신규 가드] 비-ADVANCE 분기 준수 가드 (CR-B-AB-DESYNC)
     next_action = normalized.get("next_action") or ""
     is_non_advance = (next_action in {"REASK", "GIVE_HINT", "WARNING"})
-    if is_non_advance and purpose != "smalltalk_diagnostic":
+    if (
+        is_non_advance
+        and purpose != "smalltalk_diagnostic"
+        and not _is_passport_submission_refusal_branch(normalized)
+    ):
         logger.info(f"Non-ADVANCE action '{next_action}' detected. Overriding LLM next question with current surface_goal '{surface_goal}'")
         sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
         reaction_part = sentences[0] if sentences else ""

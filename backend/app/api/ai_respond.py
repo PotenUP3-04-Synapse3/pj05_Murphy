@@ -320,6 +320,14 @@ def demo_npc_roster() -> dict[str, list[dict[str, Any]]]:
         "CH0_03_IMMIGRATION_CHECK": ["hale", "harris"],
         "CH0_04_BAGGAGE_CLAIM": ["brielle", "dan"],
     }
+    npc_demo_starts = {
+        "arabella": ("FLIGHT_A_001_SEATMATE_SMALLTALK", "AIRPLANE_CABIN"),
+        "novak": ("FLIGHT_B_001_SEATMATE_SMALLTALK", "AIRPLANE_CABIN"),
+        "hale": ("IMM_001_PASSPORT", "JFK_IMMIGRATION_HALL"),
+        "harris": ("IMM_001_PASSPORT", "JFK_IMMIGRATION_HALL"),
+        "brielle": ("BAG_001_REPORT_MISSING_AT_DESK", "JFK_BAGGAGE_CLAIM"),
+        "dan": ("BAG_005_CUSTOMS_HOLD_EXPLANATION", "JFK_BAGGAGE_CLAIM"),
+    }
 
     result = {}
     for chapter_id, npc_ids in chapters_mapping.items():
@@ -327,10 +335,13 @@ def demo_npc_roster() -> dict[str, list[dict[str, Any]]]:
         for npc_id in npc_ids:
             if npc_id in _NPC_ROSTER:
                 profile = _NPC_ROSTER[npc_id]
+                start_node_id, scene_id = npc_demo_starts.get(npc_id, ("", ""))
                 candidates.append({
                     "id": profile.npc_id,
                     "display_name": profile.display_name,
                     "role": profile.role,
+                    "start_node_id": start_node_id,
+                    "scene_id": scene_id,
                 })
         result[chapter_id] = candidates
 
