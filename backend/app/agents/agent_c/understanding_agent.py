@@ -23,7 +23,13 @@ from backend.app.agents.agent_c.understanding_llm_client import (
     normalize_understanding_llm_result,
 )
 from backend.app.agents.agent_c.visit_purpose_classifier import classify_visit_purpose
-from backend.app.schemas.game_turn import NodeContext, SlotEvidence, SocialContextCard, UnderstandingOutput
+from backend.app.schemas.game_turn import (
+    NodeContext,
+    PragmaticContextCard,
+    SlotEvidence,
+    SocialContextCard,
+    UnderstandingOutput,
+)
 from backend.app.schemas.slot_policy import get_slot_policy
 from backend.app.services.service_c.incivility_classifier import classify_incivility_rule
 from backend.app.services.service_c.settings_service import AppSettings, get_settings
@@ -271,6 +277,7 @@ class UnderstandingAgent:
                     exc,
                 )
                 output = self._analyze_with_rules(player_text, node_context)
+                output, pragmatic_postprocessing = _attach_pragmatic_context(output, player_text, node_context)
                 output = _attach_incivility_classification(output, player_text)
                 output = _attach_social_context(output, player_text, node_context)
                 self.last_trace = _build_fallback_trace(
@@ -280,6 +287,7 @@ class UnderstandingAgent:
                     duration_ms=_duration_ms(started),
                     error=exc,
                     fallback_output=output,
+                    postprocessing=pragmatic_postprocessing,
                 )
                 return output
 
@@ -306,12 +314,14 @@ class UnderstandingAgent:
             if has_open_required:
                 output = output.model_copy(update={"intent_success": output.intent_satisfied})
 
+            output, pragmatic_postprocessing = _attach_pragmatic_context(output, player_text, node_context)
             output = _attach_incivility_classification(output, player_text)
             output = _attach_social_context(output, player_text, node_context)
             postprocessing = _merge_postprocessing(
                 slot_evidence_postprocessing,
                 slot_repair_postprocessing,
                 passport_refusal_postprocessing,
+                pragmatic_postprocessing,
             )
             self.last_trace = _build_llm_trace(
                 player_text=player_text,
@@ -325,9 +335,10 @@ class UnderstandingAgent:
             return output
 
         output = self._analyze_with_rules(player_text, node_context)
+        output, pragmatic_postprocessing = _attach_pragmatic_context(output, player_text, node_context)
         output = _attach_incivility_classification(output, player_text)
         output = _attach_social_context(output, player_text, node_context)
-        self.last_trace = _build_rule_trace(output)
+        self.last_trace = _build_rule_trace(output, pragmatic_postprocessing)
         return output
 
     def _analyze_with_llm(
@@ -564,6 +575,286 @@ def _attach_incivility_classification(
         return output
 
     return output.model_copy(update={"incivility": rule_incivility})
+
+
+def _attach_pragmatic_context(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> tuple[UnderstandingOutput, dict[str, Any]]:
+    """Attach situation-level speech-act evidence without taking branch authority."""
+
+    threat_card = _detect_pragmatic_threat(player_text, node_context)
+    source = "rule" if threat_card is not None else "none"
+    if threat_card is None and _pragmatic_card_indicates_threat(output.pragmatic_context):
+        threat_card = _normalize_threat_pragmatic_card(output.pragmatic_context)
+        source = "llm"
+
+    if threat_card is None:
+        refusal_card = _passport_refusal_pragmatic_card(output, player_text, node_context)
+        if refusal_card is not None:
+            return output.model_copy(update={"pragmatic_context": refusal_card}), {
+                "pragmatic_context_applied": True,
+                "pragmatic_context_source": "rule",
+                "pragmatic_player_move": refusal_card.player_move,
+                "pragmatic_target": refusal_card.target,
+            }
+        return output, {}
+
+    risk_delta = _threat_risk_delta(threat_card)
+    risk_tags = _unique_non_empty(
+        [
+            *output.risk_tags,
+            "violent_threat",
+            _threat_target_tag(threat_card.target),
+            "coercive_exit_request" if _looks_like_coercive_exit_request(player_text) else "",
+        ]
+    )
+    reason = _threat_reason(threat_card)
+    updated = output.model_copy(
+        update={
+            "intent_success": False,
+            "intent_satisfied": False,
+            "confidence": max(output.confidence, threat_card.confidence, 0.86),
+            "answer_relevance": "off_topic",
+            "ambiguity_type": "violent_threat",
+            "risk_delta": max(output.risk_delta, risk_delta),
+            "risk_reason": reason,
+            "risk_tags": risk_tags,
+            "needs_clarification": False,
+            "judgment_reason": reason,
+            "pragmatic_context": threat_card,
+        }
+    )
+    return updated, {
+        "pragmatic_context_applied": True,
+        "pragmatic_context_source": source,
+        "pragmatic_risk_backstop_applied": source == "rule",
+        "pragmatic_player_move": threat_card.player_move,
+        "pragmatic_target": threat_card.target,
+        "pragmatic_risk_level": threat_card.risk_level,
+    }
+
+
+def _passport_refusal_pragmatic_card(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> PragmaticContextCard | None:
+    if not _is_passport_submission_node(node_context):
+        return None
+    if output.extracted_slots.get("refuse_submission") != "true" and not _looks_like_passport_submission_refusal(
+        player_text
+    ):
+        return None
+    return PragmaticContextCard(
+        player_move="refusal",
+        target="officer",
+        threat_directness="none",
+        risk_level="high",
+        procedural_posture="stop_normal_interview",
+        recommended_b_move="warning",
+        recommended_a_move="formal_boundary",
+        confidence=0.93,
+        evidence=player_text.strip(),
+        reason="The player refused a required passport-submission procedure.",
+    )
+
+
+def _detect_pragmatic_threat(
+    player_text: str,
+    node_context: NodeContext,
+) -> PragmaticContextCard | None:
+    _ = node_context
+    normalized = _normalize_for_keyword_match(player_text)
+    if not normalized:
+        return None
+
+    violent_verb = _matched_violent_verb(normalized)
+    if not violent_verb:
+        return None
+    if not (_has_first_person_threat_intent(normalized) or _looks_like_direct_threat(normalized, violent_verb)):
+        return None
+
+    target = _threat_target(normalized)
+    return PragmaticContextCard(
+        player_move="violent_threat",
+        target=target,
+        threat_directness="direct_threat" if target == "officer" else "explicit_intent",
+        risk_level="critical",
+        procedural_posture="secondary_inspection",
+        recommended_b_move="secondary_inspection",
+        recommended_a_move="stern_boundary",
+        confidence=0.9,
+        evidence=_threat_evidence(player_text, violent_verb),
+        reason=_threat_reason_for_target(target),
+    )
+
+
+def _pragmatic_card_indicates_threat(card: PragmaticContextCard) -> bool:
+    return (
+        card.player_move == "violent_threat"
+        or (
+            card.risk_level in {"high", "critical"}
+            and card.threat_directness in {"implied", "explicit_intent", "direct_threat"}
+        )
+    )
+
+
+def _normalize_threat_pragmatic_card(card: PragmaticContextCard) -> PragmaticContextCard:
+    target = card.target if card.target != "none" else "unknown"
+    return card.model_copy(
+        update={
+            "player_move": "violent_threat",
+            "target": target,
+            "threat_directness": card.threat_directness if card.threat_directness != "none" else "explicit_intent",
+            "risk_level": "critical" if card.risk_level in {"none", "low", "medium"} else card.risk_level,
+            "procedural_posture": (
+                card.procedural_posture
+                if card.procedural_posture in {"stop_normal_interview", "secondary_inspection", "end_interview"}
+                else "secondary_inspection"
+            ),
+            "recommended_b_move": (
+                card.recommended_b_move
+                if card.recommended_b_move in {"warning", "secondary_inspection"}
+                else "secondary_inspection"
+            ),
+            "recommended_a_move": (
+                card.recommended_a_move
+                if card.recommended_a_move in {"formal_boundary", "stern_boundary"}
+                else "stern_boundary"
+            ),
+            "confidence": max(card.confidence, 0.8),
+        }
+    )
+
+
+def _matched_violent_verb(normalized: str) -> str:
+    violent_verbs = (
+        "punch",
+        "hit",
+        "attack",
+        "hurt",
+        "assault",
+        "beat",
+        "stab",
+        "shoot",
+        "kill",
+        "kick",
+        "slap",
+    )
+    for verb in violent_verbs:
+        if re.search(rf"\b{re.escape(verb)}\b", normalized):
+            return verb
+    return ""
+
+
+def _has_first_person_threat_intent(normalized: str) -> bool:
+    intent_markers = (
+        "i'm going to",
+        "im going to",
+        "i am going to",
+        "i'm gonna",
+        "im gonna",
+        "i will",
+        "i'll",
+        "i want to",
+        "i plan to",
+        "i'm planning to",
+        "im planning to",
+    )
+    return any(marker in normalized for marker in intent_markers)
+
+
+def _looks_like_direct_threat(normalized: str, violent_verb: str) -> bool:
+    direct_patterns = (
+        rf"\b{re.escape(violent_verb)}\s+you\b",
+        rf"\b{re.escape(violent_verb)}\s+the\s+officer\b",
+        rf"\b{re.escape(violent_verb)}\s+that\s+officer\b",
+    )
+    return any(re.search(pattern, normalized) for pattern in direct_patterns)
+
+
+def _threat_target(normalized: str) -> Literal["officer", "public_figure", "other_person", "unknown"]:
+    tokens = set(re.findall(r"[a-z0-9']+", normalized))
+    if tokens.intersection({"you", "officer", "agent", "hale", "dan"}):
+        return "officer"
+    public_figure_markers = (
+        "trump",
+        "president",
+        "biden",
+        "public figure",
+        "senator",
+        "governor",
+    )
+    if any(marker in normalized for marker in public_figure_markers):
+        return "public_figure"
+    if tokens.intersection({"him", "her", "them", "someone", "person", "people"}):
+        return "other_person"
+    return "unknown"
+
+
+def _threat_evidence(player_text: str, violent_verb: str) -> str:
+    stripped = player_text.strip()
+    if stripped:
+        return stripped[:160]
+    return violent_verb
+
+
+def _threat_risk_delta(card: PragmaticContextCard) -> int:
+    if card.target == "officer":
+        return 90
+    if card.target == "public_figure":
+        return 80
+    return 70
+
+
+def _threat_target_tag(target: str) -> str:
+    if target == "officer":
+        return "threat_to_officer"
+    if target == "public_figure":
+        return "threat_to_public_figure"
+    if target == "other_person":
+        return "threat_to_other_person"
+    return "threat_to_unknown_target"
+
+
+def _threat_reason(card: PragmaticContextCard) -> str:
+    if card.reason:
+        return card.reason
+    return _threat_reason_for_target(card.target)
+
+
+def _threat_reason_for_target(target: str) -> str:
+    if target == "officer":
+        return "The player made a direct violent threat toward the officer."
+    if target == "public_figure":
+        return "The player stated intent to harm a public figure."
+    if target == "other_person":
+        return "The player stated intent to harm another person."
+    return "The player made a violent threat."
+
+
+def _looks_like_coercive_exit_request(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    markers = (
+        "let me go",
+        "let me leave",
+        "please let me go",
+        "release me",
+        "send me through",
+    )
+    return any(marker in normalized for marker in markers)
+
+
+def _unique_non_empty(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value and value not in seen:
+            result.append(value)
+            seen.add(value)
+    return result
 
 
 def _attach_social_context(
@@ -1947,9 +2238,12 @@ def _is_supported_extracted_slot_value(
 def _merge_postprocessing(
     slot_evidence_postprocessing: dict[str, Any],
     slot_repair_postprocessing: dict[str, Any],
-    extra_postprocessing: dict[str, Any] | None = None,
+    *extra_postprocessings: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    extra_postprocessing = extra_postprocessing or {}
+    extra_postprocessing: dict[str, Any] = {}
+    for item in extra_postprocessings:
+        if item:
+            extra_postprocessing.update(item)
     slot_evidence_changed = bool(
         slot_evidence_postprocessing.get("generic_slot_evidence_applied")
         or slot_evidence_postprocessing.get("flight_smalltalk_diagnostic_slot_neutralized")
@@ -1989,7 +2283,9 @@ def _required_intent_for_slot(node_context: NodeContext, slot_name: str) -> str:
 
 def _has_risk_expression(player_text: str, node_context: NodeContext) -> bool:
     normalized = player_text.lower()
-    return any(keyword in normalized for keyword in node_context.risk_keywords)
+    return any(keyword in normalized for keyword in node_context.risk_keywords) or (
+        _detect_pragmatic_threat(player_text, node_context) is not None
+    )
 
 
 def _extract_stay_duration(player_text: str) -> str | None:
@@ -2014,7 +2310,10 @@ def _extract_stay_duration(player_text: str) -> str | None:
     return None
 
 
-def _build_rule_trace(output: UnderstandingOutput | None = None) -> dict[str, Any]:
+def _build_rule_trace(
+    output: UnderstandingOutput | None = None,
+    postprocessing: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     trace: dict[str, Any] = {
         "mode": "rule",
         "model_name": "rule_based",
@@ -2024,6 +2323,8 @@ def _build_rule_trace(output: UnderstandingOutput | None = None) -> dict[str, An
     }
     if output is not None:
         trace["output_summary"] = _understanding_output_summary(output)
+    if postprocessing:
+        trace["postprocessing"] = postprocessing
     return trace
 
 
@@ -2071,6 +2372,7 @@ def _build_fallback_trace(
     duration_ms: int,
     error: Exception,
     fallback_output: UnderstandingOutput,
+    postprocessing: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     error_type = error.__class__.__name__
     error_details = _exception_details(
@@ -2082,6 +2384,7 @@ def _build_fallback_trace(
         "mode": "fallback",
         "model_name": model_name,
         "output_summary": _understanding_output_summary(fallback_output),
+        "postprocessing": postprocessing or {},
         "fallback_used": True,
         "fallback_reason": error_type,
         "tool_calls": [

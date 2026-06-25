@@ -167,6 +167,22 @@ def synthesize_fallback_next_question(
     is_allowed_branch = branch_type is None or branch_type.lower() in ("success", "neutral")
     if is_allowed_branch and open_hooks and len(open_hooks) > 0:
         first_hook = open_hooks[0]
+        if first_hook.lower() in {
+            "hello",
+            "hi",
+            "hey",
+            "what",
+            "fine",
+            "ok",
+            "okay",
+            "yes",
+            "no",
+            "um",
+            "uh",
+            "uhm",
+            "ah",
+        }:
+            first_hook = ""
         # ASCII 영문 및 단어 형태 검증
         if first_hook.isascii() and first_hook.isalpha():
             prefix = f"You mentioned {first_hook} — "

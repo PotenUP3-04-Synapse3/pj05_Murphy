@@ -122,6 +122,9 @@ class _EnglishLevelHintPolicyCore:
                 )
                 decision = diagnostic_policy.decide_conversational(payload)
                 tool_name = "flight_smalltalk_diagnostic_policy.decide_conversational"
+            elif _should_bypass_social_lifecycle_for_risk(payload):
+                decision = self.state_machine.decide(payload)
+                tool_name = "scenario_state_machine.decide"
             else:
                 social_policy = SocialObligationLifecyclePolicy(
                     runtime_root=getattr(self.openkb_writer, "runtime_root", None)
@@ -1246,6 +1249,26 @@ def _policy_input_summary(payload: DevBPolicyInput) -> dict[str, Any]:
         "retry_count": payload.scenario_state.retry_count,
         "suspicion": payload.scenario_state.suspicion,
     }
+
+
+def _should_bypass_social_lifecycle_for_risk(payload: DevBPolicyInput) -> bool:
+    risk_tags = set(payload.understanding.risk_tags)
+    critical_tags = {
+        "illegal_work_intent",
+        "overstay_intent",
+        "unknown_contents",
+        "received_from_stranger",
+        "dangerous_use",
+        "commercial_resale",
+        "refuse_submission",
+        "violent_threat",
+        "threat_to_officer",
+        "threat_to_public_figure",
+        "threat_to_other_person",
+        "threat_to_unknown_target",
+        "coercive_exit_request",
+    }
+    return payload.understanding.risk_delta >= 20 or bool(critical_tags.intersection(risk_tags))
 
 
 def _score_candidate(score: int) -> int:
