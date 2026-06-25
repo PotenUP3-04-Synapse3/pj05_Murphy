@@ -254,7 +254,7 @@ RETRY_PARAPHRASES = {
         "Did you check the carousel carefully before coming to the desk?",
         "Are you sure you checked the baggage carousel thoroughly?",
         "Did you check the carousel belt before coming here?",
-    ]
+    ],
     "customs_hold_explanation_before_unlock": [
         "Please check the contents of the suitcase now.",
         "I need you to check what is inside the suitcase.",
