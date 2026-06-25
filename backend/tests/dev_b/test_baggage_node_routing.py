@@ -19,7 +19,6 @@ import pytest
 
 from backend.app.agents.agent_c.understanding_agent import UnderstandingAgent
 from backend.app.schemas.game_turn import (
-    CustomsItemJudgeContext,
     DevBPolicyInput,
     HintPolicy,
     InputSource,

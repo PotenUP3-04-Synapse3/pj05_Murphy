@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from typing import Any
 
 from backend.app.schemas.game_turn import (
     DevBPolicyInput,

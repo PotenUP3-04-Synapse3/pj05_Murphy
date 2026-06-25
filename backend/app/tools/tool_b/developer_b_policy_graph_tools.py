@@ -14,6 +14,7 @@ from backend.app.agents.agent_b.english_level_hint_agent import (
     _openkb_write_summary,
     _policy_input_summary,
     _policy_output_summary,
+    _should_bypass_social_lifecycle_for_risk,
     _validate_b_policy_output,
 )
 from backend.app.schemas.game_turn import Branch, DevBPolicyInput, DevBPolicyOutput, LevelHint, StateDelta
@@ -111,6 +112,9 @@ class DeveloperBPolicyGraphTools(_EnglishLevelHintPolicyCore):
             diagnostic_policy = FlightSmallTalkDiagnosticPolicy()
             decision = diagnostic_policy.decide_conversational(payload)
             tool_name = "flight_smalltalk_diagnostic_policy.decide_conversational"
+        elif _should_bypass_social_lifecycle_for_risk(payload):
+            decision = self.state_machine.decide(payload)
+            tool_name = "scenario_state_machine.decide"
         else:
             social_policy = SocialObligationLifecyclePolicy(
                 runtime_root=getattr(self.openkb_writer, "runtime_root", None)

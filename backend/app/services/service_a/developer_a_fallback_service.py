@@ -79,11 +79,16 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
     reason = "missing_or_blocked_candidate_text"
     social_context_text = _social_context_fallback_text(normalized)
     passport_refusal_text = _passport_submission_refusal_text(normalized)
+    risk_control_text = _risk_control_text(normalized)
     
     # 1. transition_status == complete_chapter 또는 next_action == COMPLETE_CHAPTER
     if passport_refusal_text:
         text = passport_refusal_text
         reason = "passport_submission_refusal_fallback"
+
+    elif risk_control_text:
+        text = risk_control_text
+        reason = "risk_control_fallback"
 
     elif transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER":
         if npc_role == "seatmate":
@@ -278,6 +283,40 @@ def _passport_submission_refusal_text(normalized: dict[str, Any]) -> str:
     if next_action == "FAIL_END":
         return "Since you refuse to present your passport, I have to send you to secondary inspection."
     return "I understand, but I cannot process you without your passport. If you refuse, you may be sent to secondary inspection."
+
+
+def _risk_control_text(normalized: dict[str, Any]) -> str:
+    branch_reason = str(normalized.get("branch_reason") or "")
+    risk_tags = set(normalized.get("risk_tags") or [])
+    pragmatic_context = normalized.get("pragmatic_context") or {}
+    player_move = str(pragmatic_context.get("player_move") or "")
+    target = str(pragmatic_context.get("target") or "")
+    is_threat = (
+        "violent_threat" in branch_reason
+        or "violent_threat" in risk_tags
+        or player_move == "violent_threat"
+    )
+    if not is_threat:
+        return ""
+
+    if "threat_to_officer" in risk_tags or "to_officer" in branch_reason or target == "officer":
+        return (
+            "Do not threaten an officer. This interview is over. "
+            "You are going to secondary inspection."
+        )
+    if (
+        "threat_to_public_figure" in risk_tags
+        or "public_figure" in branch_reason
+        or target == "public_figure"
+    ):
+        return (
+            "That is a serious threat. I cannot continue this interview normally. "
+            "You will be taken to secondary inspection."
+        )
+    return (
+        "That is a threatening statement. I cannot continue this interview normally. "
+        "You will be taken to secondary inspection."
+    )
 
 
 def build_audio_fallback(provider: str, voice_id: str, reason: str) -> dict[str, Any]:

@@ -391,6 +391,46 @@ class RiskEvidence(BaseModel):
     delta: int = 0
 
 
+class PragmaticContextCard(BaseModel):
+    """Situation-level meaning memo C can pass to B and A.
+
+    Beginner guide:
+    This card is stronger than `SocialContextCard`. Social context says how a
+    turn behaves in conversation; pragmatic context says what the turn does in
+    the real situation, such as refusing a required procedure or making a
+    threat. Developer C may add a safety backstop so obvious high-risk meanings
+    are not missed, but Developer B still owns branching and Developer A still
+    owns final NPC wording.
+    """
+
+    player_move: Literal[
+        "unknown",
+        "meaningful_answer",
+        "social_non_answer",
+        "off_topic",
+        "refusal",
+        "violent_threat",
+        "coercive_exit_request",
+    ] = "unknown"
+    target: Literal["none", "officer", "public_figure", "other_person", "self", "unknown"] = "none"
+    threat_directness: Literal["none", "implied", "explicit_intent", "direct_threat"] = "none"
+    risk_level: Literal["none", "low", "medium", "high", "critical"] = "none"
+    procedural_posture: Literal[
+        "continue",
+        "clarify",
+        "warn",
+        "stop_normal_interview",
+        "secondary_inspection",
+        "end_interview",
+    ] = "continue"
+    recommended_b_move: Literal["continue", "reask", "clarify", "warning", "secondary_inspection"] = "continue"
+    recommended_a_move: Literal["continue", "repair", "formal_boundary", "stern_boundary"] = "continue"
+    confidence: float = Field(default=0.0, ge=0, le=1)
+    evidence: str = ""
+    reason: str = ""
+
+
+
 class UnderstandingOutput(BaseModel):
     intent: str
     intent_success: bool
@@ -408,6 +448,7 @@ class UnderstandingOutput(BaseModel):
     needs_clarification: bool
     incivility: IncivilityClassification | None = None
     social_context: SocialContextCard = Field(default_factory=SocialContextCard)
+    pragmatic_context: PragmaticContextCard = Field(default_factory=PragmaticContextCard)
     intent_satisfied: bool | None = None
     judgment_reason: str = ""
     satisfied: bool | None = None

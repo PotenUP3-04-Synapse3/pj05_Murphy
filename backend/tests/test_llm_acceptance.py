@@ -1,7 +1,6 @@
 from typing import Any
 
 # Import EnglishLevelHintAgent first to resolve package-level circular import dependency during direct test load
-from backend.app.agents.agent_b.english_level_hint_agent import EnglishLevelHintAgent
 from backend.app.agents.agent_c.understanding_agent import UnderstandingAgent
 from backend.app.services.service_b.scenario_state_machine import ScenarioStateMachine
 from backend.app.schemas.game_turn import (

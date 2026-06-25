@@ -282,6 +282,32 @@ def test_risky_answer_warns_or_goes_to_bad_end(tmp_path: Path) -> None:
     assert result.npc_emotion == "Suspicion"
 
 
+def test_violent_threat_routes_to_secondary_instead_of_retry(tmp_path: Path) -> None:
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            player_text="I'm going to punch Trump in the face.",
+            intent_success=False,
+            confidence=0.86,
+            answer_relevance="off_topic",
+            ambiguity_type="violent_threat",
+            risk_delta=80,
+            risk_tags=["violent_threat", "threat_to_public_figure"],
+            extracted_slots={},
+            missing_slots=["visit_purpose"],
+            needs_clarification=False,
+        )
+    )
+
+    assert result.evaluation.verdict == "CRITICAL_FAIL"
+    assert result.branch.branch_type == "bad_end"
+    assert result.branch.next_action == "FAIL_END"
+    assert result.branch.next_node_id == "END_SECONDARY_INSPECTION"
+    assert result.branch.branch_reason == "violent_threat_to_public_figure"
+    assert result.dialogue_directive is not None
+    assert result.dialogue_directive.purpose == "warn_and_control_risk"
+    assert result.npc_emotion == "Suspicion"
+
+
 def test_passport_submission_refusal_uses_critical_branch_not_retry_or_hint(tmp_path: Path) -> None:
     context = _node_context("IMM_001_PASSPORT")
 

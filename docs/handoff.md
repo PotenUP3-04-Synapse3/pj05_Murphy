@@ -1,5 +1,95 @@
 # Handoff
 
+## 2026-06-25 Developer C: Conflict Resolution for Turn Authority and Pragmatic Threat Context Merge
+
+Resolved merge conflicts between the `dialog_improve` branch and `main` branch to preserve the intentions of both Developer B (Turn Authority Unification) and Developer C (Pragmatic Threat Context / safety checks).
+
+Key Integration Details:
+- **`backend/app/schemas/game_turn.py`**: Merged schemas to include both `RiskEvidence` (from turn unification) and `PragmaticContextCard` (from threat handling).
+- **`backend/app/agents/agent_c/understanding_agent.py`**: Integrated turn authority unification (restores raw prediction variables in `unified` mode) and then applies pragmatic context backstop analysis.
+- **`backend/app/agents/agent_c/understanding_llm_client.py`**: Integrated prompts, required list, and properties schema for both turn unification (`satisfied`, `branch_hint`, `risk_evidence`) and pragmatic context (`pragmatic_context`).
+- **`backend/app/agents/agent_a/npc_dialogue_agent.py`**: Merged global dialog checks to include `_has_risk_control_reask` check in immigration turns, alongside `_has_retry_hook_leak` and `_has_positive_reaction_on_failure` checked globally.
+- **`backend/app/prompts/npc_dialogue_prompt.md` & `npc_dialogue_prompt.short.md`**: Combined Jinja directives so that `risk_control` branch constraints override standard `surface_goal` and `resolved_node_objective` settings, preventing visit purpose leakage during safety warnings.
+- **`backend/app/services/service_b/scenario_state_machine.py`**: Combined `force_bad_end` checks to evaluate threat flags, passport submission refusal, and baggage undeclared high-value violations together.
+- **Tests & Quality**: Added typing import (`Any`) to test harness and marked unused test vars as ignored to satisfy ruff constraints. All 537 tests, `ruff` checks, and `mypy` checks pass successfully.
+
+## 2026-06-25 Developer A, B, C: Pragmatic Threat Context for Immigration Naturalness
+
+Developer C implemented this as a user-approved cross-owner follow-up after the
+immigration run where Officer Hale kept re-asking `What brings you to the
+United States?` after player threats such as `I'm going to punch Trump in the
+face.`
+
+Root cause:
+
+- C could mark ordinary social non-answers through `social_context`, but it did
+  not expose a stronger situation-level card for real-world speech acts such as
+  violent threats or coercive unsafe statements.
+- B's social-obligation lifecycle could intercept institutional off-topic turns
+  before critical-risk policy, so a critical threat was downgraded into
+  `institutional_check_social_obligation_open`.
+- A's non-advance guard and fallback synthesis could still force the current
+  `surface_goal` question back into risk-control dialogue.
+
+Sprint notes:
+
+- **Sprint 1 - RED coverage**:
+  Added C/B/A and orchestrator regressions for public-figure threat handling:
+  C must emit `pragmatic_context.player_move=violent_threat`, B must route to
+  `FAIL_END -> END_SECONDARY_INSPECTION`, and A must not ask visit-purpose
+  questions in a risk-control branch.
+- **Sprint 2 - C pragmatic context card**:
+  Added `PragmaticContextCard` beside `SocialContextCard`. The Understanding
+  LLM schema now asks for this card directly, while C keeps a narrow safety
+  backstop for obvious violent-threat misses such as `punch/hit/attack...`.
+- **Sprint 3 - B risk priority**:
+  Extended critical risk tags and branch reasons for
+  `violent_threat_to_officer`, `violent_threat_to_public_figure`, and related
+  target tags. B graph tools now bypass social lifecycle when C has already
+  raised critical-risk evidence.
+- **Sprint 4 - A risk-control dialogue**:
+  A now receives `pragmatic_context`, `risk_tags`, and `risk_delta`, rejects LLM
+  outputs that re-ask visit-purpose questions during risk-control branches, and
+  falls back to formal boundary/secondary-inspection lines.
+- **Sprint 5 - Hook hygiene carry-over**:
+  `synthesize_fallback_next_question` now avoids visible `You mentioned hello`
+  style hook prefixes for low-content hooks such as `hello`, `what`, and
+  `fine`.
+
+Changed files:
+
+- `backend/app/schemas/game_turn.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/services/service_b/scenario_state_machine.py`
+- `backend/app/agents/agent_b/english_level_hint_agent.py`
+- `backend/app/tools/tool_b/developer_b_policy_graph_tools.py`
+- `backend/app/services/service_a/developer_a_input_service.py`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/app/services/service_a/dialogue_policy_service.py`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/handoff.md`
+
+Verification so far:
+
+- RED confirmed for the new C/B/A/orchestrator threat regressions.
+- Targeted GREEN:
+  `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_rule_mode_marks_public_figure_threat_as_pragmatic_risk backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_escalates_threat_risk backend/tests/dev_b/test_developer_b_policy_engine.py::test_violent_threat_routes_to_secondary_instead_of_retry backend/tests/test_developer_a_npc_dialogue.py::test_violent_threat_warning_fallback_does_not_reask_visit_purpose backend/tests/test_developer_a_npc_dialogue.py::test_violent_threat_llm_output_is_not_accepted_as_visit_purpose_reask backend/tests/test_preprototype_flow.py::test_orchestrator_routes_public_figure_threat_to_secondary_not_purpose_reask`:
+  PASS.
+- Related regression subset:
+  `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_understanding_llm_client.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py`:
+  PASS, 269 passed, 1 warning (`audioop` deprecation).
+- `uv sync`: PASS.
+- `uv run pytest`: PASS, 458 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`: PASS, all checks passed.
+- `uv run mypy .`: PASS, no issues found in 145 source files.
+
 ## 2026-06-25 Developer C: Turn Authority Unification (판단→해결→발화 직렬 사슬) 완료
 
 계획서 `docs/workplan-llm-turn-authority-unification.md`에 따라 분산/병렬되어 있던 턴 권한 판단 흐름을 직렬화하는 작업을 완수했다.

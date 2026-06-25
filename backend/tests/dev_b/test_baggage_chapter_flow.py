@@ -163,7 +163,7 @@ def _make_payload(
 def test_normal_clearance_full_flow() -> None:
     """정상 통관: BAG_001 → 002 → 003 → 004 → 005 → 006 → 007 → BAG_999_COMPLETE."""
     sm = ScenarioStateMachine()
-    nodes = _load_nodes()
+    _ = _load_nodes()
 
     # BAG_001: 분실 신고
     d = sm.decide(_make_payload(
@@ -370,7 +370,7 @@ def test_node_persistent_failure_reaches_bad_end_from_fresh_state(
 ) -> None:
     """초기 상태(patience=100, retry=0)에서 연속 불충분 → 실제 상태 누적 → bad_end."""
     sm = ScenarioStateMachine()
-    patience, suspicion, retry_count, hint_count, previous_fail_count = 100, 0, 0, 0, 0
+    patience, _, retry_count, hint_count, previous_fail_count = 100, 0, 0, 0, 0
 
     reached_bad_end = False
     for turn in range(20):

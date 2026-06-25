@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from backend.app.agents.agent_c.understanding_agent import UnderstandingAgent
 from backend.app.data.challenge_tables import CUSTOMS_ITEMS, CustomsItemEntry

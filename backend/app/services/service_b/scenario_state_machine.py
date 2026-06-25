@@ -439,6 +439,12 @@ class ScenarioStateMachine:
             "dangerous_use",
             "commercial_resale",
             "refuse_submission",
+            "violent_threat",
+            "threat_to_officer",
+            "threat_to_public_figure",
+            "threat_to_other_person",
+            "threat_to_unknown_target",
+            "coercive_exit_request",
         }
 
         if self._is_undeclared_high_value_violation(payload):
@@ -563,7 +569,14 @@ class ScenarioStateMachine:
         중대 입국 위험이 감지되었을 때, 경고 단계를 발생시키거나 즉시 탈락(Bad End)으로 이끄는 시나리오 분기 정보를 결정합니다.
         """
         is_undeclared_high_value_violation = self._is_undeclared_high_value_violation(payload)
-        branch_type: BranchType = "bad_end" if risk_total >= 70 or payload.scenario_state.retry_count >= 2 or is_undeclared_high_value_violation else "warning"
+        force_bad_end = (
+            risk_total >= 70
+            or payload.scenario_state.retry_count >= 2
+            or self._has_passport_submission_refusal(payload)
+            or self._has_violent_threat(payload)
+            or is_undeclared_high_value_violation
+        )
+        branch_type: BranchType = "bad_end" if force_bad_end else "warning"
         next_action: NextAction = "FAIL_END" if branch_type == "bad_end" else "WARNING"
         preferred = self._preferred_bad_end_node(payload) if branch_type == "bad_end" else payload.node_context.warning_next_node
         next_node_id = self._checked_next_node(preferred, payload)
@@ -572,16 +585,39 @@ class ScenarioStateMachine:
             branch_type=branch_type,
             next_action=next_action,
             next_node_id=next_node_id,
-            branch_reason=(
-                "passport_submission_refused"
-                if self._has_passport_submission_refusal(payload)
-                else "Risk expression increased immigration suspicion."
-            ),
+            branch_reason=self._critical_branch_reason(payload),
             patience_delta=-20,
             suspicion_delta=max(payload.understanding.risk_delta, 20),
             retry_count_delta=1,
             hint_count_delta=0,
         )
+
+    def _has_violent_threat(self, payload: DevBPolicyInput) -> bool:
+        return bool(
+            {
+                "violent_threat",
+                "threat_to_officer",
+                "threat_to_public_figure",
+                "threat_to_other_person",
+                "threat_to_unknown_target",
+            }.intersection(payload.understanding.risk_tags)
+        )
+
+    def _critical_branch_reason(self, payload: DevBPolicyInput) -> str:
+        tags = set(payload.understanding.risk_tags)
+        if self._has_passport_submission_refusal(payload):
+            return "passport_submission_refused"
+        if "threat_to_officer" in tags:
+            return "violent_threat_to_officer"
+        if "threat_to_public_figure" in tags:
+            return "violent_threat_to_public_figure"
+        if "threat_to_other_person" in tags:
+            return "violent_threat_to_other_person"
+        if "violent_threat" in tags:
+            return "violent_threat"
+        if "coercive_exit_request" in tags:
+            return "coercive_exit_request"
+        return "Risk expression increased immigration suspicion."
 
     def _preferred_bad_end_node(self, payload: DevBPolicyInput) -> str:
         """
