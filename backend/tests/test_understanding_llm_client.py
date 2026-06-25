@@ -21,6 +21,20 @@ def test_understanding_schema_is_openai_strict_compatible() -> None:
     _assert_strict_object_schema(schema)
     assert "extracted_slots" not in schema["properties"]
     assert "extracted_slots" not in schema["required"]
+    assert "conversation_act" in schema["required"]
+    conversation_act = schema["properties"]["conversation_act"]
+    assert conversation_act["required"] == [
+        "player_act",
+        "relation_to_previous",
+        "npc_social_duty",
+        "natural_next_move",
+        "topic_anchor",
+        "should_answer_player_question",
+        "should_avoid_generic_ack",
+        "confidence",
+        "evidence",
+        "reason",
+    ]
     slot_evidence = schema["properties"]["slot_evidence"]
     assert slot_evidence["type"] == "array"
     assert slot_evidence["items"]["required"] == [

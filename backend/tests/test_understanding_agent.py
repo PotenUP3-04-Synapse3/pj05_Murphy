@@ -122,6 +122,48 @@ def test_understanding_agent_flight_fine_marks_low_content_non_answer() -> None:
     assert output.social_context.recommended_npc_move == "acknowledge_and_retry_request"
 
 
+def test_understanding_agent_flight_self_disclosure_marks_social_duty() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text(
+        "Yes, I'm going to a wedding, uh, my friend's wedding.",
+        _flight_smalltalk_node_context(),
+    )
+
+    assert output.intent_success is True
+    assert output.conversation_act.player_act == "self_disclosure"
+    assert output.conversation_act.relation_to_previous == "extends_current_topic"
+    assert output.conversation_act.npc_social_duty == "respond_to_disclosure_then_follow_up"
+    assert output.conversation_act.natural_next_move == "specific_acknowledgement"
+    assert output.conversation_act.topic_anchor == "wedding"
+    assert output.conversation_act.should_avoid_generic_ack is True
+
+
+def test_understanding_agent_flight_reciprocal_question_marks_answer_duty() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text("What about you?", _flight_smalltalk_node_context())
+
+    assert output.intent_success is True
+    assert output.conversation_act.player_act == "reciprocal_question"
+    assert output.conversation_act.relation_to_previous == "asks_npc_same_question"
+    assert output.conversation_act.npc_social_duty == "answer_briefly_then_continue"
+    assert output.conversation_act.natural_next_move == "self_disclose_then_follow_up"
+    assert output.conversation_act.should_answer_player_question is True
+    assert output.conversation_act.should_avoid_generic_ack is True
+
+
+def test_understanding_agent_flight_second_person_smalltalk_question_marks_answer_duty() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text("Do you travel often?", _flight_smalltalk_node_context())
+
+    assert output.intent_success is True
+    assert output.conversation_act.player_act == "reciprocal_question"
+    assert output.conversation_act.npc_social_duty == "answer_briefly_then_continue"
+    assert output.conversation_act.should_answer_player_question is True
+
+
 def test_understanding_agent_uses_llm_client_in_llm_mode() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {

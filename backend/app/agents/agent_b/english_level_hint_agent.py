@@ -902,6 +902,18 @@ class _EnglishLevelHintPolicyCore:
                 length_target = 10
             else:
                 length_target = 12
+            conversation_act = getattr(payload.understanding, "conversation_act", None)
+            conversation_duty = str(getattr(conversation_act, "npc_social_duty", "") or "")
+            should_answer_player_question = bool(
+                getattr(conversation_act, "should_answer_player_question", False)
+            )
+            if conversation_duty == "answer_briefly_then_continue" or should_answer_player_question:
+                length_target = max(length_target, 12)
+            elif conversation_duty in {
+                "respond_to_disclosure_then_follow_up",
+                "accept_belated_answer_then_continue",
+            }:
+                length_target = max(length_target, 10)
 
             return DialogueDirective(
                 purpose="smalltalk_diagnostic",

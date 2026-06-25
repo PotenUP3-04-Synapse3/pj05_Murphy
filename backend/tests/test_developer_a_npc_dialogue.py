@@ -1608,6 +1608,103 @@ def test_smalltalk_diagnostic_fallback_uses_generic_neutral_responses() -> None:
     assert result["feedback_kr"] == "자유롭게 스몰토크를 이어가고 있습니다. 계속 대화를 나누어 보세요."
 
 
+def test_smalltalk_diagnostic_fallback_responds_to_self_disclosure_context() -> None:
+    class FailingLLMClient:
+        model = "failing-model"
+
+        def generate(self, payload: dict) -> dict:
+            from backend.app.agents.agent_a.npc_llm_client import NPCDialogueLLMUnavailable
+
+            raise NPCDialogueLLMUnavailable("Test fail")
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "Yes, I'm going to a wedding, uh, my friend's wedding.",
+            "node_context": {"recommended_expression": "I'm going to a wedding."},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+            "dialogue_directive": {"purpose": "smalltalk_diagnostic"},
+            "dialogue_seed": {"surface_goal": "stay_duration_travel"},
+            "understanding": {
+                "conversation_act": {
+                    "player_act": "self_disclosure",
+                    "relation_to_previous": "extends_current_topic",
+                    "npc_social_duty": "respond_to_disclosure_then_follow_up",
+                    "natural_next_move": "specific_acknowledgement",
+                    "topic_anchor": "wedding",
+                    "should_answer_player_question": False,
+                    "should_avoid_generic_ack": True,
+                    "confidence": 0.86,
+                    "evidence": "wedding",
+                    "reason": "The player shared concrete trip information.",
+                }
+            },
+        },
+        use_llm=True,
+        llm_client=FailingLLMClient(),
+    )
+
+    assert "wedding" in result["npc_text"].lower()
+    assert result["npc_text"] not in {
+        "Oh, really? That's good to know.",
+        "Interesting. Let's keep talking.",
+    }
+    assert result["fallback"]["reason"] == "conversation_act_fallback"
+
+
+def test_smalltalk_diagnostic_fallback_answers_reciprocal_question_context() -> None:
+    class FailingLLMClient:
+        model = "failing-model"
+
+        def generate(self, payload: dict) -> dict:
+            from backend.app.agents.agent_a.npc_llm_client import NPCDialogueLLMUnavailable
+
+            raise NPCDialogueLLMUnavailable("Test fail")
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "SEATMATE_A_01", "npc_role": "seatmate"},
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "player_text": "What about you?",
+            "node_context": {"recommended_expression": "What about you?"},
+            "evaluation_summary": {"task_success": True, "clarity": 1.0},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "success"},
+            "dialogue_directive": {"purpose": "smalltalk_diagnostic"},
+            "dialogue_seed": {"surface_goal": "stay_duration_travel"},
+            "understanding": {
+                "conversation_act": {
+                    "player_act": "reciprocal_question",
+                    "relation_to_previous": "asks_npc_same_question",
+                    "npc_social_duty": "answer_briefly_then_continue",
+                    "natural_next_move": "self_disclose_then_follow_up",
+                    "topic_anchor": "travel",
+                    "should_answer_player_question": True,
+                    "should_avoid_generic_ack": True,
+                    "confidence": 0.89,
+                    "evidence": "What about you?",
+                    "reason": "The player asked the NPC to answer the same topic.",
+                }
+            },
+        },
+        use_llm=True,
+        llm_client=FailingLLMClient(),
+    )
+
+    lower_text = result["npc_text"].lower()
+    assert "i'm" in lower_text or "i am" in lower_text
+    assert result["npc_text"] not in {
+        "Oh, really? That's good to know.",
+        "Interesting. Let's keep talking.",
+    }
+    assert result["fallback"]["reason"] == "conversation_act_fallback"
+
+
 def test_smalltalk_diagnostic_handles_topic_switch_and_length_target() -> None:
     class OkLLMClient:
         model = "fake-model"

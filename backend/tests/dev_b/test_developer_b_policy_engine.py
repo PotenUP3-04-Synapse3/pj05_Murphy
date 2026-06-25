@@ -7,6 +7,7 @@ import pytest
 from backend.app.agents.agent_b.feedback_hint_llm_client import FeedbackHintLLMClient
 from backend.app.agents.agent_b.english_level_hint_agent import EnglishLevelHintAgent, _validate_b_policy_output
 from backend.app.schemas.game_turn import (
+    ConversationActCard,
     DevBPolicyInput,
     HintPolicy,
     InputSource,
@@ -97,6 +98,7 @@ def _policy_input(
     english_confidence: Literal["beginner", "intermediate", "advanced"] = "beginner",
     client_allowed_next_nodes: list[str] | None = None,
     social_context: dict[str, Any] | None = None,
+    conversation_act: dict[str, Any] | None = None,
 ) -> DevBPolicyInput:
     context = node_context or _node_context()
     slots = extracted_slots if extracted_slots is not None else {"visit_purpose": "tourism"}
@@ -149,6 +151,7 @@ def _policy_input(
             missing_slots=missing,
             needs_clarification=needs_clarification,
             social_context=SocialContextCard.model_validate(social_context or {}),
+            conversation_act=ConversationActCard.model_validate(conversation_act or {}),
         ),
         previous_node_results=[
             PreviousNodeResult(
@@ -528,6 +531,38 @@ def test_flight_smalltalk_dialogue_metadata_does_not_keep_pen_slot(tmp_path: Pat
     assert result.dialogue_seed.opening_intent == result.dialogue_seed.surface_goal
     assert "polite_response" not in result.dialogue_seed.assessment_targets
     assert "polite_response" not in result.dialogue_seed.feedback_focus
+
+
+def test_flight_smalltalk_reciprocal_question_gives_a_room_to_answer_first(tmp_path: Path) -> None:
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="What about you?",
+            intent_success=True,
+            confidence=0.9,
+            extracted_slots={},
+            missing_slots=[],
+            client_allowed_next_nodes=context.allowed_next_nodes,
+            conversation_act={
+                "player_act": "reciprocal_question",
+                "relation_to_previous": "asks_npc_same_question",
+                "npc_social_duty": "answer_briefly_then_continue",
+                "natural_next_move": "self_disclose_then_follow_up",
+                "topic_anchor": "travel",
+                "should_answer_player_question": True,
+                "should_avoid_generic_ack": True,
+                "confidence": 0.9,
+                "evidence": "What about you?",
+                "reason": "The player asked the NPC to answer the same topic.",
+            },
+        )
+    )
+
+    assert result.dialogue_directive is not None
+    assert result.dialogue_directive.purpose == "smalltalk_diagnostic"
+    assert result.dialogue_directive.length_target == 12
 
 
 # test_flight_diagnostic_retry_still_moves_to_next_evidence_node removed because intermediate flight nodes are deleted.

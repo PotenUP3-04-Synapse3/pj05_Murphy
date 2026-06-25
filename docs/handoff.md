@@ -1,5 +1,98 @@
 # Handoff
 
+## 2026-06-25 Developer A, B, C: Conversation Act Card for Natural Smalltalk Duties
+
+Implemented a user-approved cross-owner naturalness pass after the flight
+smalltalk run where Arabella could still say generic lines like `Oh, really?
+That's good to know.` or `Interesting. Let's keep talking.` when the player
+shared a concrete trip detail or asked `What about you?`.
+
+Root cause:
+
+- C exposed `social_context` for unresolved obligations and `pragmatic_context`
+  for safety/procedure, but did not expose a generalized turn-taking memo for
+  softer human duties such as answering a returned question or reacting to a
+  self-disclosure.
+- A's fallback and prompt therefore lacked a clear signal to avoid generic
+  neutral acknowledgements in normal smalltalk.
+- B did not need new branch rules, but A sometimes needed a slightly larger
+  `length_target` to answer first and continue the diagnostic prompt naturally.
+
+Sprint notes:
+
+- **Sprint 1 - RED coverage**:
+  Added C/A/B/schema regressions for `self_disclosure`,
+  `reciprocal_question`, generic fallback avoidance, and B `length_target`
+  room for answer-first turns.
+- **Sprint 2 - C conversation-act card**:
+  Added `ConversationActCard` to `UnderstandingOutput`; C now attaches it in
+  rule, LLM, and LLM-fallback paths after pragmatic/social postprocessing.
+  The Understanding LLM strict schema now requires `conversation_act`.
+- **Sprint 3 - A/B consumption**:
+  A input normalization, LLM payload, prompts, and fallback now consume the
+  card. B keeps branch authority unchanged and only adjusts flight smalltalk
+  `length_target` when the card says A should answer first or react
+  specifically.
+- **Sprint 4 - Logging and docs**:
+  C AgentRun summaries include compact `conversation_act` fields, and the
+  sprint record was added at
+  `docs/sprints/2026-06-25-conversation-act-naturalness-sprint.md`.
+- **Sprint 5 - Verification hardening**:
+  Full-suite verification exposed a pre-existing multiplayer E2E settings-cache
+  isolation issue. The test fixture now clears `get_settings()` before and after
+  each test so `rule/fake` env overrides cannot reuse an earlier cached LLM/real
+  settings object.
+
+Changed files:
+
+- `backend/app/schemas/game_turn.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/tools/tool_c/developer_c_graph_tools.py`
+- `backend/app/services/service_a/developer_a_input_service.py`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/app/agents/agent_b/english_level_hint_agent.py`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/test_understanding_llm_client.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`
+- `backend/tests/dev_b/test_multiplayer_e2e.py`
+- `docs/sprints/2026-06-25-conversation-act-naturalness-sprint.md`
+- `docs/handoff.md`
+
+Verification so far:
+
+- RED confirmed for the new C/A/B/schema regressions.
+- Targeted GREEN:
+  `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_flight_self_disclosure_marks_social_duty backend/tests/test_understanding_agent.py::test_understanding_agent_flight_reciprocal_question_marks_answer_duty backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_fallback_responds_to_self_disclosure_context backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_diagnostic_fallback_answers_reciprocal_question_context backend/tests/test_understanding_llm_client.py::test_understanding_schema_is_openai_strict_compatible -q`:
+  PASS.
+- Additional RED/GREEN:
+  `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_flight_second_person_smalltalk_question_marks_answer_duty -q`:
+  PASS after broadening reciprocal-question detection beyond `What about you?`.
+- B targeted GREEN:
+  `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py::test_flight_smalltalk_reciprocal_question_gives_a_room_to_answer_first -q`:
+  PASS.
+- Related suites:
+  `uv run pytest backend/tests/test_understanding_agent.py backend/tests/test_understanding_llm_client.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/dev_b/test_developer_b_policy_engine.py -q`:
+  PASS, 226 passed, 1 warning (`audioop` deprecation).
+- Integration:
+  `uv run pytest backend/tests/test_preprototype_flow.py -q`:
+  PASS, 48 passed, 1 warning (`audioop` deprecation).
+- Multiplayer fixture isolation:
+  `uv run pytest backend/tests/dev_b/test_multiplayer_e2e.py -q`:
+  PASS, 3 passed, 1 warning (`audioop` deprecation).
+- Full verification:
+  `uv sync`: PASS.
+- Full test suite:
+  `uv run pytest`: PASS, 543 passed, 1 warning (`audioop` deprecation).
+- Lint:
+  `uv run ruff check .`: PASS.
+- Type check:
+  `uv run mypy .`: PASS, no issues found in 149 source files.
+
 ## 2026-06-25 Developer C: Conflict Resolution for Turn Authority and Pragmatic Threat Context Merge
 
 Resolved merge conflicts between the `dialog_improve` branch and `main` branch to preserve the intentions of both Developer B (Turn Authority Unification) and Developer C (Pragmatic Threat Context / safety checks).
