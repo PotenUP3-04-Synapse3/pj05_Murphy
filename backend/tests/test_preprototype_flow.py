@@ -428,7 +428,7 @@ def test_orchestrator_treats_immigration_final_decision_as_baggage_transition() 
     assert response.transition.unreal_event == "ENTER_BAGGAGE_CLAIM"
     assert response.transition.entry_node_id == "BAG_001_REPORT_MISSING_AT_DESK"
     assert response.report.final_result is None
-    assert response.npc.text == "All right, you're cleared."
+    assert response.npc.text == "All right, you're cleared. You can head to baggage claim now."
 
 
 def test_orchestrator_advances_baggage_report_to_claim_tag_node() -> None:

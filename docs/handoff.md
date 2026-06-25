@@ -1,5 +1,136 @@
 # Handoff
 
+## 2026-06-25 Developer C: respond-dialog Novak NPC Failed Fix
+
+Fixed the `/respond-dialog` demo NPC selector failure where choosing Novak
+showed `NPC Failed`.
+
+Root cause:
+
+- The browser page calls `/api/game/ai/demo/npc-roster`, then loads
+  `selectedNpc.start_node_id` through `/api/game/ai/demo/node/{node_id}`.
+- Arabella worked because her start node was the current alpha flight node:
+  `FLIGHT_A_001_SEATMATE_SMALLTALK`.
+- Novak failed because the demo roster still pointed to the deleted legacy node
+  `FLIGHT_B_001_SEATMATE_SMALLTALK`.
+- `/api/game/ai/demo/node/FLIGHT_B_001_SEATMATE_SMALLTALK` returned 404:
+  `Unsupported node: CH0_01_FLIGHT_SMALLTALK/FLIGHT_B_001_SEATMATE_SMALLTALK`,
+  and the page catch handler displayed `NPC Failed`.
+
+Changed files:
+
+- `backend/app/api/ai_respond.py`
+- `backend/tests/test_demo_ai_respond_page.py`
+- `docs/handoff.md`
+
+Behavior after fix:
+
+- Novak now starts from the same valid single-node flight diagnostic scene as
+  Arabella: `FLIGHT_A_001_SEATMATE_SMALLTALK`.
+- The selected NPC identity still remains `novak`, so A can resolve Novak's
+  roster persona and voice while B/C use the shared flight diagnostic node.
+
+Verification so far:
+
+- RED confirmed:
+  `uv run pytest backend/tests/test_demo_ai_respond_page.py::test_demo_npc_roster_endpoint -q`
+  failed while Novak returned `FLIGHT_B_001_SEATMATE_SMALLTALK`.
+- GREEN:
+  `uv run pytest backend/tests/test_demo_ai_respond_page.py::test_demo_npc_roster_endpoint -q`:
+  PASS.
+- Endpoint smoke:
+  `uv run python -c "... /api/game/ai/demo/npc-roster ... /api/game/ai/demo/node/{novak_start_node} ..."`:
+  Novak start node is `FLIGHT_A_001_SEATMATE_SMALLTALK`, node lookup returns
+  200.
+- Demo page suite:
+  `uv run pytest backend/tests/test_demo_ai_respond_page.py -q`:
+  PASS, 11 passed, 1 warning (`audioop` deprecation).
+- Lint:
+  `uv run ruff check .`: PASS.
+- Type check:
+  `uv run mypy .`: PASS, no issues found in 149 source files.
+- Diff whitespace:
+  `git diff --check`: PASS.
+
+## 2026-06-25 Developer A, B, C: Flight Smalltalk Completion Social Closure
+
+Implemented a cross-owner naturalness pass after the flight run where Arabella
+answered `Yes, what about you?` with an abrupt `Enjoy your trip!` and
+`COMPLETE_CHAPTER`.
+
+Root cause:
+
+- C correctly marked the turn as `conversation_act.player_act=reciprocal_question`
+  with `npc_social_duty=answer_briefly_then_continue`.
+- B's flight diagnostic policy still let the confidence-based early completion
+  gate win once enough competencies had been sampled.
+- A then obeyed `COMPLETE_CHAPTER` and returned a generic completion fallback,
+  so Arabella never answered the player's returned question or explained why
+  the conversation was ending.
+
+Sprint notes:
+
+- **Sprint 1 - RED coverage**:
+  Added B policy coverage for the exact premature completion pattern and A
+  fallback coverage that rejects abrupt `Enjoy your trip!`-only endings.
+- **Sprint 2 - B completion deferral**:
+  `FlightSmallTalkDiagnosticPolicy` now defers confidence-based early
+  completion when `ConversationActCard` says the NPC should answer the player
+  first. It returns
+  `flight_smalltalk_answer_social_duty_before_complete` and keeps the scene on
+  `ADVANCE`.
+- **Sprint 3 - Closure reason metadata**:
+  `DialogueSeed` now includes `completion_closure_reason`,
+  `completion_closure_style`, and `completion_do_not_ask_new_question`. B fills
+  these for flight, immigration, and baggage completion turns.
+- **Sprint 4 - A completion dialogue**:
+  A fallback and prompts now use the completion closure metadata. Flight
+  completion explains that Arabella should finish the form before landing, and
+  immigration completion explains that the player can head to baggage claim.
+
+Changed files:
+
+- `backend/app/services/service_b/flight_smalltalk_diagnostic_policy.py`
+- `backend/app/agents/agent_b/english_level_hint_agent.py`
+- `backend/app/schemas/game_turn.py`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/agents/agent_a/npc_llm_client.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py`
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/sprints/2026-06-25-flight-completion-social-closure-sprint.md`
+- `docs/handoff.md`
+
+Verification so far:
+
+- RED confirmed for
+  `test_reciprocal_question_defers_completion_even_when_evidence_is_enough`
+  and the A completion fallback expectations.
+- Targeted GREEN:
+  `uv run pytest backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py::test_reciprocal_question_defers_completion_even_when_evidence_is_enough backend/tests/dev_b/test_developer_b_policy_engine.py::test_flight_smalltalk_reciprocal_question_gives_a_room_to_answer_first backend/tests/dev_b/test_developer_b_policy_engine.py::test_flight_smalltalk_completion_seed_explains_closure_reason -q`:
+  PASS.
+- A completion GREEN:
+  `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_complete_chapter_transition_returns_closing_phrase_for_each_role backend/tests/test_developer_a_npc_dialogue.py::test_flight_complete_chapter_fallback_uses_structured_closure_reason backend/tests/test_developer_a_npc_dialogue.py::test_smalltalk_complete_chapter_llm_question_falls_back_to_closing -q`:
+  PASS.
+- Related suites:
+  `uv run pytest backend/tests/test_developer_a_npc_dialogue.py backend/tests/dev_b/test_flight_smalltalk_diagnostic_policy.py backend/tests/dev_b/test_developer_b_policy_engine.py -q`:
+  PASS, 204 passed, 1 warning (`audioop` deprecation).
+- Integration:
+  `uv run pytest backend/tests/test_preprototype_flow.py -q`:
+  PASS, 48 passed, 1 warning (`audioop` deprecation).
+- Full verification:
+  `uv sync`: PASS.
+- Full test suite:
+  `uv run pytest`: PASS, 546 passed, 1 warning (`audioop` deprecation).
+- Lint:
+  `uv run ruff check .`: PASS.
+- Type check:
+  `uv run mypy .`: PASS, no issues found in 149 source files.
+
 ## 2026-06-25 Developer A, B, C: Conversation Act Card for Natural Smalltalk Duties
 
 Implemented a user-approved cross-owner naturalness pass after the flight

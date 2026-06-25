@@ -92,16 +92,18 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
         reason = "risk_control_fallback"
 
     elif transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER":
-        if npc_role == "seatmate":
-            text = "Enjoy your trip!"
-        elif npc_role == "immigration_officer":
-            text = "All right, you're cleared."
-        elif npc_role == "baggage_agent":
-            text = "You're all set."
-        elif npc_role == "security_officer":
-            text = "You're all set. Have a nice day."
-        else:
-            text = "You're all set."
+        text = _completion_closure_fallback_text(normalized)
+        if not text:
+            if npc_role == "seatmate":
+                text = "I should finish this form before we land, but it was nice talking with you. Enjoy your trip."
+            elif npc_role == "immigration_officer":
+                text = "All right, you're cleared. You can head to baggage claim now."
+            elif npc_role in {"baggage_agent", "baggage_service_agent"}:
+                text = "You're all set. The report is complete, so you can head out now."
+            elif npc_role == "security_officer":
+                text = "You're all set. The check is complete, so you can continue now."
+            else:
+                text = "You're all set. This part is complete, so we can move on now."
         reason = "complete_chapter_fallback"
 
     # 1.5. social context repair before generic smalltalk/slot fallback
@@ -224,6 +226,25 @@ def _conversation_act_fallback_text(normalized: dict[str, Any]) -> str:
             return f"Thanks, I appreciate it. {followup}"
         return "Thanks, I appreciate it. Anyway, where are you headed after this flight?"
 
+    return ""
+
+
+def _completion_closure_fallback_text(normalized: dict[str, Any]) -> str:
+    dialogue_seed = normalized.get("dialogue_seed") or {}
+    if not isinstance(dialogue_seed, dict):
+        dialogue_seed = {}
+    closure_reason = str(dialogue_seed.get("completion_closure_reason") or "")
+    npc_role = str(normalized.get("npc_role") or "")
+    node_id = str(normalized.get("node_id") or "")
+
+    if closure_reason == "landing_soon_and_arrival_form" or npc_role in {"seatmate", "seatmate_passenger"}:
+        return "I should finish this form before we land, but it was nice talking with you. Enjoy your trip."
+    if closure_reason == "immigration_cleared_to_baggage_claim" or npc_role == "immigration_officer":
+        return "All right, you're cleared. You can head to baggage claim now."
+    if closure_reason == "baggage_case_resolved" or npc_role in {"baggage_agent", "baggage_service_agent"}:
+        return "You're all set. The report is complete, so you can head out now."
+    if node_id.startswith("FLIGHT_"):
+        return "I should get ready before we land, but it was nice talking with you. Enjoy your trip."
     return ""
 
 

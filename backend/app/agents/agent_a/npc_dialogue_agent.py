@@ -791,6 +791,12 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "incivility_tier": incivility_tier,
             "profanity_mode": profanity_mode,
             "surface_goal": (dialogue_seed or {}).get("surface_goal") or "",
+            "completion_closure_reason": (dialogue_seed or {}).get("completion_closure_reason") or "",
+            "completion_closure_style": (dialogue_seed or {}).get("completion_closure_style") or "",
+            "completion_do_not_ask_new_question": (dialogue_seed or {}).get(
+                "completion_do_not_ask_new_question",
+                False,
+            ),
             "allowed_emotions": ["joy", "panic", "sad", "suspicion", "disgust", "fear", "smirk", "normal", "anger", "surprise", "pain", "confusion", "boredom"],
             "non_verbal_palette": npc_profile.non_verbal_palette,
             "allowed_mild": allowed_mild,

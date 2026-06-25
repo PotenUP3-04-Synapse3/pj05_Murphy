@@ -565,6 +565,28 @@ def test_flight_smalltalk_reciprocal_question_gives_a_room_to_answer_first(tmp_p
     assert result.dialogue_directive.length_target == 12
 
 
+def test_flight_smalltalk_completion_seed_explains_closure_reason(tmp_path: Path) -> None:
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="Thanks for talking with me.",
+            intent_success=True,
+            confidence=0.9,
+            extracted_slots={},
+            missing_slots=[],
+            client_allowed_next_nodes=["FLIGHT_999_COMPLETE"],
+        )
+    )
+
+    assert result.branch.next_action == "COMPLETE_CHAPTER"
+    assert result.dialogue_seed is not None
+    assert result.dialogue_seed.completion_closure_reason == "landing_soon_and_arrival_form"
+    assert result.dialogue_seed.completion_closure_style == "warm_seatmate"
+    assert result.dialogue_seed.completion_do_not_ask_new_question is True
+
+
 # test_flight_diagnostic_retry_still_moves_to_next_evidence_node removed because intermediate flight nodes are deleted.
 
 

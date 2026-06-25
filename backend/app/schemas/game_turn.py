@@ -656,6 +656,9 @@ class DialogueSeed(BaseModel):
     allowed_followup_intents: list[str] = Field(default_factory=list)
     stop_condition: str
     cumulative_confidence: float | None = None
+    completion_closure_reason: str | None = None
+    completion_closure_style: str | None = None
+    completion_do_not_ask_new_question: bool = False
 
     # A가 고정 질문 대신 억까 의도만 보고 대사를 생성하도록 넘기는 컨텍스트입니다.
     challenge_context: ChallengeContext | None = None
