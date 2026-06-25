@@ -32,6 +32,33 @@ If it does not, return:
 Do not normalize a loose phrase into an allowed slot value when the phrase does
 not answer the current scenario task.
 
+### Multi-purpose / Rich Responses
+
+If the player text satisfies one of the allowed slot values of the required slots, do not set `intent_satisfied = false` or leave slots missing simply because the player provided extra details or multiple valid travel purposes (e.g., visiting a friend AND sightseeing). Do not treat richer answers as unsatisfied intent.
+
+### Confirmation Intents
+
+For confirmation required intents (starting with `confirm_*`), if the player provides a confirmation/affirmation (e.g., "yes", "yeah", "only my bag didn't come"), canonicalize this to the most appropriate allowed slot value (such as `searched_carefully`) even if the exact manner/allowed value is not explicitly mentioned, and do not mark it as a missing slot.
+
+### Physical Handover Intents
+
+For `provide_*` required intents (e.g. `provide_claim_tag`), physical-handover
+expressions ("here it is", "here you go", "take it", "there you go", "this one",
+"here") indicate the player is physically submitting the requested item.
+Canonicalize to the most appropriate `allowed_slot_value` (e.g. `has_claim_tag`)
+and return `intent_success = true`. Do not require an explicit "yes I have it."
+
+### Acknowledgement Intents
+
+For `acknowledge_*` required intents (e.g. `acknowledge_customs_hold_explanation`),
+past-tense compliance expressions ("I did", "I checked", "yeah I did", "I already
+did it", "done", "I looked", "yeah I checked now") confirm the player has already
+performed the requested action. Canonicalize to the most appropriate
+`allowed_slot_value` (e.g. `already_checked`) and return `intent_success = true`.
+Past-tense compliance is as valid as future-tense agreement — do not return
+`needs_clarification = true` for these expressions.
+
+
 ## Slot Evidence
 
 Put every understood slot in `slot_evidence` using only slots from:
@@ -46,12 +73,14 @@ the exact player-text phrase that supports it.
 Do not assign confidence `0.9` or higher when the evidence is weak, idiomatic,
 inferred, or only loosely related to the required intent.
 
-## Example Guard
+## Customs Item Sufficiency
 
-For `FLIGHT_A_001_SEATMATE_SMALLTALK`, the seatmate asks to borrow a pen.
+Check `difficulty` first — it is the **sole authoritative indicator** of required explanation depth. Do NOT infer required depth from the content of `suspicion_reason`.
 
-`"Okay."` may be a short acknowledgement.
+**If `difficulty >= 7`**: The player's explanation must reasonably address the specific `suspicion_reason` (e.g. quarantine concerns for agricultural/food items, resale/quantity issues for valuable/luxury items). Generic answers ("it's a gift", "it's a personal item", "it's a souvenir") are insufficient. Return:
+- `intent_satisfied = false`
+- `intent_success = false`
+- required slots in `missing_slots`
+- `needs_clarification = true`
 
-`"Okay, you're on."` is an idiom for accepting a challenge or bet. It should be
-treated as off-topic for the pen request, not normalized to
-`polite_response = "short_acknowledgement"`.
+**If `difficulty < 7`**: Generic explanations are **fully acceptable** and MUST be treated as sufficient, regardless of how serious the `suspicion_reason` sounds (e.g., "money laundering", "structuring", "dangerous"). Return `intent_success = true`.

@@ -1,3 +1,5 @@
+# ─── BAG_001: 분실 신고 ────────────────────────────────────────────────────────
+
 - id: baggage_brielle_report_missing
   npc_id: brielle
   node_id: BAG_001_REPORT_MISSING_AT_DESK
@@ -22,3 +24,131 @@
     npc_role_must_not_be_giver: true
     must_include_any: ["water", "baggage", "claim", "sorry", "assist", "help", "today"]
     must_not_include_any: ["here is your water"]
+
+# ─── BAG_002: 클레임태그 ───────────────────────────────────────────────────────
+
+- id: baggage_brielle_claim_tag_success
+  npc_id: brielle
+  node_id: BAG_002_PROVIDE_CLAIM_TAG
+  description: "클레임태그 번호 제공 success 분기에서 NPC가 다음 단계로 자연스럽게 안내하는지."
+  payload_overrides:
+    branch:
+      branch_type: "success"
+      next_node_id: BAG_003_CONFIRM_SEARCHED_CAROUSEL
+  player_inputs:
+    - "Here is my claim tag. The number is 1234."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["carousel", "checked", "look", "search", "did you"]
+    must_not_include_any: ["please provide your claim tag", "can you give me your tag"]
+
+- id: baggage_brielle_claim_tag_retry
+  npc_id: brielle
+  node_id: BAG_002_PROVIDE_CLAIM_TAG
+  description: "클레임태그 미제공 retry 시 NPC가 태그를 정중하게 다시 요청하는지."
+  payload_overrides:
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "I think I have it somewhere."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["tag", "ticket", "number", "baggage claim"]
+    must_not_include_any: ["passport", "boarding pass"]
+
+# ─── BAG_003: 캐러셀 확인 ─────────────────────────────────────────────────────
+
+- id: baggage_brielle_carousel_success
+  npc_id: brielle
+  node_id: BAG_003_CONFIRM_SEARCHED_CAROUSEL
+  description: "캐러셀 확인 완료 후 NPC가 customs hold 안내로 이어가는지."
+  payload_overrides:
+    branch:
+      branch_type: "success"
+      next_node_id: BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD
+  player_inputs:
+    - "Yes, I checked the carousel carefully. It wasn't there."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["customs", "hold", "another", "office", "area", "follow"]
+    must_not_include_any: ["please check the carousel again"]
+
+- id: baggage_brielle_carousel_ambiguous
+  npc_id: brielle
+  node_id: BAG_003_CONFIRM_SEARCHED_CAROUSEL
+  description: "모호 답변 retry 시 NPC가 캐러셀 확인 여부를 다시 명확히 물어보는지."
+  payload_overrides:
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "I think I did... maybe."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["carousel", "check", "look", "carefully", "confirm"]
+    must_not_include_any: ["enjoy your stay", "all cleared"]
+
+# ─── BAG_005: 검사 동의 ───────────────────────────────────────────────────────
+
+- id: baggage_brielle_customs_hold_retry
+  npc_id: brielle
+  node_id: BAG_005_CUSTOMS_HOLD_EXPLANATION
+  description: "검사 동의 retry에서 NPC가 혼란스럽지 않게 재안내하는지."
+  payload_overrides:
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "I don't understand why I need to go there."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["customs", "inspection", "hold", "explain", "reason", "random"]
+    must_not_include_any: ["enjoy your stay", "all cleared", "you are good to go"]
+
+# ─── BAG_007: 통관 완료 ───────────────────────────────────────────────────────
+
+- id: baggage_brielle_clearance_success
+  npc_id: brielle
+  node_id: BAG_007_CUSTOMS_CLEARANCE
+  description: "통관 완료 success에서 NPC가 축하/마무리 인사를 자연스럽게 하는지."
+  payload_overrides:
+    branch:
+      branch_type: "success"
+      next_node_id: BAG_999_COMPLETE
+  player_inputs:
+    - "Thank you for your help!"
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["enjoy", "safe trip", "welcome", "have a", "cleared", "all set"]
+    must_not_include_any:
+      - "please wait for further inspection"
+      - "additional screening"
+      - "we cannot help you"
+
+# ─── 엣지: 되물음 + off-topic ─────────────────────────────────────────────────
+
+- id: baggage_brielle_edge_needs_repeat
+  npc_id: brielle
+  node_id: BAG_001_REPORT_MISSING_AT_DESK
+  description: "'다시요?' 되물음 시 NPC가 핵심을 유지하면서 다시 안내하는지."
+  payload_overrides:
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "Can you say that again, please?"
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["baggage", "claim", "missing", "help", "report"]
+    must_not_include_any: ["sorry i cannot help", "i don't understand your question"]
+
+- id: baggage_brielle_edge_off_topic
+  npc_id: brielle
+  node_id: BAG_003_CONFIRM_SEARCHED_CAROUSEL
+  description: "완전히 다른 주제(비행기 환승) 발화 시 NPC가 캐러셀 주제로 돌아오는지."
+  payload_overrides:
+    branch:
+      branch_type: "retry"
+  player_inputs:
+    - "I need to catch my connecting flight to LA."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any: ["carousel", "baggage", "first", "before", "let's"]
+    must_not_include_any: ["have a great flight to LA", "gate", "boarding"]

@@ -127,6 +127,8 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "next_action": _optional_text(payload.get("next_action") or branch.get("next_action")),
         "suspicion_scope": _optional_text(suspicion_scope),
         "dialogue_history": dialogue_history,
+        "resolved_node_objective": _optional_text(payload.get("resolved_node_objective")),
+        "resolved_node_npc_question": _optional_text(payload.get("resolved_node_npc_question")),
     }
 
 

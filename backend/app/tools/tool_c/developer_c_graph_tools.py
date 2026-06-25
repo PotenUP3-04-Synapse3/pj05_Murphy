@@ -10,6 +10,7 @@ files.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
@@ -24,6 +25,7 @@ from backend.app.integrations.dev_b_level_hint_client import DevBPolicyClient
 from backend.app.middleware.middleware_c.developer_c_agent_run_middleware import DeveloperCAgentRunMiddleware
 from backend.app.schemas.game_turn import (
     ChallengeContext,
+    CustomsItemJudgeContext,
     DevADialogueInput,
     DevADialogueOutput,
     DevBPolicyInput,
@@ -319,6 +321,36 @@ class DeveloperCGraphTools:
         agent_run = _require_agent_run(state)
         timing_ms = _state_timing_ms(state)
 
+        request = _require_state_value(state, "request", PrePrototypeRequest)
+        game_state = request.turn.game_state
+        if game_state and game_state.random_customs_item:
+            # Sync declaration status if arrival form exists
+            if game_state.arrival_form:
+                declared_items = game_state.arrival_form.declared_items or []
+                item = game_state.random_customs_item
+                item_text = item.item_name or ""
+                if item.item_id:
+                    item_text += " " + item.item_id.replace("ITEM_", "").replace("_", " ")
+                noise = {"item", "kg", "g", "the", "a", "of"}
+                item_words = set(re.findall(r"[a-z]+", item_text.lower())) - noise
+                for dec in declared_items:
+                    dec_words = set(re.findall(r"[a-z]+", dec.lower())) - noise
+                    if dec_words & item_words:
+                        game_state.random_customs_item.declared = True
+                        break
+
+            current_node = request.turn.session.current_node_id or ""
+            if current_node.startswith("BAG_005") or current_node.startswith("BAG_006"):
+                item = game_state.random_customs_item
+                node_context = node_context.model_copy()
+                node_context.customs_item_context = CustomsItemJudgeContext(
+                    item_name=item.item_name,
+                    item_category=item.item_category,
+                    difficulty=item.difficulty or 0,
+                    suspicion_reason=item.suspicion_reason,
+                    declared=bool(item.declared),
+                )
+
         stage_started = perf_counter()
         public_context = public_node_context(node_context)
         understanding = self.understanding_agent.analyze_player_text(
@@ -346,7 +378,7 @@ class DeveloperCGraphTools:
             to_node="dev_b_client",
             payload_summary=_understanding_summary(understanding),
         )
-        return {"understanding": understanding, "timing_ms": timing_ms}
+        return {"understanding": understanding, "node_context": node_context, "timing_ms": timing_ms}
 
     def evaluate_dev_b_policy_tool(self, state: Mapping[str, Any]) -> dict[str, Any]:
         request = _require_state_value(state, "request", PrePrototypeRequest)
@@ -771,6 +803,31 @@ class DeveloperCGraphTools:
         node_context: NodeContext,
         understanding: UnderstandingOutput,
     ) -> DevBPolicyInput:
+        """이 턴의 상태 정보와 플레이어 발화 분석을 통합하여 Developer B용 입력을 빌드합니다.
+
+        초보자 가이드:
+        이 메소드는 Unreal 요청에서 들어온 인내심, 의심도, 실패 횟수 등의 런타임 상태를
+        Developer B가 읽을 수 있도록 DevBPolicyInput 형식으로 채웁니다.
+        또한, 무작위 배정된 세관 물품(random_customs_item)의 세관 신고 여부(declared)를
+        플레이어의 입국신고서(arrival_form.declared_items)와 일치하도록 동기화해 줍니다.
+        """
+        game_state = request.turn.game_state
+        if game_state and game_state.random_customs_item and game_state.arrival_form:
+            declared_items = game_state.arrival_form.declared_items or []
+            item = game_state.random_customs_item
+            # 신고서 항목과 배정 물품을 단어 단위로 비교합니다. substring 매칭은 "old"가
+            # "item_gold_bar"에 포함되는 식의 오신고를 일으키므로, 의미 단어 교집합으로 판정합니다.
+            item_text = item.item_name or ""
+            if item.item_id:
+                item_text += " " + item.item_id.replace("ITEM_", "").replace("_", " ")
+            noise = {"item", "kg", "g", "the", "a", "of"}
+            item_words = set(re.findall(r"[a-z]+", item_text.lower())) - noise
+            for dec in declared_items:
+                dec_words = set(re.findall(r"[a-z]+", dec.lower())) - noise
+                if dec_words & item_words:
+                    game_state.random_customs_item.declared = True
+                    break
+
         scenario_state = ScenarioState(
             patience=request.turn.scenario_state.patience,
             suspicion=request.turn.scenario_state.suspicion,

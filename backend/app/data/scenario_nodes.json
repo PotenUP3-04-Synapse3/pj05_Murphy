@@ -174,7 +174,7 @@
         "no"
       ],
       "recommended_expression": "Here you are.",
-      "base_hint_kr": "Give your passport to the officer.",
+      "base_hint_kr": "여권을 심사관에게 제출하세요.",
       "hint_policy": {
         "keyword": [
           "passport",
@@ -242,7 +242,7 @@
         "work illegally"
       ],
       "recommended_expression": "I'm here for tourism.",
-      "base_hint_kr": "Say the purpose of your visit.",
+      "base_hint_kr": "방문 목적을 말하세요.",
       "hint_policy": {
         "keyword": [
           "tourism",
@@ -306,7 +306,7 @@
         "maybe forever"
       ],
       "recommended_expression": "I'll stay for five days.",
-      "base_hint_kr": "Say how long you will stay.",
+      "base_hint_kr": "얼마나 머무를지 말하세요.",
       "hint_policy": {
         "keyword": [
           "five days",
@@ -373,7 +373,7 @@
         "nowhere"
       ],
       "recommended_expression": "I'm staying at a hotel in New York.",
-      "base_hint_kr": "Say where you will stay.",
+      "base_hint_kr": "어디에 머무를지 말하세요.",
       "hint_policy": {
         "keyword": [
           "hotel",
@@ -438,7 +438,7 @@
         "work here"
       ],
       "recommended_expression": "Yes, I do. My return flight is next Friday.",
-      "base_hint_kr": "Say whether you have a return ticket.",
+      "base_hint_kr": "귀국 항공권이 있는지 답하세요.",
       "hint_policy": {
         "keyword": [
           "yes",
@@ -845,7 +845,8 @@
         "customs_hold_acknowledgement": [
           "will_unlock_and_check",
           "understands_inspection",
-          "confirms_owner"
+          "confirms_owner",
+          "already_checked"
         ]
       },
       "risk_keywords": [
@@ -1393,7 +1394,7 @@
         "no"
       ],
       "recommended_expression": "Here you are.",
-      "base_hint_kr": "Give your passport to the officer.",
+      "base_hint_kr": "여권을 심사관에게 제출하세요.",
       "hint_policy": {
         "keyword": [
           "passport",
@@ -1451,7 +1452,7 @@
         "no"
       ],
       "recommended_expression": "Here you are.",
-      "base_hint_kr": "Give your passport to the officer.",
+      "base_hint_kr": "여권을 심사관에게 제출하세요.",
       "hint_policy": {
         "keyword": [
           "passport",
@@ -1519,7 +1520,7 @@
         "work illegally"
       ],
       "recommended_expression": "I'm here for tourism.",
-      "base_hint_kr": "Say the purpose of your visit.",
+      "base_hint_kr": "방문 목적을 말하세요.",
       "hint_policy": {
         "keyword": [
           "tourism",
@@ -1587,7 +1588,7 @@
         "work illegally"
       ],
       "recommended_expression": "I'm here for tourism.",
-      "base_hint_kr": "Say the purpose of your visit.",
+      "base_hint_kr": "방문 목적을 말하세요.",
       "hint_policy": {
         "keyword": [
           "tourism",
@@ -1651,7 +1652,7 @@
         "maybe forever"
       ],
       "recommended_expression": "I'll stay for five days.",
-      "base_hint_kr": "Say how long you will stay.",
+      "base_hint_kr": "얼마나 머무를지 말하세요.",
       "hint_policy": {
         "keyword": [
           "five days",
@@ -1716,7 +1717,7 @@
         "maybe forever"
       ],
       "recommended_expression": "I'll stay for five days.",
-      "base_hint_kr": "Say how long you will stay.",
+      "base_hint_kr": "얼마나 머무를지 말하세요.",
       "hint_policy": {
         "keyword": [
           "five days",
@@ -1783,7 +1784,7 @@
         "nowhere"
       ],
       "recommended_expression": "I'm staying at a hotel in New York.",
-      "base_hint_kr": "Say where you will stay.",
+      "base_hint_kr": "어디에 머무를지 말하세요.",
       "hint_policy": {
         "keyword": [
           "hotel",
@@ -1851,7 +1852,7 @@
         "nowhere"
       ],
       "recommended_expression": "I'm staying at a hotel in New York.",
-      "base_hint_kr": "Say where you will stay.",
+      "base_hint_kr": "어디에 머무를지 말하세요.",
       "hint_policy": {
         "keyword": [
           "hotel",
@@ -1916,7 +1917,7 @@
         "work here"
       ],
       "recommended_expression": "Yes, I do. My return flight is next Friday.",
-      "base_hint_kr": "Say whether you have a return ticket.",
+      "base_hint_kr": "귀국 항공권이 있는지 답하세요.",
       "hint_policy": {
         "keyword": [
           "yes",
@@ -1980,7 +1981,7 @@
         "work here"
       ],
       "recommended_expression": "Yes, I do. My return flight is next Friday.",
-      "base_hint_kr": "Say whether you have a return ticket.",
+      "base_hint_kr": "귀국 항공권이 있는지 답하세요.",
       "hint_policy": {
         "keyword": [
           "yes",
@@ -2639,7 +2640,8 @@
         "customs_hold_acknowledgement": [
           "will_unlock_and_check",
           "understands_inspection",
-          "confirms_owner"
+          "confirms_owner",
+          "already_checked"
         ]
       },
       "risk_keywords": [
@@ -2700,7 +2702,8 @@
         "customs_hold_acknowledgement": [
           "will_unlock_and_check",
           "understands_inspection",
-          "confirms_owner"
+          "confirms_owner",
+          "already_checked"
         ]
       },
       "risk_keywords": [

@@ -3,6 +3,7 @@ from typing import Any, Literal
 
 from backend.app.services.service_a.npc_emotion_service import NPCEmotionState
 from backend.app.services.service_a.player_language_profile_service import PlayerLanguageProfile
+from backend.app.services.service_a.session_context_card_service import OPEN_HOOK_STOPLIST
 
 # NPC가 다음에 취할 수 있는 대화 액션(Dialogue Action) 유형을 정의하는 리터럴(Literal) 타입입니다.
 DialogueAction = Literal["recast_and_advance", "ask_retry", "continue"]
@@ -185,7 +186,8 @@ def synthesize_fallback_next_question(
             first_hook = ""
         # ASCII 영문 및 단어 형태 검증
         if first_hook.isascii() and first_hook.isalpha():
-            prefix = f"You mentioned {first_hook} — "
+            if first_hook.lower() not in OPEN_HOOK_STOPLIST:
+                prefix = f"You mentioned {first_hook} — "
             
     return f"{stripped} {prefix}{question}"
 

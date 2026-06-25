@@ -153,6 +153,10 @@ class ScenarioStateMachine:
         Raises:
             ValueError: 허용된 다음 노드 목록이 유효하지 않을 때 발생
         """
+        from backend.app.services.service_c.settings_service import get_settings
+        if get_settings().murphy_turn_authority == "unified":
+            return self._decide_unified(payload)
+
         self._validate_allowed_nodes(payload)
 
         # 1. Check if the user successfully completed the turn
@@ -161,6 +165,8 @@ class ScenarioStateMachine:
         # 2. Enforce retry limit (MAX_HARD_FAIL_RETRIES) and patience floor (<= 0) to transition to bad endings or force ADVANCE
         if not is_success:
             if payload.scenario_state.retry_count >= MAX_HARD_FAIL_RETRIES or payload.scenario_state.patience <= 0:
+                if payload.scenario_state.hint_count == 0:
+                    return self._hint(payload)
                 # If they are out of retries or patience, force bad ending
                 return self._force_bad_end(
                     payload,
@@ -179,17 +185,111 @@ class ScenarioStateMachine:
             return self._success(payload, branch_type="success", next_action="ADVANCE")
 
         # 5. Handle clarify/hint/retry with patience/retry checks
-        # evaluate _should_give_hint before _is_unclear when retry_count >= 2
-        if payload.scenario_state.retry_count >= 2:
-            if self._should_give_hint(payload):
-                return self._hint(payload)
-            if self._is_unclear(payload):
-                return self._clarify(payload)
+        # Evaluate _should_give_hint first to break infinite clarify/repeat loops only when failed consecutively
+        if (payload.scenario_state.retry_count >= 2 or payload.scenario_state.previous_fail_count >= 2) and self._should_give_hint(payload):
+            return self._hint(payload)
+
+        if self._is_unclear(payload):
+            return self._clarify(payload)
+
+        if self._should_give_hint(payload):
+            return self._hint(payload)
+
+        return self._retry(payload)
+
+    def _decide_unified(self, payload: DevBPolicyInput) -> ScenarioDecision:
+        satisfied = payload.understanding.satisfied
+        if satisfied is None:
+            satisfied = payload.understanding.intent_satisfied
+        if satisfied is None:
+            satisfied = payload.understanding.intent_success
+
+        branch_hint = payload.understanding.branch_hint
+        if not branch_hint:
+            if satisfied:
+                branch_hint = "success"
+            else:
+                branch_hint = "clarify" if payload.understanding.needs_clarification else "retry"
+
+        # 1. Closed/numeric slot invalid value veto -> force clarify
+        if self._has_invalid_required_slot_value(payload):
+            satisfied = False
+            branch_hint = "clarify"
+
+        # 2. Customs explanation depth veto -> force clarify
+        if self._customs_explanation_insufficient(payload):
+            satisfied = False
+            branch_hint = "clarify"
+
+        # 3. Retry limits and patience limits veto
+        if not satisfied:
+            if payload.scenario_state.retry_count >= MAX_HARD_FAIL_RETRIES or payload.scenario_state.patience <= 0:
+                if payload.scenario_state.hint_count == 0:
+                    return self._hint(payload)
+                return self._force_bad_end(
+                    payload,
+                    f"Patience exhausted ({payload.scenario_state.patience}) or retry limit exceeded ({payload.scenario_state.retry_count}) on failure."
+                )
+
+        # 4. Critical safety risk veto
+        risk_total = payload.scenario_state.suspicion + payload.understanding.risk_delta
+        if self._is_critical_risk(payload, risk_total):
+            return self._critical_fail(payload, risk_total)
+
+        # 5. Resolve based on satisfied / branch_hint
+        if satisfied:
+            if payload.current_node_id == ALPHA_FINAL_SCOREBOARD_NODE_ID:
+                return self._success(payload, branch_type="final", next_action="FINAL_DECISION")
+            return self._success(payload, branch_type="success", next_action="ADVANCE")
+
+        # Handle failed branches
+        if (payload.scenario_state.retry_count >= 2 or payload.scenario_state.previous_fail_count >= 2) and self._should_give_hint(payload):
+            return self._hint(payload)
+
+        if branch_hint == "clarify":
+            return self._clarify(payload)
+        elif branch_hint == "hint":
+            return self._hint(payload)
+        elif branch_hint == "warning" or branch_hint == "bad_end":
+            return self._critical_fail(payload, risk_total)
         else:
-            if self._is_unclear(payload):
-                return self._clarify(payload)
-            if self._should_give_hint(payload):
-                return self._hint(payload)
+            return self._retry(payload)
+
+        # 1. Check if the user successfully completed the turn
+        is_success = self._is_success(payload)
+
+        # 2. Enforce retry limit (MAX_HARD_FAIL_RETRIES) and patience floor (<= 0) to transition to bad endings or force ADVANCE
+        if not is_success:
+            if payload.scenario_state.retry_count >= MAX_HARD_FAIL_RETRIES or payload.scenario_state.patience <= 0:
+                if payload.scenario_state.hint_count == 0:
+                    return self._hint(payload)
+                # If they are out of retries or patience, force bad ending
+                return self._force_bad_end(
+                    payload,
+                    f"Patience exhausted ({payload.scenario_state.patience}) or retry limit exceeded ({payload.scenario_state.retry_count}) on failure."
+                )
+
+        # 3. Check critical risks
+        risk_total = payload.scenario_state.suspicion + payload.understanding.risk_delta
+        if self._is_critical_risk(payload, risk_total):
+            return self._critical_fail(payload, risk_total)
+
+        # 4. Handle success branch
+        if is_success:
+            if payload.current_node_id == ALPHA_FINAL_SCOREBOARD_NODE_ID:
+                return self._success(payload, branch_type="final", next_action="FINAL_DECISION")
+            return self._success(payload, branch_type="success", next_action="ADVANCE")
+
+        # 5. Handle clarify/hint/retry with patience/retry checks
+        # Evaluate _should_give_hint first to break infinite clarify/repeat loops only when failed consecutively
+        if (payload.scenario_state.retry_count >= 2 or payload.scenario_state.previous_fail_count >= 2) and self._should_give_hint(payload):
+            return self._hint(payload)
+
+        if self._is_unclear(payload):
+            return self._clarify(payload)
+
+        if self._should_give_hint(payload):
+            return self._hint(payload)
 
         return self._retry(payload)
 
@@ -255,9 +355,20 @@ class ScenarioStateMachine:
         """
         플레이어의 발화 결과가 성공 의도(Intent Success)를 충족하고, 요구되는 중요 슬롯 정보가 누락되지 않았으며,
         추출된 슬롯 값들이 유효한 후보군에 포함되는지 검사합니다.
-        
+
         이미 완료된 의도(completed_intents)인 경우 누락 슬롯(missing_slots)이 있더라도 정답 처리(Success)로 우회합니다.
         """
+        if self._customs_explanation_insufficient(payload):
+            return False
+
+        # BAG_006 저난이도(difficulty < 7) 물품: 규칙이 이미 "충분"으로 판정했으므로
+        # LLM의 intent_success 오판이나 경미한 risk_delta에 관계없이 on_topic 답변이면 통과.
+        # 진짜 위험 발언(risk_delta>=20 또는 critical_tags)은 _is_critical_risk() 단계가 처리.
+        if (payload.current_node_id or "").startswith("BAG_006"):
+            ctx = getattr(payload.node_context, "customs_item_context", None)
+            if ctx and ctx.difficulty < 7:
+                return payload.understanding.answer_relevance != "off_topic"
+
         req_intents = payload.node_context.required_intents or []
         completed = set(payload.scenario_state.completed_intents or [])
         has_already_completed = any(intent in completed for intent in req_intents)
@@ -303,6 +414,7 @@ class ScenarioStateMachine:
             or payload.understanding.confidence < 0.5
             or payload.understanding.answer_relevance == "partially_related"
             or self._has_invalid_required_slot_value(payload)
+            or self._customs_explanation_insufficient(payload)
         )
 
     def _should_give_hint(self, payload: DevBPolicyInput) -> bool:
@@ -334,11 +446,26 @@ class ScenarioStateMachine:
             "threat_to_unknown_target",
             "coercive_exit_request",
         }
+
+        if self._is_undeclared_high_value_violation(payload):
+            return True
+
         return (
             payload.understanding.risk_delta >= 20
             or risk_total >= 50
             or bool(critical_tags.intersection(payload.understanding.risk_tags))
             or self._has_passport_submission_refusal(payload)
+        )
+
+    def _is_undeclared_high_value_violation(self, payload: DevBPolicyInput) -> bool:
+        """수하물 세관 검사 노드에서 고가/사치품 카테고리(valuable, luxury) 물품을 신고하지 않은 경우를 중대 위반으로 판정합니다."""
+        item = payload.random_customs_item
+        return bool(
+            item
+            and item.item_category in {"valuable", "luxury"}
+            and not item.declared
+            and payload.current_node_id
+            in {"BAG_005_CUSTOMS_HOLD_EXPLANATION", "BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM"}
         )
 
     def _has_passport_submission_refusal(self, payload: DevBPolicyInput) -> bool:
@@ -388,13 +515,16 @@ class ScenarioStateMachine:
         모호한 응답으로 판단되어 되묻기(Clarification) 처리가 필요할 때의 분기 정보와 수치 변화량을 결정합니다.
         """
         next_node_id = self._checked_next_node(payload.node_context.clarify_next_node, payload)
+        patience_delta = -5
+        if payload.input_source.needs_repeat and payload.scenario_state.previous_fail_count == 0:
+            patience_delta = 0
         return ScenarioDecision(
             verdict="UNCLEAR",
             branch_type="clarify",
             next_action="REASK",
             next_node_id=next_node_id,
             branch_reason="Meaning is unclear or needs clarification.",
-            patience_delta=-5,
+            patience_delta=patience_delta,
             suspicion_delta=max(payload.understanding.risk_delta, 0),
             retry_count_delta=0,
             hint_count_delta=0,
@@ -438,11 +568,13 @@ class ScenarioStateMachine:
         """
         중대 입국 위험이 감지되었을 때, 경고 단계를 발생시키거나 즉시 탈락(Bad End)으로 이끄는 시나리오 분기 정보를 결정합니다.
         """
+        is_undeclared_high_value_violation = self._is_undeclared_high_value_violation(payload)
         force_bad_end = (
             risk_total >= 70
             or payload.scenario_state.retry_count >= 2
             or self._has_passport_submission_refusal(payload)
             or self._has_violent_threat(payload)
+            or is_undeclared_high_value_violation
         )
         branch_type: BranchType = "bad_end" if force_bad_end else "warning"
         next_action: NextAction = "FAIL_END" if branch_type == "bad_end" else "WARNING"
@@ -495,7 +627,43 @@ class ScenarioStateMachine:
             return "END_SECONDARY_INSPECTION"
         if "END_BAGGAGE_REPORT_INCOMPLETE" in payload.node_context.allowed_next_nodes:
             return "END_BAGGAGE_REPORT_INCOMPLETE"
-        return payload.node_context.warning_next_node
+        raise ValueError("No allowed next nodes matched the preferred bad endings.")
+
+    def _customs_explanation_insufficient(self, payload: DevBPolicyInput) -> bool:
+        """세관 설명 단계(BAG_006)에서 난이도가 높은(difficulty >= 7) 물품일 때,
+        구체적인 물품 고유 정보나 신고 의사가 전혀 없는 generic한 답변("선물이에요" 등)을 필터링합니다.
+        """
+        if not (payload.current_node_id or "").startswith("BAG_006"):
+            return False
+
+        ctx = getattr(payload.node_context, "customs_item_context", None)
+        if not ctx or ctx.difficulty < 7:
+            return False
+
+        player_text = (payload.player_text or "").strip().lower()
+        import re
+        
+        # 물품 이름 토큰화 (stop word 제거)
+        item_name = ctx.item_name or ""
+        name_words = set(re.findall(r"[a-z0-9]+", item_name.lower()))
+        noise = {
+            "a", "an", "the", "of", "for", "with", "in", "on", "at", "by", "to", "and", "or", "but", "is", "are", 
+            "was", "were", "be", "been", "item", "items", "bag", "bags", "box", "boxes", "packet", "packets", 
+            "bottle", "bottles", "jar", "jars", "pack", "packs", "bunch", "bunches", "piece", "pieces", 
+            "pair", "pairs"
+        }
+        specific_tokens = name_words - noise
+
+        # 신고 관련 키워드
+        declare_keywords = {"declare", "declared", "declaration", "tax", "duty", "report", "reporting", "quarantine"}
+        specific_tokens.update(declare_keywords)
+
+        player_words = set(re.findall(r"[a-z0-9]+", player_text))
+
+        if not (player_words & specific_tokens):
+            return True
+
+        return False
 
     def _force_bad_end(self, payload: DevBPolicyInput, reason: str) -> ScenarioDecision:
         """

@@ -85,6 +85,18 @@ class DevANpcDialogueClient:
                 detail="session_id and npc_id are required for memory isolation",
             )
 
+        # Retrieve next node objective & question and set them in the payload
+        next_node_id = payload.developer_b_policy.branch.next_node_id
+        if next_node_id:
+            try:
+                next_node_context = self.openkb_service.get_node_context(
+                    payload.node_context.chapter_id, next_node_id
+                )
+                payload.resolved_node_objective = next_node_context.objective_kr
+                payload.resolved_node_npc_question = next_node_context.npc_question
+            except Exception:
+                pass
+
         expected_npc = _a_facing_npc_context(payload)
         level_design_payload = self._build_level_design_payload(payload, expected_npc)
         result = self.voice_output_builder(
@@ -197,6 +209,8 @@ class DevANpcDialogueClient:
             "in_game_feedback": feedback,
             "branch": branch,
             "dialogue_directive": dialogue_directive,
+            "resolved_node_objective": payload.resolved_node_objective,
+            "resolved_node_npc_question": payload.resolved_node_npc_question,
         }
 
     def _llm_candidate_text(self, payload: DevADialogueInput) -> str:

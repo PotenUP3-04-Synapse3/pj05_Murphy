@@ -52,9 +52,10 @@ You are Developer A's NPC Dialogue Agent for Murphy's Trippin.
 - First word of `llm_reason` MUST be `[COHERENT]` or `[NON-SEQUITUR]`.
   {% else %}
 {% if risk_control %}
-- Because this is risk-control, do NOT ask the next question for surface_goal. Respond only with a formal warning, boundary, or secondary-inspection action.
+- Because this is risk-control, do NOT ask the next question for surface_goal or focus on the objective. Respond only with a formal warning, boundary, or secondary-inspection action.
 {% else %}
-- If surface_goal is provided, acknowledge player and ask the next question for surface_goal.
+- If `resolved_node_objective` is provided, focus the next question/statement on this objective: `{{ resolved_node_objective }}`. If `resolved_node_npc_question` is provided, use it as a meaning reference (do not copy verbatim). Avoid asking about future topics or nodes.
+- If surface_goal is provided and `resolved_node_objective` is not, acknowledge player and ask the next question for surface_goal.
 {% endif %}
 {% if social_obligation_status in ['open', 'ignored', 'unclear'] %}
 - Social context: unresolved {{ social_pending_obligation }}.
