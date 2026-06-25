@@ -153,6 +153,8 @@ def _immigration_dialogue_violation(
         return None
     if _contradicts_current_immigration_slot(npc_text, tts_text, payload):
         return "current_slot_contradiction"
+    if _has_risk_control_reask(npc_text, tts_text, normalized):
+        return "risk_control_reask_violation"
     if _has_immigration_retry_hook_leak(npc_text, tts_text, normalized):
         return "immigration_retry_hook_violation"
     if _has_immigration_surface_goal_mismatch(npc_text, tts_text, normalized):
@@ -246,6 +248,48 @@ def _open_hooks_for_fallback_synthesis(
 
 def _is_passport_submission_refusal_branch(normalized: dict[str, Any]) -> bool:
     return "passport_submission_refused" in str(normalized.get("branch_reason") or "")
+
+
+def _is_risk_control_branch(normalized: dict[str, Any]) -> bool:
+    branch_reason = str(normalized.get("branch_reason") or "")
+    purpose = str(normalized.get("dialogue_purpose") or "")
+    next_action = str(normalized.get("next_action") or "").upper()
+    risk_tags = set(normalized.get("risk_tags") or [])
+    pragmatic_context = normalized.get("pragmatic_context") or {}
+    player_move = str(pragmatic_context.get("player_move") or "")
+    threat_markers = {
+        "violent_threat",
+        "threat_to_officer",
+        "threat_to_public_figure",
+        "threat_to_other_person",
+        "threat_to_unknown_target",
+    }
+    return (
+        "violent_threat" in branch_reason
+        or "coercive_exit_request" in branch_reason
+        or bool(threat_markers.intersection(risk_tags))
+        or player_move == "violent_threat"
+        or (
+            purpose == "warn_and_control_risk"
+            and next_action in {"WARNING", "FAIL_END"}
+            and bool(threat_markers.intersection(risk_tags))
+        )
+    )
+
+
+def _has_risk_control_reask(npc_text: str, tts_text: str, normalized: dict[str, Any]) -> bool:
+    if not _is_risk_control_branch(normalized):
+        return False
+    combined = _normalize_for_echo_match(f"{npc_text} {tts_text}")
+    reask_markers = (
+        "what brings you",
+        "purpose of your visit",
+        "what is your purpose",
+        "why are you here",
+        "why did you come",
+        "what brings you to the united states",
+    )
+    return any(marker in combined for marker in reask_markers)
 
 
 _IMMIGRATION_SURFACE_GOAL_CHECKS = {
@@ -595,6 +639,7 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
         and not profanity_res
         and purpose != "smalltalk_diagnostic"
         and not _is_passport_submission_refusal_branch(normalized)
+        and not _is_risk_control_branch(normalized)
     ):
         original_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
         synthesized_text = synthesize_fallback_next_question(
@@ -749,6 +794,9 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "recent_turns_compact": session_context_card.get("recent_turns_compact", []),
             "topic_thread": session_context_card.get("topic_thread", []),
             "social_context": normalized.get("social_context", {}),
+            "pragmatic_context": normalized.get("pragmatic_context", {}),
+            "risk_tags": normalized.get("risk_tags", []),
+            "risk_delta": normalized.get("risk_delta", 0),
             "social_obligation_status": (normalized.get("social_context") or {}).get("obligation_status", ""),
             "social_pending_obligation": (normalized.get("social_context") or {}).get("pending_social_obligation", ""),
             "social_recommended_npc_move": (normalized.get("social_context") or {}).get("recommended_npc_move", ""),
@@ -844,6 +892,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         and purpose != "smalltalk_diagnostic"
         and surface_goal
         and not _is_passport_submission_refusal_branch(normalized)
+        and not _is_risk_control_branch(normalized)
     ):
         def _extract_reaction_part(text: str) -> str:
             sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
@@ -994,6 +1043,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         surface_goal
         and purpose != "smalltalk_diagnostic"
         and not _is_passport_submission_refusal_branch(normalized)
+        and not _is_risk_control_branch(normalized)
     ):
         sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
         if len(sentences) <= 1 and "?" not in npc_text:
@@ -1060,6 +1110,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         is_non_advance
         and purpose != "smalltalk_diagnostic"
         and not _is_passport_submission_refusal_branch(normalized)
+        and not _is_risk_control_branch(normalized)
     ):
         logger.info(f"Non-ADVANCE action '{next_action}' detected. Overriding LLM next question with current surface_goal '{surface_goal}'")
         sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]

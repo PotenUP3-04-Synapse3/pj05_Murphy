@@ -2189,6 +2189,42 @@ def test_orchestrator_treats_passport_no_as_submission_refusal_not_hint() -> Non
     assert builder_payloads[0]["dialogue_seed"]["surface_goal"] == "closing_eviction"
 
 
+def test_orchestrator_routes_public_figure_threat_to_secondary_not_purpose_reask() -> None:
+    builder_payloads: list[dict[str, Any]] = []
+
+    def fake_voice_output_builder(
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        builder_payloads.append(payload)
+        return {
+            "speaker": "Officer Hale",
+            "npc_text": "That is a serious threat. You will be taken to secondary inspection.",
+            "tone": "formal_warning",
+            "animation": "officer_warning",
+            "feedback_kr": "Threats require formal handling.",
+            "tts": {"audio_url": "/runtime/audio/edge/threat-warning.wav"},
+        }
+
+    request = _preprototype_request("I'm going to punch Trump in the face.")
+    orchestrator = Orchestrator()
+    orchestrator.dev_a_client = DevANpcDialogueClient(
+        settings=AppSettings(murphy_npc_dialogue_mode="llm"),
+        voice_output_builder=fake_voice_output_builder,
+    )
+
+    response = orchestrator.run_turn(request)
+
+    assert response.next_action == "FAIL_END"
+    assert response.next_node_id == "END_SECONDARY_INSPECTION"
+    assert response.evaluation.verdict == "CRITICAL_FAIL"
+    assert "what brings you" not in response.npc.text.lower()
+    assert "purpose of your visit" not in response.npc.text.lower()
+    assert builder_payloads[0]["understanding"]["pragmatic_context"]["player_move"] == "violent_threat"
+    assert builder_payloads[0]["branch"]["branch_reason"] == "violent_threat_to_public_figure"
+    assert builder_payloads[0]["dialogue_directive"]["purpose"] == "warn_and_control_risk"
+
+
 def test_dev_a_adapter_reports_speaker_mismatch_diagnostic() -> None:
     def mismatched_voice_output_builder(
         payload: dict[str, Any],

@@ -223,6 +223,13 @@ def _developer_instructions() -> str:
         "canonical allowed value from node_context.allowed_slot_values in "
         "slot_evidence.value, and put the exact supporting player phrase in "
         "slot_evidence.evidence_text."
+        " Also fill pragmatic_context as a compact situation-level judgment. "
+        "Use it for real-world speech acts such as refusal, off-topic evasion, "
+        "violent threats, coercive exit requests, or normal meaningful answers. "
+        "For threats or unsafe intent, set player_move=violent_threat, choose "
+        "the target, raise risk_level, and recommend warning or secondary_inspection. "
+        "This card is evidence for Developer B and A; it still must not decide "
+        "branch, next node, NPC dialogue, hints, or Unreal commands."
     )
 
 
@@ -246,6 +253,7 @@ def _understanding_schema() -> dict[str, Any]:
             "needs_clarification",
             "intent_satisfied",
             "judgment_reason",
+            "pragmatic_context",
         ],
         "properties": {
             "intent": {"type": "string"},
@@ -279,6 +287,70 @@ def _understanding_schema() -> dict[str, Any]:
             "needs_clarification": {"type": "boolean"},
             "intent_satisfied": {"type": "boolean"},
             "judgment_reason": {"type": "string"},
+            "pragmatic_context": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "player_move",
+                    "target",
+                    "threat_directness",
+                    "risk_level",
+                    "procedural_posture",
+                    "recommended_b_move",
+                    "recommended_a_move",
+                    "confidence",
+                    "evidence",
+                    "reason",
+                ],
+                "properties": {
+                    "player_move": {
+                        "type": "string",
+                        "enum": [
+                            "unknown",
+                            "meaningful_answer",
+                            "social_non_answer",
+                            "off_topic",
+                            "refusal",
+                            "violent_threat",
+                            "coercive_exit_request",
+                        ],
+                    },
+                    "target": {
+                        "type": "string",
+                        "enum": ["none", "officer", "public_figure", "other_person", "self", "unknown"],
+                    },
+                    "threat_directness": {
+                        "type": "string",
+                        "enum": ["none", "implied", "explicit_intent", "direct_threat"],
+                    },
+                    "risk_level": {
+                        "type": "string",
+                        "enum": ["none", "low", "medium", "high", "critical"],
+                    },
+                    "procedural_posture": {
+                        "type": "string",
+                        "enum": [
+                            "continue",
+                            "clarify",
+                            "warn",
+                            "stop_normal_interview",
+                            "secondary_inspection",
+                            "end_interview",
+                        ],
+                    },
+                    "recommended_b_move": {
+                        "type": "string",
+                        "enum": ["continue", "reask", "clarify", "warning", "secondary_inspection"],
+                    },
+                    "recommended_a_move": {
+                        "type": "string",
+                        "enum": ["continue", "repair", "formal_boundary", "stern_boundary"],
+                    },
+                    "confidence": {"type": "number"},
+                    "evidence": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
+            },
         },
     }
 

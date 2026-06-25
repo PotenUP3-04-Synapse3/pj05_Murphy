@@ -749,6 +749,75 @@ def test_understanding_agent_passport_no_marks_explicit_submission_refusal() -> 
     assert output.social_context.recommended_npc_move == "firm_redirect"
 
 
+def test_understanding_agent_rule_mode_marks_public_figure_threat_as_pragmatic_risk() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text(
+        "I'm going to punch Trump in the face.",
+        _purpose_node_context(),
+    )
+
+    assert output.intent_success is False
+    assert output.intent_satisfied is False
+    assert output.needs_clarification is False
+    assert output.answer_relevance == "off_topic"
+    assert output.risk_delta >= 70
+    assert "violent_threat" in output.risk_tags
+    assert "threat_to_public_figure" in output.risk_tags
+    assert output.pragmatic_context.player_move == "violent_threat"
+    assert output.pragmatic_context.target == "public_figure"
+    assert output.pragmatic_context.procedural_posture == "secondary_inspection"
+    assert output.social_context.recommended_npc_move == "firm_redirect"
+
+
+def test_understanding_agent_llm_pragmatic_card_escalates_threat_risk() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_visit_purpose",
+            "intent_success": False,
+            "confidence": 0.82,
+            "meaning_summary_kr": "The player threatened a public figure instead of answering the purpose.",
+            "emotion": "angry",
+            "answer_relevance": "off_topic",
+            "ambiguity_type": "threatening_off_topic_response",
+            "risk_delta": 0,
+            "risk_reason": "The model did not assign numeric risk.",
+            "risk_tags": [],
+            "slot_evidence": [],
+            "extracted_slots": {},
+            "missing_slots": ["visit_purpose"],
+            "needs_clarification": True,
+            "intent_satisfied": False,
+            "judgment_reason": "This does not answer the visit purpose question.",
+            "pragmatic_context": {
+                "player_move": "violent_threat",
+                "target": "public_figure",
+                "threat_directness": "explicit_intent",
+                "risk_level": "critical",
+                "procedural_posture": "secondary_inspection",
+                "recommended_b_move": "secondary_inspection",
+                "recommended_a_move": "stern_boundary",
+                "confidence": 0.86,
+                "evidence": "punch Trump in the face",
+                "reason": "The utterance states intent to harm a public figure.",
+            },
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text("I'm gonna punch Trump in the face.", _purpose_node_context())
+
+    assert output.risk_delta >= 70
+    assert "violent_threat" in output.risk_tags
+    assert "threat_to_public_figure" in output.risk_tags
+    assert output.needs_clarification is False
+    assert output.pragmatic_context.player_move == "violent_threat"
+    assert output.pragmatic_context.recommended_b_move == "secondary_inspection"
+
+
 def test_understanding_agent_llm_mode_repairs_first_visit_prior_visit_phrase() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {
