@@ -116,6 +116,17 @@ class RandomCustomsItemContext(BaseModel):
     suspicion_reason: str | None = None
 
 
+class CustomsItemJudgeContext(BaseModel):
+    """세관 심사 단계(BAG_005/BAG_006)에서 Understanding LLM 및 rule 모드 판정기가 
+    물품별 위험/의심 구체성을 판단하기 위해 제공받는 컨텍스트입니다.
+    """
+    item_name: str
+    item_category: str | None = None
+    difficulty: int
+    suspicion_reason: str | None = None
+    declared: bool = False
+
+
 class ArrivalFormContext(BaseModel):
     """Unreal 입국신고서 UI에서 작성한 사실 정보를 담는 C-owned 계약입니다.
 
@@ -290,6 +301,7 @@ class NodeContext(BaseModel):
     hint_next_node: str
     warning_next_node: str
     allowed_next_nodes: list[str]
+    customs_item_context: CustomsItemJudgeContext | None = None
 
 
 class SlotEvidence(BaseModel):
@@ -374,6 +386,11 @@ class SocialContextCard(BaseModel):
     reason: str = ""
 
 
+class RiskEvidence(BaseModel):
+    tags: list[str] = Field(default_factory=list)
+    delta: int = 0
+
+
 class UnderstandingOutput(BaseModel):
     intent: str
     intent_success: bool
@@ -393,12 +410,20 @@ class UnderstandingOutput(BaseModel):
     social_context: SocialContextCard = Field(default_factory=SocialContextCard)
     intent_satisfied: bool | None = None
     judgment_reason: str = ""
+    satisfied: bool | None = None
+    branch_hint: Literal["success", "retry", "clarify", "hint", "warning", "bad_end"] | None = None
+    risk_evidence: RiskEvidence | None = None
 
     @model_validator(mode="after")
     def default_intent_satisfied(self) -> UnderstandingOutput:
         if self.intent_satisfied is None:
             self.intent_satisfied = self.intent_success
+        if self.satisfied is None:
+            self.satisfied = self.intent_satisfied
+        if self.risk_evidence is None:
+            self.risk_evidence = RiskEvidence(tags=self.risk_tags, delta=self.risk_delta)
         return self
+
 
 
 # `Nomal` spelling follows the current external emotion enum contract.
@@ -793,6 +818,10 @@ class DevADialogueInput(BaseModel):
     bag_owner_player_id: str | None = None
     addressed_player_id: str | None = None
     scope: str = "player"
+
+    resolved_node_objective: str | None = None
+    resolved_node_npc_question: str | None = None
+
 
 
 class DevADialogueOutput(BaseModel):

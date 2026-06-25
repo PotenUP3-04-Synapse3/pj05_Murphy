@@ -51,6 +51,8 @@ class AppSettings(BaseSettings):
     elevenlabs_realtime_estimated_cost_per_minute_usd: float = 0.0
     murphy_stt_debug_log_mode: Literal["off", "debug"] = "off"
     murphy_c_legacy_history: bool = False
+    murphy_turn_authority: Literal["legacy", "unified"] = "legacy"
+
 
     @classmethod
     def from_env_file(cls, env_file: str | Path) -> "AppSettings":

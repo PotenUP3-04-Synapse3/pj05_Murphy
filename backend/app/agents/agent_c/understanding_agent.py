@@ -283,6 +283,11 @@ class UnderstandingAgent:
                 )
                 return output
 
+            raw_satisfied = output.satisfied
+            raw_branch_hint = output.branch_hint
+            raw_intent_success = output.intent_success
+            raw_intent_satisfied = output.intent_satisfied
+
             output, slot_evidence_postprocessing = _apply_generic_slot_evidence(
                 output,
                 player_text,
@@ -305,6 +310,14 @@ class UnderstandingAgent:
             has_open_required = any(get_slot_policy(slot) == "open" for slot in node_context.required_slots)
             if has_open_required:
                 output = output.model_copy(update={"intent_success": output.intent_satisfied})
+
+            if self.settings.murphy_turn_authority == "unified":
+                output = output.model_copy(update={
+                    "satisfied": raw_satisfied,
+                    "branch_hint": raw_branch_hint,
+                    "intent_success": raw_intent_success,
+                    "intent_satisfied": raw_intent_satisfied,
+                })
 
             output = _attach_incivility_classification(output, player_text)
             output = _attach_social_context(output, player_text, node_context)

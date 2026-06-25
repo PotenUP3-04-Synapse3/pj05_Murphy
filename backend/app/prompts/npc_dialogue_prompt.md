@@ -64,7 +64,8 @@ You are Developer A's NPC Dialogue Agent for Murphy's Trippin, an English-learni
 - Do not repeat topics already discussed or ask questions already answered.
 - To prove coherence, the first word of `llm_reason` MUST be `[COHERENT]`. If you cannot relate to the previous turn or have to make a sudden disconnected statement, start `llm_reason` with `[NON-SEQUITUR]`.
   {% else %}
-- If `dialogue_seed.surface_goal` is provided (and not complete_chapter), the NPC MUST:
+- If `resolved_node_objective` is provided (and this is not a chapter completion turn), the NPC MUST focus the next question/statement specifically on this objective: `{{ resolved_node_objective }}`. If `resolved_node_npc_question` is provided, use it as a reference for the exact question meaning, but do not copy it verbatim. Avoid asking about any future topics or nodes not part of this resolved objective.
+- If `dialogue_seed.surface_goal` is provided (and not complete_chapter) and `resolved_node_objective` is not provided, the NPC MUST:
   (a) briefly acknowledge the player's prior turn (reaction), AND
   (b) ask the next question that fulfills `surface_goal`.
   Do not output reaction-only lines when a surface_goal exists.

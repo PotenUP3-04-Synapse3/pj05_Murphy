@@ -340,14 +340,14 @@ class FinalResultScorePolicy:
         종합 성적 결과(합격, 조건부 등)에 따라 성적 리포트 상단에 전시할 요약 설명 텍스트를 반환합니다.
         """
         if final_recommendation == "PASS":
-            return "You passed the immigration check with clear, usable travel English."
+            return "적절하고 유용한 여행 영어로 입국 심사를 통과했습니다."
         if final_recommendation == "CONDITIONAL_PASS":
-            return "You completed the check, but some answers need more complete or precise English."
+            return "입국 심사를 완료했으나, 일부 답변에서 더 완전하고 정확한 영어 표현이 필요합니다."
         if final_recommendation == "SECONDARY_ROOM":
-            return "Your answers need secondary review because risk or score thresholds were triggered."
+            return "의심도나 점수 기준치 초과로 인해 심층 심사(2차 조사실)가 필요합니다."
         if final_recommendation == "COMIC_FAIL":
-            return "The run ended with a fail condition or serious immigration risk."
-        return "No scored rubric records were available for the final report."
+            return "심각한 입국 심사 리스크 또는 실패 조건으로 인해 심사가 반려되었습니다."
+        return "최종 리포트 생성을 위한 채점 기록이 존재하지 않습니다."
 
     def _main_improvement(self, record: dict[str, Any]) -> str:
         """
@@ -358,7 +358,7 @@ class FinalResultScorePolicy:
             improvement = report_item.get("improvement")
             if isinstance(improvement, str) and improvement.strip():
                 return improvement
-        return "Keep answers concise and polite."
+        return "답변을 정중하고 간결하게 하도록 노력해보세요."
 
     def state_from_records(self, records: list[dict[str, Any]]) -> FinalScoreState:
         """
@@ -444,10 +444,10 @@ class FinalResultScorePolicy:
                 scoring_policy="scene_normalized_dimension_average",
             ),
             report_summary=FinalReportSummary(
-                overall="No scored rubric records were available for the final report.",
+                overall="최종 리포트 생성을 위한 채점 기록이 존재하지 않습니다.",
                 best_node=None,
                 weakest_node=None,
-                main_improvement="Complete at least one scored immigration answer.",
+                main_improvement="최소 한 번 이상의 채점 대상 입국 심사 답변을 완료하세요.",
                 focus_on_form_targets=[],
                 included_node_count=0,
             ),

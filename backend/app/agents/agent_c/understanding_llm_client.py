@@ -210,6 +210,33 @@ def _developer_instructions() -> str:
         " You must also set intent_satisfied=true if the player text satisfies the "
         "immigration officer's question intent, or false otherwise. Provide a short "
         "description of the judgment in judgment_reason."
+        " Set satisfied=true if player satisfies the current node's goal, or false otherwise. "
+        " Set branch_hint to 'success' if satisfied is true; 'clarify' if the answer is vague, "
+        "ambiguous, or partially related; 'retry' if the answer is off-topic or fails to answer; "
+        "and 'warning' or 'bad_end' if the traveler refuses cooperation or presents safety risk. "
+        " Populate risk_evidence with the list of risk tags (in tags) and the risk delta severity score "
+        "(in delta) representing any immigration or customs risk."
+        " If player_text satisfies one of the allowed_slot_values of the required slots, "
+        "do not set intent_satisfied=false or omit the slot value just because the player "
+        "provided additional details or multiple valid travel purposes (e.g., visiting a friend "
+        "AND sightseeing). Do not treat rich or multi-purpose answers as unsatisfied intent."
+        " For confirmation required intents (starting with confirm_*), if player provides "
+        "an affirmation/confirmation (like 'yes', 'yeah', 'only my bag didn't come'), canonicalize "
+        "this to the most appropriate allowed slot value (such as 'searched_carefully') even if "
+        "the exact manner/allowed value name isn't explicitly mentioned, and do not mark it "
+        "as missing slot."
+        " For provide_* required intents (e.g. provide_claim_tag), if the player uses a "
+        "physical-handover expression ('here it is', 'here you go', 'take it', 'there you go', "
+        "'this one', 'here') combined with the context of presenting an item, canonicalize to "
+        "the most appropriate allowed_slot_value (e.g. has_claim_tag) and set intent_success=true. "
+        "Do not require an explicit verbal 'yes I have it' when the phrasing clearly indicates "
+        "a physical act of submission."
+        " For acknowledge_* required intents (e.g. acknowledge_customs_hold_explanation), if the "
+        "player uses a past-tense compliance expression confirming they have already performed the "
+        "requested action ('I did', 'I checked', 'yeah I did', 'I already did it', 'done', "
+        "'I looked', 'yeah I checked now'), canonicalize to the most appropriate allowed_slot_value "
+        "(e.g. already_checked) and set intent_success=true. Past-tense compliance is as valid as "
+        "future-tense agreement — do not mark it as unclear or missing intent."
         " Put every understood slot in slot_evidence using the slot names from "
         "node_context.required_slots, node_context.optional_slots, or "
         "node_context.critical_slots. Each evidence item must include the slot "
@@ -223,6 +250,19 @@ def _developer_instructions() -> str:
         "canonical allowed value from node_context.allowed_slot_values in "
         "slot_evidence.value, and put the exact supporting player phrase in "
         "slot_evidence.evidence_text."
+        " If node_context has customs_item_context, check the difficulty value first — "
+        "it is the SOLE authoritative indicator of required explanation depth, NOT the "
+        "content of suspicion_reason. "
+        "If difficulty is 7 or higher, the player explanation MUST reasonably address "
+        "the specific suspicion_reason associated with the item (e.g. quantity/resale "
+        "intent for valuable/luxury items, quarantine/compliance for agricultural/food items). "
+        "If the explanation is generic (e.g., 'it's a gift', 'it's a personal item', "
+        "'it's a souvenir') and does NOT address the suspicion reason, you MUST return "
+        "intent_success=false, intent_satisfied=false, and list required slots in missing_slots. "
+        "If difficulty is LESS than 7, you MUST treat generic explanations as fully acceptable "
+        "and return intent_success=true regardless of how serious the suspicion_reason may "
+        "sound (e.g., cash structuring, money laundering). Do NOT apply the specificity "
+        "requirement to items with difficulty < 7."
     )
 
 
@@ -246,6 +286,9 @@ def _understanding_schema() -> dict[str, Any]:
             "needs_clarification",
             "intent_satisfied",
             "judgment_reason",
+            "satisfied",
+            "branch_hint",
+            "risk_evidence",
         ],
         "properties": {
             "intent": {"type": "string"},
@@ -279,6 +322,20 @@ def _understanding_schema() -> dict[str, Any]:
             "needs_clarification": {"type": "boolean"},
             "intent_satisfied": {"type": "boolean"},
             "judgment_reason": {"type": "string"},
+            "satisfied": {"type": "boolean"},
+            "branch_hint": {
+                "type": "string",
+                "enum": ["success", "retry", "clarify", "hint", "warning", "bad_end"],
+            },
+            "risk_evidence": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["tags", "delta"],
+                "properties": {
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "delta": {"type": "integer"},
+                },
+            },
         },
     }
 

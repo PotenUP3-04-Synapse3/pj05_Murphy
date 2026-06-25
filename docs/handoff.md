@@ -1,5 +1,144 @@
 # Handoff
 
+## 2026-06-25 Developer C: Turn Authority Unification (판단→해결→발화 직렬 사슬) 완료
+
+계획서 `docs/workplan-llm-turn-authority-unification.md`에 따라 분산/병렬되어 있던 턴 권한 판단 흐름을 직렬화하는 작업을 완수했다.
+
+### 주요 수정 내용
+1. **기능 플래그 및 계약 스키마 추가**:
+   - `AppSettings`에 `murphy_turn_authority` ("legacy" | "unified", 기본값 `"legacy"`) 설정 추가.
+   - `game_turn.py` 스키마 확장: C(이해)의 의미 판정을 B/A로 온전히 전달하기 위해 `satisfied`, `branch_hint`, `risk_evidence` 필드 추가. A(발화)의 결합 통제를 위해 `resolved_node_objective` 및 `resolved_node_npc_question` 필드 추가.
+2. **이해(C) 의미 판정 전담화**:
+   - `understanding_agent.py`와 `understanding_llm_client.py`에서 플레이어 발화의 목표 충족 여부(`satisfied`), 분기 힌트(`branch_hint`), 안전 위험(`risk_evidence`)을 결정적으로 판정 및 출하하도록 구조화.
+3. **상태머신(B) 거부권 모델 재정립**:
+   - B가 의미 판정을 스스로 재계산하지 않고, C가 전달한 `satisfied`/`branch_hint`를 신뢰하여 다음 노드를 결정하도록 `_decide_unified`를 구현.
+   - B는 수치 한도(Stay/Cash), 인벤토리 여권 제출 거부, 치명적 위험(`_is_critical_risk`), patience/retry 등의 안전 및 불변식 거부권(Veto)만 행사하도록 전담.
+4. **발화(A)의 해결 노드 바인딩 및 전역 가드**:
+   - `dev_a_npc_dialogue_client.py`에서 B가 확정한 실제 다음 노드의 `objective_kr`과 `npc_question`을 OpenKB에서 조회하여 `resolved_node_objective`와 `resolved_node_npc_question` 페이로드로 주입.
+   - A의 프롬프트(`npc_dialogue_prompt.md`, `npc_dialogue_prompt.short.md`)에 `resolved_node_objective`가 있을 시 해당 영역에 발화를 고정하고 look-ahead 누출이 발생하지 않도록 지시 추가.
+   - `npc_dialogue_agent.py`에서 입국 전용 `_immigration_dialogue_violation`을 `_global_dialogue_violation` 전역 가드로 리팩토링. 실패 분기 긍정 리액션 차단(`_has_positive_reaction_on_failure`) 및 재시도 훅 누출 검사를 전역 적용.
+
+### 검증 결과
+- **단위 테스트 추가**: [`test_llm_acceptance.py`](file:///c:/potenup3/pj05_Murphy/backend/tests/test_llm_acceptance.py)에 `test_scenario_state_machine_unified_success` 및 `test_scenario_state_machine_unified_retry_and_veto`를 작성하여 `unified` 모드 하에서도 정상 성공 라우팅, 실패 시 재시도, 치명적 위반 시 `CRITICAL_FAIL` Veto가 완벽히 동작함을 증명.
+- **전체 테스트 결과**: `uv run pytest` 전체 실행하여 **531 passed, 1 warning** 통과 완료 (기존 529에서 신규 unified authority 검증용 테스트 2건 추가).
+
+## 2026-06-25 Developer C: BAG_002 & BAG_005 인텐트 인식 실패 수정 완료
+
+계획서 `docs/plans/bag_002_005_intent_recognition_fix_plan.md`에 따라 수하물 세관 챕터의 주요 인텐트 인식 오류 수정을 완료했다.
+
+### 주요 수정 내용
+- **물리 제출 표현 매핑 (BAG_002)**:
+  - [`understanding_llm_client.py`](file:///c:/potenup3/pj05_Murphy/backend/app/agents/agent_c/understanding_llm_client.py) 및 [`understanding_prompt.md`](file:///c:/potenup3/pj05_Murphy/backend/app/prompts/understanding_prompt.md)에 규칙 추가.
+  - "here it is", "here you go"와 같은 물리적 전달 동작의 발화를 `intent_success=true` 및 `has_claim_tag` 슬롯으로 강제 정규화하여 통과율 개선.
+- **과거형 이행 확인 대응 (BAG_005)**:
+  - [`scenario_nodes.json`](file:///c:/potenup3/pj05_Murphy/backend/app/data/scenario_nodes.json) 내 `BAG_005_CUSTOMS_HOLD_EXPLANATION` 3종 노드의 `allowed_slot_values`에 `"already_checked"` 추가.
+  - LLM 프롬프트에 규칙을 신설하여 "yeah I checked now", "I did" 같은 이미 확인을 완료한 과거형 동의가 누락이나 불명확(needs_clarification)으로 빠지는 현상 방지.
+
+### 검증 결과
+- **단위 테스트 추가**: [`test_llm_acceptance.py`](file:///c:/potenup3/pj05_Murphy/backend/tests/test_llm_acceptance.py)에 BAG_002 물리 제출 테스트(`test_scenario_state_machine_bag002_physical_handover`) 및 BAG_005 과거형 이행 확인 테스트(`test_scenario_state_machine_bag005_past_tense_acknowledgement`)를 추가하여 라우팅 성공 확인.
+- **전체 테스트 결과**: `uv run pytest` 수행하여 **529 passed, 1 warning** 통과 완료 (기존 527에서 신규 테스트 +2건 추가).
+
+## 2026-06-25 Developer B: Baggage Chapter Test Strategy — Phase 1–4 완료
+
+계획서 `docs/plans/baggage_chapter_test_strategy_plan.md`의 4개 Phase를 완료했다.
+
+### Phase 1 — 측정 신뢰성 회복 (metric 버그 수정)
+- **파일**: [`customs_pressure_probe.py`](file:///c:/potenup3/pj05_Murphy/backend/tests/eval_harness/customs_pressure_probe.py)
+- `report_multiturn`의 `passed_low` 집계를 `helds` 리스트 기준 → `r.held` 속성 기준으로 수정.
+  저난이도가 압박당해 success를 못 받아도 "passed"로 오집계되는 버그 해결.
+- 검증 결과: LOW DIFFICULTY PASS RATE **12/12** (rule mode), HIGH DIFFICULTY LEAKS **0/12**.
+
+### Phase 2 — 챕터 풀 플로우
+- **신규** [`test_baggage_chapter_flow.py`](file:///c:/potenup3/pj05_Murphy/backend/tests/dev_b/test_baggage_chapter_flow.py):
+  7개 CI 결정적 테스트 — 정상 통관(전체 노드 체인 단언) / 지속 실패 / 각 노드 retry limit / critical valuable / critical luxury / high-risk expression / 조기통과 방지.
+- **신규** [`baggage_brielle_full_flow.yaml`](file:///c:/potenup3/pj05_Murphy/backend/tests/eval_harness/scenarios/baggage_brielle_full_flow.yaml):
+  7케이스 NPC 자연스러움 eval 시나리오 (비결정적, 경향 관찰용). `must_not_include_any` 모순·확정사실 재질문 방지 패턴 적용.
+
+### Phase 3 — 노드 판정 일반화
+- **신규** [`test_baggage_node_routing.py`](file:///c:/potenup3/pj05_Murphy/backend/tests/dev_b/test_baggage_node_routing.py):
+  BAG_001~007 7개 노드 × 충분/불충분/bad_end + BAG_003 캐러셀 회귀(allowed_slot_values 3종 파라미터화) + 전 노드 `allowed_next_nodes` 준수 검증. 총 25개 테스트.
+
+### Phase 4 — NPC 자연스러움 + 엣지 입력
+- **수정** [`baggage_brielle.yaml`](file:///c:/potenup3/pj05_Murphy/backend/tests/eval_harness/scenarios/baggage_brielle.yaml):
+  2케이스(BAG_001만) → 13케이스. BAG_002~007 success/retry 분기별 자연스러움 + 되물음·off-topic 엣지 케이스 추가.
+
+### 검증 결과
+- `uv run pytest`: **499 passed, 1 warning** (기존 467 → +32).
+- `--multiturn rule`: HIGH LEAKS 0/12, LOW PASS 12/12.
+- 알려진 warning: `audioop` (Python 3.12 deprecation) — Developer A 서비스 파일, 범위 외.
+
+### 알려진 사항 / 다음 단계
+- `hint_count >= 1` 조건이 `bad_end` 전환에 필요함 (상태머신 로직 확인 완료, 테스트에 반영).
+- Phase 2 eval YAML(baggage_brielle_full_flow.yaml)은 LLM 모드에서만 유효. CI 게이트화하지 않음.
+- 다음 작업: BAG_006 probe를 노드 파라미터화하는 추가 일반화(Plan Phase 3 후속) 또는 판정 로직 결함 발견 시 별도 수정 계획.
+
+## 2026-06-25 Developer A, B, C: Customs Sustained Pressure Multi-turn Test Harness & Unit Tests
+
+Implemented and verified the multi-turn sustained pressure test harness and unit test gates to enforce strict customs check pressure logic on high-difficulty items while allowing normal low-difficulty progression and escape paths. The full test suite **467 passed** with zero failures.
+
+- **Multi-turn Evaluation Harness**: Enhanced [customs_pressure_probe.py](file:///c:/potenup3/pj05_Murphy/backend/tests/eval_harness/customs_pressure_probe.py) to support a `--multiturn` option. It runs an 8-turn simulation of consecutive generic insufficient responses across all 24 items, threading delta state updates (patience, retries, hints, suspicion, and previous fail counts) between turns. It classifies items as `HELD` or `LEAK` in structured terminal reports.
+- **CI Gate pytest Suite**: Added [test_customs_sustained_pressure.py](file:///c:/potenup3/pj05_Murphy/backend/tests/dev_b/test_customs_sustained_pressure.py) containing:
+  - `test_high_difficulty_item_never_passes_on_consecutive_insufficient`: Asserts that high-difficulty items (difficulty >= 7) continuously pressure the traveler and never leak success.
+  - `test_low_difficulty_item_passes_generic`: Asserts that low-difficulty items (difficulty < 7, except undeclared luxury/valuable items) immediately pass on Turn 1.
+  - `test_sufficient_answer_escapes_pressure`: Asserts that a pressured high-difficulty item successfully escapes to `success` on Turn 2 once a keyword-rich explanation is provided.
+  - `test_undeclared_valuable_luxury_item_triggers_critical_fail`: Asserts that undeclared luxury/valuable items immediately trigger a critical failure bad ending on Turn 1.
+- **Verification**: Verified that the new pytest suite passes, the full test suite passes (467 items), and successfully ran the diagnostic harness in both rule and LLM modes (confirming 0 leaks on high-difficulty items).
+
+## 2026-06-25 Developer A, B, C: Generalized Customs Check "Pressure Logic"
+
+Generalized the customs check "pressure logic" for high-difficulty/high-risk items (difficulty >= 7) and replaced the gold bar smuggling check with a data-driven valuable/luxury item critical ending. The full test suite **463 passed**, `ruff` clean, `mypy` clean.
+
+- **Part 1 — Schema Context Wiring**: Defined `CustomsItemJudgeContext` in [game_turn.py](file:///c:/potenup3/pj05_Murphy/backend/app/schemas/game_turn.py) and added `customs_item_context` to `NodeContext` schema to pass item metadata downstream.
+- **Part 2 — Orchestration & Sync**: Updated `understand_player_text_tool` in [developer_c_graph_tools.py](file:///c:/potenup3/pj05_Murphy/backend/app/tools/tool_c/developer_c_graph_tools.py) to synchronize item declaration status (using word-intersection match with arrival form declared items) and inject `CustomsItemJudgeContext` when in baggage claim nodes `BAG_005` or `BAG_006`.
+- **Part 3 — LLM Sufficiency Directive**: Updated LLM prompts in [understanding_llm_client.py](file:///c:/potenup3/pj05_Murphy/backend/app/agents/agent_c/understanding_llm_client.py) and synchronized [understanding_prompt.md](file:///c:/potenup3/pj05_Murphy/backend/app/prompts/understanding_prompt.md) to fail intent/satisfaction checks when generic explanations (e.g. "gift", "personal item", "souvenir") are given for high-difficulty items (difficulty >= 7) instead of addressing the specific item suspicion reason.
+- **Part 4 — Rule Mode Gates & Risk Generalization**:
+  - Implemented `_customs_explanation_insufficient` in [scenario_state_machine.py](file:///c:/potenup3/pj05_Murphy/backend/app/services/service_b/scenario_state_machine.py) to filter generic answers for difficulty >= 7 items under rule mode, forcing a `REASK` (clarify) turn.
+  - Replaced the hardcoded gold bar check with a generalized `_is_undeclared_high_value_violation` check triggering immediate critical endings (`bad_end`) for any undeclared items under `valuable` and `luxury` categories (covering gold bars and luxury watches like Patek Philippe).
+- **Verification**:
+  - Appended 4 targeted unit tests to [test_scenario_state_machine_loop_exit.py](file:///c:/potenup3/pj05_Murphy/backend/tests/dev_b/test_scenario_state_machine_loop_exit.py) to verify undeclared/declared luxury watches and high/low difficulty rule gates.
+  - Extended diagnostic probe harness [customs_pressure_probe.py](file:///c:/potenup3/pj05_Murphy/backend/tests/eval_harness/customs_pressure_probe.py) with positive controls. Evaluated both rule and LLM modes: leak rate of generic answers for high-difficulty items dropped from 95.8% to **0%**, while positive controls succeeded with a **100% pass rate** (24/24).
+
+## 2026-06-25 Developer A, B, C: Code Review Follow-up Fixes (#1/B-1/B-2/#3 corrections)
+
+Review of the immigration/baggage changes surfaced several correctness and quality issues; all fixed without distinguishing A/B/C ownership (per the "proceed with remaining work" handoff request). Full suite **460 passed**, `ruff` clean, `mypy` clean.
+
+- **B-2 Korean hint actually surfaced (data fix)**: The hint fallback now reads `node_context.base_hint_kr`, but the immigration core nodes stored **English** text in that field, so learners saw English hints. Converted all English `base_hint_kr` values to Korean in [scenario_nodes.json](file:///c:/potenup3/pj05_Murphy/backend/app/data/scenario_nodes.json) (passport / purpose / duration / stay-location / return-ticket nodes and their retry/clarify variants). Updated the hardcoded assertion in [test_llm_acceptance.py](file:///c:/potenup3/pj05_Murphy/backend/tests/test_llm_acceptance.py) accordingly.
+- **#3 gold-bar DRY**: Extracted the duplicated 4-condition gold-bar block in [scenario_state_machine.py](file:///c:/potenup3/pj05_Murphy/backend/app/services/service_b/scenario_state_machine.py) into a single `_is_gold_bar_violation(payload)` helper, called from both `_is_critical_risk` and `_critical_fail`.
+- **#3 declaration-sync precision**: The declared-item matcher in [developer_c_graph_tools.py](file:///c:/potenup3/pj05_Murphy/backend/app/tools/tool_c/developer_c_graph_tools.py) used loose substring matching (e.g. `"old"` matched `"item_gold_bar"`). Replaced with word-token intersection (with noise-word filtering) to avoid false-positive declarations.
+- **Cleanup**: Hoisted the in-function `OPEN_HOOK_STOPLIST` import to module level in [dialogue_policy_service.py](file:///c:/potenup3/pj05_Murphy/backend/app/services/service_a/dialogue_policy_service.py) (no circular import).
+- **Known minor (not changed, by design)**: the one-time `hint_count == 0` rescue in `decide()` runs before the critical-risk check, so on a `patience <= 0` turn an undeclared-gold-bar utterance yields one hint before the bad ending (caught on the next turn). Patience-exhaustion precedence is intentional; left as-is.
+
+## 2026-06-25 Developer A, B, C: Remaining Chapter 0 Immigration Check Issues (#2, #3, #4)
+
+All remaining Chapter 0 Immigration Check issues have been implemented, tested, and verified across A/B/C components:
+- **#2 되물음 무시 (Ignoring Re-asking/repeated stalls)**:
+  - Modified [scenario_state_machine.py](file:///c:/potenup3/pj05_Murphy/backend/app/services/service_b/scenario_state_machine.py)'s `_clarify` to set `patience_delta = 0` on the first repeat request (`needs_repeat`) when `previous_fail_count == 0`.
+  - Tuned the `decide` logic to evaluate `_should_give_hint` first only when consecutive failures/clarifications happen (`retry_count >= 2` or `previous_fail_count >= 2`), resolving infinite clarify loops while preserving normal clarify branches.
+- **#3 금괴 플래그 (Gold Bar Flag)**:
+  - Added a critical risk failure path in `ScenarioStateMachine._is_critical_risk` and `_critical_fail` for undeclared gold bar (`ITEM_GOLD_BAR`) during baggage claim customs inspection, forcing an immediate `bad_end` / `FAIL_END`.
+  - Added declaration sync logic in [developer_c_graph_tools.py](file:///c:/potenup3/pj05_Murphy/backend/app/tools/tool_c/developer_c_graph_tools.py)'s `build_dev_b_policy_input` to set `random_customs_item.declared = True` if the item matches `arrival_form.declared_items`.
+- **#4 물음표 누락 (Missing Question Mark)**:
+  - Updated LLM dialogue post-processing validation in [npc_dialogue_agent.py](file:///c:/potenup3/pj05_Murphy/backend/app/agents/agent_a/npc_dialogue_agent.py) to check for a question mark (`?`) if the surface goal asks a question.
+  - Added explicit instructions to both the long and short prompts [npc_dialogue_prompt.md](file:///c:/potenup3/pj05_Murphy/backend/app/prompts/npc_dialogue_prompt.md) and [npc_dialogue_prompt.short.md](file:///c:/potenup3/pj05_Murphy/backend/app/prompts/npc_dialogue_prompt.short.md) to enforce question mark output.
+- **Verification**:
+  - Appended 5 target unit tests to [test_scenario_state_machine_loop_exit.py](file:///c:/potenup3/pj05_Murphy/backend/tests/dev_b/test_scenario_state_machine_loop_exit.py) to test re-asking patience waiver, consecutive penalties, hint loop-breaking, and gold bar declaration/undeclared branches.
+  - Added a post-processing validation test in [test_developer_a_npc_dialogue.py](file:///c:/potenup3/pj05_Murphy/backend/tests/test_developer_a_npc_dialogue.py) verifying question mark checks.
+  - Successfully ran the entire test suite (460 passed), `ruff` formatting checks, and `mypy` type validations (0 errors).
+
+## 2026-06-25 Developer C: Immigration/Baggage Prompt Relaxation & Hint Escalation (#1, B-1, B-2)
+
+Developer C has successfully completed the implementation plan for prompt relaxation and hint escalation as outlined in [action-plan-01.md](file:///c:/potenup3/pj05_Murphy/docs/action-plan-01.md):
+- **A-1 & A-2 - Prompt Relaxation (#1, B-1)**:
+  - Modified LLM instructions in [understanding_llm_client.py](file:///c:/potenup3/pj05_Murphy/backend/app/agents/agent_c/understanding_llm_client.py) and [understanding_prompt.md](file:///c:/potenup3/pj05_Murphy/backend/app/prompts/understanding_prompt.md) to support multi-purpose/rich travel responses (e.g. friend visit + sightseeing) without incorrectly failing the intent.
+  - Allowed confirmation required intents (starting with `confirm_*`) to match canonical slot values (such as `searched_carefully`) from simple/circumstantial affirmative responses (like "yes", "yeah", "only my bag didn't come") instead of omitting them as missing slots.
+- **B-1 - Fallback Hint Korean Mapping (B-1)**:
+  - Updated [feedback_hint_generator.py](file:///c:/potenup3/pj05_Murphy/backend/app/services/service_b/feedback_hint_generator.py) fallback method to utilize `payload.node_context.base_hint_kr` (Korean hint from nodes) as the value of `hint_kr` when a hint is requested, ensuring the player sees the proper Korean translation on the screen in fallback/rule mode.
+- **B-2 - Hint Escalation before Bad Ending (B-2)**:
+  - Intercepted the state machine's bad ending decision registry in [scenario_state_machine.py](file:///c:/potenup3/pj05_Murphy/backend/app/services/service_b/scenario_state_machine.py) so that if the player exhausts patience/retries and `hint_count == 0`, the system triggers `GIVE_HINT` at least once before ending the game.
+- **Verification**:
+  - Added two targeted unit tests in [test_llm_acceptance.py](file:///c:/potenup3/pj05_Murphy/backend/tests/test_llm_acceptance.py) to assert correct hint escalation logic and fallback hint mapping.
+  - Successfully ran the entire test suite (454 passed), `ruff` checks, and `mypy` type validations.
+
 ## 2026-06-25 Developer A: NPC Dialogue Naturalness & Loop Fix (Part A & B)
 
 Developer A has successfully executed the dialogue naturalness and loop fixes as outlined in [dev_a_npc_dialogue_naturalness_plan.md](file:///Users/will/pj05_Murphy/docs/plans/dev_a_npc_dialogue_naturalness_plan.md):
@@ -5365,3 +5504,30 @@ Verification:
 - `uv run pytest -q` passed: 279 passed, 1 warning.
 - `uv run ruff check .` passed.
 - `uv run mypy .` passed: no issues found in 118 source files.
+
+## 2026-06-25 Developer B / C - Korean Translation in Final Scoreboard Feedback
+
+Developer C implemented Korean translation for the final result report summary (`overall`) and main improvement advice (`main_improvement`) at the user's request. This ensures that Korean learners receive Korean summary text instead of English summaries on the final result scoreboard.
+
+Changed Developer B implementation files:
+
+- `backend/app/services/service_b/final_result_score_policy.py`
+- `backend/app/agents/agent_b/feedback_hint_llm_client.py`
+
+Changed Developer C files:
+
+- `docs/contracts/change_requests.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- Modified `_overall_summary()` and `_main_improvement()` in `final_result_score_policy.py` to return Korean summary strings.
+- Modified `_unranked_result()` in `final_result_score_policy.py` to provide Korean defaults.
+- Updated LLM instructions in `feedback_hint_llm_client.py`'s `_developer_instructions()` to instruct the OpenAI client to output `feedback_note`, `report_summary`, and `report_improvement` in Korean.
+
+Verification:
+
+- `uv run pytest` (GREEN: 531 passed, 1 warning)
+- `uv run ruff check .` (passed)
+- `uv run mypy .` (passed)
+

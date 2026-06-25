@@ -2802,3 +2802,37 @@ Developer B / policy owner
 ### Temporary Workaround
 
 Developer C가 본 CR 합의에 따라 Developer B 소유 파일(`final_result_score_policy.py`, `test_final_result_score_policy.py`)을 직접 업데이트하여 정합성을 완료했습니다.
+
+
+## Change Request - 2026-06-25 - [CR-C-SCOREBOARD-KOREAN-FEEDBACK] 최종 성적 리포트 피드백 한글화 적용
+
+Status: Resolved (Developer C direct implementation complete - 2026-06-25).
+
+### Requested By
+
+Developer C / Sean Han (at the explicit request of the User)
+
+### Affected Owner
+
+Developer B / policy owner
+
+### Reason
+
+최종 성적 화면(`report_summary`)의 전체 요약(`overall`) 및 주요 개선점(`main_improvement`) 필드가 영어로 제공되던 문제를 해결하기 위함입니다. 한국어 학습자의 편의성을 도모하기 위해, 기본 폴백 텍스트를 한국어로 변경하고 LLM 프롬프트 지침에도 성적 리포트 요약 및 개선사항을 한국어로 작성하도록 명시적 지침을 추가합니다.
+
+### Proposed Contract Change
+
+1. `backend/app/services/service_b/final_result_score_policy.py`에서 반환하는 `_overall_summary()` 요약 문구들과 `_main_improvement()`의 기본 폴백 문구를 한국어로 변경합니다.
+2. `_unranked_result()`의 기본 요약 및 개선사항 문구도 한국어로 통일합니다.
+3. `backend/app/agents/agent_b/feedback_hint_llm_client.py`의 `_developer_instructions()` 프롬프트에 `report_summary` 및 `report_improvement` 필드가 한국어로 생성되도록 조건 지침을 추가합니다.
+
+### Compatibility Impact
+
+- 반환되는 JSON 데이터의 해당 필드가 한글로 변경되므로 클라이언트(Unreal)의 UI 텍스트 출력 부분이 한글을 정상 지원하는지 확인해야 합니다.
+- 스키마 타입은 기존과 동일하게 `str`이므로 백엔드/프런트엔드 간의 데이터 직렬화 호환성에는 영향이 없습니다.
+- 기존의 모든 Python 단위/통합 테스트는 깨짐 없이 100% 통과함을 확인했습니다.
+
+### Temporary Workaround
+
+Developer C가 유저 요청에 따라 Developer B 소유 파일(`final_result_score_policy.py`, `feedback_hint_llm_client.py`)을 직접 업데이트하여 완료했습니다.
+

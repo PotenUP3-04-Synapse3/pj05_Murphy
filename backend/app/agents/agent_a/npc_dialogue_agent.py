@@ -141,23 +141,57 @@ def _is_complete_chapter_turn(normalized: dict[str, Any]) -> bool:
     )
 
 
-def _immigration_dialogue_violation(
+def _global_dialogue_violation(
     npc_text: str,
     tts_text: str,
     normalized: dict[str, Any],
     payload: dict[str, Any],
 ) -> str | None:
-    """Return a fallback reason when immigration LLM text violates node policy."""
+    """Return a fallback reason when any LLM text violates global node policy."""
 
-    if not _is_immigration_turn(normalized):
-        return None
-    if _contradicts_current_immigration_slot(npc_text, tts_text, payload):
-        return "current_slot_contradiction"
-    if _has_immigration_retry_hook_leak(npc_text, tts_text, normalized):
+    if _has_retry_hook_leak(npc_text, tts_text, normalized):
         return "immigration_retry_hook_violation"
-    if _has_immigration_surface_goal_mismatch(npc_text, tts_text, normalized):
-        return "immigration_surface_goal_mismatch"
+
+    if _has_positive_reaction_on_failure(npc_text, tts_text, normalized):
+        return "positive_reaction_violation"
+
+    if _is_immigration_turn(normalized):
+        if _contradicts_current_immigration_slot(npc_text, tts_text, payload):
+            return "current_slot_contradiction"
+        if _has_immigration_surface_goal_mismatch(npc_text, tts_text, normalized):
+            return "immigration_surface_goal_mismatch"
+
     return None
+
+
+def _has_positive_reaction_on_failure(
+    npc_text: str,
+    tts_text: str,
+    normalized: dict[str, Any],
+) -> bool:
+    branch_type = str(normalized.get("branch_type") or "").lower()
+    next_action = str(normalized.get("next_action") or "").upper()
+    if branch_type not in {"retry", "clarify", "warning"} and next_action not in {"REASK", "GIVE_HINT", "WARNING"}:
+        return False
+
+    combined = (npc_text + " " + tts_text).lower()
+    normalized_combined = _normalize_for_echo_match(combined)
+    words = normalized_combined.split()
+    if not words:
+        return False
+
+    positive_words = {
+        "good", "great", "nice", "excellent", "perfect", "wonderful", "awesome",
+        "yes", "okay", "ok", "sure", "alright"
+    }
+    if words[0] in positive_words:
+        return True
+    if len(words) >= 2 and words[0] == "thank" and words[1] == "you":
+        return True
+    if len(words) >= 2 and words[0] == "all" and words[1] == "right":
+        return True
+
+    return False
 
 
 def _is_immigration_turn(normalized: dict[str, Any]) -> bool:
@@ -910,19 +944,19 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         )
         return {"error": "complete_chapter_question_violation"}
 
-    immigration_violation = _immigration_dialogue_violation(
+    global_violation = _global_dialogue_violation(
         npc_text,
         tts_text,
         normalized,
         payload,
     )
-    if immigration_violation:
+    if global_violation:
         logger.error(
-            "Immigration LLM output violated node policy. reason=%s npc_text=%r",
-            immigration_violation,
+            "Dialogue LLM output violated policy. reason=%s npc_text=%r",
+            global_violation,
             npc_text,
         )
-        return {"error": immigration_violation}
+        return {"error": global_violation}
 
     # [6단계] 생성된 대사가 안전한 영문 아스키(ASCII) 텍스트인지 검사합니다.
     if not _is_safe_english_dialogue_text(npc_text) or not _is_safe_english_dialogue_text(tts_text):

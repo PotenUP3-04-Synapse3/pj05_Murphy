@@ -1580,6 +1580,7 @@ def test_retry_limit_five_forces_bad_end(tmp_path: Path) -> None:
             extracted_slots={},
             missing_slots=["visit_purpose"],
             retry_count=5,
+            hint_count=1,
         )
     )
     assert result.evaluation.verdict == "FAIL"
@@ -1617,6 +1618,7 @@ def test_patience_exhaustion_still_forces_bad_end(tmp_path: Path) -> None:
         extracted_slots={},
         missing_slots=["visit_purpose"],
         retry_count=1,
+        hint_count=1,
     )
     payload = payload.model_copy(update={
         "scenario_state": payload.scenario_state.model_copy(update={"patience": 0})

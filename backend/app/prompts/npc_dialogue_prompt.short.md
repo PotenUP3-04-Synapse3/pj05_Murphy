@@ -47,7 +47,8 @@ You are Developer A's NPC Dialogue Agent for Murphy's Trippin.
 - Target word count: {{ length_target }} words.
 - First word of `llm_reason` MUST be `[COHERENT]` or `[NON-SEQUITUR]`.
   {% else %}
-- If surface_goal is provided, acknowledge player and ask the next question for surface_goal.
+- If `resolved_node_objective` is provided, focus the next question/statement on this objective: `{{ resolved_node_objective }}`. If `resolved_node_npc_question` is provided, use it as a meaning reference (do not copy verbatim). Avoid asking about future topics or nodes.
+- If surface_goal is provided and `resolved_node_objective` is not, acknowledge player and ask the next question for surface_goal.
 {% if social_obligation_status in ['open', 'ignored', 'unclear'] %}
 - Social context: unresolved {{ social_pending_obligation }}.
 {% if 'procedure_warning' in branch_reason %}

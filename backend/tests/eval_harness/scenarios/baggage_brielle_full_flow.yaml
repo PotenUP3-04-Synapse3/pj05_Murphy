@@ -1,0 +1,161 @@
+# baggage_brielle_full_flow.yaml
+#
+# Baggage Claim 챕터(CH0_04) NPC Brielle / Dan 대사 자연스러움 eval 시나리오.
+# 비결정적(LLM 모드)이며, CI 게이트화하지 않음. 경향 관찰용.
+#
+# 패턴: immigration_hale_full_flow.yaml의 must_not_include_any 차용.
+# - 직전 답변에서 확정된 사실을 다시 물어보면 fail
+# - success closing과 fail 메시지가 함께 나오면 fail
+# - 되물음 상황에서 완전히 다른 주제로 전환하면 fail
+
+# ─────────────────────────────────────────
+# BAG_001: 분실 신고 — retry 분기에서 확정사실 재질문 금지
+# ─────────────────────────────────────────
+- id: brielle_no_duplicate_question_after_report
+  npc_id: brielle
+  node_id: BAG_001_REPORT_MISSING_AT_DESK
+  description: "분실 신고 후 retry 상황에서 이미 확인된 '가방 없음' 사실을 다시 묻지 않는지 검증"
+  payload_overrides:
+    branch:
+      branch_type: retry
+  player_inputs:
+    - "My bag is not here yet."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_not_include_any:
+      - "are you sure your bag is missing"
+      - "have you checked if your bag is missing"
+      - "is your bag missing"
+
+# ─────────────────────────────────────────
+# BAG_002: 클레임태그 — success 후 불필요한 재확인 금지
+# ─────────────────────────────────────────
+- id: brielle_no_redundant_claim_tag_after_success
+  npc_id: brielle
+  node_id: BAG_002_PROVIDE_CLAIM_TAG
+  description: "클레임태그 제공 success 이후 NPC가 다시 tag 제출을 요구하지 않는지"
+  payload_overrides:
+    branch:
+      branch_type: success
+      next_node_id: BAG_003_CONFIRM_SEARCHED_CAROUSEL
+  player_inputs:
+    - "Here is my baggage claim tag, number 1234."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_not_include_any:
+      - "can you show me your claim tag"
+      - "i need your claim tag"
+      - "please provide your tag again"
+
+# ─────────────────────────────────────────
+# BAG_003: 캐러셀 — 확인 성공 후 모순 발화 금지
+# ─────────────────────────────────────────
+- id: brielle_no_contradiction_after_carousel_confirm
+  npc_id: brielle
+  node_id: BAG_003_CONFIRM_SEARCHED_CAROUSEL
+  description: "캐러셀 확인 success 후 NPC가 미확인인 것처럼 말하지 않는지"
+  payload_overrides:
+    branch:
+      branch_type: success
+      next_node_id: BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD
+  player_inputs:
+    - "Yes, I checked the carousel carefully. It wasn't there."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_not_include_any:
+      - "please check the carousel again"
+      - "have you looked at the carousel"
+      - "did you search the carousel"
+    must_include_any:
+      - "customs"
+      - "hold"
+      - "another area"
+      - "follow"
+
+# ─────────────────────────────────────────
+# BAG_004: 리디렉트 — retry 상황에서 이미 설명한 방향을 다시 처음부터 설명하지 않음
+# ─────────────────────────────────────────
+- id: brielle_no_repeat_redirect_instructions_verbatim
+  npc_id: brielle
+  node_id: BAG_004_STAFF_REDIRECT_TO_CUSTOMS_HOLD
+  description: "되물음 retry에서 동일한 안내 문장을 토씨 하나 안 틀리고 반복하지 않는지"
+  payload_overrides:
+    branch:
+      branch_type: retry
+  player_inputs:
+    - "Sorry, what do I do next?"
+  expected:
+    npc_role_must_not_be_giver: true
+    must_include_any:
+      - "customs"
+      - "hold"
+      - "office"
+      - "area"
+
+# ─────────────────────────────────────────
+# BAG_005: 검사 동의 — success 후 실패 메시지 혼입 금지
+# ─────────────────────────────────────────
+- id: brielle_no_failure_message_after_customs_consent
+  npc_id: brielle
+  node_id: BAG_005_CUSTOMS_HOLD_EXPLANATION
+  description: "검사 동의 success closing과 fail 메시지가 함께 나오지 않아야 함"
+  payload_overrides:
+    branch:
+      branch_type: success
+      next_node_id: BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM
+  player_inputs:
+    - "Okay, I understand. I will cooperate with the inspection."
+  expected:
+    npc_role_must_not_be_giver: true
+    must_not_include_any:
+      - "I'm sorry, but we cannot proceed"
+      - "we are unable to assist you"
+      - "your request has been denied"
+      - "you are not allowed"
+
+# ─────────────────────────────────────────
+# BAG_007: 통관 완료 — 성공 메시지와 추가 검사 요청 혼입 금지
+# ─────────────────────────────────────────
+- id: brielle_no_mixed_clearance_and_inspection_message
+  npc_id: brielle
+  node_id: BAG_007_CUSTOMS_CLEARANCE
+  description: "통관 완료(success) 후 추가 검사를 암시하는 발화가 혼입되지 않아야 함"
+  payload_overrides:
+    branch:
+      branch_type: success
+      next_node_id: BAG_999_COMPLETE
+  player_inputs:
+    - "Thank you very much. Have a great day!"
+  expected:
+    npc_role_must_not_be_giver: true
+    must_not_include_any:
+      - "please wait for further inspection"
+      - "we need to check your bag again"
+      - "additional screening required"
+    must_include_any:
+      - "enjoy"
+      - "have a"
+      - "safe trip"
+      - "welcome"
+      - "all set"
+      - "cleared"
+      - "you're all"
+      - "you are all"
+
+# ─────────────────────────────────────────
+# 엣지: 되물음 "What?" — 동일 질문 반복 금지
+# ─────────────────────────────────────────
+- id: brielle_no_verbatim_repeat_on_what
+  npc_id: brielle
+  node_id: BAG_001_REPORT_MISSING_AT_DESK
+  description: "플레이어가 'What?' 되물음 시 NPC가 완전히 동일한 문장을 반복하지 않아야 함"
+  payload_overrides:
+    branch:
+      branch_type: retry
+  player_inputs:
+    - "What?"
+  expected:
+    npc_role_must_not_be_giver: true
+    must_not_include_any:
+      - "hello, how can i help you today? hello, how can i help you today"
+      - "can i help you? can i help you"

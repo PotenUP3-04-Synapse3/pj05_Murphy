@@ -9,6 +9,7 @@ from backend.app.schemas.game_turn import (
     PlayerProfile,
     ScenarioState,
     UnderstandingOutput,
+    CustomsItemJudgeContext,
 )
 from backend.app.services.service_b.scenario_state_machine import ScenarioStateMachine
 
@@ -52,9 +53,11 @@ def _policy_input(
     missing_slots: list[str] | None = None,
     patience: int = 100,
     retry_count: int = 0,
+    hint_count: int = 0,
     completed_intents: list[str] | None = None,
     needs_repeat: bool = False,
     needs_clarification: bool = False,
+    previous_fail_count: int = 0,
 ) -> DevBPolicyInput:
     context = node_context or _node_context()
     return DevBPolicyInput(
@@ -83,8 +86,8 @@ def _policy_input(
             patience=patience,
             suspicion=0,
             retry_count=retry_count,
-            hint_count=0,
-            previous_fail_count=0,
+            hint_count=hint_count,
+            previous_fail_count=previous_fail_count,
             completed_intents=completed_intents or [],
         ),
         node_context=context,
@@ -114,6 +117,7 @@ def test_patience_exhausted_forces_bad_end() -> None:
         missing_slots=["visit_purpose"],
         patience=0,
         retry_count=1,
+        hint_count=1,
     )
     
     decision = sm.decide(payload)
@@ -130,6 +134,7 @@ def test_retry_limit_exceeded_forces_bad_end() -> None:
         missing_slots=["visit_purpose"],
         patience=40,
         retry_count=5,
+        hint_count=1,
     )
     
     decision = sm.decide(payload)
@@ -201,5 +206,197 @@ def test_completed_intents_bypasses_missing_slots() -> None:
     )
     
     decision = sm.decide(payload)
+    assert decision.branch_type == "success"
+    assert decision.next_action == "ADVANCE"
+
+def test_needs_repeat_patience_waiver_first_time() -> None:
+    sm = ScenarioStateMachine()
+    
+    # First time needs_repeat, previous_fail_count = 0
+    payload = _policy_input(
+        intent_success=False,
+        needs_repeat=True,
+        confidence=0.9,
+        previous_fail_count=0,
+    )
+    decision = sm.decide(payload)
+    assert decision.branch_type == "clarify"
+    assert decision.patience_delta == 0
+
+def test_needs_repeat_patience_penalty_consecutive() -> None:
+    sm = ScenarioStateMachine()
+    
+    # Consecutive needs_repeat, previous_fail_count = 1
+    payload = _policy_input(
+        intent_success=False,
+        needs_repeat=True,
+        confidence=0.9,
+        previous_fail_count=1,
+    )
+    decision = sm.decide(payload)
+    assert decision.branch_type == "clarify"
+    assert decision.patience_delta == -5
+
+def test_unclear_loop_broken_by_hint_escalation() -> None:
+    sm = ScenarioStateMachine()
+    
+    # If previous_fail_count is 2 (high consecutive failure),
+    # even when retry_count is 1 (low), hint should take precedence over unclear.
+    payload = _policy_input(
+        intent_success=False,
+        needs_clarification=True,
+        confidence=0.4,
+        patience=80,
+        retry_count=1,
+        previous_fail_count=2,
+    )
+    
+    decision = sm.decide(payload)
+    assert decision.branch_type == "hint"
+    assert decision.next_action == "GIVE_HINT"
+
+def test_gold_bar_undeclared_triggers_critical_risk() -> None:
+    sm = ScenarioStateMachine()
+    from backend.app.schemas.game_turn import RandomCustomsItemContext
+    
+    # Undeclared gold bar in customs node triggers critical risk
+    node_ctx = _node_context("BAG_005_CUSTOMS_HOLD_EXPLANATION")
+    payload = _policy_input(
+        node_context=node_ctx,
+        intent_success=False,
+    )
+    payload.current_node_id = "BAG_005_CUSTOMS_HOLD_EXPLANATION"
+    payload.random_customs_item = RandomCustomsItemContext(
+        item_id="ITEM_GOLD_BAR",
+        item_name="1kg Gold bar",
+        item_category="valuable",
+        item_description="Gold bar",
+        declared=False,
+        difficulty=9,
+        suspicion_reason="Smuggling risk",
+    )
+    
+    decision = sm.decide(payload)
+    assert decision.branch_type == "bad_end"
+    assert decision.next_action == "FAIL_END"
+
+def test_gold_bar_declared_bypasses_critical_risk() -> None:
+    sm = ScenarioStateMachine()
+    from backend.app.schemas.game_turn import RandomCustomsItemContext
+    
+    # Declared gold bar in customs node does NOT trigger critical risk
+    node_ctx = _node_context("BAG_005_CUSTOMS_HOLD_EXPLANATION")
+    payload = _policy_input(
+        node_context=node_ctx,
+        intent_success=False,
+    )
+    payload.current_node_id = "BAG_005_CUSTOMS_HOLD_EXPLANATION"
+    payload.random_customs_item = RandomCustomsItemContext(
+        item_id="ITEM_GOLD_BAR",
+        item_name="1kg Gold bar",
+        item_category="valuable",
+        item_description="Gold bar",
+        declared=True,
+        difficulty=9,
+        suspicion_reason="Smuggling risk",
+    )
+    
+    decision = sm.decide(payload)
+    assert decision.branch_type != "bad_end"
+
+def test_patek_watches_undeclared_triggers_critical_risk() -> None:
+    sm = ScenarioStateMachine()
+    from backend.app.schemas.game_turn import RandomCustomsItemContext
+    
+    # Undeclared patek watches in customs node triggers critical risk / bad end
+    node_ctx = _node_context("BAG_005_CUSTOMS_HOLD_EXPLANATION")
+    payload = _policy_input(
+        node_context=node_ctx,
+        intent_success=False,
+    )
+    payload.current_node_id = "BAG_005_CUSTOMS_HOLD_EXPLANATION"
+    payload.random_customs_item = RandomCustomsItemContext(
+        item_id="ITEM_PATEK_WATCHES",
+        item_name="10 Patek Philippe watches",
+        item_category="luxury",
+        item_description="Luxury watches",
+        declared=False,
+        difficulty=12,
+        suspicion_reason="Smuggling risk",
+    )
+    
+    decision = sm.decide(payload)
+    assert decision.branch_type == "bad_end"
+    assert decision.next_action == "FAIL_END"
+
+def test_patek_watches_declared_bypasses_critical_risk() -> None:
+    sm = ScenarioStateMachine()
+    from backend.app.schemas.game_turn import RandomCustomsItemContext
+    
+    # Declared patek watches in customs node does NOT trigger critical risk
+    node_ctx = _node_context("BAG_005_CUSTOMS_HOLD_EXPLANATION")
+    payload = _policy_input(
+        node_context=node_ctx,
+        intent_success=False,
+    )
+    payload.current_node_id = "BAG_005_CUSTOMS_HOLD_EXPLANATION"
+    payload.random_customs_item = RandomCustomsItemContext(
+        item_id="ITEM_PATEK_WATCHES",
+        item_name="10 Patek Philippe watches",
+        item_category="luxury",
+        item_description="Luxury watches",
+        declared=True,
+        difficulty=12,
+        suspicion_reason="Smuggling risk",
+    )
+    
+    decision = sm.decide(payload)
+    assert decision.branch_type != "bad_end"
+
+def test_customs_rule_gate_rejects_high_difficulty_generic_explanation() -> None:
+    sm = ScenarioStateMachine()
+    
+    # High-difficulty (>= 7) item with generic explanation should trigger REASK / clarify
+    node_ctx = _node_context("BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM")
+    node_ctx.customs_item_context = CustomsItemJudgeContext(
+        item_name="wild ginseng root",
+        item_category="agriculture",
+        difficulty=11,
+        suspicion_reason="Ecosystem risk",
+        declared=False,
+    )
+    payload = _policy_input(
+        node_context=node_ctx,
+        intent_success=True,
+    )
+    payload.current_node_id = "BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM"
+    payload.player_text = "It is just a gift for my friend."
+    
+    decision = sm.decide(payload)
+    assert decision.verdict == "UNCLEAR"
+    assert decision.branch_type == "clarify"
+    assert decision.next_action == "REASK"
+
+def test_customs_rule_gate_allows_low_difficulty_generic_explanation() -> None:
+    sm = ScenarioStateMachine()
+    
+    # Low-difficulty (< 7) item with generic explanation should succeed / ADVANCE
+    node_ctx = _node_context("BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM")
+    node_ctx.customs_item_context = CustomsItemJudgeContext(
+        item_name="A souvenir snow globe",
+        item_category="souvenir",
+        difficulty=2,
+        suspicion_reason="Liquid restriction",
+        declared=False,
+    )
+    payload = _policy_input(
+        node_context=node_ctx,
+        intent_success=True,
+    )
+    payload.current_node_id = "BAG_006_EXPLAIN_RANDOM_CUSTOMS_ITEM"
+    payload.player_text = "It is just a gift."
+    
+    decision = sm.decide(payload)
+    assert decision.verdict == "SUCCESS"
     assert decision.branch_type == "success"
     assert decision.next_action == "ADVANCE"

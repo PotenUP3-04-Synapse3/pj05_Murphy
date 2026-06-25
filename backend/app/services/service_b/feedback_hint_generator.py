@@ -131,6 +131,7 @@ class FeedbackHintGenerator:
         """
         if self.mode == "rule":
             return self._fallback_generation(
+                payload=payload,
                 base_output=base_output,
                 tier_result=tier_result,
                 focus_on_form_explanation_kr=focus_on_form_explanation_kr,
@@ -157,6 +158,7 @@ class FeedbackHintGenerator:
             validated = _LLMFeedbackPayload.model_validate(validation_payload)
         except Exception as exc:
             return self._fallback_generation(
+                payload=payload,
                 base_output=base_output,
                 tier_result=tier_result,
                 focus_on_form_explanation_kr=focus_on_form_explanation_kr,
@@ -185,6 +187,7 @@ class FeedbackHintGenerator:
     def _fallback_generation(
         self,
         *,
+        payload: DevBPolicyInput,
         base_output: DevBPolicyOutput,
         tier_result: TierDifficultyResult,
         focus_on_form_explanation_kr: str,
@@ -195,8 +198,12 @@ class FeedbackHintGenerator:
         LLM 호출이 실패했거나 Rule 모드일 때, 안전하게 준비된 템플릿(규칙 기반) 데이터를 활용하여 
         기본 피드백을 생성하는 대체(Fallback) 메서드입니다.
         """
+        hint_kr = None
+        if base_output.level_hint.needs_hint:
+            hint_kr = payload.node_context.base_hint_kr or base_output.level_hint.hint_kr
+
         return FeedbackHintGeneration(
-            hint_kr=base_output.level_hint.hint_kr if base_output.level_hint.needs_hint else None,
+            hint_kr=hint_kr,
             feedback_note=base_output.evaluation.feedback_note or "The answer was evaluated by rule-based policy.",
             report_summary=base_output.report_item.summary,
             report_improvement=base_output.report_item.improvement,
