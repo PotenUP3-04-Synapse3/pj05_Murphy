@@ -926,6 +926,9 @@ class FlowResponse(BaseModel):
     cinematic_id: str | None = None
     skip_allowed: bool = False
     show_scoreboard: bool = False
+    # 기내 스몰토크 진단의 누적 신뢰도(0~1). 레벨 산정 진행도를 클라이언트에 노출해
+    # "Flight Skip" 버튼 활성화 판단에 쓰도록 한다. 비-기내 턴에서는 None.
+    flight_diagnostic_confidence: float | None = None
 
 
 class RealtimeTranscriptClientEvent(BaseModel):

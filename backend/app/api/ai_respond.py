@@ -303,6 +303,10 @@ def demo_node_context(node_id: str) -> dict[str, Any]:
         "objective_kr": node_context.objective_kr,
         "recommended_expression": node_context.recommended_expression,
         "allowed_next_nodes": node_context.allowed_next_nodes,
+        # Entire(전체 시나리오) 모드에서 챕터 전환 노드를 건너뛰고 다음 챕터의
+        # 시작 노드로 바로 이어가기 위해 노드 타입과 전환 정보를 함께 내려준다.
+        "node_type": node_context.node_type,
+        "transition": node_context.transition,
     }
 @router.get("/demo/npc-roster")
 def demo_npc_roster() -> dict[str, list[dict[str, Any]]]:
