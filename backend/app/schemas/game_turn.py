@@ -386,6 +386,64 @@ class SocialContextCard(BaseModel):
     reason: str = ""
 
 
+class ConversationActCard(BaseModel):
+    """General conversation-act memo for natural NPC turn-taking.
+
+    Beginner guide:
+    This card is softer than branch policy.  It tells Developer A what kind of
+    social move the player just made: shared a concrete detail, asked the NPC
+    the same question back, answered a delayed favor, or gave a thin non-answer.
+    It helps the NPC satisfy human conversation duties without adding a new
+    one-off rule for every phrase like "hello", "what", or "fine".
+    """
+
+    player_act: Literal[
+        "unknown",
+        "direct_answer",
+        "self_disclosure",
+        "reciprocal_question",
+        "belated_obligation_answer",
+        "social_non_answer",
+        "clarification_request",
+        "off_topic",
+        "refusal",
+        "threat",
+    ] = "unknown"
+    relation_to_previous: Literal[
+        "unknown",
+        "answers_current_prompt",
+        "asks_npc_same_question",
+        "extends_current_topic",
+        "addresses_closed_obligation",
+        "ignores_current_prompt",
+        "changes_topic",
+    ] = "unknown"
+    npc_social_duty: Literal[
+        "none",
+        "respond_to_disclosure_then_follow_up",
+        "answer_briefly_then_continue",
+        "accept_belated_answer_then_continue",
+        "repair_current_obligation",
+        "close_or_pause",
+        "formal_boundary",
+    ] = "none"
+    natural_next_move: Literal[
+        "continue",
+        "specific_acknowledgement",
+        "self_disclose_then_follow_up",
+        "accept_then_pivot",
+        "clarify",
+        "repair",
+        "close",
+    ] = "continue"
+    topic_anchor: str = ""
+    should_answer_player_question: bool = False
+    should_avoid_generic_ack: bool = False
+    confidence: float = Field(default=0.0, ge=0, le=1)
+    evidence: str = ""
+    reason: str = ""
+
+
 class RiskEvidence(BaseModel):
     tags: list[str] = Field(default_factory=list)
     delta: int = 0
@@ -448,6 +506,7 @@ class UnderstandingOutput(BaseModel):
     needs_clarification: bool
     incivility: IncivilityClassification | None = None
     social_context: SocialContextCard = Field(default_factory=SocialContextCard)
+    conversation_act: ConversationActCard = Field(default_factory=ConversationActCard)
     pragmatic_context: PragmaticContextCard = Field(default_factory=PragmaticContextCard)
     intent_satisfied: bool | None = None
     judgment_reason: str = ""
@@ -597,6 +656,9 @@ class DialogueSeed(BaseModel):
     allowed_followup_intents: list[str] = Field(default_factory=list)
     stop_condition: str
     cumulative_confidence: float | None = None
+    completion_closure_reason: str | None = None
+    completion_closure_style: str | None = None
+    completion_do_not_ask_new_question: bool = False
 
     # A가 고정 질문 대신 억까 의도만 보고 대사를 생성하도록 넘기는 컨텍스트입니다.
     challenge_context: ChallengeContext | None = None

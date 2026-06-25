@@ -268,6 +268,13 @@ def _developer_instructions() -> str:
         "violent threats, coercive exit requests, or normal meaningful answers. "
         "For threats or unsafe intent, set player_move=violent_threat, choose "
         "the target, raise risk_level, and recommend warning or secondary_inspection. "
+        " Also fill conversation_act as a compact natural turn-taking judgment. "
+        "Use it for social duties that a human speaker would notice: the player "
+        "shared a concrete personal detail, asked the NPC the same question back, "
+        "answered a delayed favor/request, gave only a thin social non-answer, or "
+        "asked for clarification. This is not branch authority; it only tells "
+        "Developer A whether the NPC should answer briefly, acknowledge a concrete "
+        "detail, repair the current obligation, or avoid a generic acknowledgement. "
         "This card is evidence for Developer B and A; it still must not decide "
         "branch, next node, NPC dialogue, hints, or Unreal commands."
     )
@@ -296,6 +303,7 @@ def _understanding_schema() -> dict[str, Any]:
             "satisfied",
             "branch_hint",
             "risk_evidence",
+            "conversation_act",
             "pragmatic_context",
         ],
         "properties": {
@@ -342,6 +350,81 @@ def _understanding_schema() -> dict[str, Any]:
                 "properties": {
                     "tags": {"type": "array", "items": {"type": "string"}},
                     "delta": {"type": "integer"},
+                },
+            },
+            "conversation_act": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "player_act",
+                    "relation_to_previous",
+                    "npc_social_duty",
+                    "natural_next_move",
+                    "topic_anchor",
+                    "should_answer_player_question",
+                    "should_avoid_generic_ack",
+                    "confidence",
+                    "evidence",
+                    "reason",
+                ],
+                "properties": {
+                    "player_act": {
+                        "type": "string",
+                        "enum": [
+                            "unknown",
+                            "direct_answer",
+                            "self_disclosure",
+                            "reciprocal_question",
+                            "belated_obligation_answer",
+                            "social_non_answer",
+                            "clarification_request",
+                            "off_topic",
+                            "refusal",
+                            "threat",
+                        ],
+                    },
+                    "relation_to_previous": {
+                        "type": "string",
+                        "enum": [
+                            "unknown",
+                            "answers_current_prompt",
+                            "asks_npc_same_question",
+                            "extends_current_topic",
+                            "addresses_closed_obligation",
+                            "ignores_current_prompt",
+                            "changes_topic",
+                        ],
+                    },
+                    "npc_social_duty": {
+                        "type": "string",
+                        "enum": [
+                            "none",
+                            "respond_to_disclosure_then_follow_up",
+                            "answer_briefly_then_continue",
+                            "accept_belated_answer_then_continue",
+                            "repair_current_obligation",
+                            "close_or_pause",
+                            "formal_boundary",
+                        ],
+                    },
+                    "natural_next_move": {
+                        "type": "string",
+                        "enum": [
+                            "continue",
+                            "specific_acknowledgement",
+                            "self_disclose_then_follow_up",
+                            "accept_then_pivot",
+                            "clarify",
+                            "repair",
+                            "close",
+                        ],
+                    },
+                    "topic_anchor": {"type": "string"},
+                    "should_answer_player_question": {"type": "boolean"},
+                    "should_avoid_generic_ack": {"type": "boolean"},
+                    "confidence": {"type": "number"},
+                    "evidence": {"type": "string"},
+                    "reason": {"type": "string"},
                 },
             },
             "pragmatic_context": {

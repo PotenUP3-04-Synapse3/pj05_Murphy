@@ -792,6 +792,10 @@ class _EnglishLevelHintPolicyCore:
                 ]
             )
 
+        closure_metadata = self._completion_closure_metadata(payload, output)
+        closure_reason = closure_metadata.get("reason")
+        closure_style = closure_metadata.get("style")
+
         return DialogueSeed(
             scene=payload.scene_id,
             npc_role=self._npc_role(payload),
@@ -811,6 +815,9 @@ class _EnglishLevelHintPolicyCore:
                 else "required_slots_filled_or_retry_policy_triggered"
             ),
             cumulative_confidence=cumulative_confidence,
+            completion_closure_reason=closure_reason if isinstance(closure_reason, str) else None,
+            completion_closure_style=closure_style if isinstance(closure_style, str) else None,
+            completion_do_not_ask_new_question=bool(closure_metadata.get("do_not_ask_new_question", False)),
             suspicion_scope=suspicion_scope,
         )
 
@@ -823,6 +830,37 @@ class _EnglishLevelHintPolicyCore:
         if payload.current_node_id.startswith("BAG_"):
             return "baggage_service_agent"
         return "immigration_officer"
+
+    def _completion_closure_metadata(
+        self,
+        payload: DevBPolicyInput,
+        output: DevBPolicyOutput,
+    ) -> dict[str, str | bool]:
+        if output.branch.next_action != "COMPLETE_CHAPTER":
+            return {}
+        if payload.current_node_id.startswith("FLIGHT_"):
+            return {
+                "reason": "landing_soon_and_arrival_form",
+                "style": "warm_seatmate",
+                "do_not_ask_new_question": True,
+            }
+        if payload.current_node_id.startswith("IMM_"):
+            return {
+                "reason": "immigration_cleared_to_baggage_claim",
+                "style": "formal_officer",
+                "do_not_ask_new_question": True,
+            }
+        if payload.current_node_id.startswith("BAG_"):
+            return {
+                "reason": "baggage_case_resolved",
+                "style": "service_closing",
+                "do_not_ask_new_question": True,
+            }
+        return {
+            "reason": "scenario_complete",
+            "style": "neutral_closing",
+            "do_not_ask_new_question": True,
+        }
 
     def _opening_intent(self, payload: DevBPolicyInput) -> str:
         """
@@ -902,6 +940,18 @@ class _EnglishLevelHintPolicyCore:
                 length_target = 10
             else:
                 length_target = 12
+            conversation_act = getattr(payload.understanding, "conversation_act", None)
+            conversation_duty = str(getattr(conversation_act, "npc_social_duty", "") or "")
+            should_answer_player_question = bool(
+                getattr(conversation_act, "should_answer_player_question", False)
+            )
+            if conversation_duty == "answer_briefly_then_continue" or should_answer_player_question:
+                length_target = max(length_target, 12)
+            elif conversation_duty in {
+                "respond_to_disclosure_then_follow_up",
+                "accept_belated_answer_then_continue",
+            }:
+                length_target = max(length_target, 10)
 
             return DialogueDirective(
                 purpose="smalltalk_diagnostic",

@@ -778,3 +778,70 @@ def test_termination_bounded_by_turns_and_confidence(tmp_path: Path, monkeypatch
     decision2 = policy.decide_conversational(payload)
     assert decision2.next_node_id == "FLIGHT_999_COMPLETE"
     assert decision2.next_action == "COMPLETE_CHAPTER"
+
+
+def test_reciprocal_question_defers_completion_even_when_evidence_is_enough(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.app.services.service_b import flight_smalltalk_diagnostic_policy
+
+    monkeypatch.setattr(flight_smalltalk_diagnostic_policy, "MIN_TURNS", 3)
+    monkeypatch.setattr(flight_smalltalk_diagnostic_policy, "STEERING", 0.0)
+
+    runtime_root = tmp_path / "openkb" / "dev_b"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    jsonl_path = runtime_root / "session_dev_b_test.jsonl"
+    history_records = [
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "dialogue_seed": {"surface_goal": "TRAVEL_PURPOSE"},
+            "evaluation": {"verdict": "SUCCESS"},
+            "understanding": {"confidence": 0.9},
+        },
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "dialogue_seed": {"surface_goal": "STAY_PLAN"},
+            "evaluation": {"verdict": "SUCCESS"},
+            "understanding": {"confidence": 0.9},
+        },
+        {
+            "node_id": "FLIGHT_A_001_SEATMATE_SMALLTALK",
+            "dialogue_seed": {"surface_goal": "CLARIFY_OR_ASK_BACK"},
+            "evaluation": {"verdict": "SUCCESS"},
+            "understanding": {"confidence": 0.9},
+        },
+    ]
+    with jsonl_path.open("w", encoding="utf-8") as f:
+        for record in history_records:
+            f.write(json.dumps(record) + "\n")
+
+    context = _node_context("FLIGHT_A_001_SEATMATE_SMALLTALK")
+    payload = _policy_input(
+        node_context=context,
+        player_text="Yes, what about you?",
+        intent_success=True,
+        confidence=0.93,
+        extracted_slots={},
+        missing_slots=[],
+        conversation_act={
+            "player_act": "reciprocal_question",
+            "relation_to_previous": "asks_npc_same_question",
+            "npc_social_duty": "answer_briefly_then_continue",
+            "natural_next_move": "self_disclose_then_follow_up",
+            "topic_anchor": "travel",
+            "should_answer_player_question": True,
+            "should_avoid_generic_ack": True,
+            "confidence": 0.9,
+            "evidence": "what about you",
+            "reason": "The player asked the NPC to answer the same topic before closing.",
+        },
+    )
+
+    decision = FlightSmallTalkDiagnosticPolicy(runtime_root=runtime_root).decide_conversational(payload)
+
+    assert decision.next_node_id == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+    assert decision.next_action == "ADVANCE"
+    assert decision.branch_reason == "flight_smalltalk_answer_social_duty_before_complete"
+    assert decision.cumulative_confidence is not None
+    assert decision.cumulative_confidence >= 0.7
