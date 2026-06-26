@@ -6193,3 +6193,64 @@ Fresh verification at the time of the sprint-specific fix:
 - Full `uv run pytest -q` was not rerun because the required escalated command
   was rejected by the Codex usage limit.
 
+## 2026-06-26 Developer A / C - BAG_001 Service Desk Naturalness
+
+Developer C investigated a live baggage service desk run where the player only
+greeted Brielle or said they were just there to say hello. C and B correctly
+kept the turn on `BAG_001_REPORT_MISSING_AT_DESK` with target slot
+`missing_bag_statement`, but A's final line jumped to the next-step claim-tag
+question:
+
+- `Do you have your baggage claim tag or ticket?`
+
+Root cause:
+
+- Developer A's `SURFACE_GOAL_QUESTIONS` mapped
+  `report_missing_bag_at_service_desk` to the BAG_002 claim-tag question.
+- In non-ADVANCE retry/clarify turns, A's safeguard reused that stale
+  surface-goal question, so even an LLM response that should have repaired the
+  current service obligation could be rewritten to the wrong next step.
+- The LLM prompt also did not explicitly distinguish BAG_001 problem intake
+  from BAG_002 claim-tag collection.
+
+Changed files:
+
+- `backend/app/services/service_a/dialogue_policy_service.py`
+- `backend/app/agents/agent_a/npc_llm_client.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `docs/sprints/2026-06-26-baggage-service-desk-naturalness-sprint.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- `report_missing_bag_at_service_desk` now asks `What happened with your bag?`
+  when A must synthesize a fallback/current-slot question.
+- A's runtime LLM instructions now explain that BAG_001 should ask for the
+  baggage problem first, and must not ask for a claim tag, baggage ticket, or
+  boarding pass until `surface_goal=ask_claim_tag_or_ticket`.
+- The LLM path remains alive: if the LLM gives a usable reaction but jumps to
+  the claim-tag question, A's non-ADVANCE surface-goal alignment keeps the
+  final question on the current BAG_001 problem statement.
+
+Verification:
+
+- RED:
+  `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_desk_fallback_dialogue backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_desk_rejects_claim_tag_question_before_problem_report -q`
+  failed: 2 failed.
+- GREEN:
+  same command passed: 2 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py -q`
+  passed: 71 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_orchestrator_advances_baggage_report_to_claim_tag_node backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata -q`
+  passed: 2 passed, 1 warning (`audioop` deprecation).
+
+## 2026-06-26 Latest Pointer - BAG_001 Service Desk Naturalness
+
+The latest completed sprint is the BAG_001 service desk naturalness fix. See
+`docs/sprints/2026-06-26-baggage-service-desk-naturalness-sprint.md`.
+
+Key result: Brielle should no longer ask for a baggage claim tag before the
+player has reported the baggage problem. Greeting-only or off-topic turns stay
+on the current problem-intake obligation, while the LLM response path remains
+available for natural wording.
+

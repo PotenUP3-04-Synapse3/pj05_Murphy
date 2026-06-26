@@ -574,6 +574,15 @@ def test_baggage_service_desk_fallback_dialogue() -> None:
     assert result_start["speaker"] == "Brielle"
     assert result_start["npc_text"] == "Hi, how can I help you today?"
 
+    retry_text = synthesize_fallback_next_question(
+        "I can help, but I need to know the baggage problem.",
+        "report_missing_bag_at_service_desk",
+        branch_type="clarify",
+    )
+    assert "claim tag" not in retry_text.lower()
+    assert "ticket" not in retry_text.lower()
+    assert "what happened" in retry_text.lower()
+
     # Baggage 4번째 노드(redirect_to_customs_hold_area) 폴백 검증 (재지시 멘트 포함)
     result_end = generate_npc_dialogue_from_level_design(
         {
@@ -595,6 +604,54 @@ def test_baggage_service_desk_fallback_dialogue() -> None:
     )
     assert result_end["speaker"] == "Brielle"
     assert result_end["npc_text"] == "I'm sorry, but we don't have it here. It seems your bag is held in the customs area. You must go there."
+
+
+def test_baggage_service_desk_rejects_claim_tag_question_before_problem_report() -> None:
+    class PrematureClaimTagLLMClient:
+        model = "fake-premature-claim-tag-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "npc_text": "Pardon me. Do you have your baggage claim tag or ticket?",
+                "tts_text": "Pardon me. Do you have your baggage claim tag or ticket?",
+                "feedback_kr": "먼저 수하물 문제를 말해야 합니다.",
+                "tone": "formal_firm",
+                "animation": "confusion",
+                "npc_emotion": "Confusion",
+                "llm_reason": "Prematurely asks for the next step instead of the current bag problem.",
+                "__llm_usage": {"input_tokens": 10, "output_tokens": 10, "total_tokens": 20},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "BAGGAGE_STAFF", "npc_role": "baggage_agent"},
+            "node_id": "BAG_001_REPORT_MISSING_AT_DESK",
+            "player_text": "I just wanted to say hello. What's your problem?",
+            "node_context": {
+                "npc_question": "Hi. How can I help you?",
+                "recommended_expression": "My suitcase didn't come out at the carousel.",
+                "required_slots": ["missing_bag_statement"],
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.2},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {"branch_type": "clarify"},
+            "dialogue_directive": {
+                "purpose": "support_retry",
+                "target_slot": "missing_bag_statement",
+            },
+            "dialogue_seed": {
+                "surface_goal": "report_missing_bag_at_service_desk",
+            },
+        },
+        use_llm=True,
+        llm_client=PrematureClaimTagLLMClient(),
+    )
+
+    assert result["llm"]["used"] is True
+    assert "claim tag" not in result["npc_text"].lower()
+    assert "ticket" not in result["npc_text"].lower()
+    assert "what happened" in result["npc_text"].lower()
 
 
 def test_baggage_customs_random_item_fallback_dialogue() -> None:
