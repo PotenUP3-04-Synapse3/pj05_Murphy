@@ -115,8 +115,8 @@ def _understanding() -> UnderstandingOutput:
 def _final_result(score: int = 87) -> dict[str, Any]:
     return {
         "final_recommendation": "PASS",
-        "rank": "Silver Pass",
-        "tier": "Silver",
+        "rank": "Diamond",
+        "tier": "Diamond",
         "final_score_100": score,
         "reason_tags": ["score_at_least_80"],
         "quantitative_scores": {
