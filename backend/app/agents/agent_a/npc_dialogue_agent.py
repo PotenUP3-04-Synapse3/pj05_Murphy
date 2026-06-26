@@ -385,15 +385,42 @@ def _has_work_authorization_generic_reask(
     if not _is_work_authorization_clarification_branch(normalized):
         return False
     combined = _normalize_for_echo_match(f"{npc_text} {tts_text}")
+    if not _has_work_authorization_specificity(combined):
+        return True
+
     generic_reask_markers = (
         "what brings you",
         "purpose of your visit",
         "what is your purpose",
         "why are you here",
+        "why you are here",
+        "why you re here",
+        "tell me why you are here",
+        "tell me why you re here",
         "why did you come",
         "what brings you to the united states",
     )
     return any(marker in combined for marker in generic_reask_markers)
+
+
+def _has_work_authorization_specificity(normalized_text: str) -> bool:
+    specific_markers = (
+        "visa",
+        "authorization",
+        "authorisation",
+        "work permit",
+        "employer",
+        "employee",
+        "employment",
+        "job here",
+        "work for",
+        "business meeting",
+        "business meetings",
+        "business travel",
+        "short business",
+        "conference",
+    )
+    return any(marker in normalized_text for marker in specific_markers)
 
 
 _IMMIGRATION_SURFACE_GOAL_CHECKS = {

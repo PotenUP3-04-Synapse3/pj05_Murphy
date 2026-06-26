@@ -50,6 +50,10 @@ carry that judgment through their normal contracts.
 
 - Extended A dialogue validation so LLM outputs that re-ask generic visit
   purpose are rejected on work-authorization clarification branches.
+- Follow-up live run showed the phrase `Could you tell me why you're here`
+  still passed as too-vague LLM dialogue. A now rejects work-authorization
+  clarification output unless it contains concrete visa/authorization/employer
+  or business-meeting specificity.
 - Added fallback wording that asks the real procedural follow-up:
   whether the player means business meetings/short business travel or work for
   an employer, and whether a work visa or authorization can be verified.
@@ -62,6 +66,12 @@ carry that judgment through their normal contracts.
 - `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary -q`
   - RED first: 5 failed for over-escalation / generic purpose re-ask.
   - GREEN after correction: 5 passed.
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask -q`
+  - RED first: 1 failed because `Could you tell me why you're here` was
+    accepted as valid LLM dialogue.
+  - GREEN after A specificity guard: 1 passed.
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification -q`
+  - GREEN: 6 passed.
 - `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
   - GREEN: 273 passed, 1 warning (`audioop` deprecation).
 - `uv run pytest -q`

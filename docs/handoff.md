@@ -5901,6 +5901,14 @@ Behavior added/changed:
   The fallback asks whether the player means business meetings/short business
   travel or actual employment, and asks to verify a work visa or authorization
   if they will work here.
+- Follow-up live run showed C and B were correct for
+  `I'm here to work as a software engineer.` (`risk_delta = 12`,
+  `pragmatic_player_move = visa_work_mismatch`,
+  `branch_reason = visa_work_authorization_clarification`), but A accepted the
+  vague LLM line `Could you tell me why you're here`. A now rejects
+  work-authorization clarification dialogue unless it contains concrete
+  visa/authorization/employer/business-meeting specificity, then falls back to
+  the visa/work authorization clarification text.
 
 Verification:
 
@@ -5908,6 +5916,13 @@ Verification:
   - RED before correction: 5 failed.
   - GREEN after correction: 5 passed, 1 warning (`audioop`
     deprecation).
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask -q`
+  - RED before A specificity guard: 1 failed because the vague LLM line was
+    accepted.
+  - GREEN after A specificity guard: 1 passed, 1 warning (`audioop`
+    deprecation).
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification -q`
+  passed: 6 passed, 1 warning (`audioop` deprecation).
 - `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
   passed: 273 passed, 1 warning (`audioop` deprecation).
 - `uv run pytest -q`

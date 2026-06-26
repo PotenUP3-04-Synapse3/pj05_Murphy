@@ -1356,6 +1356,73 @@ def test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpos
     assert "secondary inspection" not in text
 
 
+def test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask() -> None:
+    class VagueWhyHereLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Officer Hale",
+                "npc_text": "Could you tell me why you're here",
+                "tts_text": "Could you tell me why you're here",
+                "feedback_kr": "Work-purpose claims require visa handling.",
+                "tone": "formal_firm",
+                "animation": "confusion",
+                "npc_emotion": "suspicion",
+                "llm_reason": "[COHERENT] Test model gave a vague purpose clarification.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_002_PURPOSE",
+            "player_text": "I'm here to work as a software engineer.",
+            "node_context": {"recommended_expression": "I'm here for tourism."},
+            "understanding": {
+                "risk_tags": ["visa_work_authorization_unclear"],
+                "risk_delta": 12,
+                "pragmatic_context": {
+                    "player_move": "visa_work_mismatch",
+                    "target": "officer",
+                    "risk_level": "medium",
+                    "procedural_posture": "clarify",
+                    "recommended_b_move": "clarify",
+                    "recommended_a_move": "repair",
+                },
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.97},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "next_node_id": "IMM_EXTRA_001_CLARIFY_PURPOSE",
+                "branch_reason": "visa_work_authorization_clarification",
+            },
+            "dialogue_directive": {
+                "purpose": "support_retry",
+                "target_slot": "visit_purpose",
+            },
+            "dialogue_seed": {
+                "surface_goal": "ask_visit_purpose",
+                "required_slots": ["visit_purpose"],
+            },
+        },
+        use_llm=True,
+        llm_client=VagueWhyHereLLMClient(),
+    )
+
+    text = result["npc_text"].lower()
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "work_authorization_reask_violation"
+    assert "why you're here" not in text
+    assert "why you are here" not in text
+    assert "work" in text
+    assert "visa" in text or "authorization" in text
+    assert "secondary inspection" not in text
+
+
 def test_immigration_non_advance_override_does_not_add_open_hook_prefix() -> None:
     class NeutralRetryLLMClient:
         model = "fake-model"
