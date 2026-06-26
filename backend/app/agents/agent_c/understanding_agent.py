@@ -27,6 +27,7 @@ from backend.app.schemas.game_turn import (
     ConversationActCard,
     NodeContext,
     PragmaticContextCard,
+    RiskEvidence,
     SlotEvidence,
     SocialContextCard,
     UnderstandingOutput,
@@ -316,6 +317,11 @@ class UnderstandingAgent:
                 player_text,
                 node_context,
             )
+            output, work_authorization_postprocessing = _repair_work_authorization_confirmation(
+                output,
+                player_text,
+                node_context,
+            )
             # If any required slot is open, align intent_success with intent_satisfied
             has_open_required = any(get_slot_policy(slot) == "open" for slot in node_context.required_slots)
             if has_open_required:
@@ -337,6 +343,7 @@ class UnderstandingAgent:
                 slot_evidence_postprocessing,
                 slot_repair_postprocessing,
                 passport_refusal_postprocessing,
+                work_authorization_postprocessing,
                 pragmatic_postprocessing,
             )
             self.last_trace = _build_llm_trace(
@@ -573,6 +580,135 @@ def _reject_forbidden_llm_keys(result: dict[str, object]) -> None:
     if forbidden_keys:
         joined_keys = ", ".join(sorted(forbidden_keys))
         raise UnderstandingLLMUnavailable(f"Understanding LLM returned forbidden keys: {joined_keys}")
+
+
+def _repair_work_authorization_confirmation(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> tuple[UnderstandingOutput, dict[str, Any]]:
+    """Close a work-purpose clarification when the player confirms authorization."""
+
+    no_repair: dict[str, Any] = {}
+    if "visit_purpose" not in node_context.required_slots:
+        return output, no_repair
+    if not _looks_like_work_authorization_confirmation(player_text):
+        return output, no_repair
+
+    extracted_slots = {
+        key: value
+        for key, value in output.extracted_slots.items()
+        if key not in {"illegal_work_intent", "unclear_purpose"}
+    }
+    extracted_slots["visit_purpose"] = "work"
+    extracted_slots["work_authorization_status"] = "confirmed"
+    risk_tags = _unique_non_empty(
+        [
+            tag
+            for tag in output.risk_tags
+            if tag not in {"visa_work_mismatch", "visa_work_authorization_unclear", "illegal_work_intent"}
+        ]
+    )
+    missing_slots = [slot for slot in output.missing_slots if slot != "visit_purpose"]
+    evidence = SlotEvidence(
+        slot="work_authorization_status",
+        value="confirmed",
+        confidence=0.93,
+        evidence_text=_work_authorization_evidence_text(player_text),
+    )
+    pragmatic_context = PragmaticContextCard(
+        player_move="meaningful_answer",
+        risk_level="none",
+        procedural_posture="continue",
+        recommended_b_move="continue",
+        recommended_a_move="continue",
+        confidence=0.93,
+        evidence=evidence.evidence_text,
+        reason="The player stated a work purpose and confirmed work authorization.",
+    )
+    repaired = output.model_copy(
+        update={
+            "intent": "state_visit_purpose",
+            "intent_success": True,
+            "intent_satisfied": True,
+            "satisfied": True,
+            "confidence": max(output.confidence, 0.93),
+            "meaning_summary_kr": "The player said they are here to work and confirmed a work visa or authorization.",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "none",
+            "risk_delta": 0,
+            "risk_reason": "The player confirmed work authorization.",
+            "risk_tags": risk_tags,
+            "risk_evidence": RiskEvidence(tags=risk_tags, delta=0),
+            "slot_evidence": [*output.slot_evidence, evidence],
+            "extracted_slots": extracted_slots,
+            "missing_slots": missing_slots,
+            "needs_clarification": False,
+            "branch_hint": "success",
+            "judgment_reason": "The work-purpose authorization clarification has been answered.",
+            "pragmatic_context": pragmatic_context,
+        }
+    )
+    return repaired, {
+        "work_authorization_confirmation_repair_applied": True,
+        "work_authorization_confirmation_source": "semantic_repair",
+        "work_authorization_confirmation_evidence": evidence.evidence_text,
+    }
+
+
+def _looks_like_work_authorization_confirmation(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    if not normalized:
+        return False
+
+    negative_markers = (
+        "without authorization",
+        "without authorisation",
+        "without a visa",
+        "without work authorization",
+        "without work authorisation",
+        "no work visa",
+        "do not have a work visa",
+        "don't have a work visa",
+        "dont have a work visa",
+        "no work permit",
+        "do not have work authorization",
+        "don't have work authorization",
+        "dont have work authorization",
+        "illegal job",
+        "illegal work",
+        "hide employment",
+        "tourist visa",
+    )
+    if any(marker in normalized for marker in negative_markers):
+        return False
+
+    positive_markers = (
+        "work visa",
+        "working visa",
+        "valid work visa",
+        "visa to work",
+        "visa for work",
+        "visa allows me to work",
+        "visa lets me work",
+        "work permit",
+        "employment authorization",
+        "employment authorisation",
+        "work authorization",
+        "work authorisation",
+        "authorized to work",
+        "authorised to work",
+        "authorization to work",
+        "authorisation to work",
+    )
+    return any(marker in normalized for marker in positive_markers)
+
+
+def _work_authorization_evidence_text(player_text: str) -> str:
+    stripped = player_text.strip()
+    if len(stripped) <= 160:
+        return stripped
+    return stripped[:157] + "..."
 
 
 def _attach_incivility_classification(

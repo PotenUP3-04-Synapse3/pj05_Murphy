@@ -65,8 +65,46 @@ carry that judgment through their normal contracts.
   avoid generic purpose re-asks, avoid "work issue", and avoid secondary
   inspection unless the card is truly high/critical risk.
 
+## Sprint E - Close The Work-Visa Clarification
+
+- Reproduced the follow-up loop where the player answered
+  `I said, I'm here to work. Check my visa. I have a work visa.` but C still
+  preserved the LLM's `visa_work_mismatch` card, so B kept routing back to
+  `IMM_EXTRA_001_CLARIFY_PURPOSE`.
+- Added a C semantic repair for explicit work authorization confirmations:
+  work visa, work permit, employment authorization, or authorized-to-work
+  language now closes the clarification as `visit_purpose=work` plus
+  `work_authorization_status=confirmed`.
+- Kept `I'm here to work.` as a clarification case. The repair is only for a
+  direct authorization confirmation, so ambiguous work is not silently accepted
+  and explicit no-authorization / illegal-work language still remains eligible
+  for risk handling.
+- Updated Understanding LLM instructions and the documented prompt so the LLM
+  should produce the same outcome before C's repair has to intervene.
+- Added an orchestrator regression proving the whole response advances to
+  `IMM_003_DURATION` instead of repeating a purpose question.
+
 ## Verification
 
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_mode_closes_work_authorization_when_work_visa_is_confirmed -q`
+  - RED first: 1 failed because C kept `intent_success=false`,
+    `visa_work_authorization_unclear`, and the `visa_work_mismatch` card.
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_orchestrator_advances_work_purpose_after_work_visa_confirmation -q`
+  - RED first: 1 failed because the integrated response was still `REASK`.
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_mode_closes_work_authorization_when_work_visa_is_confirmed backend/tests/test_preprototype_flow.py::test_orchestrator_advances_work_purpose_after_work_visa_confirmation -q`
+  - GREEN after correction: 2 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification backend/tests/dev_b/test_developer_b_policy_engine.py::test_repeated_work_authorization_clarification_does_not_escalate_to_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary -q`
+  - GREEN: 7 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
+  - GREEN: 277 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest -q`
+  - GREEN: 555 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`
+  - GREEN: all checks passed.
+- `uv run mypy .`
+  - GREEN: no issues found in 149 source files.
+- `git diff --check`
+  - GREEN: no whitespace errors; Git printed Windows LF-to-CRLF conversion warnings only.
 - `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary -q`
   - RED first: 5 failed for over-escalation / generic purpose re-ask.
   - GREEN after correction: 5 passed.

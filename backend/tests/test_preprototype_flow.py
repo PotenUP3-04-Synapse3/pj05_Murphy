@@ -53,6 +53,56 @@ class MissingVisitPurposeLLMClient:
         }
 
 
+class WorkVisaConfirmationLLMClient:
+    model = "fake-understanding-model"
+
+    def analyze(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "intent": "state_visit_purpose",
+            "intent_success": False,
+            "confidence": 0.86,
+            "meaning_summary_kr": "The player says they are here to work and mentions a work visa.",
+            "emotion": "calm",
+            "answer_relevance": "partially_related",
+            "ambiguity_type": "visa_work_mismatch",
+            "risk_delta": 12,
+            "risk_reason": "The model still asks for work authorization clarification.",
+            "risk_tags": ["visa_work_authorization_unclear"],
+            "slot_evidence": [
+                {
+                    "slot": "visit_purpose",
+                    "value": "business",
+                    "confidence": 0.81,
+                    "evidence_text": "I'm here to work",
+                },
+                {
+                    "slot": "illegal_work_intent",
+                    "value": "false",
+                    "confidence": 0.86,
+                    "evidence_text": "I have a work visa",
+                },
+            ],
+            "extracted_slots": {"visit_purpose": "business", "illegal_work_intent": "false"},
+            "missing_slots": [],
+            "needs_clarification": True,
+            "intent_satisfied": False,
+            "judgment_reason": "The statement may still need visa clarification.",
+            "pragmatic_context": {
+                "player_move": "visa_work_mismatch",
+                "target": "officer",
+                "threat_directness": "none",
+                "risk_level": "medium",
+                "procedural_posture": "clarify",
+                "recommended_b_move": "clarify",
+                "recommended_a_move": "repair",
+                "confidence": 0.86,
+                "evidence": "I have a work visa.",
+                "reason": "The model did not close the work authorization check.",
+            },
+            "__llm_usage": {"input_tokens": 600, "output_tokens": 180, "total_tokens": 780},
+        }
+
+
 class StaticUnderstandingAgent(UnderstandingAgent):
     def __init__(self, output: UnderstandingOutput) -> None:
         self.output = output
@@ -2269,6 +2319,25 @@ def test_orchestrator_routes_work_purpose_to_authorization_clarification_not_sec
     assert "work" in response.npc.text.lower()
     assert "visa" in response.npc.text.lower() or "authorization" in response.npc.text.lower()
     assert "secondary inspection" not in response.npc.text.lower()
+
+
+def test_orchestrator_advances_work_purpose_after_work_visa_confirmation() -> None:
+    request = _preprototype_request("I said, I'm here to work. Check my visa. I have a work visa.")
+    orchestrator = Orchestrator()
+    orchestrator.understanding_agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=WorkVisaConfirmationLLMClient(),
+    )
+
+    response = orchestrator.run_turn(request)
+
+    assert response.next_action == "ADVANCE"
+    assert response.next_node_id == "IMM_003_DURATION"
+    assert response.evaluation.verdict == "SUCCESS"
+    assert "purpose of your visit" not in response.npc.text.lower()
+    assert "what brings you" not in response.npc.text.lower()
+    assert "how long" in response.npc.text.lower() or "stay" in response.npc.text.lower()
+    assert response.debug.understanding_confidence >= 0.86
 
 
 def test_dev_a_adapter_reports_speaker_mismatch_diagnostic() -> None:

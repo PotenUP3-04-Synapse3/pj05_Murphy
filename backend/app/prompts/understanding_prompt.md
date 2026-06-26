@@ -88,6 +88,16 @@ If the utterance only creates a visa/work-authorization question, such as
 Keep `risk_delta` below 20 and use a tag such as
 `visa_work_authorization_unclear`.
 
+If the player explicitly confirms they have a work visa, work permit, or
+authorization to work, close the clarification instead of repeating the purpose
+question. Set `intent_success = true`, `intent_satisfied = true`,
+`needs_clarification = false`, `answer_relevance = "on_topic"`,
+`extracted_slots.visit_purpose = "work"`, and
+`extracted_slots.work_authorization_status = "confirmed"`. Keep
+`risk_delta = 0` and set
+`pragmatic_context.player_move = "meaningful_answer"` with
+`recommended_b_move = "continue"`.
+
 If the player explicitly says they will work without authorization, take an
 illegal job, hide employment, or earn money in a way that violates visa status,
 then raise `risk_level` to high or critical, recommend warning or

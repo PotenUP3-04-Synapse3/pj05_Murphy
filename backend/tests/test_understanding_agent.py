@@ -918,6 +918,76 @@ def test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization() -
     assert agent.last_trace["postprocessing"]["pragmatic_context_source"] == "llm"
 
 
+def test_understanding_agent_llm_mode_closes_work_authorization_when_work_visa_is_confirmed() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_visit_purpose",
+            "intent_success": False,
+            "confidence": 0.86,
+            "meaning_summary_kr": "The player says they are here to work and mentions a work visa.",
+            "emotion": "calm",
+            "answer_relevance": "partially_related",
+            "ambiguity_type": "visa_work_mismatch",
+            "risk_delta": 12,
+            "risk_reason": "The model still asks for work authorization clarification.",
+            "risk_tags": ["visa_work_authorization_unclear"],
+            "slot_evidence": [
+                {
+                    "slot": "visit_purpose",
+                    "value": "business",
+                    "confidence": 0.81,
+                    "evidence_text": "I'm here to work",
+                },
+                {
+                    "slot": "illegal_work_intent",
+                    "value": "false",
+                    "confidence": 0.86,
+                    "evidence_text": "I have a work visa",
+                },
+            ],
+            "extracted_slots": {"visit_purpose": "business", "illegal_work_intent": "false"},
+            "missing_slots": [],
+            "needs_clarification": True,
+            "intent_satisfied": False,
+            "judgment_reason": "The statement may still need visa clarification.",
+            "pragmatic_context": {
+                "player_move": "visa_work_mismatch",
+                "target": "officer",
+                "threat_directness": "none",
+                "risk_level": "medium",
+                "procedural_posture": "clarify",
+                "recommended_b_move": "clarify",
+                "recommended_a_move": "repair",
+                "confidence": 0.86,
+                "evidence": "I have a work visa.",
+                "reason": "The model did not close the work authorization check.",
+            },
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text(
+        "I said, I'm here to work. Check my visa. I have a work visa.",
+        _purpose_node_context(),
+    )
+
+    assert output.intent_success is True
+    assert output.intent_satisfied is True
+    assert output.answer_relevance == "on_topic"
+    assert output.extracted_slots["visit_purpose"] == "work"
+    assert output.extracted_slots["work_authorization_status"] == "confirmed"
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
+    assert output.risk_delta == 0
+    assert "visa_work_authorization_unclear" not in output.risk_tags
+    assert output.pragmatic_context.player_move == "meaningful_answer"
+    assert output.pragmatic_context.recommended_b_move == "continue"
+    assert agent.last_trace["postprocessing"]["work_authorization_confirmation_repair_applied"] is True
+
+
 def test_understanding_agent_llm_mode_repairs_first_visit_prior_visit_phrase() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {

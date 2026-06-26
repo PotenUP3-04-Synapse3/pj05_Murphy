@@ -5967,3 +5967,67 @@ Next recommended step:
   authorization clarification first; explicit illegal/no-authorization work can
   escalate; meetings or conferences can remain ordinary `business`.
 
+## 2026-06-26 Developer C - Work-Visa Confirmation Closes Immigration Purpose Clarification
+
+Developer C investigated the follow-up `/respond-dialog` run where the player
+answered `I said, I'm here to work. Check my visa. I have a work visa.` after
+the work-purpose clarification, but the system still repeated generic purpose
+questions. Root cause: the earlier sprint opened the ambiguous-work
+authorization clarification correctly, but C did not have a corresponding
+semantic close-out path for explicit work visa / authorization confirmations.
+When the LLM kept returning `pragmatic_context.player_move =
+visa_work_mismatch`, B correctly preserved that card and stayed in
+`IMM_EXTRA_001_CLARIFY_PURPOSE`.
+
+Changed files:
+
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/prompts/understanding_prompt.md`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/sprints/2026-06-26-immigration-work-purpose-pragmatics-sprint.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- C now repairs explicit work authorization confirmations in LLM mode. Phrases
+  such as `work visa`, `work permit`, `work authorization`, `employment
+  authorization`, or `authorized to work` close the clarification as
+  `intent_success=true`, `visit_purpose=work`, and
+  `work_authorization_status=confirmed`.
+- The repair clears the stale medium-risk work-authorization clarification card:
+  `risk_delta=0`, no `visa_work_authorization_unclear` tag, and
+  `pragmatic_context.player_move=meaningful_answer`.
+- Ambiguous `I'm here to work.` remains a clarification case. Explicit
+  no-authorization / illegal-work language is not repaired into success.
+- Understanding LLM instructions and the documented prompt now tell the model
+  to close the clarification when the player confirms a work visa, permit, or
+  authorization.
+- Integrated coverage now proves the response advances to `IMM_003_DURATION`
+  instead of asking `What is the purpose of your visit?` or `What brings you to
+  the United States?`.
+
+Verification:
+
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_mode_closes_work_authorization_when_work_visa_is_confirmed -q`
+  - RED before correction: 1 failed because C kept the LLM's
+    `visa_work_mismatch` clarification card.
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_orchestrator_advances_work_purpose_after_work_visa_confirmation -q`
+  - RED before correction: 1 failed because the integrated response stayed
+    `REASK`.
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_mode_closes_work_authorization_when_work_visa_is_confirmed backend/tests/test_preprototype_flow.py::test_orchestrator_advances_work_purpose_after_work_visa_confirmation -q`
+  passed: 2 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification backend/tests/dev_b/test_developer_b_policy_engine.py::test_repeated_work_authorization_clarification_does_not_escalate_to_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary -q`
+  passed: 7 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
+  passed: 277 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest -q`
+  passed: 555 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`
+  passed.
+- `uv run mypy .`
+  passed: no issues found in 149 source files.
+- `git diff --check`
+  passed with Windows LF-to-CRLF conversion warnings only.
+
