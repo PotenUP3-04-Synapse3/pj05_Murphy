@@ -6,6 +6,11 @@ import math
 from pathlib import Path
 from typing import Any, Literal, TypeAlias
 
+from backend.app.agents.agent_b.final_summary_llm_client import (
+    FinalSummaryLLMClient,
+    FinalSummaryLLMUnavailable,
+    OpenAIFinalSummaryLLMClient,
+)
 from backend.app.schemas.game_turn import (
     FinalReportSummary,
     FinalResult,
@@ -37,6 +42,12 @@ FinalRecommendation: TypeAlias = Literal[
     "UNRANKED",
 ]
 FinalRank: TypeAlias = Literal[
+    "Challenger",
+    "GrandMaster",
+    "Master",
+    "Diamond",
+    "Emerald",
+    "Platinum",
     "Gold Pass",
     "Silver Pass",
     "Bronze Pass",
@@ -44,10 +55,28 @@ FinalRank: TypeAlias = Literal[
     "Comic Fail",
     "Unranked",
 ]
-FinalTier: TypeAlias = Literal["Gold", "Silver", "Bronze", "Iron"]
-# rank(UI 표시 문구) -> tier(게임 로직용 4단계) 매핑.
-# 합격 3단계만 Gold/Silver/Bronze로 두고, 비합격(반려/코믹실패/무순위)은 전부 Iron으로 모읍니다.
+FinalTier: TypeAlias = Literal[
+    "Challenger",
+    "GrandMaster",
+    "Master",
+    "Diamond",
+    "Emerald",
+    "Platinum",
+    "Gold",
+    "Silver",
+    "Bronze",
+    "Iron",
+]
+# rank -> tier 매핑 (10구간)
+# 상위 5구간(Challenger~Platinum)은 rank == tier, 하위는 " Pass" 접미사 제거.
+# 비합격(Secondary Review / Comic Fail / Unranked) → Iron.
 _RANK_TO_TIER: dict[str, FinalTier] = {
+    "Challenger": "Challenger",
+    "GrandMaster": "GrandMaster",
+    "Master": "Master",
+    "Diamond": "Diamond",
+    "Emerald": "Emerald",
+    "Platinum": "Platinum",
     "Gold Pass": "Gold",
     "Silver Pass": "Silver",
     "Bronze Pass": "Bronze",
@@ -116,6 +145,8 @@ class FinalResultScorePolicy:
         records: list[dict[str, Any]],
         *,
         final_state: FinalScoreState | None = None,
+        llm_client: FinalSummaryLLMClient | None = None,
+        generate_llm_summary: bool = False,
     ) -> FinalResult:
         """
         세션의 대화 레코드들을 바탕으로 종합적인 성적표(FinalResult)를 생성합니다.
@@ -143,6 +174,38 @@ class FinalResultScorePolicy:
             reason_tags.append("focus_on_form_recorded")
 
         rank = self._rank(recommendation, final_score)
+        report_summary = self._report_summary(
+            included_records,
+            per_turn_scores,
+            recommendation,
+            focus_targets,
+        )
+
+        # LLM 총평 생성 (터미널 노드 도달 시에만 / 실패 시 템플릿 폴백)
+        client = llm_client
+        if client is None and generate_llm_summary:
+            try:
+                client = OpenAIFinalSummaryLLMClient.from_environment()
+            except FinalSummaryLLMUnavailable:
+                client = None
+        if client is not None:
+            try:
+                llm_summary = self._llm_overall_summary(
+                    client=client,
+                    records=included_records,
+                    quantitative_scores=quantitative_scores,
+                    recommendation=recommendation,
+                    rank=rank,
+                    reason_tags=_unique(reason_tags),
+                    focus_targets=focus_targets,
+                    best_node=report_summary.best_node,
+                    weakest_node=report_summary.weakest_node,
+                    main_improvement=report_summary.main_improvement,
+                )
+                report_summary = report_summary.model_copy(update={"overall": llm_summary})
+            except Exception as exc:
+                logger.warning("LLM 총평 생성 실패, 템플릿 폴백: %s", exc)
+
         return FinalResult(
             final_recommendation=recommendation,
             rank=rank,
@@ -150,12 +213,7 @@ class FinalResultScorePolicy:
             final_score_100=final_score,
             reason_tags=_unique(reason_tags),
             quantitative_scores=quantitative_scores,
-            report_summary=self._report_summary(
-                included_records,
-                per_turn_scores,
-                recommendation,
-                focus_targets,
-            ),
+            report_summary=report_summary,
         )
 
     def _scored_records(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -294,7 +352,23 @@ class FinalResultScorePolicy:
 
     def _rank(self, final_recommendation: FinalRecommendation, final_score: int) -> FinalRank:
         """
-        최종 합격 추천 결과와 점수를 기반으로 시각적인 골드/실버/브론즈 패스 등급 명칭을 정해 반환합니다.
+        최종 합격 추천 결과와 점수를 기반으로 10구간 등급 명칭을 반환합니다.
+
+        점수 구간 (PASS/CONDITIONAL_PASS 계열):
+          97~100 → Challenger
+          94~96  → GrandMaster
+          90~93  → Master
+          85~89  → Diamond
+          80~84  → Emerald
+          75~79  → Platinum
+          65~74  → Gold Pass
+          55~64  → Silver Pass  (CONDITIONAL_PASS)
+          40~54  → Bronze Pass  (CONDITIONAL_PASS 하단)
+          0~39   → Comic Fail
+        비합격 판정은 점수에 무관하게 고정:
+          SECONDARY_ROOM → Secondary Review
+          COMIC_FAIL     → Comic Fail
+          UNRANKED       → Unranked
         """
         if final_recommendation == "UNRANKED":
             return "Unranked"
@@ -302,14 +376,24 @@ class FinalResultScorePolicy:
             return "Comic Fail"
         if final_recommendation == "SECONDARY_ROOM":
             return "Secondary Review"
+        if final_score >= 97:
+            return "Challenger"
+        if final_score >= 94:
+            return "GrandMaster"
         if final_score >= 90:
-            return "Gold Pass"
+            return "Master"
+        if final_score >= 85:
+            return "Diamond"
+        if final_score >= 80:
+            return "Emerald"
         if final_score >= 75:
+            return "Platinum"
+        if final_score >= 65:
+            return "Gold Pass"
+        if final_score >= 55:
             return "Silver Pass"
-        if final_score >= 60:
-            return "Bronze Pass"
         if final_score >= 40:
-            return "Secondary Review"
+            return "Bronze Pass"
         return "Comic Fail"
 
     def _report_summary(
@@ -334,6 +418,45 @@ class FinalResultScorePolicy:
             focus_on_form_targets=focus_targets,
             included_node_count=len(included_records),
         )
+
+    def _llm_overall_summary(
+        self,
+        *,
+        client: FinalSummaryLLMClient,
+        records: list[dict[str, Any]],
+        quantitative_scores: QuantitativeScores,
+        recommendation: FinalRecommendation,
+        rank: str,
+        reason_tags: list[str],
+        focus_targets: list[str],
+        best_node: str | None,
+        weakest_node: str | None,
+        main_improvement: str,
+    ) -> str:
+        scenes_covered = _unique([self._scene_key(r) for r in records if self._scene_key(r) != "optional"])
+        dimension_scores = {
+            "comprehension": quantitative_scores.comprehension,
+            "fluency": quantitative_scores.fluency,
+            "grammar_accuracy": quantitative_scores.grammar_accuracy,
+            "vocabulary_range": quantitative_scores.vocabulary_range,
+            "clarity": quantitative_scores.clarity,
+            "interaction_problem_solving": quantitative_scores.interaction_problem_solving,
+        }
+        weakest_dimension = min(dimension_scores, key=lambda k: dimension_scores[k])
+        payload = {
+            "overall_score": quantitative_scores.overall,
+            "recommendation": recommendation,
+            "rank": rank,
+            "reason_tags": reason_tags,
+            "scenes_covered": scenes_covered,
+            "dimension_scores": dimension_scores,
+            "weakest_dimension": weakest_dimension,
+            "best_node": best_node,
+            "weakest_node": weakest_node,
+            "focus_targets": focus_targets,
+            "main_improvement": main_improvement,
+        }
+        return client.generate(payload)
 
     def _overall_summary(self, final_recommendation: FinalRecommendation) -> str:
         """

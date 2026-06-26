@@ -8,6 +8,7 @@ from typing import Any
 from backend.app.schemas.game_turn import (
     DevBPolicyInput,
     DevBPolicyOutput,
+    FinalResult,
     OpenKBWriteResult,
     PolicyTurnFeedbackRecord,
 )
@@ -178,6 +179,25 @@ class OpenKBFeedbackWriter:
             if existing.get("record_id") == record_id:
                 return True
         return False
+
+    def save_final_result(self, session_id: str, final_result: FinalResult) -> None:
+        """터미널 노드 도달 시 최종 결과를 세션별 JSON 파일로 저장합니다."""
+        self.runtime_root.mkdir(parents=True, exist_ok=True)
+        path = self.runtime_root / f"{session_id}_final_result.json"
+        path.write_text(
+            json.dumps(final_result.model_dump(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def load_final_result(self, session_id: str) -> FinalResult | None:
+        """저장된 최종 결과를 로드합니다. 없으면 None 반환."""
+        path = self.runtime_root / f"{session_id}_final_result.json"
+        if not path.exists():
+            return None
+        try:
+            return FinalResult.model_validate_json(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
 
     def _build_markdown(self, record: dict[str, Any]) -> str:
         """
