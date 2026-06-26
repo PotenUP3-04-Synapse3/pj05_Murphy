@@ -78,6 +78,7 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
     purpose = normalized.get("dialogue_purpose") or ""
     reason = "missing_or_blocked_candidate_text"
     social_context_text = _social_context_fallback_text(normalized)
+    conversation_act_text = _conversation_act_fallback_text(normalized)
     passport_refusal_text = _passport_submission_refusal_text(normalized)
     risk_control_text = _risk_control_text(normalized)
     
@@ -91,22 +92,28 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
         reason = "risk_control_fallback"
 
     elif transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER":
-        if npc_role == "seatmate":
-            text = "Enjoy your trip!"
-        elif npc_role == "immigration_officer":
-            text = "All right, you're cleared."
-        elif npc_role == "baggage_agent":
-            text = "You're all set."
-        elif npc_role == "security_officer":
-            text = "You're all set. Have a nice day."
-        else:
-            text = "You're all set."
+        text = _completion_closure_fallback_text(normalized)
+        if not text:
+            if npc_role == "seatmate":
+                text = "I should finish this form before we land, but it was nice talking with you. Enjoy your trip."
+            elif npc_role == "immigration_officer":
+                text = "All right, you're cleared. You can head to baggage claim now."
+            elif npc_role in {"baggage_agent", "baggage_service_agent"}:
+                text = "You're all set. The report is complete, so you can head out now."
+            elif npc_role == "security_officer":
+                text = "You're all set. The check is complete, so you can continue now."
+            else:
+                text = "You're all set. This part is complete, so we can move on now."
         reason = "complete_chapter_fallback"
 
     # 1.5. social context repair before generic smalltalk/slot fallback
     elif social_context_text:
         text = social_context_text
         reason = "social_context_fallback"
+
+    elif conversation_act_text:
+        text = conversation_act_text
+        reason = "conversation_act_fallback"
         
     # 2. purpose == "smalltalk_diagnostic"
     elif purpose == "smalltalk_diagnostic":
@@ -193,6 +200,91 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
             "next_node_id": normalized.get("next_node_id"),
         },
     }
+
+
+def _conversation_act_fallback_text(normalized: dict[str, Any]) -> str:
+    if str(normalized.get("dialogue_purpose") or "") != "smalltalk_diagnostic":
+        return ""
+    conversation_act = normalized.get("conversation_act") or {}
+    if not isinstance(conversation_act, dict):
+        return ""
+
+    player_act = str(conversation_act.get("player_act") or "")
+    npc_social_duty = str(conversation_act.get("npc_social_duty") or "")
+    topic_anchor = str(conversation_act.get("topic_anchor") or "").strip().lower()
+    surface_goal = str((normalized.get("dialogue_seed") or {}).get("surface_goal") or "")
+
+    if player_act == "self_disclosure" or npc_social_duty == "respond_to_disclosure_then_follow_up":
+        return _self_disclosure_fallback(topic_anchor, surface_goal)
+
+    if player_act == "reciprocal_question" or npc_social_duty == "answer_briefly_then_continue":
+        return _reciprocal_question_fallback(topic_anchor, surface_goal)
+
+    if player_act == "belated_obligation_answer" or npc_social_duty == "accept_belated_answer_then_continue":
+        followup = _smalltalk_followup_for_surface_goal(surface_goal)
+        if followup:
+            return f"Thanks, I appreciate it. {followup}"
+        return "Thanks, I appreciate it. Anyway, where are you headed after this flight?"
+
+    return ""
+
+
+def _completion_closure_fallback_text(normalized: dict[str, Any]) -> str:
+    dialogue_seed = normalized.get("dialogue_seed") or {}
+    if not isinstance(dialogue_seed, dict):
+        dialogue_seed = {}
+    closure_reason = str(dialogue_seed.get("completion_closure_reason") or "")
+    npc_role = str(normalized.get("npc_role") or "")
+    node_id = str(normalized.get("node_id") or "")
+
+    if closure_reason == "landing_soon_and_arrival_form" or npc_role in {"seatmate", "seatmate_passenger"}:
+        return "I should finish this form before we land, but it was nice talking with you. Enjoy your trip."
+    if closure_reason == "immigration_cleared_to_baggage_claim" or npc_role == "immigration_officer":
+        return "All right, you're cleared. You can head to baggage claim now."
+    if closure_reason == "baggage_case_resolved" or npc_role in {"baggage_agent", "baggage_service_agent"}:
+        return "You're all set. The report is complete, so you can head out now."
+    if node_id.startswith("FLIGHT_"):
+        return "I should get ready before we land, but it was nice talking with you. Enjoy your trip."
+    return ""
+
+
+def _self_disclosure_fallback(topic_anchor: str, surface_goal: str) -> str:
+    followup = _smalltalk_followup_for_surface_goal(surface_goal)
+    if topic_anchor == "wedding":
+        if followup:
+            return f"A wedding? That sounds lovely. {followup}"
+        return "A wedding? That sounds lovely. Is it in New York?"
+    if topic_anchor:
+        if followup:
+            return f"Oh, {topic_anchor}. That sounds nice. {followup}"
+        return f"Oh, {topic_anchor}. That sounds nice. What are you looking forward to?"
+    if followup:
+        return f"That sounds nice. {followup}"
+    return "That sounds nice. What are you looking forward to?"
+
+
+def _reciprocal_question_fallback(topic_anchor: str, surface_goal: str) -> str:
+    if surface_goal.startswith("stay_duration"):
+        return "Me? I'm staying in New York for a few days. How about you?"
+    if surface_goal.startswith("travel_purpose") or surface_goal.startswith("destination"):
+        return "Me? I'm visiting a friend in New York. What about you?"
+    if topic_anchor == "wedding":
+        return "Me? I'm visiting a friend in New York. The wedding sounds fun, though."
+    return "Me? I'm visiting a friend in New York. Thanks for asking."
+
+
+def _smalltalk_followup_for_surface_goal(surface_goal: str) -> str:
+    if surface_goal.startswith("stay_duration"):
+        return "How long will you stay?"
+    if surface_goal.startswith("travel_purpose"):
+        return "What will you do there?"
+    if surface_goal.startswith("destination"):
+        return "Where are you headed after we land?"
+    if surface_goal.startswith("companion"):
+        return "Are you traveling with someone?"
+    if surface_goal.startswith("trip_activity"):
+        return "What are you planning to do there?"
+    return ""
 
 
 def _social_context_fallback_text(normalized: dict[str, Any]) -> str:

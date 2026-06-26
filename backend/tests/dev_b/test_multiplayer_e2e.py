@@ -10,6 +10,7 @@ from backend.app.schemas.game_turn import (
     UnrealResponse,
 )
 from backend.app.services.service_c.orchestrator import Orchestrator
+from backend.app.services.service_c.settings_service import get_settings
 from backend.app.api.ai_respond import respond
 
 
@@ -21,6 +22,9 @@ def setup_test_env(monkeypatch):
     monkeypatch.setenv("MURPHY_UNDERSTANDING_MODE", "rule")
     monkeypatch.setenv("MURPHY_UNREAL_REQUEST_CAPTURE_MODE", "off")
     monkeypatch.setenv("DEV_B_FEEDBACK_LLM_MODE", "rule")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 def test_multiplayer_baggage_setup_and_respond_flow() -> None:

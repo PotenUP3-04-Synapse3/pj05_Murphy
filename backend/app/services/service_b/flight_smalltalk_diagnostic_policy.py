@@ -329,10 +329,15 @@ class FlightSmallTalkDiagnosticPolicy:
         covered_cores = all_covered_competencies.intersection(core_competencies)
 
         should_terminate = False
+        defer_completion_for_social_duty = False
         if turns >= MAX_TURNS:
             should_terminate = True
         elif turns >= MIN_TURNS and len(covered_cores) >= 2 and cumulative_confidence >= CONFIDENCE_THRESHOLD:
             should_terminate = True
+            defer_completion_for_social_duty = _should_answer_social_duty_before_complete(payload)
+
+        if defer_completion_for_social_duty:
+            should_terminate = False
 
         next_action: NextAction
         if should_terminate:
@@ -347,7 +352,11 @@ class FlightSmallTalkDiagnosticPolicy:
             branch_type="success",
             next_action=next_action,
             next_node_id=next_node_id,
-            branch_reason="flight_smalltalk_continue",
+            branch_reason=(
+                "flight_smalltalk_answer_social_duty_before_complete"
+                if defer_completion_for_social_duty
+                else "flight_smalltalk_continue"
+            ),
             patience_delta=0,
             suspicion_delta=0,
             retry_count_delta=0,
@@ -505,6 +514,29 @@ def _social_context_dict(understanding: Any) -> dict[str, Any]:
     if social_context is not None and hasattr(social_context, "model_dump"):
         return social_context.model_dump()
     return {}
+
+
+def _conversation_act_dict(understanding: Any) -> dict[str, Any]:
+    conversation_act = getattr(understanding, "conversation_act", None)
+    if isinstance(conversation_act, dict):
+        return conversation_act
+    if conversation_act is not None and hasattr(conversation_act, "model_dump"):
+        return conversation_act.model_dump()
+    return {}
+
+
+def _should_answer_social_duty_before_complete(payload: DevBPolicyInput) -> bool:
+    act = _conversation_act_dict(payload.understanding)
+    player_act = str(act.get("player_act") or "")
+    npc_social_duty = str(act.get("npc_social_duty") or "")
+    natural_next_move = str(act.get("natural_next_move") or "")
+    should_answer_player_question = bool(act.get("should_answer_player_question"))
+    return (
+        should_answer_player_question
+        or player_act == "reciprocal_question"
+        or npc_social_duty == "answer_briefly_then_continue"
+        or natural_next_move == "self_disclose_then_follow_up"
+    )
 
 
 def _social_stall_streak(

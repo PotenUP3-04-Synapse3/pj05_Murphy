@@ -56,6 +56,10 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if pragmatic_context is not None and hasattr(pragmatic_context, "model_dump"):
         pragmatic_context = pragmatic_context.model_dump()
     pragmatic_context = dict(pragmatic_context) if isinstance(pragmatic_context, dict) else {}
+    conversation_act = understanding.get("conversation_act") or payload.get("conversation_act") or {}
+    if conversation_act is not None and hasattr(conversation_act, "model_dump"):
+        conversation_act = conversation_act.model_dump()
+    conversation_act = dict(conversation_act) if isinstance(conversation_act, dict) else {}
     branch_reason = _optional_text(branch.get("branch_reason"))
     _apply_social_lifecycle_from_branch(social_context, branch_reason)
 
@@ -99,6 +103,7 @@ def normalize_level_design_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "target_slot": _optional_text(dialogue_directive.get("target_slot")),
         "player_emotion": _optional_text(understanding.get("emotion")),  # 플레이어 원본 감정 상태 연동
         "social_context": social_context,
+        "conversation_act": conversation_act,
         "pragmatic_context": pragmatic_context,
         "risk_tags": list(understanding.get("risk_tags") or []),
         "risk_delta": _optional_int(understanding.get("risk_delta")),

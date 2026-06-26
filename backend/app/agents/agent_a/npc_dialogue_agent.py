@@ -791,6 +791,12 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "incivility_tier": incivility_tier,
             "profanity_mode": profanity_mode,
             "surface_goal": (dialogue_seed or {}).get("surface_goal") or "",
+            "completion_closure_reason": (dialogue_seed or {}).get("completion_closure_reason") or "",
+            "completion_closure_style": (dialogue_seed or {}).get("completion_closure_style") or "",
+            "completion_do_not_ask_new_question": (dialogue_seed or {}).get(
+                "completion_do_not_ask_new_question",
+                False,
+            ),
             "allowed_emotions": ["joy", "panic", "sad", "suspicion", "disgust", "fear", "smirk", "normal", "anger", "surprise", "pain", "confusion", "boredom"],
             "non_verbal_palette": npc_profile.non_verbal_palette,
             "allowed_mild": allowed_mild,
@@ -828,12 +834,25 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             "recent_turns_compact": session_context_card.get("recent_turns_compact", []),
             "topic_thread": session_context_card.get("topic_thread", []),
             "social_context": normalized.get("social_context", {}),
+            "conversation_act": normalized.get("conversation_act", {}),
             "pragmatic_context": normalized.get("pragmatic_context", {}),
             "risk_tags": normalized.get("risk_tags", []),
             "risk_delta": normalized.get("risk_delta", 0),
             "social_obligation_status": (normalized.get("social_context") or {}).get("obligation_status", ""),
             "social_pending_obligation": (normalized.get("social_context") or {}).get("pending_social_obligation", ""),
             "social_recommended_npc_move": (normalized.get("social_context") or {}).get("recommended_npc_move", ""),
+            "conversation_player_act": (normalized.get("conversation_act") or {}).get("player_act", ""),
+            "conversation_npc_social_duty": (normalized.get("conversation_act") or {}).get("npc_social_duty", ""),
+            "conversation_natural_next_move": (normalized.get("conversation_act") or {}).get("natural_next_move", ""),
+            "conversation_topic_anchor": (normalized.get("conversation_act") or {}).get("topic_anchor", ""),
+            "conversation_should_answer_player_question": (normalized.get("conversation_act") or {}).get(
+                "should_answer_player_question",
+                False,
+            ),
+            "conversation_should_avoid_generic_ack": (normalized.get("conversation_act") or {}).get(
+                "should_avoid_generic_ack",
+                False,
+            ),
             "branch_reason": normalized.get("branch_reason", ""),
             
             # 정책 관련 변수들

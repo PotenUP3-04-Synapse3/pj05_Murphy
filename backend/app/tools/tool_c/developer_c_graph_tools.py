@@ -1217,6 +1217,12 @@ def _understanding_summary(understanding: UnderstandingOutput) -> dict[str, Any]
         "missing_slots": understanding.missing_slots,
         "needs_clarification": understanding.needs_clarification,
         "incivility": _incivility_summary(understanding),
+        "conversation_act": {
+            "player_act": understanding.conversation_act.player_act,
+            "npc_social_duty": understanding.conversation_act.npc_social_duty,
+            "natural_next_move": understanding.conversation_act.natural_next_move,
+            "topic_anchor": understanding.conversation_act.topic_anchor,
+        },
     }
 
 

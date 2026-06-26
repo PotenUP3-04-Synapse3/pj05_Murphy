@@ -24,6 +24,7 @@ from backend.app.agents.agent_c.understanding_llm_client import (
 )
 from backend.app.agents.agent_c.visit_purpose_classifier import classify_visit_purpose
 from backend.app.schemas.game_turn import (
+    ConversationActCard,
     NodeContext,
     PragmaticContextCard,
     SlotEvidence,
@@ -280,6 +281,7 @@ class UnderstandingAgent:
                 output, pragmatic_postprocessing = _attach_pragmatic_context(output, player_text, node_context)
                 output = _attach_incivility_classification(output, player_text)
                 output = _attach_social_context(output, player_text, node_context)
+                output = _attach_conversation_act(output, player_text, node_context)
                 self.last_trace = _build_fallback_trace(
                     player_text=player_text,
                     node_context=node_context,
@@ -330,6 +332,7 @@ class UnderstandingAgent:
             output, pragmatic_postprocessing = _attach_pragmatic_context(output, player_text, node_context)
             output = _attach_incivility_classification(output, player_text)
             output = _attach_social_context(output, player_text, node_context)
+            output = _attach_conversation_act(output, player_text, node_context)
             postprocessing = _merge_postprocessing(
                 slot_evidence_postprocessing,
                 slot_repair_postprocessing,
@@ -351,6 +354,7 @@ class UnderstandingAgent:
         output, pragmatic_postprocessing = _attach_pragmatic_context(output, player_text, node_context)
         output = _attach_incivility_classification(output, player_text)
         output = _attach_social_context(output, player_text, node_context)
+        output = _attach_conversation_act(output, player_text, node_context)
         self.last_trace = _build_rule_trace(output, pragmatic_postprocessing)
         return output
 
@@ -888,6 +892,149 @@ def _attach_social_context(
     )
 
 
+def _attach_conversation_act(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> UnderstandingOutput:
+    """Attach a natural turn-taking card without changing branch authority."""
+
+    return output.model_copy(
+        update={
+            "conversation_act": _build_conversation_act_card(
+                output,
+                player_text,
+                node_context,
+            )
+        }
+    )
+
+
+def _build_conversation_act_card(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> ConversationActCard:
+    if output.pragmatic_context.player_move == "violent_threat":
+        return ConversationActCard(
+            player_act="threat",
+            relation_to_previous="changes_topic",
+            npc_social_duty="formal_boundary",
+            natural_next_move="close",
+            topic_anchor=output.pragmatic_context.target,
+            confidence=max(0.85, output.pragmatic_context.confidence),
+            evidence=player_text,
+            reason="The player made a threat; natural smalltalk duties are overridden by safety posture.",
+        )
+
+    social_move = output.social_context.conversation_move
+    if social_move in {"greeting_only", "repeated_greeting", "low_content_non_answer", "filler"}:
+        return ConversationActCard(
+            player_act="social_non_answer",
+            relation_to_previous="ignores_current_prompt",
+            npc_social_duty="repair_current_obligation"
+            if output.social_context.pending_social_obligation
+            else "close_or_pause",
+            natural_next_move="repair",
+            topic_anchor=output.social_context.pending_social_obligation or "",
+            confidence=max(0.75, output.social_context.pragmatics_confidence),
+            evidence=player_text,
+            reason="The player produced a thin social move rather than useful conversational content.",
+        )
+
+    if social_move == "clarification_request":
+        return ConversationActCard(
+            player_act="clarification_request",
+            relation_to_previous="ignores_current_prompt",
+            npc_social_duty="repair_current_obligation"
+            if output.social_context.pending_social_obligation
+            else "none",
+            natural_next_move="clarify",
+            topic_anchor=output.social_context.pending_social_obligation or "",
+            confidence=max(0.72, output.social_context.pragmatics_confidence),
+            evidence=player_text,
+            reason="The player asked for clarification instead of moving the topic forward.",
+        )
+
+    if _is_flight_smalltalk_diagnostic_node(node_context) and _is_reciprocal_question(player_text):
+        return ConversationActCard(
+            player_act="reciprocal_question",
+            relation_to_previous="asks_npc_same_question",
+            npc_social_duty="answer_briefly_then_continue",
+            natural_next_move="self_disclose_then_follow_up",
+            topic_anchor=_topic_anchor_from_text(player_text) or "travel",
+            should_answer_player_question=True,
+            should_avoid_generic_ack=True,
+            confidence=0.9,
+            evidence=player_text,
+            reason="The player asked the NPC to answer the same conversational topic.",
+        )
+
+    if _is_flight_smalltalk_diagnostic_node(node_context) and _flight_pen_obligation_addressed(player_text):
+        return ConversationActCard(
+            player_act="belated_obligation_answer",
+            relation_to_previous="answers_current_prompt",
+            npc_social_duty="accept_belated_answer_then_continue",
+            natural_next_move="accept_then_pivot",
+            topic_anchor="seatmate_pen_request",
+            should_avoid_generic_ack=True,
+            confidence=0.88,
+            evidence=player_text,
+            reason="The player addressed the seatmate's favor/request.",
+        )
+
+    topic_anchor = _topic_anchor_from_text(player_text)
+    if _is_flight_smalltalk_diagnostic_node(node_context) and topic_anchor and _has_first_person_signal(player_text):
+        return ConversationActCard(
+            player_act="self_disclosure",
+            relation_to_previous="extends_current_topic",
+            npc_social_duty="respond_to_disclosure_then_follow_up",
+            natural_next_move="specific_acknowledgement",
+            topic_anchor=topic_anchor,
+            should_avoid_generic_ack=True,
+            confidence=0.86,
+            evidence=topic_anchor,
+            reason="The player shared concrete personal trip information that should receive a specific reaction.",
+        )
+
+    if output.answer_relevance == "off_topic":
+        return ConversationActCard(
+            player_act="off_topic",
+            relation_to_previous="changes_topic",
+            npc_social_duty="repair_current_obligation"
+            if output.social_context.pending_social_obligation
+            else "none",
+            natural_next_move="repair",
+            topic_anchor=topic_anchor,
+            confidence=0.72,
+            evidence=player_text,
+            reason="The player changed away from the current topic.",
+        )
+
+    if output.intent_success or output.intent_satisfied:
+        return ConversationActCard(
+            player_act="direct_answer",
+            relation_to_previous="answers_current_prompt",
+            npc_social_duty="none",
+            natural_next_move="continue",
+            topic_anchor=topic_anchor,
+            confidence=max(0.65, min(0.9, output.confidence)),
+            evidence=player_text,
+            reason="The player gave useful content but did not create an extra NPC answer duty.",
+        )
+
+    return ConversationActCard(
+        player_act="unknown",
+        relation_to_previous="unknown",
+        npc_social_duty="none",
+        natural_next_move="clarify" if output.needs_clarification else "continue",
+        topic_anchor=topic_anchor,
+        confidence=0.35,
+        evidence=player_text,
+        reason="The player's conversation act was not clear enough to add a specific social duty.",
+    )
+
+
 def _build_social_context_card(
     output: UnderstandingOutput,
     player_text: str,
@@ -1071,6 +1218,89 @@ def _repair_move_for_scene(scene_norm: SceneNorm) -> RecommendedNPCMove:
     if scene_norm == "service_recovery":
         return "service_repair"
     return "clarify"
+
+
+def _is_reciprocal_question(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    compact = " ".join(re.findall(r"[a-z0-9']+", normalized))
+    if not compact:
+        return False
+    direct_patterns = {
+        "what about you",
+        "how about you",
+        "and you",
+        "what about yourself",
+        "how about yourself",
+    }
+    if compact in direct_patterns:
+        return True
+    if any(pattern in compact for pattern in direct_patterns):
+        return True
+    if "?" not in player_text:
+        return False
+    words = set(compact.split())
+    npc_question_topics = {
+        "about",
+        "headed",
+        "going",
+        "travel",
+        "traveling",
+        "trip",
+        "flight",
+        "stay",
+        "visiting",
+        "visit",
+        "fun",
+    }
+    return "you" in words and bool(words & npc_question_topics)
+
+
+def _has_first_person_signal(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    words = set(re.findall(r"[a-z0-9']+", normalized))
+    return bool(words & {"i", "i'm", "im", "me", "my", "mine", "we", "we're", "were", "our"})
+
+
+def _topic_anchor_from_text(player_text: str) -> str:
+    normalized = _normalize_for_keyword_match(player_text)
+    topic_keywords = [
+        ("wedding", ("wedding", "marriage ceremony")),
+        ("friend", ("friend", "friends")),
+        ("family", ("family", "parents", "uncle", "aunt", "cousin", "sister", "brother")),
+        ("business", ("business", "work", "conference", "meeting")),
+        ("school", ("school", "study", "university", "academy")),
+        ("vacation", ("vacation", "holiday", "sightseeing", "tourism")),
+        ("new york", ("new york", "nyc", "manhattan", "brooklyn")),
+        ("trip", ("trip", "travel", "flight")),
+    ]
+    for topic, needles in topic_keywords:
+        if any(needle in normalized for needle in needles):
+            return topic
+
+    words = re.findall(r"[a-z0-9']+", normalized)
+    if len(words) >= 4 and _has_first_person_signal(player_text):
+        low_signal_words = {
+            "yes",
+            "yeah",
+            "sure",
+            "okay",
+            "ok",
+            "going",
+            "go",
+            "to",
+            "for",
+            "the",
+            "a",
+            "an",
+            "my",
+            "i",
+            "im",
+            "i'm",
+        }
+        for word in words:
+            if word not in low_signal_words and len(word) > 3:
+                return word
+    return ""
 
 
 def _is_greeting_only(player_text: str) -> bool:
@@ -2457,6 +2687,12 @@ def _understanding_output_summary(output: UnderstandingOutput) -> dict[str, Any]
         "missing_slots": output.missing_slots,
         "needs_clarification": output.needs_clarification,
         "incivility": _incivility_summary(output),
+        "conversation_act": {
+            "player_act": output.conversation_act.player_act,
+            "npc_social_duty": output.conversation_act.npc_social_duty,
+            "natural_next_move": output.conversation_act.natural_next_move,
+            "topic_anchor": output.conversation_act.topic_anchor,
+        },
     }
 
 

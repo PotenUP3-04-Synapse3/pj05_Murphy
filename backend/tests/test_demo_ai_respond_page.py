@@ -486,6 +486,11 @@ def test_demo_npc_roster_endpoint() -> None:
     assert "CH0_04_BAGGAGE_CLAIM" in data
     assert any(npc["id"] == "hale" for npc in data["CH0_03_IMMIGRATION_CHECK"])
     assert any(npc["id"] == "brielle" for npc in data["CH0_04_BAGGAGE_CLAIM"])
+    flight_by_id = {npc["id"]: npc for npc in data["CH0_01_FLIGHT_SMALLTALK"]}
+    assert flight_by_id["arabella"]["start_node_id"] == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+    assert flight_by_id["novak"]["start_node_id"] == "FLIGHT_A_001_SEATMATE_SMALLTALK"
+    novak_node = client.get(f"/api/game/ai/demo/node/{flight_by_id['novak']['start_node_id']}")
+    assert novak_node.status_code == 200
     baggage_by_id = {npc["id"]: npc for npc in data["CH0_04_BAGGAGE_CLAIM"]}
     assert baggage_by_id["brielle"]["start_node_id"] == "BAG_001_REPORT_MISSING_AT_DESK"
     assert baggage_by_id["dan"]["start_node_id"] == "BAG_005_CUSTOMS_HOLD_EXPLANATION"

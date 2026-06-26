@@ -326,7 +326,7 @@ def demo_npc_roster() -> dict[str, list[dict[str, Any]]]:
     }
     npc_demo_starts = {
         "arabella": ("FLIGHT_A_001_SEATMATE_SMALLTALK", "AIRPLANE_CABIN"),
-        "novak": ("FLIGHT_B_001_SEATMATE_SMALLTALK", "AIRPLANE_CABIN"),
+        "novak": ("FLIGHT_A_001_SEATMATE_SMALLTALK", "AIRPLANE_CABIN"),
         "hale": ("IMM_001_PASSPORT", "JFK_IMMIGRATION_HALL"),
         "harris": ("IMM_001_PASSPORT", "JFK_IMMIGRATION_HALL"),
         "brielle": ("BAG_001_REPORT_MISSING_AT_DESK", "JFK_BAGGAGE_CLAIM"),
