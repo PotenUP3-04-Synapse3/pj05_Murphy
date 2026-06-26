@@ -1,5 +1,100 @@
 # Handoff
 
+## 2026-06-26 Developer A: NPC 페르소나 v2 재구축 (Nemotron 기반) + Quest-aware Plausibility
+
+Developer A는 다음 두 가지 목표로 6명 NPC 페르소나를 전면 재구축했다.
+(1) 청취 검증에서 발견한 NPC 응답 자연도/일관성 문제 해결,
+(2) 학습자가 비현실적 답변을 해도 단순 통과되는 문제 개선.
+
+### 변경 사항
+
+- **데이터셋 기반 페르소나 재구축**: NVIDIA `Nemotron-Personas-USA`
+  데이터셋에서 NPC별 적합 인물을 추출해 5섹션(Background / Tone &
+  Speech / Behavioral Rules / In-Character Rule / Forbidden
+  Phrasings) 형식으로 변환.
+  - Arabella: Sofia Ricardo 33/F 그래픽 디자이너 (Brawley, CA)
+  - Novak: Feliberto Albornoz 37/M 시스템 분석가 (Bellingham, WA)
+  - Hale: Charlie Lawrence 49/M 형사 출신 (Baltimore, MD → JFK CBP)
+  - **Harris: Catherine 46/F 패러리걸 출신 (Trenton, NJ → JFK CBP)**
+    — 이전 페르소나가 여성이었던 점을 반영해 여성 paralegal로 재추출
+  - Dan: Brandon Green 45/M TSA (West Babylon, NY)
+  - Brielle: Flavia Perez 27/F 베네수엘라계 CS (NYC)
+
+- **brush-off 룰 범위 한정**: In-Character Rule의 brush-off 라인이
+  AI/bot/program 질문에만 발동하도록 명시. 일반 개인 질문(나이,
+  직업, 이름)에는 정상 답변. `"Mm, no smoke here"` 같은 환각 라인의
+  원인이 됐던 패턴 차단.
+
+- **Answer-first / Player-question handling**:
+  - Seatmate(Arabella/Novak): 학습자 일반 질문에 먼저 답하고 의제
+    이어가기
+  - Officer(Hale/Harris/Dan): 절차 질문에는 짧게 답, 일반 질문은
+    redirect
+  - Brielle: 가벼운 잡담 허용, flight/gate 질문은 다른 부서 안내
+
+- **Standard-answer leniency + Quest-aware plausibility 3단계**:
+  - 표준 답변(tourism / hotel / 3 days / 옷가지 등)은 grammatical
+    오류 있어도 즉시 ACCEPT
+  - 비현실적 답변(underground bunker / refrigerator 등)에만
+    STRONG(설명 충분) / MEDIUM(추가 확인) / WEAK(reject + warn)
+    3단계 평가 적용
+  - 단어 누설 방지: NPC가 학습자의 부적합 단어를 echo하지 않도록 명시
+
+- **Brielle 의도 인정 명시**: "Yes, I am"이 "Yes, I do" 의미일 때
+  의도를 인정하고 진행하도록 룰 추가.
+
+### 발견된 후속 이슈 (페르소나로 해결 불가)
+
+청취 검증 중 다음 문제 발견. 페르소나 차원 해결이 어렵고 별도 CR로
+처리 필요.
+
+1. **NPC가 다음 노드 질문을 미리 함** (BAG_001 사례):
+   - BAG_001(`missing_bag_statement` 슬롯) 학습자 답 직후 NPC가
+     BAG_002 질문("Do you have your claim tag?")을 미리 함
+   - 라우팅은 여전히 BAG_001 retry → 평가는 BAG_001 슬롯 검사
+   - 학습자는 BAG_002 질문에 답하지만 BAG_001 슬롯 미충족으로 UNCLEAR
+   - 무한 루프 발생
+   - 해결: Single-node discipline 가드 또는 `npc_dialogue_agent.py`
+     컨텍스트 점검 (success_next_node 노출 차단)
+
+2. **학습자 grammatical 오류에 너무 엄격**:
+   - "Yes, I am" (의도는 "Yes, I do") 같은 답이 UNCLEAR로 평가됨
+   - Agent C 의도 평가 영역 (CR-C-LENIENT-INTENT-MATCH)
+
+3. **NPC 음성 볼륨 불일치**:
+   - ElevenLabs voice별 학습 원본 라우드니스 차이로 NPC마다 볼륨 상이
+   - 즉시 조치: Unreal 측 NPC별 Volume Multiplier (Developer C 부탁)
+   - 중기: 백엔드 라우드니스 정규화 (별도 작업계획서)
+
+### 변경 파일 (예정)
+
+본 변경은 아직 코드에 적용 전. 사용자가 직접 또는 Gemini 위임으로
+적용 예정.
+- `backend/app/services/service_a/npc_roster_service.py` (NPCProfile
+  6명 통째 교체)
+- `backend/tests/test_developer_a_npc_roster.py` (기대값 동기화 필요)
+- `docs/contracts/change_requests.md` (CR 5건 신규 등록)
+
+### 검증 시나리오 (적용 후 확인 필요)
+
+| 시나리오 | 기대 결과 |
+|---|---|
+| Arabella "How old are you?" | "I'm 33." 짧은 답 + follow-up |
+| Arabella "Are you AI?" | brush-off 5개 variety, "smoke" 환각 없음 |
+| Hale "tourism" | ACCEPT (Standard) |
+| Hale "underground bunker" 단독 | MEDIUM probe |
+| Hale "WWII museum bunker, research" | ACCEPT (STRONG) |
+| Brielle "I lost my bag" → "Yes, I have" | 진행 (BAG_001 → BAG_002) |
+
+### 후속 작업 / Change Requests
+
+`docs/contracts/change_requests.md`에 5건 등록:
+- CR-A-NPC-PERSONA-V2 (A 자체 변경 알림)
+- CR-A-NPC-SINGLE-NODE-DISCIPLINE (A 자체 후속)
+- CR-C-LENIENT-INTENT-MATCH (C 영역)
+- CR-B-NODE-EXPECTED-CONTEXT (B 영역)
+- CR-C-INTENT-EXPLANATION-QUALITY (C 영역)
+
 ## 2026-06-25 Developer C: respond-dialog Novak NPC Failed Fix
 
 Fixed the `/respond-dialog` demo NPC selector failure where choosing Novak
