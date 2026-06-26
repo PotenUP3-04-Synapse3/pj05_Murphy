@@ -635,7 +635,23 @@ def test_baggage_service_desk_rejects_claim_tag_question_before_problem_report()
             "evaluation_summary": {"task_success": False, "clarity": 0.2},
             "level_hint": {"english_level": "beginner"},
             "in_game_feedback": {"npc_recast_line_candidate": None},
-            "branch": {"branch_type": "clarify"},
+            "understanding": {
+                "answer_relevance": "off_topic",
+                "missing_slots": ["missing_bag_statement"],
+                "social_context": {
+                    "scene_norm": "service_recovery",
+                    "conversation_move": "meta_non_answer",
+                    "pending_social_obligation": "answer_report_missing_bag_at_service_desk",
+                    "obligation_status": "ignored",
+                    "recommended_npc_move": "service_repair",
+                },
+            },
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "next_node_id": "BAG_001_RETRY_REPORT_MISSING_AT_DESK",
+                "branch_reason": "service_recovery_social_obligation_open",
+            },
             "dialogue_directive": {
                 "purpose": "support_retry",
                 "target_slot": "missing_bag_statement",
@@ -651,7 +667,9 @@ def test_baggage_service_desk_rejects_claim_tag_question_before_problem_report()
     assert result["llm"]["used"] is True
     assert "claim tag" not in result["npc_text"].lower()
     assert "ticket" not in result["npc_text"].lower()
-    assert "what happened" in result["npc_text"].lower()
+    assert "what happened" not in result["npc_text"].lower()
+    assert "baggage" in result["npc_text"].lower()
+    assert "trying to report" in result["npc_text"].lower() or "are you here about" in result["npc_text"].lower()
 
 
 def test_baggage_customs_random_item_fallback_dialogue() -> None:
@@ -1165,8 +1183,9 @@ def test_baggage_service_greeting_fallback_sets_service_boundary_without_slot_lo
 
     text = result["npc_text"].lower()
     assert result["fallback"]["reason"] == "social_context_fallback"
-    assert "baggage desk" in text
-    assert "what happened" in text
+    assert "here about" in text
+    assert "baggage problem" in text
+    assert "what happened" not in text
     assert "sorry" not in text
     assert "still need" not in text
     assert "claim tag" not in text
@@ -1185,12 +1204,47 @@ def test_baggage_service_meta_non_answer_fallback_acknowledges_then_names_bag_op
     text = result["npc_text"].lower()
     assert result["fallback"]["reason"] == "social_context_fallback"
     assert "i understand" in text
-    assert "baggage problem" in text
-    assert "missing" in text
-    assert "delayed" in text
-    assert "damaged" in text
+    assert "trying to report" in text
+    assert "baggage issue" in text
+    assert "just saying hello" in text
+    assert "what happened" not in text
     assert "i still need" not in text
     assert "i'm not sure you heard me" not in text
+    assert "claim tag" not in text
+
+
+def test_baggage_service_social_llm_slot_question_is_rewritten_to_service_intent_check() -> None:
+    class SlotQuestionLLMClient:
+        model = "fake-slot-question-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Brielle",
+                "npc_text": "Hi. What happened with your bag?",
+                "tts_text": "Hi. What happened with your bag?",
+                "feedback_kr": "Try again.",
+                "tone": "formal_firm",
+                "animation": "confusion",
+                "npc_emotion": "Confusion",
+                "llm_reason": "Still treats the greeting as a missing required slot.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        _baggage_service_social_payload(
+            branch_reason="service_recovery_social_obligation_open",
+            conversation_move="greeting_only",
+            player_text="Hello.",
+        ),
+        use_llm=True,
+        llm_client=SlotQuestionLLMClient(),
+    )
+
+    text = result["npc_text"].lower()
+    assert result["llm"]["used"] is True
+    assert "what happened" not in text
+    assert "are you here about" in text
+    assert "baggage problem" in text
     assert "claim tag" not in text
 
 

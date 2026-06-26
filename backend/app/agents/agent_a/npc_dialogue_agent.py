@@ -168,6 +168,53 @@ def _global_dialogue_violation(
     return None
 
 
+def _baggage_service_intent_check_repair_text(
+    normalized: dict[str, Any],
+    fallback_result: dict[str, Any],
+) -> str:
+    """Return A's service-intent repair for BAG_001 social non-answers.
+
+    BAG_001 starts like a help-desk greeting. If the player only greets or
+    comments on the conversation, the natural next move is to check whether they
+    are here for a baggage problem before asking for the problem details.
+    """
+
+    dialogue_seed_raw = normalized.get("dialogue_seed")
+    dialogue_seed = dialogue_seed_raw if isinstance(dialogue_seed_raw, dict) else {}
+    surface_goal = str(dialogue_seed.get("surface_goal") or "")
+    if surface_goal != "report_missing_bag_at_service_desk":
+        return ""
+
+    social_context_raw = normalized.get("social_context")
+    social_context = social_context_raw if isinstance(social_context_raw, dict) else {}
+    if str(social_context.get("scene_norm") or "") != "service_recovery":
+        return ""
+    if str(social_context.get("obligation_status") or "") not in {"open", "ignored", "unclear"}:
+        return ""
+
+    conversation_move = str(social_context.get("conversation_move") or "")
+    if conversation_move not in {
+        "greeting_only",
+        "repeated_greeting",
+        "low_content_non_answer",
+        "filler",
+        "meta_non_answer",
+        "off_topic",
+        "clarification_request",
+    }:
+        return ""
+
+    fallback_raw = fallback_result.get("fallback")
+    fallback = fallback_raw if isinstance(fallback_raw, dict) else {}
+    if str(fallback.get("reason") or "") != "social_context_fallback":
+        return ""
+
+    text = str(fallback_result.get("npc_text") or fallback_result.get("text") or "").strip()
+    if not text:
+        return ""
+    return text
+
+
 def _has_positive_reaction_on_failure(
     npc_text: str,
     tts_text: str,
@@ -754,8 +801,12 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
             and not _is_work_authorization_clarification_branch(normalized)
         ):
             current_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
-            from backend.app.services.service_a.dialogue_policy_service import get_retry_variation
-            varied_text = get_retry_variation(surface_goal, last_npc_text, current_text)
+            service_intent_repair = _baggage_service_intent_check_repair_text(normalized, fallback_res)
+            if service_intent_repair:
+                varied_text = service_intent_repair
+            else:
+                from backend.app.services.service_a.dialogue_policy_service import get_retry_variation
+                varied_text = get_retry_variation(surface_goal, last_npc_text, current_text)
             fallback_res["npc_text"] = varied_text
             fallback_res["text"] = varied_text
             if "tts_text" in fallback_res:
@@ -778,7 +829,8 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
         and not _is_risk_control_branch(normalized)
     ):
         original_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
-        synthesized_text = synthesize_fallback_next_question(
+        service_intent_repair = _baggage_service_intent_check_repair_text(normalized, fallback_res)
+        synthesized_text = service_intent_repair or synthesize_fallback_next_question(
             original_text,
             surface_goal,
             _open_hooks_for_fallback_synthesis(normalized, session_context_card),
@@ -1063,7 +1115,8 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         if not reaction_part:
             reaction_part = "Pardon me?"
 
-        synthesized = synthesize_fallback_next_question(
+        service_intent_repair = _baggage_service_intent_check_repair_text(normalized, fallback_result)
+        synthesized = service_intent_repair or synthesize_fallback_next_question(
             reaction_part,
             surface_goal,
             branch_type=normalized.get("branch_type"),
@@ -1077,7 +1130,9 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             last_turn = dialogue_history[-1]
             last_npc_text = last_turn.get("npc_text_preview", "") if isinstance(last_turn, dict) else ""
 
-        if last_npc_text:
+        if service_intent_repair:
+            npc_text = synthesized
+        elif last_npc_text:
             from backend.app.services.service_a.dialogue_policy_service import get_retry_variation
             npc_text = get_retry_variation(surface_goal, last_npc_text, synthesized)
         else:
@@ -1273,12 +1328,14 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         logger.info(f"Non-ADVANCE action '{next_action}' detected. Overriding LLM next question with current surface_goal '{surface_goal}'")
         sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
         reaction_part = sentences[0] if sentences else ""
-        overridden_text = synthesize_fallback_next_question(
-            reaction_part,
-            str(surface_goal),
-            _open_hooks_for_fallback_synthesis(normalized, session_context_card),
-            branch_type=normalized.get("branch_type"),
-        )
+        overridden_text = _baggage_service_intent_check_repair_text(normalized, fallback_result)
+        if not overridden_text:
+            overridden_text = synthesize_fallback_next_question(
+                reaction_part,
+                str(surface_goal),
+                _open_hooks_for_fallback_synthesis(normalized, session_context_card),
+                branch_type=normalized.get("branch_type"),
+            )
         npc_text = overridden_text
         tts_text = overridden_text
 

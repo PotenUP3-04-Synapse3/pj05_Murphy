@@ -6343,3 +6343,74 @@ loop. C can emit `meta_non_answer`, B treats it as a social stall in the
 existing service-recovery lifecycle, and A says the human-facing boundary
 before asking what happened with the bag.
 
+## 2026-06-26 Developer A / C - BAG_001 Service Intent Check
+
+Developer C investigated the follow-up live run where Brielle no longer asked
+for a claim tag, but still sounded like a slot loop:
+
+- Player: `Hello.`
+- Brielle: `Hi. What happened with your bag?`
+- Player: `Hello.`
+- Brielle: `I can help with baggage. What happened with your bag?`
+
+Root cause:
+
+- `BAG_001_REPORT_MISSING_AT_DESK` opens like a service desk greeting, so a
+  greeting-only player turn should first trigger a service-intent check.
+- A's fallback seed, LLM prompt, and non-ADVANCE post-processing still treated
+  social non-answers as an immediate `missing_bag_statement` detail request.
+- The live run used A's LLM path (`llm_dialogue_from_fallback_seed`), so the
+  fallback seed and LLM guard both needed to preserve the service-intent repair.
+
+Changed files:
+
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/agents/agent_a/npc_llm_client.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `docs/sprints/2026-06-26-baggage-service-intent-check-sprint.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- BAG_001 social non-answer repair now checks service intent first:
+  `Hi. Are you here about a baggage problem?`
+- Repeated/meta non-answer repair now distinguishes reporting a baggage issue
+  from just saying hello:
+  `I understand. Are you trying to report a baggage issue, or just saying
+  hello?`
+- A's LLM post-processing no longer appends `What happened with your bag?` for
+  BAG_001 social repairs, even when the LLM or fallback seed tries to collapse
+  back to the required slot question.
+- A long/short prompts and runtime LLM instruction now say to avoid bag-detail
+  questions until the player confirms they need baggage help.
+
+Verification so far:
+
+- RED:
+  `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_desk_rejects_claim_tag_question_before_problem_report backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_greeting_fallback_sets_service_boundary_without_slot_loop backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_meta_non_answer_fallback_acknowledges_then_names_bag_options backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_social_llm_slot_question_is_rewritten_to_service_intent_check -q`
+  failed: 4 failed.
+- GREEN:
+  same command passed: 4 passed, 1 warning (`audioop` deprecation).
+- Related regression:
+  `uv run pytest backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_prompt_rendering.py backend/tests/test_preprototype_flow.py::test_orchestrator_advances_baggage_report_to_claim_tag_node backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata -q`
+  passed: 79 passed, 1 warning (`audioop` deprecation).
+- Full suite: `uv run pytest -q` passed: 567 passed, 1 warning (`audioop`
+  deprecation).
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 149 source files.
+- `git diff --check` passed. Git printed Windows LF-to-CRLF working-copy
+  warnings only.
+
+## 2026-06-26 Latest Pointer - BAG_001 Service Intent Check
+
+The latest completed sprint is the BAG_001 service intent check. See
+`docs/sprints/2026-06-26-baggage-service-intent-check-sprint.md`.
+
+Key result: Brielle should no longer answer a greeting-only BAG_001 turn with
+`What happened with your bag?`. She should first ask whether the player is here
+about a baggage problem, then ask for details after the player confirms they
+need baggage help.
+

@@ -301,21 +301,21 @@ def _baggage_service_desk_repair_text(
     if surface_goal != "report_missing_bag_at_service_desk":
         return ""
     if "procedure_warning" in branch_reason:
-        return "I can only help if you tell me the baggage problem."
+        return "I can only help with baggage issues here."
     if "engagement_check" in branch_reason:
         return "Are you trying to report a baggage problem, or do you need something else?"
     if "repeated_social_repair" in branch_reason:
         if conversation_move == "clarification_request":
-            return "I mean your bag. Is it missing, delayed, or damaged?"
+            return "I mean, do you need help with a missing or delayed bag?"
         if conversation_move == "meta_non_answer":
-            return "I understand. I can help if there's a baggage problem. Is your bag missing, delayed, or damaged?"
+            return "I understand. Are you trying to report a baggage issue, or just saying hello?"
         if conversation_move in {"greeting_only", "repeated_greeting", "low_content_non_answer", "filler"}:
-            return "I can help with baggage. Is your bag missing, delayed, or damaged?"
-        return "I can help if there's a baggage problem. What happened with your bag?"
+            return "Hi again. Are you here about a baggage problem, or just saying hello?"
+        return "Do you need help with a baggage problem?"
     if "social_obligation_open" in branch_reason:
         if conversation_move == "meta_non_answer":
-            return "I understand. This is the baggage desk. What happened with your bag?"
-        return "Hi. This is the baggage desk. If you need help with a bag, tell me what happened."
+            return "I understand. Are you here about a baggage problem?"
+        return "Hi. Are you here about a baggage problem?"
     return ""
 
 
