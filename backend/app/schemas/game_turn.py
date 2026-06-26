@@ -731,6 +731,12 @@ class FinalResult(BaseModel):
         "UNRANKED",
     ]
     rank: Literal[
+        "Challenger",
+        "GrandMaster",
+        "Master",
+        "Diamond",
+        "Emerald",
+        "Platinum",
         "Gold Pass",
         "Silver Pass",
         "Bronze Pass",
@@ -738,9 +744,20 @@ class FinalResult(BaseModel):
         "Comic Fail",
         "Unranked",
     ]
-    # Unreal 결과 화면 로직용 4단계 티어. rank는 UI 표시 문구(" Pass" 포함, 6종)인 반면
-    # tier는 게임 로직/분기용으로 합격 3단계(Gold/Silver/Bronze)와 비합격(Iron)만 구분합니다.
-    tier: Literal["Gold", "Silver", "Bronze", "Iron"]
+    # Unreal 결과 화면 로직용 10단계 티어.
+    # rank는 UI 표시 문구(12종)이고 tier는 게임 로직/분기용 10단계입니다.
+    tier: Literal[
+        "Challenger",
+        "GrandMaster",
+        "Master",
+        "Diamond",
+        "Emerald",
+        "Platinum",
+        "Gold",
+        "Silver",
+        "Bronze",
+        "Iron",
+    ]
     final_score_100: int = Field(ge=0, le=100)
     reason_tags: list[str] = Field(default_factory=list)
     quantitative_scores: QuantitativeScores

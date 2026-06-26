@@ -103,8 +103,8 @@ def test_final_score_excludes_final_node_when_prior_scores_exist() -> None:
     )
 
     assert result.final_recommendation == "CONDITIONAL_PASS"
-    assert result.rank == "Bronze Pass"
-    assert result.tier == "Bronze"
+    assert result.rank == "Silver Pass"
+    assert result.tier == "Silver"
     assert result.final_score_100 == 63
     assert result.quantitative_scores.overall == 63
     assert result.quantitative_scores.scoring_policy == "scene_normalized_dimension_average"
