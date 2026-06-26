@@ -59,6 +59,8 @@ def _stay_duration_days(payload: DevBPolicyInput) -> int:
                     unit = "week"
                 elif "month" in next_word:
                     unit = "month"
+                elif "year" in next_word:
+                    unit = "year"
             
             if unit is None:
                 for w in words:
@@ -71,6 +73,9 @@ def _stay_duration_days(payload: DevBPolicyInput) -> int:
                     elif "month" in w:
                         unit = "month"
                         break
+                    elif "year" in w:
+                        unit = "year"
+                        break
                         
             if unit == "day":
                 total_days += num * 1
@@ -78,6 +83,8 @@ def _stay_duration_days(payload: DevBPolicyInput) -> int:
                 total_days += num * 7
             elif unit == "month":
                 total_days += num * 30
+            elif unit == "year":
+                total_days += num * 365
             else:
                 total_days += num * 1
             i += 2
@@ -349,6 +356,9 @@ class ScenarioStateMachine:
                                 matched = True
                                 break
                             elif candidate == "months" and ("month" in value or "months" in value):
+                                matched = True
+                                break
+                            elif candidate == "years" and ("year" in value or "years" in value):
                                 matched = True
                                 break
                             elif candidate == "until_date" and "until" in value:

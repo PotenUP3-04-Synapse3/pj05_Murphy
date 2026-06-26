@@ -186,7 +186,20 @@ ALPHA_SLOT_VALUE_KEYWORDS: dict[str, dict[str, tuple[str, ...]]] = {
         "engineer": ("engineer", "developer", "programmer", "software engineer"),
         "designer": ("designer", "graphic designer", "product designer", "ui designer"),
         "teacher": ("teacher", "instructor", "professor", "teach"),
-        "business_owner": ("business owner", "own a business", "self employed", "run a business"),
+        "shopkeeper": ("shopkeeper", "store owner", "storekeeper"),
+        "business_owner": (
+            "business owner",
+            "own a business",
+            "self employed",
+            "run a business",
+            "run a cafe",
+            "run a café",
+            "own a cafe",
+            "own a café",
+            "cafe owner",
+            "café owner",
+            "coffee shop",
+        ),
         "unemployed": ("unemployed", "no job", "between jobs", "not working"),
     },
     "cash_amount": {
@@ -327,6 +340,7 @@ class UnderstandingAgent:
             if has_open_required:
                 output = output.model_copy(update={"intent_success": output.intent_satisfied})
 
+            unified_slot_postprocessing: dict[str, Any] = {}
             if self.settings.murphy_turn_authority == "unified":
                 output = output.model_copy(update={
                     "satisfied": raw_satisfied,
@@ -334,6 +348,11 @@ class UnderstandingAgent:
                     "intent_success": raw_intent_success,
                     "intent_satisfied": raw_intent_satisfied,
                 })
+                output, unified_slot_postprocessing = _promote_unified_semantic_slot_satisfaction(
+                    output,
+                    player_text,
+                    node_context,
+                )
 
             output, pragmatic_postprocessing = _attach_pragmatic_context(output, player_text, node_context)
             output = _attach_incivility_classification(output, player_text)
@@ -344,6 +363,7 @@ class UnderstandingAgent:
                 slot_repair_postprocessing,
                 passport_refusal_postprocessing,
                 work_authorization_postprocessing,
+                unified_slot_postprocessing,
                 pragmatic_postprocessing,
             )
             self.last_trace = _build_llm_trace(
@@ -1871,6 +1891,60 @@ def _repair_missing_allowed_slots(
     }
 
 
+def _promote_unified_semantic_slot_satisfaction(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> tuple[UnderstandingOutput, dict[str, Any]]:
+    """Let strong C-side slot evidence close a turn in unified-authority mode.
+
+    Beginner guide:
+    In unified mode the LLM is allowed to propose `satisfied` and `branch_hint`
+    directly.  C still owns schema safety, so when C has already repaired or
+    accepted every required slot, this helper prevents the older raw LLM
+    `satisfied=false` value from reopening an answered immigration question.
+    It only upgrades ordinary success/retry/clarify cases; warning and bad-end
+    hints remain under the safety veto path.
+    """
+
+    no_promotion = {"unified_semantic_slot_satisfaction_applied": False}
+    if not node_context.required_slots:
+        return output, no_promotion
+    if output.branch_hint in {"warning", "bad_end", "hint"}:
+        return output, no_promotion
+    if output.answer_relevance == "off_topic":
+        return output, no_promotion
+    if output.risk_delta > 0 or output.risk_tags:
+        return output, no_promotion
+    if _has_required_intent_mismatch(player_text, node_context):
+        return output, no_promotion
+
+    required_values = {
+        slot: output.extracted_slots.get(slot)
+        for slot in node_context.required_slots
+    }
+    if any(value is None or not str(value).strip() for value in required_values.values()):
+        return output, no_promotion
+    if any(slot in output.missing_slots for slot in node_context.required_slots):
+        return output, no_promotion
+
+    promoted = output.model_copy(
+        update={
+            "intent_success": True,
+            "intent_satisfied": True,
+            "satisfied": True,
+            "branch_hint": "success",
+            "needs_clarification": False,
+            "ambiguity_type": "none",
+        }
+    )
+    return promoted, {
+        "unified_semantic_slot_satisfaction_applied": True,
+        "required_slots": list(node_context.required_slots),
+        "reason": "required_slots_filled_after_c_semantic_repair",
+    }
+
+
 def _apply_generic_slot_evidence(
     output: UnderstandingOutput,
     player_text: str,
@@ -2756,7 +2830,10 @@ def _has_risk_expression(player_text: str, node_context: NodeContext) -> bool:
 def _extract_stay_duration(player_text: str) -> str | None:
     normalized = " ".join(player_text.lower().replace("-", " ").split())
     quantity = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|a|an)"
-    duration_match = re.search(rf"\b({quantity}\s+(?:day|days|week|weeks|month|months))\b", normalized)
+    duration_match = re.search(
+        rf"\b({quantity}\s+(?:day|days|week|weeks|month|months|year|years))\b",
+        normalized,
+    )
     if duration_match:
         value = duration_match.group(1)
         if value.startswith("a "):

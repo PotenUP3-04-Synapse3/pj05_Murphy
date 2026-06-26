@@ -73,6 +73,15 @@ the exact player-text phrase that supports it.
 Do not assign confidence `0.9` or higher when the evidence is weak, idiomatic,
 inferred, or only loosely related to the required intent.
 
+For `stay_duration` questions, concrete durations with days, weeks, months, or
+years all satisfy the required slot. Treat phrases such as `one year`, `a year`,
+`365 days`, and `for twelve months` as `stay_duration` evidence rather than only
+optional `travel_schedule`.
+
+For `occupation` questions, job titles and self-employment descriptions satisfy
+the open occupation slot. Examples include `shopkeeper`, `cafe owner`,
+`running a cafe`, `carpenter`, `engineer`, and `teacher`.
+
 ## Visa And Work-Purpose Pragmatics
 
 For immigration purpose questions, do not collapse a traveler's claim that they

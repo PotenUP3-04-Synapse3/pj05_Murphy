@@ -436,6 +436,90 @@ def test_orchestrator_advances_stay_duration_answer_to_location_node() -> None:
     assert response.evaluation.feedback_tags == ["intent_matched", "required_slot_filled"]
 
 
+def test_orchestrator_accepts_year_stay_duration_answer() -> None:
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = "req_imm_duration_one_year"
+    turn_payload["session"]["current_node_id"] = "IMM_003_DURATION"
+    turn_payload["session"]["turn_index"] = 3
+    turn_payload["npc"]["last_npc_message"] = "How long will you be staying?"
+    turn_payload["game_state"]["current_objective"] = "State the stay duration"
+    turn_payload["game_state"]["completed_intents"] = ["submit_passport", "state_visit_purpose"]
+    turn_payload["previous_node_results"].append(
+        {
+            "node_id": "IMM_002_PURPOSE",
+            "verdict": "SUCCESS",
+            "next_action": "ADVANCE",
+        }
+    )
+    turn_payload["client_allowed_next_nodes"] = [
+        "IMM_004_STAY_LOCATION",
+        "IMM_003B_LONG_STAY_REASON",
+        "IMM_003_RETRY_DURATION",
+        "IMM_EXTRA_002_CLARIFY_DURATION",
+        "END_SECONDARY_INSPECTION",
+    ]
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://immigration/stay_duration_one_year.wav",
+            transcript="I'm gonna stay here for one year.",
+        ),
+    )
+
+    response = Orchestrator().run_turn(request)
+
+    assert response.stt.player_text == "I'm gonna stay here for one year."
+    assert response.next_action == "ADVANCE"
+    assert response.next_node_id == "IMM_003B_LONG_STAY_REASON"
+    assert response.evaluation.verdict == "SUCCESS"
+    assert response.evaluation.feedback_tags == ["intent_matched", "required_slot_filled"]
+
+
+def test_orchestrator_accepts_shopkeeper_occupation_answer() -> None:
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = "req_imm_occupation_shopkeeper"
+    turn_payload["session"]["current_node_id"] = "IMM_009_OCCUPATION"
+    turn_payload["session"]["turn_index"] = 10
+    turn_payload["npc"]["last_npc_message"] = "What do you do for a living?"
+    turn_payload["game_state"]["current_objective"] = "State your occupation"
+    turn_payload["game_state"]["completed_intents"] = [
+        "submit_passport",
+        "state_visit_purpose",
+        "state_stay_duration",
+        "state_stay_location",
+        "confirm_return_ticket",
+        "confirm_first_visit",
+    ]
+    turn_payload["previous_node_results"].append(
+        {
+            "node_id": "IMM_008_FIRST_VISIT",
+            "verdict": "SUCCESS",
+            "next_action": "ADVANCE",
+        }
+    )
+    turn_payload["client_allowed_next_nodes"] = [
+        "IMM_007_FINAL_DECISION",
+        "IMM_009_OCCUPATION_RETRY_OCCUPATION",
+        "IMM_009_OCCUPATION_CLARIFY_OCCUPATION",
+        "END_SECONDARY_INSPECTION",
+    ]
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://immigration/occupation_shopkeeper.wav",
+            transcript="I'm a shopkeeper. I run a cafe.",
+        ),
+    )
+
+    response = Orchestrator().run_turn(request)
+
+    assert response.stt.player_text == "I'm a shopkeeper. I run a cafe."
+    assert response.next_action == "ADVANCE"
+    assert response.next_node_id == "IMM_007_FINAL_DECISION"
+    assert response.evaluation.verdict == "SUCCESS"
+    assert response.evaluation.feedback_tags == ["intent_matched", "required_slot_filled"]
+
+
 def test_orchestrator_treats_immigration_final_decision_as_baggage_transition() -> None:
     turn_payload = _turn_payload()
     turn_payload["request_id"] = "req_alpha_imm_to_bag_0001"

@@ -1126,6 +1126,8 @@ def test_stay_duration_days_parser() -> None:
     assert _stay_duration_days(mock_payload("one week")) == 7
     assert _stay_duration_days(mock_payload("two weeks")) == 14
     assert _stay_duration_days(mock_payload("one month")) == 30
+    assert _stay_duration_days(mock_payload("one year")) == 365
+    assert _stay_duration_days(mock_payload("1 year")) == 365
     assert _stay_duration_days(mock_payload("10 days and 2 weeks")) == 24
     assert _stay_duration_days(mock_payload("until Friday")) == 0
     assert _stay_duration_days(mock_payload(None)) == 0
@@ -1141,6 +1143,25 @@ def test_long_stay_duration_routes_to_long_stay_reason(tmp_path: Path) -> None:
             intent_success=True,
             confidence=0.95,
             extracted_slots={"stay_duration": "two weeks"},
+            missing_slots=[],
+            tier="Bronze",
+        )
+    )
+
+    assert result.evaluation.verdict == "SUCCESS"
+    assert result.branch.next_node_id == "IMM_003B_LONG_STAY_REASON"
+
+
+def test_year_stay_duration_routes_to_long_stay_reason(tmp_path: Path) -> None:
+    context = _node_context("IMM_003_DURATION")
+
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="I'm gonna stay here for one year.",
+            intent_success=True,
+            confidence=0.95,
+            extracted_slots={"stay_duration": "one year"},
             missing_slots=[],
             tier="Bronze",
         )

@@ -5948,6 +5948,89 @@ Verification:
 - `git diff --check`
   passed with Windows LF-to-CRLF conversion warnings only.
 
+## 2026-06-26 Developer C - Slot Semantic Acceptance for Year Duration and Shopkeeper Occupation
+
+Developer C investigated a live Immigration `/respond-dialog` run where the
+work-visa clarification successfully closed, but two later ordinary answers
+still looped:
+
+- `I'm gonna stay here for one year.` was not accepted as `stay_duration`.
+- `I'm a shopkeeper. I run a cafe.` filled an occupation-like value but stayed
+  semantically failed, causing repeated occupation reasks.
+
+Root cause:
+
+- C's stay-duration extractor only recognized days, weeks, months, and
+  until-date phrases, so `one year` was not promoted into the required
+  `stay_duration` slot.
+- B's `_stay_duration_days` parser did not understand years, so long-stay
+  routing could not treat `one year` as 365 days.
+- The scenario data did not list `years` as an allowed numeric
+  stay-duration category.
+- The scenario data and C fallback keywords did not include `shopkeeper`.
+- In `murphy_turn_authority="unified"` mode, C could repair slot evidence but
+  then restore raw LLM `intent_success=false` / `satisfied=false`, leaving a
+  contradictory state: slot filled, turn still failed.
+
+Changed files:
+
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/prompts/understanding_prompt.md`
+- `backend/app/services/service_b/scenario_state_machine.py`
+- `backend/app/data/scenario_nodes.json`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/sprints/2026-06-26-slot-semantic-acceptance-sprint.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- C now accepts `year`/`years` duration phrases such as `one year` and
+  preserves them as `stay_duration`.
+- B now converts `one year` / `1 year` to 365 days, so existing long-stay
+  routing can apply.
+- Scenario nodes now include `years` as a valid stay-duration category and
+  `shopkeeper` as a valid occupation category.
+- C now recognizes `shopkeeper` and cafe/self-employment occupation phrasing.
+- In unified turn-authority mode, if C has safely filled every required slot
+  after slot evidence / repair, C promotes `intent_success`,
+  `intent_satisfied`, `satisfied`, and `branch_hint` to success instead of
+  letting raw LLM retry/clarify flags reopen an already answered question.
+- Prompt guidance now tells the Understanding LLM to treat days/weeks/months
+  and years as stay-duration evidence, and job titles/self-employment as
+  occupation evidence.
+
+Architecture note:
+
+- This is still a small implementation patch, but the intended pattern is now
+  "slot semantic acceptance" rather than per-utterance branch rules. The next
+  improvement should be a slot acceptance corpus: pass/clarify/warn examples
+  per slot with expected canonical evidence. That lets C/B evolve by expanding
+  a slot contract and eval set instead of adding a new rule every time one
+  sentence fails.
+
+Verification:
+
+- RED:
+  `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_repairs_llm_missing_year_stay_duration_slot backend/tests/test_understanding_agent.py::test_understanding_agent_rule_mode_recognizes_stay_duration_values backend/tests/test_understanding_agent.py::test_understanding_agent_rule_mode_recognizes_new_immigration_slot_values backend/tests/test_understanding_agent.py::test_understanding_agent_unified_authority_preserves_semantic_slot_repair backend/tests/dev_b/test_developer_b_policy_engine.py::test_stay_duration_days_parser backend/tests/dev_b/test_developer_b_policy_engine.py::test_year_stay_duration_routes_to_long_stay_reason backend/tests/test_preprototype_flow.py::test_orchestrator_accepts_year_stay_duration_answer backend/tests/test_preprototype_flow.py::test_orchestrator_accepts_shopkeeper_occupation_answer -q`
+  failed: 8 failed.
+- GREEN:
+  same command passed: 8 passed, 1 warning (`audioop` deprecation).
+- Broader regression:
+  `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_preprototype_flow.py -q`
+  passed: 213 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`
+  passed.
+- `uv run mypy .`
+  passed: no issues found in 149 source files.
+- `git diff --check`
+  passed with Windows LF-to-CRLF conversion warnings only.
+- Full `uv run pytest -q` was not rerun for this sprint because the required
+  escalated command was rejected by the Codex usage limit after targeted and
+  broader regression suites had passed.
+
 ## 2026-06-26 Developer A / C - Preserve Work-Authorization Clarification Fallback
 
 Developer C investigated the next live `/respond-dialog` run where the player
@@ -6086,4 +6169,27 @@ Verification:
   passed: no issues found in 149 source files.
 - `git diff --check`
   passed with Windows LF-to-CRLF conversion warnings only.
+
+## 2026-06-26 Latest Pointer - Slot Semantic Acceptance Follow-up
+
+The latest completed sprint is the year-duration / shopkeeper occupation slot
+semantic acceptance fix. See
+`docs/sprints/2026-06-26-slot-semantic-acceptance-sprint.md` and the detailed
+handoff section titled
+`2026-06-26 Developer C - Slot Semantic Acceptance for Year Duration and
+Shopkeeper Occupation`.
+
+Key result: `one year` is accepted as `stay_duration`, `shopkeeper` / cafe
+self-employment phrasing is accepted as occupation, and unified turn authority
+no longer restores raw LLM failure when C has safely filled every required slot.
+
+Fresh verification at the time of the sprint-specific fix:
+
+- RED targeted regression command failed: 8 failed.
+- GREEN same targeted regression command passed: 8 passed, 1 warning
+  (`audioop` deprecation).
+- Broader regression passed: 213 passed, 1 warning (`audioop` deprecation).
+- `ruff`, `mypy`, and `git diff --check` passed.
+- Full `uv run pytest -q` was not rerun because the required escalated command
+  was rejected by the Codex usage limit.
 

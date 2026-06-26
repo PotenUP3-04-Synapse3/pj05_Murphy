@@ -387,6 +387,40 @@ def test_understanding_agent_repairs_llm_missing_stay_duration_slot() -> None:
     assert agent.last_trace["postprocessing"]["reason"] == "llm_missing_allowed_slot"
 
 
+def test_understanding_agent_repairs_llm_missing_year_stay_duration_slot() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_stay_duration",
+            "intent_success": False,
+            "confidence": 0.73,
+            "meaning_summary_kr": "The player gave a long stay duration.",
+            "emotion": "calm",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "unclear_required_slot",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "extracted_slots": {"travel_schedule": "one year"},
+            "missing_slots": ["stay_duration"],
+            "needs_clarification": True,
+            "__llm_usage": {"input_tokens": 640, "output_tokens": 120, "total_tokens": 760},
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text("I'm gonna stay here for one year.", _duration_node_context())
+
+    assert output.intent == "state_stay_duration"
+    assert output.intent_success is True
+    assert output.extracted_slots["stay_duration"] == "one year"
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
+    assert agent.last_trace["postprocessing"]["source"] == "rule_stay_duration_classifier"
+
+
 def test_understanding_agent_accepts_generic_llm_slot_evidence_for_required_slot() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {
@@ -562,6 +596,7 @@ def test_understanding_agent_rule_mode_recognizes_stay_duration_values() -> None
         "I will stay for 5 days.": "5 days",
         "I will stay for five days.": "five days",
         "I will stay one week.": "one week",
+        "I'm gonna stay here for one year.": "one year",
         "I will stay until Friday.": "until friday",
     }
     for player_text, stay_duration in cases.items():
@@ -651,6 +686,12 @@ def test_understanding_agent_rule_mode_recognizes_new_immigration_slot_values() 
             "engineer",
         ),
         (
+            "IMM_009_OCCUPATION",
+            "I'm a shopkeeper. I run a cafe.",
+            "occupation",
+            "shopkeeper",
+        ),
+        (
             "IMM_010_CASH",
             "I have 500 dollars in cash.",
             "cash_amount",
@@ -720,6 +761,49 @@ def test_understanding_agent_llm_mode_builds_new_immigration_slot_from_evidence(
     assert output.missing_slots == []
     assert output.slot_evidence[0].slot == "occupation"
     assert output.slot_evidence[0].value == "engineer"
+
+
+def test_understanding_agent_unified_authority_preserves_semantic_slot_repair() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_occupation",
+            "intent_success": False,
+            "intent_satisfied": False,
+            "satisfied": False,
+            "branch_hint": "clarify",
+            "confidence": 0.76,
+            "meaning_summary_kr": "The player answered with a job.",
+            "emotion": "calm",
+            "answer_relevance": "partially_related",
+            "ambiguity_type": "unclear_required_slot",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "extracted_slots": {},
+            "missing_slots": ["occupation"],
+            "needs_clarification": True,
+            "__llm_usage": {"input_tokens": 640, "output_tokens": 120, "total_tokens": 760},
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(
+            murphy_understanding_mode="llm",
+            murphy_turn_authority="unified",
+        ),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text(
+        "I'm a shopkeeper. I run a cafe.",
+        _alpha_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_009_OCCUPATION"),
+    )
+
+    assert output.intent_success is True
+    assert output.intent_satisfied is True
+    assert output.satisfied is True
+    assert output.branch_hint == "success"
+    assert output.extracted_slots == {"occupation": "shopkeeper"}
+    assert output.missing_slots == []
 
 
 def test_understanding_agent_llm_mode_upgrades_here_you_go_passport_handover() -> None:
