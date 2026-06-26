@@ -5947,6 +5947,62 @@ Verification:
   passed: no issues found in 149 source files.
 - `git diff --check`
   passed with Windows LF-to-CRLF conversion warnings only.
+
+## 2026-06-26 Developer A / C - Preserve Work-Authorization Clarification Fallback
+
+Developer C investigated the next live `/respond-dialog` run where the player
+said `I'm here to work.` twice and still received `Could you tell me why you're
+here?` / `What brings you to the United States?`.
+
+Root cause:
+
+- C and B were already routing the turn correctly:
+  `pragmatic_player_move=visa_work_mismatch`,
+  `branch_reason=visa_work_authorization_clarification`, and
+  `suspicion_delta=0`.
+- A also rejected the generic LLM line correctly:
+  `llm.reason=work_authorization_reask_violation`.
+- The remaining failure was after that: A's fallback started as
+  `work_authorization_clarification_fallback`, but retry variation and
+  non-ADVANCE generic question override saw `surface_goal=ask_visit_purpose`
+  and overwrote the specialized fallback with generic purpose paraphrases.
+
+Changed files:
+
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `docs/sprints/2026-06-26-immigration-work-purpose-pragmatics-sprint.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- Work-authorization clarification branches are now excluded from A's generic
+  retry variation path.
+- Work-authorization clarification branches are now excluded from A's
+  non-ADVANCE generic surface-goal override path.
+- Added a regression with prior dialogue history (`Good. What is the purpose
+  of your visit?`) proving that the fallback remains a concrete visa/work
+  authorization question instead of becoming `What brings you to the United
+  States?`.
+
+Verification:
+
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_is_not_overwritten_by_retry_variation -q`
+  - RED before correction: 1 failed because the final text became
+    `What brings you to the United States?`.
+  - GREEN after correction: 1 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_is_not_overwritten_by_retry_variation backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary -q`
+  passed: 5 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
+  passed: 278 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest -q`
+  passed: 556 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`
+  passed.
+- `uv run mypy .`
+  passed: no issues found in 149 source files.
+- `git diff --check`
+  passed with Windows LF-to-CRLF conversion warnings only.
 - `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
   passed: 273 passed, 1 warning (`audioop` deprecation).
 - `uv run pytest -q`

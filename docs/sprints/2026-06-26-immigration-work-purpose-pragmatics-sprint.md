@@ -84,6 +84,22 @@ carry that judgment through their normal contracts.
 - Added an orchestrator regression proving the whole response advances to
   `IMM_003_DURATION` instead of repeating a purpose question.
 
+## Sprint F - Preserve The Work-Authorization Fallback Text
+
+- Reproduced the remaining live `/respond-dialog` symptom where
+  `I'm here to work.` correctly triggered
+  `branch_reason=visa_work_authorization_clarification`, A correctly rejected
+  the generic LLM output with `work_authorization_reask_violation`, but the
+  fallback still ended as `Could you tell me why you're here?` or
+  `What brings you to the United States?`.
+- Root cause: A built the correct work-authorization fallback first, then
+  retry variation / non-ADVANCE generic question override saw
+  `surface_goal=ask_visit_purpose` and overwrote the specialized fallback with
+  a generic visit-purpose paraphrase.
+- A now excludes work-authorization clarification branches from those generic
+  retry variation and non-ADVANCE override paths, preserving the concrete
+  visa/work authorization question.
+
 ## Verification
 
 - `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_mode_closes_work_authorization_when_work_visa_is_confirmed -q`
@@ -95,6 +111,22 @@ carry that judgment through their normal contracts.
   - GREEN after correction: 2 passed, 1 warning (`audioop` deprecation).
 - `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification backend/tests/dev_b/test_developer_b_policy_engine.py::test_repeated_work_authorization_clarification_does_not_escalate_to_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary -q`
   - GREEN: 7 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_is_not_overwritten_by_retry_variation -q`
+  - RED first: 1 failed because the fallback was overwritten to
+    `What brings you to the United States?`.
+  - GREEN after correction: 1 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_is_not_overwritten_by_retry_variation backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary -q`
+  - GREEN: 5 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
+  - GREEN: 278 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest -q`
+  - GREEN: 556 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`
+  - GREEN: all checks passed.
+- `uv run mypy .`
+  - GREEN: no issues found in 149 source files.
+- `git diff --check`
+  - GREEN: no whitespace errors; Git printed Windows LF-to-CRLF conversion warnings only.
 - `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
   - GREEN: 277 passed, 1 warning (`audioop` deprecation).
 - `uv run pytest -q`

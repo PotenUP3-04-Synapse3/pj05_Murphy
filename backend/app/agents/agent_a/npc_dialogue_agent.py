@@ -748,7 +748,11 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
             last_turn = dialogue_history[-1]
             last_npc_text = last_turn.get("npc_text_preview", "") if isinstance(last_turn, dict) else ""
             
-        if branch_type in {"retry", "clarify"} and last_npc_text:
+        if (
+            branch_type in {"retry", "clarify"}
+            and last_npc_text
+            and not _is_work_authorization_clarification_branch(normalized)
+        ):
             current_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
             from backend.app.services.service_a.dialogue_policy_service import get_retry_variation
             varied_text = get_retry_variation(surface_goal, last_npc_text, current_text)
@@ -1043,6 +1047,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         and purpose != "smalltalk_diagnostic"
         and surface_goal
         and not _is_passport_submission_refusal_branch(normalized)
+        and not _is_work_authorization_clarification_branch(normalized)
         and not _is_risk_control_branch(normalized)
     ):
         def _extract_reaction_part(text: str) -> str:
@@ -1262,6 +1267,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         is_non_advance
         and purpose != "smalltalk_diagnostic"
         and not _is_passport_submission_refusal_branch(normalized)
+        and not _is_work_authorization_clarification_branch(normalized)
         and not _is_risk_control_branch(normalized)
     ):
         logger.info(f"Non-ADVANCE action '{next_action}' detected. Overriding LLM next question with current surface_goal '{surface_goal}'")
