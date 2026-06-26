@@ -1170,6 +1170,20 @@ def _build_conversation_act_card(
         )
 
     social_move = output.social_context.conversation_move
+    if social_move == "meta_non_answer":
+        return ConversationActCard(
+            player_act="meta_non_answer",
+            relation_to_previous="ignores_current_prompt",
+            npc_social_duty="repair_current_obligation"
+            if output.social_context.pending_social_obligation
+            else "close_or_pause",
+            natural_next_move="repair",
+            topic_anchor=output.social_context.pending_social_obligation or "",
+            confidence=max(0.78, output.social_context.pragmatics_confidence),
+            evidence=player_text,
+            reason="The player is talking about the conversation itself instead of answering the active request.",
+        )
+
     if social_move in {"greeting_only", "repeated_greeting", "low_content_non_answer", "filler"}:
         return ConversationActCard(
             player_act="social_non_answer",
@@ -1198,6 +1212,19 @@ def _build_conversation_act_card(
             reason="The player asked for clarification instead of moving the topic forward.",
         )
 
+    if _is_flight_smalltalk_diagnostic_node(node_context) and _flight_pen_obligation_addressed(player_text):
+        return ConversationActCard(
+            player_act="belated_obligation_answer",
+            relation_to_previous="answers_current_prompt",
+            npc_social_duty="accept_belated_answer_then_continue",
+            natural_next_move="accept_then_pivot",
+            topic_anchor="seatmate_pen_request",
+            should_avoid_generic_ack=True,
+            confidence=0.88,
+            evidence=player_text,
+            reason="The player addressed the seatmate's favor/request.",
+        )
+
     if _is_flight_smalltalk_diagnostic_node(node_context) and _is_reciprocal_question(player_text):
         return ConversationActCard(
             player_act="reciprocal_question",
@@ -1210,19 +1237,6 @@ def _build_conversation_act_card(
             confidence=0.9,
             evidence=player_text,
             reason="The player asked the NPC to answer the same conversational topic.",
-        )
-
-    if _is_flight_smalltalk_diagnostic_node(node_context) and _flight_pen_obligation_addressed(player_text):
-        return ConversationActCard(
-            player_act="belated_obligation_answer",
-            relation_to_previous="answers_current_prompt",
-            npc_social_duty="accept_belated_answer_then_continue",
-            natural_next_move="accept_then_pivot",
-            topic_anchor="seatmate_pen_request",
-            should_avoid_generic_ack=True,
-            confidence=0.88,
-            evidence=player_text,
-            reason="The player addressed the seatmate's favor/request.",
         )
 
     topic_anchor = _topic_anchor_from_text(player_text)
@@ -1370,6 +1384,23 @@ def _build_social_context_card(
             recommended_npc_move="clarify",
             pragmatics_confidence=0.74,
             reason="The player gave only filler or hesitation.",
+        )
+
+    if not (output.intent_success or output.intent_satisfied) and _is_meta_non_answer(player_text):
+        return SocialContextCard(
+            scene_norm=scene_norm,
+            conversation_move="meta_non_answer",
+            prior_turn_relation="non_answer",
+            social_pattern="meta_non_answer",
+            pending_social_obligation=pending_obligation,
+            obligation_status="ignored" if pending_obligation else "none",
+            engagement_quality="stalled",
+            recommended_npc_move=_repair_move_for_scene(scene_norm),
+            pragmatics_confidence=0.8,
+            reason=(
+                "The player commented on or objected to the conversation instead "
+                "of answering the active request."
+            ),
         )
 
     if output.answer_relevance == "off_topic":
@@ -1605,6 +1636,39 @@ def _is_low_content_non_answer(player_text: str) -> bool:
     return False
 
 
+def _is_meta_non_answer(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    words = re.findall(r"[a-z0-9']+", normalized)
+    if not words:
+        return False
+
+    compact = " ".join(words)
+    meta_markers = (
+        "i just said",
+        "i only said",
+        "i just wanted to",
+        "i only wanted to",
+        "i'm just here to",
+        "i am just here to",
+        "i just came to",
+        "i only came to",
+        "i was just saying",
+        "i'm just saying",
+        "i am just saying",
+        "just saying",
+        "why are you asking",
+        "what do you mean",
+        "what's your problem",
+        "what is your problem",
+    )
+    if any(marker in compact for marker in meta_markers):
+        return True
+
+    meta_words = {"said", "saying", "asked", "asking", "talking", "conversation"}
+    social_words = {"hello", "hi", "hey", "what", "why", "just", "only"}
+    return bool(meta_words.intersection(words)) and bool(social_words.intersection(words))
+
+
 def _flight_pen_obligation_addressed(player_text: str) -> bool:
     normalized = _normalize_for_keyword_match(player_text)
     if not normalized:
@@ -1619,6 +1683,9 @@ def _flight_pen_obligation_addressed(player_text: str) -> bool:
         "take it",
         "use this",
         "you can use",
+        "already gave",
+        "gave it to you",
+        "gave you",
         "no problem",
         "sorry no",
         "sorry i need",

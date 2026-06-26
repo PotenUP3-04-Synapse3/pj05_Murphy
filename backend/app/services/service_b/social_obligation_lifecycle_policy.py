@@ -176,6 +176,7 @@ def _is_social_stall_move(player_text: str, social_context: dict[str, Any]) -> b
         "greeting_only",
         "repeated_greeting",
         "low_content_non_answer",
+        "meta_non_answer",
         "filler",
         "off_topic",
         "clarification_request",

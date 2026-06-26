@@ -405,6 +405,7 @@ def _understanding_schema() -> dict[str, Any]:
                             "reciprocal_question",
                             "belated_obligation_answer",
                             "social_non_answer",
+                            "meta_non_answer",
                             "clarification_request",
                             "off_topic",
                             "refusal",

@@ -929,9 +929,9 @@ def test_customs_hold_social_stall_lifecycle_uses_repair_not_hint_loop(tmp_path:
     session_id = "session_dev_b_customs_social_stall_lifecycle"
     turns = [
         ("Hello.", "greeting_only"),
+        ("What? I just said hello.", "meta_non_answer"),
         ("What?", "clarification_request"),
         ("Fine.", "low_content_non_answer"),
-        ("Can you rap for me?", "off_topic"),
     ]
 
     outputs = []

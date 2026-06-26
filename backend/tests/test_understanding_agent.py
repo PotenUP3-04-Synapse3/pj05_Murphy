@@ -50,6 +50,10 @@ def _baggage_customs_hold_node_context():
     return _alpha_node_context("CH0_04_BAGGAGE_CLAIM", "BAG_005_CUSTOMS_HOLD_EXPLANATION")
 
 
+def _baggage_service_desk_node_context():
+    return _alpha_node_context("CH0_04_BAGGAGE_CLAIM", "BAG_001_REPORT_MISSING_AT_DESK")
+
+
 def test_understanding_agent_flight_hello_marks_open_social_obligation() -> None:
     agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
 
@@ -90,6 +94,25 @@ def test_understanding_agent_customs_hold_mixed_everyday_non_answer_marks_low_co
     assert output.social_context.pending_social_obligation == "check_suitcase_contents"
     assert output.social_context.obligation_status == "ignored"
     assert output.social_context.recommended_npc_move == "service_repair"
+
+
+def test_understanding_agent_baggage_meta_greeting_objection_marks_meta_non_answer() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text(
+        "What? I just had... I just said... Hello.",
+        _baggage_service_desk_node_context(),
+    )
+
+    assert output.intent_success is False
+    assert output.answer_relevance == "off_topic"
+    assert output.social_context.scene_norm == "service_recovery"
+    assert output.social_context.conversation_move == "meta_non_answer"
+    assert output.social_context.pending_social_obligation == "answer_report_missing_bag_at_service_desk"
+    assert output.social_context.obligation_status == "ignored"
+    assert output.social_context.recommended_npc_move == "service_repair"
+    assert output.conversation_act.player_act == "meta_non_answer"
+    assert output.conversation_act.npc_social_duty == "repair_current_obligation"
 
 
 def test_understanding_agent_flight_what_marks_clarification_request() -> None:
@@ -151,6 +174,21 @@ def test_understanding_agent_flight_reciprocal_question_marks_answer_duty() -> N
     assert output.conversation_act.natural_next_move == "self_disclose_then_follow_up"
     assert output.conversation_act.should_answer_player_question is True
     assert output.conversation_act.should_avoid_generic_ack is True
+
+
+def test_understanding_agent_flight_meta_pen_objection_keeps_belated_answer_priority() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text(
+        "Why do you keep asking me about my pen? I already gave it to you.",
+        _flight_smalltalk_node_context(),
+    )
+
+    assert output.intent_success is True
+    assert output.social_context.conversation_move == "meaningful_answer"
+    assert output.social_context.obligation_status == "addressed"
+    assert output.conversation_act.player_act == "belated_obligation_answer"
+    assert output.conversation_act.npc_social_duty == "accept_belated_answer_then_continue"
 
 
 def test_understanding_agent_flight_second_person_smalltalk_question_marks_answer_duty() -> None:

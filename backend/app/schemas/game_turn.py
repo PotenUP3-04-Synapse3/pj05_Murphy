@@ -346,6 +346,7 @@ class SocialContextCard(BaseModel):
         "greeting_only",
         "repeated_greeting",
         "low_content_non_answer",
+        "meta_non_answer",
         "filler",
         "off_topic",
         "clarification_request",
@@ -358,6 +359,7 @@ class SocialContextCard(BaseModel):
         "filler",
         "clarification_request",
         "low_content_non_answer",
+        "meta_non_answer",
         "off_topic",
     ] = "none"
     pending_social_obligation: str | None = None
@@ -404,6 +406,7 @@ class ConversationActCard(BaseModel):
         "reciprocal_question",
         "belated_obligation_answer",
         "social_non_answer",
+        "meta_non_answer",
         "clarification_request",
         "off_topic",
         "refusal",

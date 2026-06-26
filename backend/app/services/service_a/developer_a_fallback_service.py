@@ -48,7 +48,7 @@ SURFACE_GOAL_FALLBACK_TEXTS = {
     "ask_denied_entry_history": "Have you ever been denied entry?",
     
     # Baggage Desk 챕터
-    "report_missing_bag_at_service_desk": "Hi, how can I help you today?",
+    "report_missing_bag_at_service_desk": "What happened with your bag?",
     "ask_claim_tag_or_ticket": "Sure. I can look that up for you.",
     "confirm_carousel_search": "Let me check the baggage belt details.",
     "redirect_to_customs_hold_area": "I'm sorry, but we don't have it here. It seems your bag is held in the customs area. You must go there.",
@@ -292,6 +292,33 @@ def _smalltalk_followup_for_surface_goal(surface_goal: str) -> str:
     return ""
 
 
+def _baggage_service_desk_repair_text(
+    *,
+    surface_goal: str,
+    branch_reason: str,
+    conversation_move: str,
+) -> str:
+    if surface_goal != "report_missing_bag_at_service_desk":
+        return ""
+    if "procedure_warning" in branch_reason:
+        return "I can only help if you tell me the baggage problem."
+    if "engagement_check" in branch_reason:
+        return "Are you trying to report a baggage problem, or do you need something else?"
+    if "repeated_social_repair" in branch_reason:
+        if conversation_move == "clarification_request":
+            return "I mean your bag. Is it missing, delayed, or damaged?"
+        if conversation_move == "meta_non_answer":
+            return "I understand. I can help if there's a baggage problem. Is your bag missing, delayed, or damaged?"
+        if conversation_move in {"greeting_only", "repeated_greeting", "low_content_non_answer", "filler"}:
+            return "I can help with baggage. Is your bag missing, delayed, or damaged?"
+        return "I can help if there's a baggage problem. What happened with your bag?"
+    if "social_obligation_open" in branch_reason:
+        if conversation_move == "meta_non_answer":
+            return "I understand. This is the baggage desk. What happened with your bag?"
+        return "Hi. This is the baggage desk. If you need help with a bag, tell me what happened."
+    return ""
+
+
 def _social_context_fallback_text(normalized: dict[str, Any]) -> str:
     social_context = normalized.get("social_context") or {}
     if not isinstance(social_context, dict):
@@ -335,6 +362,13 @@ def _social_context_fallback_text(normalized: dict[str, Any]) -> str:
 
     fallback_question = SURFACE_GOAL_FALLBACK_TEXTS.get(surface_goal, "").strip()
     if scene_norm == "service_recovery":
+        service_desk_repair = _baggage_service_desk_repair_text(
+            surface_goal=surface_goal,
+            branch_reason=branch_reason,
+            conversation_move=conversation_move,
+        )
+        if service_desk_repair:
+            return service_desk_repair
         if "procedure_warning" in branch_reason:
             return "I cannot continue the inspection without your cooperation."
         if "engagement_check" in branch_reason:

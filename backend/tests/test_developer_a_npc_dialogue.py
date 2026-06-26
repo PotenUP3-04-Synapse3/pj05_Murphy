@@ -572,7 +572,7 @@ def test_baggage_service_desk_fallback_dialogue() -> None:
         use_llm=False,
     )
     assert result_start["speaker"] == "Brielle"
-    assert result_start["npc_text"] == "Hi, how can I help you today?"
+    assert result_start["npc_text"] == "What happened with your bag?"
 
     retry_text = synthesize_fallback_next_question(
         "I can help, but I need to know the baggage problem.",
@@ -1097,6 +1097,101 @@ def test_customs_social_warning_fallback_sets_boundary_without_repeating_content
     assert "please check the contents of the suitcase now" not in text
     assert "cannot continue" in text
     assert "cooperation" in text
+
+
+def _baggage_service_social_payload(
+    *,
+    branch_reason: str,
+    conversation_move: str,
+    player_text: str,
+) -> dict[str, Any]:
+    return {
+        "npc": {"npc_id": "brielle", "npc_role": "baggage_agent"},
+        "node_id": "BAG_001_REPORT_MISSING_AT_DESK",
+        "player_text": player_text,
+        "node_context": {
+            "node_id": "BAG_001_REPORT_MISSING_AT_DESK",
+            "recommended_expression": "My bag did not arrive.",
+        },
+        "understanding": {
+            "answer_relevance": "off_topic",
+            "missing_slots": ["missing_bag_statement"],
+            "social_context": {
+                "scene_norm": "service_recovery",
+                "conversation_move": conversation_move,
+                "pending_social_obligation": "answer_report_missing_bag_at_service_desk",
+                "obligation_status": "ignored",
+                "engagement_quality": "stalled",
+                "recommended_npc_move": "service_repair",
+            },
+            "conversation_act": {
+                "player_act": "meta_non_answer"
+                if conversation_move == "meta_non_answer"
+                else "social_non_answer",
+                "npc_social_duty": "repair_current_obligation",
+                "natural_next_move": "repair",
+                "topic_anchor": "answer_report_missing_bag_at_service_desk",
+            },
+        },
+        "evaluation_summary": {"task_success": False, "clarity": 0.2},
+        "level_hint": {"english_level": "beginner"},
+        "in_game_feedback": {"npc_recast_line_candidate": None},
+        "branch": {
+            "branch_type": "clarify",
+            "next_action": "REASK",
+            "next_node_id": "BAG_001_RETRY_REPORT_MISSING_AT_DESK",
+            "branch_reason": branch_reason,
+        },
+        "dialogue_directive": {
+            "purpose": "support_retry",
+            "target_slot": "missing_bag_statement",
+        },
+        "dialogue_seed": {
+            "surface_goal": "report_missing_bag_at_service_desk",
+            "required_slots": ["missing_bag_statement"],
+        },
+    }
+
+
+def test_baggage_service_greeting_fallback_sets_service_boundary_without_slot_loop() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        _baggage_service_social_payload(
+            branch_reason="service_recovery_social_obligation_open",
+            conversation_move="greeting_only",
+            player_text="Hello.",
+        ),
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "social_context_fallback"
+    assert "baggage desk" in text
+    assert "what happened" in text
+    assert "sorry" not in text
+    assert "still need" not in text
+    assert "claim tag" not in text
+
+
+def test_baggage_service_meta_non_answer_fallback_acknowledges_then_names_bag_options() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        _baggage_service_social_payload(
+            branch_reason="service_recovery_repeated_social_repair",
+            conversation_move="meta_non_answer",
+            player_text="What? I just had... I just said... Hello.",
+        ),
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "social_context_fallback"
+    assert "i understand" in text
+    assert "baggage problem" in text
+    assert "missing" in text
+    assert "delayed" in text
+    assert "damaged" in text
+    assert "i still need" not in text
+    assert "i'm not sure you heard me" not in text
+    assert "claim tag" not in text
 
 
 def test_passport_refusal_warning_fallback_does_not_ask_for_clear_answer() -> None:

@@ -6254,3 +6254,92 @@ player has reported the baggage problem. Greeting-only or off-topic turns stay
 on the current problem-intake obligation, while the LLM response path remains
 available for natural wording.
 
+## 2026-06-26 Developer A / B / C - BAG_001 Service Boundary Repair
+
+Developer C investigated the follow-up live run where the claim-tag jump was
+fixed, but Brielle still sounded repetitive:
+
+- Player: `Hello.`
+- Brielle: `Sorry, I still need the bag problem. What happened with your bag?`
+- Player: `What? I just had... I just said... Hello.`
+- Brielle: `I still need the bag issue. What happened with your bag?`
+
+Root cause:
+
+- C labeled the second turn as generic `off_topic`, so A could not tell that
+  the player was making a meta/social non-answer about the conversation itself.
+- B correctly kept the player on `BAG_001_REPORT_MISSING_AT_DESK`, but the
+  social lifecycle signal was still too generic for natural wording.
+- A's BAG_001 service-recovery fallback still used "I need..." slot-loop
+  language instead of a human service-desk boundary.
+
+Changed files:
+
+- `backend/app/schemas/game_turn.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/services/service_b/social_obligation_lifecycle_policy.py`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/app/agents/agent_a/npc_llm_client.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`
+- `docs/sprints/2026-06-26-baggage-service-boundary-repair-sprint.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- Added `meta_non_answer` as a conversation-act/social-context category for
+  broad conversation-about-the-conversation responses such as "I just said..."
+  or "I only wanted to...", not as a `hello`-specific branch rule.
+- B's social obligation lifecycle treats `meta_non_answer` as a social stall,
+  so the existing service-recovery lifecycle still advances normally.
+- A's BAG_001 fallback now says a service-boundary repair instead of repeating
+  "I still need..." loops:
+  - first social non-answer: `Hi. This is the baggage desk...`
+  - repeated/meta non-answer: `I understand. I can help if there's a baggage
+    problem...`
+- A long/short prompts and runtime LLM instructions now align with this
+  behavior and continue to forbid claim-tag questions before the problem intake
+  is satisfied.
+
+Verification so far:
+
+- RED:
+  `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_baggage_meta_greeting_objection_marks_meta_non_answer backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_greeting_fallback_sets_service_boundary_without_slot_loop backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_meta_non_answer_fallback_acknowledges_then_names_bag_options -q`
+  failed: 3 failed.
+- GREEN:
+  same command passed: 3 passed, 1 warning (`audioop` deprecation).
+- Focused prompt/rendering check:
+  `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_baggage_meta_greeting_objection_marks_meta_non_answer backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_greeting_fallback_sets_service_boundary_without_slot_loop backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_meta_non_answer_fallback_acknowledges_then_names_bag_options backend/tests/test_developer_a_prompt_rendering.py -q`
+  passed: 6 passed, 1 warning (`audioop` deprecation).
+- Related regression:
+  `uv run pytest backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py::test_customs_hold_social_stall_lifecycle_uses_repair_not_hint_loop backend/tests/test_preprototype_flow.py::test_orchestrator_advances_baggage_report_to_claim_tag_node backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata -q`
+  passed: 119 passed, 1 warning (`audioop` deprecation).
+- Full-suite follow-up caught and fixed a flight pen-loop regression caused by
+  overly broad `meta_non_answer` handling. The phrase `Why do you keep asking
+  me about my pen? I already gave it to you.` now keeps
+  `belated_obligation_answer` priority.
+- Pen-loop regression command:
+  `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_flight_meta_pen_objection_keeps_belated_answer_priority backend/tests/test_preprototype_flow.py::test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop_legacy backend/tests/test_preprototype_flow.py::test_orchestrator_prevents_pen_loop_in_default_memory_mode -q`
+  passed: 3 passed, 1 warning (`audioop` deprecation).
+- Full suite: `uv run pytest -q` passed: 566 passed, 1 warning (`audioop`
+  deprecation).
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 149 source files.
+- `git diff --check` passed. Git printed Windows LF-to-CRLF working-copy
+  warnings only.
+
+## 2026-06-26 Latest Pointer - BAG_001 Service Boundary Repair
+
+The latest completed sprint is the BAG_001 service boundary repair. See
+`docs/sprints/2026-06-26-baggage-service-boundary-repair-sprint.md`.
+
+Key result: Brielle should now treat greeting-only or meta non-answers at the
+baggage desk as a service-boundary repair rather than a repeated missing-slot
+loop. C can emit `meta_non_answer`, B treats it as a social stall in the
+existing service-recovery lifecycle, and A says the human-facing boundary
+before asking what happened with the bag.
+
