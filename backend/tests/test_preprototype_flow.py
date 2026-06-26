@@ -18,6 +18,7 @@ from backend.app.schemas.game_turn import (
     MockAudioInput,
     NpcContext,
     PrePrototypeRequest,
+    PragmaticContextCard,
     UnderstandingOutput,
     UnrealTurnRequest,
 )
@@ -2223,6 +2224,50 @@ def test_orchestrator_routes_public_figure_threat_to_secondary_not_purpose_reask
     assert builder_payloads[0]["understanding"]["pragmatic_context"]["player_move"] == "violent_threat"
     assert builder_payloads[0]["branch"]["branch_reason"] == "violent_threat_to_public_figure"
     assert builder_payloads[0]["dialogue_directive"]["purpose"] == "warn_and_control_risk"
+
+
+def test_orchestrator_routes_work_purpose_pragmatic_risk_to_secondary_not_purpose_reask() -> None:
+    request = _preprototype_request("I'm here to work.")
+    orchestrator = Orchestrator()
+    orchestrator.understanding_agent = StaticUnderstandingAgent(
+        UnderstandingOutput(
+            intent="state_visit_purpose",
+            intent_success=False,
+            confidence=0.88,
+            meaning_summary_kr="The player stated a work-purpose claim that requires visa/work authorization handling.",
+            emotion="calm",
+            answer_relevance="on_topic",
+            ambiguity_type="visa_work_mismatch",
+            risk_delta=35,
+            risk_reason="The work-purpose claim requires procedural control.",
+            risk_tags=["visa_work_mismatch", "illegal_work_intent"],
+            extracted_slots={"illegal_work_intent": "possible"},
+            missing_slots=[],
+            needs_clarification=False,
+            intent_satisfied=False,
+            pragmatic_context=PragmaticContextCard.model_validate({
+                "player_move": "visa_work_mismatch",
+                "target": "officer",
+                "risk_level": "high",
+                "procedural_posture": "stop_normal_interview",
+                "recommended_b_move": "warning",
+                "recommended_a_move": "formal_boundary",
+                "confidence": 0.88,
+                "evidence": "I'm here to work.",
+                "reason": "The player stated a work-purpose claim that requires visa/work authorization handling.",
+            }),
+        )
+    )
+
+    response = orchestrator.run_turn(request)
+
+    assert response.next_action == "WARNING"
+    assert response.next_node_id == "END_SECONDARY_INSPECTION"
+    assert response.evaluation.verdict == "CRITICAL_FAIL"
+    assert "what brings you" not in response.npc.text.lower()
+    assert "purpose of your visit" not in response.npc.text.lower()
+    assert "visa" in response.npc.text.lower()
+    assert "secondary inspection" in response.npc.text.lower()
 
 
 def test_dev_a_adapter_reports_speaker_mismatch_diagnostic() -> None:

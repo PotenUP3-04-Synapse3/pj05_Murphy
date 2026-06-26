@@ -860,6 +860,64 @@ def test_understanding_agent_llm_pragmatic_card_escalates_threat_risk() -> None:
     assert output.pragmatic_context.recommended_b_move == "secondary_inspection"
 
 
+def test_understanding_agent_llm_pragmatic_card_escalates_work_purpose_risk() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_visit_purpose",
+            "intent_success": False,
+            "confidence": 0.87,
+            "meaning_summary_kr": "The player says they are coming to work, which needs visa-status handling.",
+            "emotion": "calm",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "visa_work_mismatch",
+            "risk_delta": 2,
+            "risk_reason": "The model treated this as weak risk before pragmatic review.",
+            "risk_tags": [],
+            "slot_evidence": [
+                {
+                    "slot": "illegal_work_intent",
+                    "value": "possible",
+                    "confidence": 0.88,
+                    "evidence_text": "here to work",
+                }
+            ],
+            "extracted_slots": {},
+            "missing_slots": [],
+            "needs_clarification": False,
+            "intent_satisfied": False,
+            "judgment_reason": "The statement may be a work-purpose visa mismatch, not a simple visit purpose.",
+            "pragmatic_context": {
+                "player_move": "visa_work_mismatch",
+                "target": "officer",
+                "threat_directness": "none",
+                "risk_level": "high",
+                "procedural_posture": "stop_normal_interview",
+                "recommended_b_move": "warning",
+                "recommended_a_move": "formal_boundary",
+                "confidence": 0.88,
+                "evidence": "I'm here to work.",
+                "reason": "A traveler claiming they are here to work may need visa/work authorization verification.",
+            },
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text("I'm here to work.", _purpose_node_context())
+
+    assert output.intent_success is False
+    assert output.intent_satisfied is False
+    assert output.needs_clarification is False
+    assert output.risk_delta >= 30
+    assert "visa_work_mismatch" in output.risk_tags
+    assert "illegal_work_intent" in output.risk_tags
+    assert output.pragmatic_context.player_move == "visa_work_mismatch"
+    assert output.pragmatic_context.recommended_b_move == "warning"
+    assert agent.last_trace["postprocessing"]["pragmatic_context_source"] == "llm"
+
+
 def test_understanding_agent_llm_mode_repairs_first_visit_prior_visit_phrase() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {

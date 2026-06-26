@@ -1239,6 +1239,117 @@ def test_violent_threat_llm_output_is_not_accepted_as_visit_purpose_reask() -> N
     assert "threat" in text or "secondary inspection" in text
 
 
+def test_work_purpose_warning_fallback_does_not_reask_visit_purpose() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_002_PURPOSE",
+            "player_text": "I'm here to work.",
+            "node_context": {"recommended_expression": "I'm here for tourism."},
+            "understanding": {
+                "risk_tags": ["visa_work_mismatch", "illegal_work_intent"],
+                "risk_delta": 35,
+                "pragmatic_context": {
+                    "player_move": "visa_work_mismatch",
+                    "target": "officer",
+                    "procedural_posture": "stop_normal_interview",
+                    "recommended_b_move": "warning",
+                    "recommended_a_move": "formal_boundary",
+                    "reason": "The player stated a work-purpose claim that requires visa/work authorization handling.",
+                },
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.88},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "warning",
+                "next_action": "WARNING",
+                "next_node_id": "END_SECONDARY_INSPECTION",
+                "branch_reason": "visa_work_mismatch",
+            },
+            "dialogue_directive": {
+                "purpose": "warn_and_control_risk",
+                "target_slot": "visit_purpose",
+            },
+            "dialogue_seed": {
+                "surface_goal": "ask_visit_purpose",
+                "required_slots": ["visit_purpose"],
+            },
+        },
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert "what is the purpose" not in text
+    assert "what brings you" not in text
+    assert "work" in text or "visa" in text
+    assert "secondary inspection" in text
+
+
+def test_work_purpose_llm_output_is_not_accepted_as_generic_purpose_reask() -> None:
+    class RiskReaskLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Officer Hale",
+                "npc_text": "What is the purpose of your visit?",
+                "tts_text": "What is the purpose of your visit?",
+                "feedback_kr": "Work-purpose claims require visa handling.",
+                "tone": "formal_warning",
+                "animation": "officer_warning",
+                "npc_emotion": "suspicion",
+                "llm_reason": "[COHERENT] Test model incorrectly re-asked the visit purpose.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_002_PURPOSE",
+            "player_text": "I'm here to work.",
+            "node_context": {"recommended_expression": "I'm here for tourism."},
+            "understanding": {
+                "risk_tags": ["visa_work_mismatch", "illegal_work_intent"],
+                "risk_delta": 35,
+                "pragmatic_context": {
+                    "player_move": "visa_work_mismatch",
+                    "target": "officer",
+                    "procedural_posture": "stop_normal_interview",
+                    "recommended_b_move": "warning",
+                    "recommended_a_move": "formal_boundary",
+                },
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.88},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "warning",
+                "next_action": "WARNING",
+                "next_node_id": "END_SECONDARY_INSPECTION",
+                "branch_reason": "visa_work_mismatch",
+            },
+            "dialogue_directive": {
+                "purpose": "warn_and_control_risk",
+                "target_slot": "visit_purpose",
+            },
+            "dialogue_seed": {
+                "surface_goal": "ask_visit_purpose",
+                "required_slots": ["visit_purpose"],
+            },
+        },
+        use_llm=True,
+        llm_client=RiskReaskLLMClient(),
+    )
+
+    text = result["npc_text"].lower()
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "risk_control_reask_violation"
+    assert "what is the purpose" not in text
+    assert "what brings you" not in text
+    assert "secondary inspection" in text
+
+
 def test_immigration_non_advance_override_does_not_add_open_hook_prefix() -> None:
     class NeutralRetryLLMClient:
         model = "fake-model"

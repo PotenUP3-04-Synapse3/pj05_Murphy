@@ -445,6 +445,7 @@ class ScenarioStateMachine:
             "threat_to_other_person",
             "threat_to_unknown_target",
             "coercive_exit_request",
+            "visa_work_mismatch",
         }
 
         if self._is_undeclared_high_value_violation(payload):
@@ -454,6 +455,7 @@ class ScenarioStateMachine:
             payload.understanding.risk_delta >= 20
             or risk_total >= 50
             or bool(critical_tags.intersection(payload.understanding.risk_tags))
+            or self._has_pragmatic_procedural_risk(payload)
             or self._has_passport_submission_refusal(payload)
         )
 
@@ -603,10 +605,20 @@ class ScenarioStateMachine:
             }.intersection(payload.understanding.risk_tags)
         )
 
+    def _has_pragmatic_procedural_risk(self, payload: DevBPolicyInput) -> bool:
+        card = payload.understanding.pragmatic_context
+        return bool(
+            card.player_move == "visa_work_mismatch"
+            and card.risk_level in {"high", "critical"}
+            and card.recommended_b_move in {"warning", "secondary_inspection"}
+        )
+
     def _critical_branch_reason(self, payload: DevBPolicyInput) -> str:
         tags = set(payload.understanding.risk_tags)
         if self._has_passport_submission_refusal(payload):
             return "passport_submission_refused"
+        if "visa_work_mismatch" in tags or payload.understanding.pragmatic_context.player_move == "visa_work_mismatch":
+            return "visa_work_mismatch"
         if "threat_to_officer" in tags:
             return "violent_threat_to_officer"
         if "threat_to_public_figure" in tags:

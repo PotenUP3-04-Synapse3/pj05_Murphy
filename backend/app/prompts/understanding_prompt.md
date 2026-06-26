@@ -73,6 +73,20 @@ the exact player-text phrase that supports it.
 Do not assign confidence `0.9` or higher when the evidence is weak, idiomatic,
 inferred, or only loosely related to the required intent.
 
+## Visa And Work-Purpose Pragmatics
+
+For immigration purpose questions, do not collapse a traveler's claim that they
+are coming to work, earn money, take a job, or help a business as an employee
+into ordinary `business` unless they clearly mean a lawful business meeting,
+conference, or short business visit.
+
+If the utterance creates a visa/work-authorization concern, use
+`pragmatic_context.player_move = "visa_work_mismatch"`,
+`risk_level = "high"`, `procedural_posture = "stop_normal_interview"`,
+`recommended_b_move = "warning"`, and
+`recommended_a_move = "formal_boundary"`. Include `risk_evidence` tags such as
+`visa_work_mismatch` and `illegal_work_intent` when appropriate.
+
 ## Customs Item Sufficiency
 
 Check `difficulty` first — it is the **sole authoritative indicator** of required explanation depth. Do NOT infer required depth from the content of `suspicion_reason`.

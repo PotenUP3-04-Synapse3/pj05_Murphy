@@ -383,6 +383,17 @@ def _risk_control_text(normalized: dict[str, Any]) -> str:
     pragmatic_context = normalized.get("pragmatic_context") or {}
     player_move = str(pragmatic_context.get("player_move") or "")
     target = str(pragmatic_context.get("target") or "")
+    is_work_mismatch = (
+        "visa_work_mismatch" in branch_reason
+        or "visa_work_mismatch" in risk_tags
+        or player_move == "visa_work_mismatch"
+    )
+    if is_work_mismatch:
+        return (
+            "You said you are here to work. I need to verify your visa and work authorization. "
+            "I cannot continue this interview normally, so you will be sent to secondary inspection."
+        )
+
     is_threat = (
         "violent_threat" in branch_reason
         or "violent_threat" in risk_tags

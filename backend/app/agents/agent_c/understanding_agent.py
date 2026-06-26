@@ -608,6 +608,43 @@ def _attach_pragmatic_context(
         source = "llm"
 
     if threat_card is None:
+        work_mismatch_card = _visa_work_mismatch_pragmatic_card(output)
+        if work_mismatch_card is not None:
+            risk_tags = _unique_non_empty(
+                [
+                    *output.risk_tags,
+                    "visa_work_mismatch",
+                    "illegal_work_intent",
+                ]
+            )
+            reason = work_mismatch_card.reason or (
+                "The player stated a work-purpose claim that requires visa/work authorization handling."
+            )
+            updated = output.model_copy(
+                update={
+                    "intent_success": False,
+                    "intent_satisfied": False,
+                    "confidence": max(output.confidence, work_mismatch_card.confidence, 0.86),
+                    "ambiguity_type": (
+                        output.ambiguity_type
+                        if output.ambiguity_type and output.ambiguity_type != "none"
+                        else "visa_work_mismatch"
+                    ),
+                    "risk_delta": max(output.risk_delta, _procedural_risk_delta(work_mismatch_card)),
+                    "risk_reason": reason,
+                    "risk_tags": risk_tags,
+                    "needs_clarification": False,
+                    "judgment_reason": reason,
+                    "pragmatic_context": work_mismatch_card,
+                }
+            )
+            return updated, {
+                "pragmatic_context_applied": True,
+                "pragmatic_context_source": "llm",
+                "pragmatic_player_move": work_mismatch_card.player_move,
+                "pragmatic_risk_level": work_mismatch_card.risk_level,
+                "pragmatic_procedural_risk_applied": True,
+            }
         refusal_card = _passport_refusal_pragmatic_card(output, player_text, node_context)
         if refusal_card is not None:
             return output.model_copy(update={"pragmatic_context": refusal_card}), {
@@ -651,6 +688,27 @@ def _attach_pragmatic_context(
         "pragmatic_target": threat_card.target,
         "pragmatic_risk_level": threat_card.risk_level,
     }
+
+
+def _visa_work_mismatch_pragmatic_card(output: UnderstandingOutput) -> PragmaticContextCard | None:
+    card = output.pragmatic_context
+    if card.player_move != "visa_work_mismatch":
+        return None
+    if card.risk_level not in {"medium", "high", "critical"}:
+        return None
+    if card.recommended_b_move not in {"warning", "secondary_inspection"}:
+        return None
+    return card
+
+
+def _procedural_risk_delta(card: PragmaticContextCard) -> int:
+    if card.risk_level == "critical" or card.recommended_b_move == "secondary_inspection":
+        return 70
+    if card.risk_level == "high":
+        return 35
+    if card.risk_level == "medium":
+        return 20
+    return 0
 
 
 def _passport_refusal_pragmatic_card(

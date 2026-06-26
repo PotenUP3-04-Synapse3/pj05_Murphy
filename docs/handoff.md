@@ -5845,3 +5845,75 @@ Verification:
 - `uv run ruff check .` (passed)
 - `uv run mypy .` (passed)
 
+## 2026-06-26 A/B/C - Immigration Work-Purpose Pragmatics
+
+Developer C investigated the immigration run where the player answered
+`I'm here to work.` at `IMM_002_PURPOSE`, got a generic purpose re-ask, later
+changed to `Visit my uncle.`, and was eventually cleared after stating an
+occupation. Root cause: C could receive weak work-purpose evidence, but the
+LLM's situation-level judgment was not a first-class pragmatic card that B and
+A could preserve. The earlier work-purpose concern therefore behaved like an
+unclear visit-purpose retry instead of a procedural visa/work authorization
+issue.
+
+Changed files:
+
+- `backend/app/schemas/game_turn.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/prompts/understanding_prompt.md`
+- `backend/app/services/service_b/scenario_state_machine.py`
+- `backend/app/agents/agent_b/english_level_hint_agent.py`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/sprints/2026-06-26-immigration-work-purpose-pragmatics-sprint.md`
+- `docs/handoff.md`
+
+Behavior added:
+
+- C schema now accepts `pragmatic_context.player_move =
+  "visa_work_mismatch"`.
+- C Understanding LLM instructions now ask the model to distinguish ordinary
+  business meetings from work/visa authorization mismatch.
+- C now merges LLM `risk_evidence` into internal `risk_tags` / `risk_delta`.
+- C now promotes an LLM `visa_work_mismatch` pragmatic card into procedural
+  risk evidence without inspecting the player utterance string.
+- B now routes high-confidence work-purpose pragmatic risk to the existing
+  risk-control warning / secondary-inspection policy instead of generic retry.
+- A fallback and LLM output guards now prevent visit-purpose re-asks on this
+  branch and give the procedural reason: visa/work authorization must be
+  verified.
+
+Verification:
+
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_escalates_work_purpose_risk backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_risk_routes_to_warning_not_generic_retry backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_warning_fallback_does_not_reask_visit_purpose backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_llm_output_is_not_accepted_as_generic_purpose_reask -q`
+  - RED before implementation: 4 failed.
+  - GREEN after implementation: 4 passed, 1 warning (`audioop`
+    deprecation).
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_pragmatic_risk_to_secondary_not_purpose_reask -q`
+  passed: 1 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
+  passed: 273 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest -q`
+  passed: 551 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`
+  passed.
+- `uv run mypy .`
+  passed: no issues found in 149 source files.
+- `git diff --check`
+  passed with Windows LF-to-CRLF conversion warnings only.
+
+Next recommended step:
+
+- Run live `/respond-dialog` immigration checks with LLM understanding enabled
+  for `I'm here to work`, `I'm here to work as a software engineer`, `I'll help
+  my uncle's shop`, and a lawful business-trip answer. The expected distinction
+  is: work/employee intent becomes visa-work procedural risk; meetings or
+  conferences can remain ordinary `business`.
+

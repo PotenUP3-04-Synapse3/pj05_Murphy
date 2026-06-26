@@ -1317,8 +1317,19 @@ def _should_bypass_social_lifecycle_for_risk(payload: DevBPolicyInput) -> bool:
         "threat_to_other_person",
         "threat_to_unknown_target",
         "coercive_exit_request",
+        "visa_work_mismatch",
     }
-    return payload.understanding.risk_delta >= 20 or bool(critical_tags.intersection(risk_tags))
+    card = payload.understanding.pragmatic_context
+    has_procedural_risk = (
+        card.player_move == "visa_work_mismatch"
+        and card.risk_level in {"high", "critical"}
+        and card.recommended_b_move in {"warning", "secondary_inspection"}
+    )
+    return (
+        payload.understanding.risk_delta >= 20
+        or bool(critical_tags.intersection(risk_tags))
+        or has_procedural_risk
+    )
 
 
 def _score_candidate(score: int) -> int:

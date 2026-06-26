@@ -469,6 +469,7 @@ class PragmaticContextCard(BaseModel):
         "refusal",
         "violent_threat",
         "coercive_exit_request",
+        "visa_work_mismatch",
     ] = "unknown"
     target: Literal["none", "officer", "public_figure", "other_person", "self", "unknown"] = "none"
     threat_directness: Literal["none", "implied", "explicit_intent", "direct_threat"] = "none"

@@ -14,6 +14,7 @@ from backend.app.schemas.game_turn import (
     NodeContext,
     OpenKBWriteResult,
     PlayerProfile,
+    PragmaticContextCard,
     PreviousNodeResult,
     RubricScores,
     ScenarioState,
@@ -99,6 +100,7 @@ def _policy_input(
     client_allowed_next_nodes: list[str] | None = None,
     social_context: dict[str, Any] | None = None,
     conversation_act: dict[str, Any] | None = None,
+    pragmatic_context: dict[str, Any] | None = None,
 ) -> DevBPolicyInput:
     context = node_context or _node_context()
     slots = extracted_slots if extracted_slots is not None else {"visit_purpose": "tourism"}
@@ -152,6 +154,7 @@ def _policy_input(
             needs_clarification=needs_clarification,
             social_context=SocialContextCard.model_validate(social_context or {}),
             conversation_act=ConversationActCard.model_validate(conversation_act or {}),
+            pragmatic_context=PragmaticContextCard.model_validate(pragmatic_context or {}),
         ),
         previous_node_results=[
             PreviousNodeResult(
@@ -309,6 +312,42 @@ def test_violent_threat_routes_to_secondary_instead_of_retry(tmp_path: Path) -> 
     assert result.dialogue_directive is not None
     assert result.dialogue_directive.purpose == "warn_and_control_risk"
     assert result.npc_emotion == "Suspicion"
+
+
+def test_llm_pragmatic_work_purpose_risk_routes_to_warning_not_generic_retry(tmp_path: Path) -> None:
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            player_text="I'm here to work.",
+            intent_success=False,
+            confidence=0.88,
+            answer_relevance="on_topic",
+            ambiguity_type="visa_work_mismatch",
+            risk_delta=35,
+            risk_tags=["visa_work_mismatch", "illegal_work_intent"],
+            extracted_slots={"illegal_work_intent": "possible"},
+            missing_slots=[],
+            needs_clarification=False,
+            pragmatic_context={
+                "player_move": "visa_work_mismatch",
+                "target": "officer",
+                "risk_level": "high",
+                "procedural_posture": "stop_normal_interview",
+                "recommended_b_move": "warning",
+                "recommended_a_move": "formal_boundary",
+                "confidence": 0.88,
+                "evidence": "I'm here to work.",
+                "reason": "The player stated a work-purpose claim that requires visa/work authorization handling.",
+            },
+        )
+    )
+
+    assert result.evaluation.verdict == "CRITICAL_FAIL"
+    assert result.branch.branch_type == "warning"
+    assert result.branch.next_action == "WARNING"
+    assert result.branch.branch_reason == "visa_work_mismatch"
+    assert result.dialogue_directive is not None
+    assert result.dialogue_directive.purpose == "warn_and_control_risk"
+    assert result.state_delta.suspicion_delta >= 30
 
 
 def test_passport_submission_refusal_uses_critical_branch_not_retry_or_hint(tmp_path: Path) -> None:

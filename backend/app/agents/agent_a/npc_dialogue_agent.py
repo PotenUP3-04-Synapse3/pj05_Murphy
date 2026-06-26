@@ -298,15 +298,22 @@ def _is_risk_control_branch(normalized: dict[str, Any]) -> bool:
         "threat_to_other_person",
         "threat_to_unknown_target",
     }
+    procedural_markers = {
+        "visa_work_mismatch",
+        "illegal_work_intent",
+    }
     return (
         "violent_threat" in branch_reason
+        or "visa_work_mismatch" in branch_reason
         or "coercive_exit_request" in branch_reason
         or bool(threat_markers.intersection(risk_tags))
+        or bool(procedural_markers.intersection(risk_tags))
         or player_move == "violent_threat"
+        or player_move == "visa_work_mismatch"
         or (
             purpose == "warn_and_control_risk"
             and next_action in {"WARNING", "FAIL_END"}
-            and bool(threat_markers.intersection(risk_tags))
+            and bool(threat_markers.union(procedural_markers).intersection(risk_tags))
         )
     )
 
