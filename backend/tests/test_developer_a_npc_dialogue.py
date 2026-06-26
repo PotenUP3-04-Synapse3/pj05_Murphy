@@ -572,7 +572,16 @@ def test_baggage_service_desk_fallback_dialogue() -> None:
         use_llm=False,
     )
     assert result_start["speaker"] == "Brielle"
-    assert result_start["npc_text"] == "Hi, how can I help you today?"
+    assert result_start["npc_text"] == "What happened with your bag?"
+
+    retry_text = synthesize_fallback_next_question(
+        "I can help, but I need to know the baggage problem.",
+        "report_missing_bag_at_service_desk",
+        branch_type="clarify",
+    )
+    assert "claim tag" not in retry_text.lower()
+    assert "ticket" not in retry_text.lower()
+    assert "what happened" in retry_text.lower()
 
     # Baggage 4번째 노드(redirect_to_customs_hold_area) 폴백 검증 (재지시 멘트 포함)
     result_end = generate_npc_dialogue_from_level_design(
@@ -595,6 +604,72 @@ def test_baggage_service_desk_fallback_dialogue() -> None:
     )
     assert result_end["speaker"] == "Brielle"
     assert result_end["npc_text"] == "I'm sorry, but we don't have it here. It seems your bag is held in the customs area. You must go there."
+
+
+def test_baggage_service_desk_rejects_claim_tag_question_before_problem_report() -> None:
+    class PrematureClaimTagLLMClient:
+        model = "fake-premature-claim-tag-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "npc_text": "Pardon me. Do you have your baggage claim tag or ticket?",
+                "tts_text": "Pardon me. Do you have your baggage claim tag or ticket?",
+                "feedback_kr": "먼저 수하물 문제를 말해야 합니다.",
+                "tone": "formal_firm",
+                "animation": "confusion",
+                "npc_emotion": "Confusion",
+                "llm_reason": "Prematurely asks for the next step instead of the current bag problem.",
+                "__llm_usage": {"input_tokens": 10, "output_tokens": 10, "total_tokens": 20},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "BAGGAGE_STAFF", "npc_role": "baggage_agent"},
+            "node_id": "BAG_001_REPORT_MISSING_AT_DESK",
+            "player_text": "I just wanted to say hello. What's your problem?",
+            "node_context": {
+                "npc_question": "Hi. How can I help you?",
+                "recommended_expression": "My suitcase didn't come out at the carousel.",
+                "required_slots": ["missing_bag_statement"],
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.2},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "understanding": {
+                "answer_relevance": "off_topic",
+                "missing_slots": ["missing_bag_statement"],
+                "social_context": {
+                    "scene_norm": "service_recovery",
+                    "conversation_move": "meta_non_answer",
+                    "pending_social_obligation": "answer_report_missing_bag_at_service_desk",
+                    "obligation_status": "ignored",
+                    "recommended_npc_move": "service_repair",
+                },
+            },
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "next_node_id": "BAG_001_RETRY_REPORT_MISSING_AT_DESK",
+                "branch_reason": "service_recovery_social_obligation_open",
+            },
+            "dialogue_directive": {
+                "purpose": "support_retry",
+                "target_slot": "missing_bag_statement",
+            },
+            "dialogue_seed": {
+                "surface_goal": "report_missing_bag_at_service_desk",
+            },
+        },
+        use_llm=True,
+        llm_client=PrematureClaimTagLLMClient(),
+    )
+
+    assert result["llm"]["used"] is True
+    assert "claim tag" not in result["npc_text"].lower()
+    assert "ticket" not in result["npc_text"].lower()
+    assert "what happened" not in result["npc_text"].lower()
+    assert "baggage" in result["npc_text"].lower()
+    assert "trying to report" in result["npc_text"].lower() or "are you here about" in result["npc_text"].lower()
 
 
 def test_baggage_customs_random_item_fallback_dialogue() -> None:
@@ -1042,6 +1117,137 @@ def test_customs_social_warning_fallback_sets_boundary_without_repeating_content
     assert "cooperation" in text
 
 
+def _baggage_service_social_payload(
+    *,
+    branch_reason: str,
+    conversation_move: str,
+    player_text: str,
+) -> dict[str, Any]:
+    return {
+        "npc": {"npc_id": "brielle", "npc_role": "baggage_agent"},
+        "node_id": "BAG_001_REPORT_MISSING_AT_DESK",
+        "player_text": player_text,
+        "node_context": {
+            "node_id": "BAG_001_REPORT_MISSING_AT_DESK",
+            "recommended_expression": "My bag did not arrive.",
+        },
+        "understanding": {
+            "answer_relevance": "off_topic",
+            "missing_slots": ["missing_bag_statement"],
+            "social_context": {
+                "scene_norm": "service_recovery",
+                "conversation_move": conversation_move,
+                "pending_social_obligation": "answer_report_missing_bag_at_service_desk",
+                "obligation_status": "ignored",
+                "engagement_quality": "stalled",
+                "recommended_npc_move": "service_repair",
+            },
+            "conversation_act": {
+                "player_act": "meta_non_answer"
+                if conversation_move == "meta_non_answer"
+                else "social_non_answer",
+                "npc_social_duty": "repair_current_obligation",
+                "natural_next_move": "repair",
+                "topic_anchor": "answer_report_missing_bag_at_service_desk",
+            },
+        },
+        "evaluation_summary": {"task_success": False, "clarity": 0.2},
+        "level_hint": {"english_level": "beginner"},
+        "in_game_feedback": {"npc_recast_line_candidate": None},
+        "branch": {
+            "branch_type": "clarify",
+            "next_action": "REASK",
+            "next_node_id": "BAG_001_RETRY_REPORT_MISSING_AT_DESK",
+            "branch_reason": branch_reason,
+        },
+        "dialogue_directive": {
+            "purpose": "support_retry",
+            "target_slot": "missing_bag_statement",
+        },
+        "dialogue_seed": {
+            "surface_goal": "report_missing_bag_at_service_desk",
+            "required_slots": ["missing_bag_statement"],
+        },
+    }
+
+
+def test_baggage_service_greeting_fallback_sets_service_boundary_without_slot_loop() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        _baggage_service_social_payload(
+            branch_reason="service_recovery_social_obligation_open",
+            conversation_move="greeting_only",
+            player_text="Hello.",
+        ),
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "social_context_fallback"
+    assert "here about" in text
+    assert "baggage problem" in text
+    assert "what happened" not in text
+    assert "sorry" not in text
+    assert "still need" not in text
+    assert "claim tag" not in text
+
+
+def test_baggage_service_meta_non_answer_fallback_acknowledges_then_names_bag_options() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        _baggage_service_social_payload(
+            branch_reason="service_recovery_repeated_social_repair",
+            conversation_move="meta_non_answer",
+            player_text="What? I just had... I just said... Hello.",
+        ),
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "social_context_fallback"
+    assert "i understand" in text
+    assert "trying to report" in text
+    assert "baggage issue" in text
+    assert "just saying hello" in text
+    assert "what happened" not in text
+    assert "i still need" not in text
+    assert "i'm not sure you heard me" not in text
+    assert "claim tag" not in text
+
+
+def test_baggage_service_social_llm_slot_question_is_rewritten_to_service_intent_check() -> None:
+    class SlotQuestionLLMClient:
+        model = "fake-slot-question-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Brielle",
+                "npc_text": "Hi. What happened with your bag?",
+                "tts_text": "Hi. What happened with your bag?",
+                "feedback_kr": "Try again.",
+                "tone": "formal_firm",
+                "animation": "confusion",
+                "npc_emotion": "Confusion",
+                "llm_reason": "Still treats the greeting as a missing required slot.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        _baggage_service_social_payload(
+            branch_reason="service_recovery_social_obligation_open",
+            conversation_move="greeting_only",
+            player_text="Hello.",
+        ),
+        use_llm=True,
+        llm_client=SlotQuestionLLMClient(),
+    )
+
+    text = result["npc_text"].lower()
+    assert result["llm"]["used"] is True
+    assert "what happened" not in text
+    assert "are you here about" in text
+    assert "baggage problem" in text
+    assert "claim tag" not in text
+
+
 def test_passport_refusal_warning_fallback_does_not_ask_for_clear_answer() -> None:
     result = generate_npc_dialogue_from_level_design(
         {
@@ -1237,6 +1443,263 @@ def test_violent_threat_llm_output_is_not_accepted_as_visit_purpose_reask() -> N
     assert "what brings you" not in text
     assert "purpose of your visit" not in text
     assert "threat" in text or "secondary inspection" in text
+
+
+def test_work_purpose_clarification_fallback_asks_authorization_not_secondary() -> None:
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_002_PURPOSE",
+            "player_text": "I'm here to work.",
+            "node_context": {"recommended_expression": "I'm here for tourism."},
+            "understanding": {
+                "risk_tags": ["visa_work_authorization_unclear"],
+                "risk_delta": 10,
+                "pragmatic_context": {
+                    "player_move": "visa_work_mismatch",
+                    "target": "officer",
+                    "risk_level": "medium",
+                    "procedural_posture": "clarify",
+                    "recommended_b_move": "clarify",
+                    "recommended_a_move": "repair",
+                    "reason": "The player stated a work-purpose claim that requires visa/work authorization clarification.",
+                },
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.88},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "next_node_id": "IMM_EXTRA_001_CLARIFY_PURPOSE",
+                "branch_reason": "visa_work_authorization_clarification",
+            },
+            "dialogue_directive": {
+                "purpose": "support_retry",
+                "target_slot": "visit_purpose",
+            },
+            "dialogue_seed": {
+                "surface_goal": "ask_visit_purpose",
+                "required_slots": ["visit_purpose"],
+            },
+        },
+        use_llm=False,
+    )
+
+    text = result["npc_text"].lower()
+    assert "what is the purpose" not in text
+    assert "what brings you" not in text
+    assert "work" in text
+    assert "visa" in text or "authorization" in text
+    assert "issue" not in text
+    assert "secondary inspection" not in text
+
+
+def test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask() -> None:
+    class RiskReaskLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Officer Hale",
+                "npc_text": "What is the purpose of your visit?",
+                "tts_text": "What is the purpose of your visit?",
+                "feedback_kr": "Work-purpose claims require visa handling.",
+                "tone": "formal_warning",
+                "animation": "officer_warning",
+                "npc_emotion": "suspicion",
+                "llm_reason": "[COHERENT] Test model incorrectly re-asked the visit purpose.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_002_PURPOSE",
+            "player_text": "I'm here to work.",
+            "node_context": {"recommended_expression": "I'm here for tourism."},
+            "understanding": {
+                "risk_tags": ["visa_work_authorization_unclear"],
+                "risk_delta": 10,
+                "pragmatic_context": {
+                    "player_move": "visa_work_mismatch",
+                    "target": "officer",
+                    "risk_level": "medium",
+                    "procedural_posture": "clarify",
+                    "recommended_b_move": "clarify",
+                    "recommended_a_move": "repair",
+                },
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.88},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "next_node_id": "IMM_EXTRA_001_CLARIFY_PURPOSE",
+                "branch_reason": "visa_work_authorization_clarification",
+            },
+            "dialogue_directive": {
+                "purpose": "support_retry",
+                "target_slot": "visit_purpose",
+            },
+            "dialogue_seed": {
+                "surface_goal": "ask_visit_purpose",
+                "required_slots": ["visit_purpose"],
+            },
+        },
+        use_llm=True,
+        llm_client=RiskReaskLLMClient(),
+    )
+
+    text = result["npc_text"].lower()
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "work_authorization_reask_violation"
+    assert "what is the purpose" not in text
+    assert "what brings you" not in text
+    assert "work" in text
+    assert "visa" in text or "authorization" in text
+    assert "secondary inspection" not in text
+
+
+def test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask() -> None:
+    class VagueWhyHereLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Officer Hale",
+                "npc_text": "Could you tell me why you're here",
+                "tts_text": "Could you tell me why you're here",
+                "feedback_kr": "Work-purpose claims require visa handling.",
+                "tone": "formal_firm",
+                "animation": "confusion",
+                "npc_emotion": "suspicion",
+                "llm_reason": "[COHERENT] Test model gave a vague purpose clarification.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_002_PURPOSE",
+            "player_text": "I'm here to work as a software engineer.",
+            "node_context": {"recommended_expression": "I'm here for tourism."},
+            "understanding": {
+                "risk_tags": ["visa_work_authorization_unclear"],
+                "risk_delta": 12,
+                "pragmatic_context": {
+                    "player_move": "visa_work_mismatch",
+                    "target": "officer",
+                    "risk_level": "medium",
+                    "procedural_posture": "clarify",
+                    "recommended_b_move": "clarify",
+                    "recommended_a_move": "repair",
+                },
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.97},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "next_node_id": "IMM_EXTRA_001_CLARIFY_PURPOSE",
+                "branch_reason": "visa_work_authorization_clarification",
+            },
+            "dialogue_directive": {
+                "purpose": "support_retry",
+                "target_slot": "visit_purpose",
+            },
+            "dialogue_seed": {
+                "surface_goal": "ask_visit_purpose",
+                "required_slots": ["visit_purpose"],
+            },
+        },
+        use_llm=True,
+        llm_client=VagueWhyHereLLMClient(),
+    )
+
+    text = result["npc_text"].lower()
+    assert result["llm"]["used"] is False
+    assert result["llm"]["reason"] == "work_authorization_reask_violation"
+    assert "why you're here" not in text
+    assert "why you are here" not in text
+    assert "work" in text
+    assert "visa" in text or "authorization" in text
+    assert "secondary inspection" not in text
+
+
+def test_work_purpose_clarification_fallback_is_not_overwritten_by_retry_variation() -> None:
+    class VagueWhyHereLLMClient:
+        model = "fake-model"
+
+        def generate(self, payload: dict) -> dict:
+            return {
+                "speaker": "Officer Hale",
+                "npc_text": "Could you tell me why you're here?",
+                "tts_text": "Could you tell me why you're here?",
+                "feedback_kr": "Work-purpose claims require visa handling.",
+                "tone": "formal_firm",
+                "animation": "confusion",
+                "npc_emotion": "suspicion",
+                "llm_reason": "[COHERENT] Test model gave a vague purpose clarification.",
+                "__llm_usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            }
+
+    result = generate_npc_dialogue_from_level_design(
+        {
+            "npc": {"npc_id": "hale", "npc_role": "immigration_officer"},
+            "node_id": "IMM_002_PURPOSE",
+            "player_text": "I'm here to work.",
+            "node_context": {"recommended_expression": "I'm here for tourism."},
+            "understanding": {
+                "risk_tags": ["visa_work_authorization_unclear"],
+                "risk_delta": 12,
+                "pragmatic_context": {
+                    "player_move": "visa_work_mismatch",
+                    "target": "officer",
+                    "risk_level": "medium",
+                    "procedural_posture": "clarify",
+                    "recommended_b_move": "clarify",
+                    "recommended_a_move": "repair",
+                },
+            },
+            "evaluation_summary": {"task_success": False, "clarity": 0.96},
+            "level_hint": {"english_level": "beginner"},
+            "in_game_feedback": {"npc_recast_line_candidate": None},
+            "branch": {
+                "branch_type": "clarify",
+                "next_action": "REASK",
+                "next_node_id": "IMM_EXTRA_001_CLARIFY_PURPOSE",
+                "branch_reason": "visa_work_authorization_clarification",
+            },
+            "dialogue_directive": {
+                "purpose": "support_retry",
+                "target_slot": "visit_purpose",
+            },
+            "dialogue_seed": {
+                "surface_goal": "ask_visit_purpose",
+                "required_slots": ["visit_purpose"],
+                "dialogue_history": [
+                    {
+                        "player_text_preview": "Thank you. Here you go.",
+                        "npc_text_preview": "Good. What is the purpose of your visit?",
+                    }
+                ],
+            },
+        },
+        use_llm=True,
+        llm_client=VagueWhyHereLLMClient(),
+    )
+
+    text = result["npc_text"].lower()
+    assert result["fallback"]["reason"] == "work_authorization_clarification_fallback"
+    assert result["llm"]["reason"] == "work_authorization_reask_violation"
+    assert "could you tell me why" not in text
+    assert "what brings you" not in text
+    assert "purpose of your visit" not in text
+    assert "work" in text
+    assert "visa" in text or "authorization" in text
 
 
 def test_immigration_non_advance_override_does_not_add_open_hook_prefix() -> None:

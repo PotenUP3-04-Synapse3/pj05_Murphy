@@ -160,10 +160,59 @@ def _global_dialogue_violation(
             return "current_slot_contradiction"
         if _has_immigration_surface_goal_mismatch(npc_text, tts_text, normalized):
             return "immigration_surface_goal_mismatch"
+        if _has_work_authorization_generic_reask(npc_text, tts_text, normalized):
+            return "work_authorization_reask_violation"
         if _has_risk_control_reask(npc_text, tts_text, normalized):
             return "risk_control_reask_violation"
 
     return None
+
+
+def _baggage_service_intent_check_repair_text(
+    normalized: dict[str, Any],
+    fallback_result: dict[str, Any],
+) -> str:
+    """Return A's service-intent repair for BAG_001 social non-answers.
+
+    BAG_001 starts like a help-desk greeting. If the player only greets or
+    comments on the conversation, the natural next move is to check whether they
+    are here for a baggage problem before asking for the problem details.
+    """
+
+    dialogue_seed_raw = normalized.get("dialogue_seed")
+    dialogue_seed = dialogue_seed_raw if isinstance(dialogue_seed_raw, dict) else {}
+    surface_goal = str(dialogue_seed.get("surface_goal") or "")
+    if surface_goal != "report_missing_bag_at_service_desk":
+        return ""
+
+    social_context_raw = normalized.get("social_context")
+    social_context = social_context_raw if isinstance(social_context_raw, dict) else {}
+    if str(social_context.get("scene_norm") or "") != "service_recovery":
+        return ""
+    if str(social_context.get("obligation_status") or "") not in {"open", "ignored", "unclear"}:
+        return ""
+
+    conversation_move = str(social_context.get("conversation_move") or "")
+    if conversation_move not in {
+        "greeting_only",
+        "repeated_greeting",
+        "low_content_non_answer",
+        "filler",
+        "meta_non_answer",
+        "off_topic",
+        "clarification_request",
+    }:
+        return ""
+
+    fallback_raw = fallback_result.get("fallback")
+    fallback = fallback_raw if isinstance(fallback_raw, dict) else {}
+    if str(fallback.get("reason") or "") != "social_context_fallback":
+        return ""
+
+    text = str(fallback_result.get("npc_text") or fallback_result.get("text") or "").strip()
+    if not text:
+        return ""
+    return text
 
 
 def _has_positive_reaction_on_failure(
@@ -284,13 +333,41 @@ def _is_passport_submission_refusal_branch(normalized: dict[str, Any]) -> bool:
     return "passport_submission_refused" in str(normalized.get("branch_reason") or "")
 
 
+def _is_work_authorization_clarification_branch(normalized: dict[str, Any]) -> bool:
+    branch_reason = str(normalized.get("branch_reason") or "")
+    branch_type = str(normalized.get("branch_type") or "").lower()
+    next_action = str(normalized.get("next_action") or "").upper()
+    risk_tags = set(normalized.get("risk_tags") or [])
+    pragmatic_context = normalized.get("pragmatic_context") or {}
+    player_move = str(pragmatic_context.get("player_move") or "")
+    return bool(
+        "visa_work_authorization_clarification" in branch_reason
+        or (
+            player_move == "visa_work_mismatch"
+            and (
+                branch_type == "clarify"
+                or next_action in {"REASK", "GIVE_HINT"}
+                or str(pragmatic_context.get("recommended_b_move") or "") == "clarify"
+                or str(pragmatic_context.get("procedural_posture") or "") == "clarify"
+                or str(pragmatic_context.get("risk_level") or "") == "medium"
+                or "visa_work_authorization_unclear" in risk_tags
+            )
+        )
+    )
+
+
 def _is_risk_control_branch(normalized: dict[str, Any]) -> bool:
+    if _is_work_authorization_clarification_branch(normalized):
+        return False
+
     branch_reason = str(normalized.get("branch_reason") or "")
     purpose = str(normalized.get("dialogue_purpose") or "")
     next_action = str(normalized.get("next_action") or "").upper()
     risk_tags = set(normalized.get("risk_tags") or [])
     pragmatic_context = normalized.get("pragmatic_context") or {}
     player_move = str(pragmatic_context.get("player_move") or "")
+    recommended_b_move = str(pragmatic_context.get("recommended_b_move") or "")
+    risk_level = str(pragmatic_context.get("risk_level") or "")
     threat_markers = {
         "violent_threat",
         "threat_to_officer",
@@ -298,15 +375,36 @@ def _is_risk_control_branch(normalized: dict[str, Any]) -> bool:
         "threat_to_other_person",
         "threat_to_unknown_target",
     }
+    procedural_markers = {
+        "visa_work_mismatch",
+        "illegal_work_intent",
+    }
+    work_risk_branch = (
+        "visa_work_mismatch" in branch_reason
+        or "illegal_work_intent" in risk_tags
+        or (
+            "visa_work_mismatch" in risk_tags
+            and next_action in {"WARNING", "FAIL_END"}
+        )
+        or (
+            player_move == "visa_work_mismatch"
+            and (
+                next_action in {"WARNING", "FAIL_END"}
+                or recommended_b_move in {"warning", "secondary_inspection"}
+                or risk_level in {"high", "critical"}
+            )
+        )
+    )
     return (
         "violent_threat" in branch_reason
         or "coercive_exit_request" in branch_reason
         or bool(threat_markers.intersection(risk_tags))
+        or work_risk_branch
         or player_move == "violent_threat"
         or (
             purpose == "warn_and_control_risk"
             and next_action in {"WARNING", "FAIL_END"}
-            and bool(threat_markers.intersection(risk_tags))
+            and bool(threat_markers.union(procedural_markers).intersection(risk_tags))
         )
     )
 
@@ -324,6 +422,52 @@ def _has_risk_control_reask(npc_text: str, tts_text: str, normalized: dict[str, 
         "what brings you to the united states",
     )
     return any(marker in combined for marker in reask_markers)
+
+
+def _has_work_authorization_generic_reask(
+    npc_text: str,
+    tts_text: str,
+    normalized: dict[str, Any],
+) -> bool:
+    if not _is_work_authorization_clarification_branch(normalized):
+        return False
+    combined = _normalize_for_echo_match(f"{npc_text} {tts_text}")
+    if not _has_work_authorization_specificity(combined):
+        return True
+
+    generic_reask_markers = (
+        "what brings you",
+        "purpose of your visit",
+        "what is your purpose",
+        "why are you here",
+        "why you are here",
+        "why you re here",
+        "tell me why you are here",
+        "tell me why you re here",
+        "why did you come",
+        "what brings you to the united states",
+    )
+    return any(marker in combined for marker in generic_reask_markers)
+
+
+def _has_work_authorization_specificity(normalized_text: str) -> bool:
+    specific_markers = (
+        "visa",
+        "authorization",
+        "authorisation",
+        "work permit",
+        "employer",
+        "employee",
+        "employment",
+        "job here",
+        "work for",
+        "business meeting",
+        "business meetings",
+        "business travel",
+        "short business",
+        "conference",
+    )
+    return any(marker in normalized_text for marker in specific_markers)
 
 
 _IMMIGRATION_SURFACE_GOAL_CHECKS = {
@@ -651,10 +795,18 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
             last_turn = dialogue_history[-1]
             last_npc_text = last_turn.get("npc_text_preview", "") if isinstance(last_turn, dict) else ""
             
-        if branch_type in {"retry", "clarify"} and last_npc_text:
+        if (
+            branch_type in {"retry", "clarify"}
+            and last_npc_text
+            and not _is_work_authorization_clarification_branch(normalized)
+        ):
             current_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
-            from backend.app.services.service_a.dialogue_policy_service import get_retry_variation
-            varied_text = get_retry_variation(surface_goal, last_npc_text, current_text)
+            service_intent_repair = _baggage_service_intent_check_repair_text(normalized, fallback_res)
+            if service_intent_repair:
+                varied_text = service_intent_repair
+            else:
+                from backend.app.services.service_a.dialogue_policy_service import get_retry_variation
+                varied_text = get_retry_variation(surface_goal, last_npc_text, current_text)
             fallback_res["npc_text"] = varied_text
             fallback_res["text"] = varied_text
             if "tts_text" in fallback_res:
@@ -673,10 +825,12 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
         and not profanity_res
         and purpose != "smalltalk_diagnostic"
         and not _is_passport_submission_refusal_branch(normalized)
+        and not _is_work_authorization_clarification_branch(normalized)
         and not _is_risk_control_branch(normalized)
     ):
         original_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
-        synthesized_text = synthesize_fallback_next_question(
+        service_intent_repair = _baggage_service_intent_check_repair_text(normalized, fallback_res)
+        synthesized_text = service_intent_repair or synthesize_fallback_next_question(
             original_text,
             surface_goal,
             _open_hooks_for_fallback_synthesis(normalized, session_context_card),
@@ -945,6 +1099,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         and purpose != "smalltalk_diagnostic"
         and surface_goal
         and not _is_passport_submission_refusal_branch(normalized)
+        and not _is_work_authorization_clarification_branch(normalized)
         and not _is_risk_control_branch(normalized)
     ):
         def _extract_reaction_part(text: str) -> str:
@@ -960,7 +1115,8 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         if not reaction_part:
             reaction_part = "Pardon me?"
 
-        synthesized = synthesize_fallback_next_question(
+        service_intent_repair = _baggage_service_intent_check_repair_text(normalized, fallback_result)
+        synthesized = service_intent_repair or synthesize_fallback_next_question(
             reaction_part,
             surface_goal,
             branch_type=normalized.get("branch_type"),
@@ -974,7 +1130,9 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
             last_turn = dialogue_history[-1]
             last_npc_text = last_turn.get("npc_text_preview", "") if isinstance(last_turn, dict) else ""
 
-        if last_npc_text:
+        if service_intent_repair:
+            npc_text = synthesized
+        elif last_npc_text:
             from backend.app.services.service_a.dialogue_policy_service import get_retry_variation
             npc_text = get_retry_variation(surface_goal, last_npc_text, synthesized)
         else:
@@ -1096,6 +1254,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         surface_goal
         and purpose != "smalltalk_diagnostic"
         and not _is_passport_submission_refusal_branch(normalized)
+        and not _is_work_authorization_clarification_branch(normalized)
         and not _is_risk_control_branch(normalized)
     ):
         sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
@@ -1163,17 +1322,20 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         is_non_advance
         and purpose != "smalltalk_diagnostic"
         and not _is_passport_submission_refusal_branch(normalized)
+        and not _is_work_authorization_clarification_branch(normalized)
         and not _is_risk_control_branch(normalized)
     ):
         logger.info(f"Non-ADVANCE action '{next_action}' detected. Overriding LLM next question with current surface_goal '{surface_goal}'")
         sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]
         reaction_part = sentences[0] if sentences else ""
-        overridden_text = synthesize_fallback_next_question(
-            reaction_part,
-            str(surface_goal),
-            _open_hooks_for_fallback_synthesis(normalized, session_context_card),
-            branch_type=normalized.get("branch_type"),
-        )
+        overridden_text = _baggage_service_intent_check_repair_text(normalized, fallback_result)
+        if not overridden_text:
+            overridden_text = synthesize_fallback_next_question(
+                reaction_part,
+                str(surface_goal),
+                _open_hooks_for_fallback_synthesis(normalized, session_context_card),
+                branch_type=normalized.get("branch_type"),
+            )
         npc_text = overridden_text
         tts_text = overridden_text
 

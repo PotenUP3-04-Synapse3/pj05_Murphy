@@ -5940,3 +5940,572 @@ Verification:
 - `uv run ruff check .` (passed)
 - `uv run mypy .` (passed)
 
+## 2026-06-26 A/B/C - Immigration Work-Purpose Pragmatics
+
+Developer C investigated the immigration run where the player answered
+`I'm here to work.` at `IMM_002_PURPOSE`, got a generic purpose re-ask, later
+changed to `Visit my uncle.`, and was eventually cleared after stating an
+occupation. Root cause: C could receive weak work-purpose evidence, but the
+LLM's situation-level judgment was not a first-class pragmatic card that B and
+A could preserve. The earlier work-purpose concern therefore behaved like an
+unclear visit-purpose retry instead of a procedural visa/work authorization
+issue.
+
+Changed files:
+
+- `backend/app/schemas/game_turn.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/prompts/understanding_prompt.md`
+- `backend/app/services/service_b/scenario_state_machine.py`
+- `backend/app/agents/agent_b/english_level_hint_agent.py`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/sprints/2026-06-26-immigration-work-purpose-pragmatics-sprint.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- C schema now accepts `pragmatic_context.player_move =
+  "visa_work_mismatch"`.
+- C Understanding LLM instructions now ask the model to distinguish ordinary
+  business meetings, ambiguous work/employment claims, and explicit illegal
+  work intent.
+- C now merges LLM `risk_evidence` into internal `risk_tags` / `risk_delta`.
+- C now treats an LLM `visa_work_mismatch` card with `recommended_b_move =
+  clarify`, `procedural_posture = clarify`, or `risk_level = medium` as a
+  work-authorization clarification: `risk_delta` stays below the critical
+  threshold, `needs_clarification = true`, and the tag becomes
+  `visa_work_authorization_unclear`.
+- C no longer auto-adds `illegal_work_intent` for the ambiguous sentence
+  `I'm here to work.`; explicit illegal/no-authorization work claims are still
+  allowed to become high/critical risk when the LLM card says so.
+- B removed `visa_work_mismatch` from the unconditional critical tag set.
+- B now preserves the LLM's clarification posture by routing ambiguous work
+  purpose to `REASK` / `UNCLEAR` with branch reason
+  `visa_work_authorization_clarification`, instead of immediately sending the
+  player to secondary inspection.
+- B now handles `visa_work_authorization_clarification` before the cumulative
+  critical-risk gate and returns `suspicion_delta = 0` for that branch. This
+  prevents repeated medium work-authorization clarifications from accumulating
+  suspicion into an automatic secondary-inspection warning.
+- A fallback and LLM output guards now prevent generic visit-purpose re-asks on
+  this branch, but also avoid saying "work issue" or "secondary inspection".
+  The fallback asks whether the player means business meetings/short business
+  travel or actual employment, and asks to verify a work visa or authorization
+  if they will work here.
+- Follow-up live run showed C and B were correct for
+  `I'm here to work as a software engineer.` (`risk_delta = 12`,
+  `pragmatic_player_move = visa_work_mismatch`,
+  `branch_reason = visa_work_authorization_clarification`), but A accepted the
+  vague LLM line `Could you tell me why you're here`. A now rejects
+  work-authorization clarification dialogue unless it contains concrete
+  visa/authorization/employer/business-meeting specificity, then falls back to
+  the visa/work authorization clarification text.
+- Second follow-up live run showed another boundary issue: the first three
+  clarification turns each added suspicion (`0 -> 12 -> 24 -> 38`), so the next
+  medium work-authorization clarification crossed B's cumulative critical-risk
+  threshold and routed to `END_SECONDARY_INSPECTION`. B now treats this branch
+  as a procedural clarification, not suspicion accumulation.
+
+Verification:
+
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary -q`
+  - RED before correction: 5 failed.
+  - GREEN after correction: 5 passed, 1 warning (`audioop`
+    deprecation).
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask -q`
+  - RED before A specificity guard: 1 failed because the vague LLM line was
+    accepted.
+  - GREEN after A specificity guard: 1 passed, 1 warning (`audioop`
+    deprecation).
+- `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification backend/tests/dev_b/test_developer_b_policy_engine.py::test_repeated_work_authorization_clarification_does_not_escalate_to_secondary -q`
+  - RED before B ordering/state-delta fix: 2 failed. One failure showed
+    `suspicion_delta = 10`; the other showed repeated clarification escalating
+    to `CRITICAL_FAIL`.
+  - GREEN after B fix: 2 passed.
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification -q`
+  passed: 6 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
+  passed: 275 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest -q`
+  passed: 553 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`
+  passed.
+- `uv run mypy .`
+  passed: no issues found in 149 source files.
+- `git diff --check`
+  passed with Windows LF-to-CRLF conversion warnings only.
+
+## 2026-06-26 Developer C - Slot Semantic Acceptance for Year Duration and Shopkeeper Occupation
+
+Developer C investigated a live Immigration `/respond-dialog` run where the
+work-visa clarification successfully closed, but two later ordinary answers
+still looped:
+
+- `I'm gonna stay here for one year.` was not accepted as `stay_duration`.
+- `I'm a shopkeeper. I run a cafe.` filled an occupation-like value but stayed
+  semantically failed, causing repeated occupation reasks.
+
+Root cause:
+
+- C's stay-duration extractor only recognized days, weeks, months, and
+  until-date phrases, so `one year` was not promoted into the required
+  `stay_duration` slot.
+- B's `_stay_duration_days` parser did not understand years, so long-stay
+  routing could not treat `one year` as 365 days.
+- The scenario data did not list `years` as an allowed numeric
+  stay-duration category.
+- The scenario data and C fallback keywords did not include `shopkeeper`.
+- In `murphy_turn_authority="unified"` mode, C could repair slot evidence but
+  then restore raw LLM `intent_success=false` / `satisfied=false`, leaving a
+  contradictory state: slot filled, turn still failed.
+
+Changed files:
+
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/prompts/understanding_prompt.md`
+- `backend/app/services/service_b/scenario_state_machine.py`
+- `backend/app/data/scenario_nodes.json`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/sprints/2026-06-26-slot-semantic-acceptance-sprint.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- C now accepts `year`/`years` duration phrases such as `one year` and
+  preserves them as `stay_duration`.
+- B now converts `one year` / `1 year` to 365 days, so existing long-stay
+  routing can apply.
+- Scenario nodes now include `years` as a valid stay-duration category and
+  `shopkeeper` as a valid occupation category.
+- C now recognizes `shopkeeper` and cafe/self-employment occupation phrasing.
+- In unified turn-authority mode, if C has safely filled every required slot
+  after slot evidence / repair, C promotes `intent_success`,
+  `intent_satisfied`, `satisfied`, and `branch_hint` to success instead of
+  letting raw LLM retry/clarify flags reopen an already answered question.
+- Prompt guidance now tells the Understanding LLM to treat days/weeks/months
+  and years as stay-duration evidence, and job titles/self-employment as
+  occupation evidence.
+
+Architecture note:
+
+- This is still a small implementation patch, but the intended pattern is now
+  "slot semantic acceptance" rather than per-utterance branch rules. The next
+  improvement should be a slot acceptance corpus: pass/clarify/warn examples
+  per slot with expected canonical evidence. That lets C/B evolve by expanding
+  a slot contract and eval set instead of adding a new rule every time one
+  sentence fails.
+
+Verification:
+
+- RED:
+  `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_repairs_llm_missing_year_stay_duration_slot backend/tests/test_understanding_agent.py::test_understanding_agent_rule_mode_recognizes_stay_duration_values backend/tests/test_understanding_agent.py::test_understanding_agent_rule_mode_recognizes_new_immigration_slot_values backend/tests/test_understanding_agent.py::test_understanding_agent_unified_authority_preserves_semantic_slot_repair backend/tests/dev_b/test_developer_b_policy_engine.py::test_stay_duration_days_parser backend/tests/dev_b/test_developer_b_policy_engine.py::test_year_stay_duration_routes_to_long_stay_reason backend/tests/test_preprototype_flow.py::test_orchestrator_accepts_year_stay_duration_answer backend/tests/test_preprototype_flow.py::test_orchestrator_accepts_shopkeeper_occupation_answer -q`
+  failed: 8 failed.
+- GREEN:
+  same command passed: 8 passed, 1 warning (`audioop` deprecation).
+- Broader regression:
+  `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_preprototype_flow.py -q`
+  passed: 213 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`
+  passed.
+- `uv run mypy .`
+  passed: no issues found in 149 source files.
+- `git diff --check`
+  passed with Windows LF-to-CRLF conversion warnings only.
+- Full `uv run pytest -q` was not rerun for this sprint because the required
+  escalated command was rejected by the Codex usage limit after targeted and
+  broader regression suites had passed.
+
+## 2026-06-26 Developer A / C - Preserve Work-Authorization Clarification Fallback
+
+Developer C investigated the next live `/respond-dialog` run where the player
+said `I'm here to work.` twice and still received `Could you tell me why you're
+here?` / `What brings you to the United States?`.
+
+Root cause:
+
+- C and B were already routing the turn correctly:
+  `pragmatic_player_move=visa_work_mismatch`,
+  `branch_reason=visa_work_authorization_clarification`, and
+  `suspicion_delta=0`.
+- A also rejected the generic LLM line correctly:
+  `llm.reason=work_authorization_reask_violation`.
+- The remaining failure was after that: A's fallback started as
+  `work_authorization_clarification_fallback`, but retry variation and
+  non-ADVANCE generic question override saw `surface_goal=ask_visit_purpose`
+  and overwrote the specialized fallback with generic purpose paraphrases.
+
+Changed files:
+
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `docs/sprints/2026-06-26-immigration-work-purpose-pragmatics-sprint.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- Work-authorization clarification branches are now excluded from A's generic
+  retry variation path.
+- Work-authorization clarification branches are now excluded from A's
+  non-ADVANCE generic surface-goal override path.
+- Added a regression with prior dialogue history (`Good. What is the purpose
+  of your visit?`) proving that the fallback remains a concrete visa/work
+  authorization question instead of becoming `What brings you to the United
+  States?`.
+
+Verification:
+
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_is_not_overwritten_by_retry_variation -q`
+  - RED before correction: 1 failed because the final text became
+    `What brings you to the United States?`.
+  - GREEN after correction: 1 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_is_not_overwritten_by_retry_variation backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary -q`
+  passed: 5 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
+  passed: 278 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest -q`
+  passed: 556 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`
+  passed.
+- `uv run mypy .`
+  passed: no issues found in 149 source files.
+- `git diff --check`
+  passed with Windows LF-to-CRLF conversion warnings only.
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
+  passed: 273 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest -q`
+  passed: 551 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`
+  passed.
+- `uv run mypy .`
+  passed: no issues found in 149 source files.
+- `git diff --check`
+  passed with Windows LF-to-CRLF conversion warnings only.
+
+Next recommended step:
+
+- Run live `/respond-dialog` immigration checks with LLM understanding enabled
+  for `I'm here to work`, `I'm here to work as a software engineer`, `I'll help
+  my uncle's shop`, `I have a work visa`, and a lawful business-trip answer.
+  The expected distinction is: ambiguous work/employment gets a visa/work
+  authorization clarification first; explicit illegal/no-authorization work can
+  escalate; meetings or conferences can remain ordinary `business`.
+
+## 2026-06-26 Developer C - Work-Visa Confirmation Closes Immigration Purpose Clarification
+
+Developer C investigated the follow-up `/respond-dialog` run where the player
+answered `I said, I'm here to work. Check my visa. I have a work visa.` after
+the work-purpose clarification, but the system still repeated generic purpose
+questions. Root cause: the earlier sprint opened the ambiguous-work
+authorization clarification correctly, but C did not have a corresponding
+semantic close-out path for explicit work visa / authorization confirmations.
+When the LLM kept returning `pragmatic_context.player_move =
+visa_work_mismatch`, B correctly preserved that card and stayed in
+`IMM_EXTRA_001_CLARIFY_PURPOSE`.
+
+Changed files:
+
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/prompts/understanding_prompt.md`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/test_preprototype_flow.py`
+- `docs/sprints/2026-06-26-immigration-work-purpose-pragmatics-sprint.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- C now repairs explicit work authorization confirmations in LLM mode. Phrases
+  such as `work visa`, `work permit`, `work authorization`, `employment
+  authorization`, or `authorized to work` close the clarification as
+  `intent_success=true`, `visit_purpose=work`, and
+  `work_authorization_status=confirmed`.
+- The repair clears the stale medium-risk work-authorization clarification card:
+  `risk_delta=0`, no `visa_work_authorization_unclear` tag, and
+  `pragmatic_context.player_move=meaningful_answer`.
+- Ambiguous `I'm here to work.` remains a clarification case. Explicit
+  no-authorization / illegal-work language is not repaired into success.
+- Understanding LLM instructions and the documented prompt now tell the model
+  to close the clarification when the player confirms a work visa, permit, or
+  authorization.
+- Integrated coverage now proves the response advances to `IMM_003_DURATION`
+  instead of asking `What is the purpose of your visit?` or `What brings you to
+  the United States?`.
+
+Verification:
+
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_mode_closes_work_authorization_when_work_visa_is_confirmed -q`
+  - RED before correction: 1 failed because C kept the LLM's
+    `visa_work_mismatch` clarification card.
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_orchestrator_advances_work_purpose_after_work_visa_confirmation -q`
+  - RED before correction: 1 failed because the integrated response stayed
+    `REASK`.
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_mode_closes_work_authorization_when_work_visa_is_confirmed backend/tests/test_preprototype_flow.py::test_orchestrator_advances_work_purpose_after_work_visa_confirmation -q`
+  passed: 2 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification backend/tests/dev_b/test_developer_b_policy_engine.py::test_repeated_work_authorization_clarification_does_not_escalate_to_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary -q`
+  passed: 7 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
+  passed: 277 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest -q`
+  passed: 555 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`
+  passed.
+- `uv run mypy .`
+  passed: no issues found in 149 source files.
+- `git diff --check`
+  passed with Windows LF-to-CRLF conversion warnings only.
+
+## 2026-06-26 Latest Pointer - Slot Semantic Acceptance Follow-up
+
+The latest completed sprint is the year-duration / shopkeeper occupation slot
+semantic acceptance fix. See
+`docs/sprints/2026-06-26-slot-semantic-acceptance-sprint.md` and the detailed
+handoff section titled
+`2026-06-26 Developer C - Slot Semantic Acceptance for Year Duration and
+Shopkeeper Occupation`.
+
+Key result: `one year` is accepted as `stay_duration`, `shopkeeper` / cafe
+self-employment phrasing is accepted as occupation, and unified turn authority
+no longer restores raw LLM failure when C has safely filled every required slot.
+
+Fresh verification at the time of the sprint-specific fix:
+
+- RED targeted regression command failed: 8 failed.
+- GREEN same targeted regression command passed: 8 passed, 1 warning
+  (`audioop` deprecation).
+- Broader regression passed: 213 passed, 1 warning (`audioop` deprecation).
+- `ruff`, `mypy`, and `git diff --check` passed.
+- Full `uv run pytest -q` was not rerun because the required escalated command
+  was rejected by the Codex usage limit.
+
+## 2026-06-26 Developer A / C - BAG_001 Service Desk Naturalness
+
+Developer C investigated a live baggage service desk run where the player only
+greeted Brielle or said they were just there to say hello. C and B correctly
+kept the turn on `BAG_001_REPORT_MISSING_AT_DESK` with target slot
+`missing_bag_statement`, but A's final line jumped to the next-step claim-tag
+question:
+
+- `Do you have your baggage claim tag or ticket?`
+
+Root cause:
+
+- Developer A's `SURFACE_GOAL_QUESTIONS` mapped
+  `report_missing_bag_at_service_desk` to the BAG_002 claim-tag question.
+- In non-ADVANCE retry/clarify turns, A's safeguard reused that stale
+  surface-goal question, so even an LLM response that should have repaired the
+  current service obligation could be rewritten to the wrong next step.
+- The LLM prompt also did not explicitly distinguish BAG_001 problem intake
+  from BAG_002 claim-tag collection.
+
+Changed files:
+
+- `backend/app/services/service_a/dialogue_policy_service.py`
+- `backend/app/agents/agent_a/npc_llm_client.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `docs/sprints/2026-06-26-baggage-service-desk-naturalness-sprint.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- `report_missing_bag_at_service_desk` now asks `What happened with your bag?`
+  when A must synthesize a fallback/current-slot question.
+- A's runtime LLM instructions now explain that BAG_001 should ask for the
+  baggage problem first, and must not ask for a claim tag, baggage ticket, or
+  boarding pass until `surface_goal=ask_claim_tag_or_ticket`.
+- The LLM path remains alive: if the LLM gives a usable reaction but jumps to
+  the claim-tag question, A's non-ADVANCE surface-goal alignment keeps the
+  final question on the current BAG_001 problem statement.
+
+Verification:
+
+- RED:
+  `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_desk_fallback_dialogue backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_desk_rejects_claim_tag_question_before_problem_report -q`
+  failed: 2 failed.
+- GREEN:
+  same command passed: 2 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py -q`
+  passed: 71 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_preprototype_flow.py::test_orchestrator_advances_baggage_report_to_claim_tag_node backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata -q`
+  passed: 2 passed, 1 warning (`audioop` deprecation).
+
+## 2026-06-26 Latest Pointer - BAG_001 Service Desk Naturalness
+
+The latest completed sprint is the BAG_001 service desk naturalness fix. See
+`docs/sprints/2026-06-26-baggage-service-desk-naturalness-sprint.md`.
+
+Key result: Brielle should no longer ask for a baggage claim tag before the
+player has reported the baggage problem. Greeting-only or off-topic turns stay
+on the current problem-intake obligation, while the LLM response path remains
+available for natural wording.
+
+## 2026-06-26 Developer A / B / C - BAG_001 Service Boundary Repair
+
+Developer C investigated the follow-up live run where the claim-tag jump was
+fixed, but Brielle still sounded repetitive:
+
+- Player: `Hello.`
+- Brielle: `Sorry, I still need the bag problem. What happened with your bag?`
+- Player: `What? I just had... I just said... Hello.`
+- Brielle: `I still need the bag issue. What happened with your bag?`
+
+Root cause:
+
+- C labeled the second turn as generic `off_topic`, so A could not tell that
+  the player was making a meta/social non-answer about the conversation itself.
+- B correctly kept the player on `BAG_001_REPORT_MISSING_AT_DESK`, but the
+  social lifecycle signal was still too generic for natural wording.
+- A's BAG_001 service-recovery fallback still used "I need..." slot-loop
+  language instead of a human service-desk boundary.
+
+Changed files:
+
+- `backend/app/schemas/game_turn.py`
+- `backend/app/agents/agent_c/understanding_agent.py`
+- `backend/app/agents/agent_c/understanding_llm_client.py`
+- `backend/app/services/service_b/social_obligation_lifecycle_policy.py`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/app/agents/agent_a/npc_llm_client.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/tests/test_understanding_agent.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/dev_b/test_developer_b_policy_engine.py`
+- `docs/sprints/2026-06-26-baggage-service-boundary-repair-sprint.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- Added `meta_non_answer` as a conversation-act/social-context category for
+  broad conversation-about-the-conversation responses such as "I just said..."
+  or "I only wanted to...", not as a `hello`-specific branch rule.
+- B's social obligation lifecycle treats `meta_non_answer` as a social stall,
+  so the existing service-recovery lifecycle still advances normally.
+- A's BAG_001 fallback now says a service-boundary repair instead of repeating
+  "I still need..." loops:
+  - first social non-answer: `Hi. This is the baggage desk...`
+  - repeated/meta non-answer: `I understand. I can help if there's a baggage
+    problem...`
+- A long/short prompts and runtime LLM instructions now align with this
+  behavior and continue to forbid claim-tag questions before the problem intake
+  is satisfied.
+
+Verification so far:
+
+- RED:
+  `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_baggage_meta_greeting_objection_marks_meta_non_answer backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_greeting_fallback_sets_service_boundary_without_slot_loop backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_meta_non_answer_fallback_acknowledges_then_names_bag_options -q`
+  failed: 3 failed.
+- GREEN:
+  same command passed: 3 passed, 1 warning (`audioop` deprecation).
+- Focused prompt/rendering check:
+  `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_baggage_meta_greeting_objection_marks_meta_non_answer backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_greeting_fallback_sets_service_boundary_without_slot_loop backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_meta_non_answer_fallback_acknowledges_then_names_bag_options backend/tests/test_developer_a_prompt_rendering.py -q`
+  passed: 6 passed, 1 warning (`audioop` deprecation).
+- Related regression:
+  `uv run pytest backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py::test_customs_hold_social_stall_lifecycle_uses_repair_not_hint_loop backend/tests/test_preprototype_flow.py::test_orchestrator_advances_baggage_report_to_claim_tag_node backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata -q`
+  passed: 119 passed, 1 warning (`audioop` deprecation).
+- Full-suite follow-up caught and fixed a flight pen-loop regression caused by
+  overly broad `meta_non_answer` handling. The phrase `Why do you keep asking
+  me about my pen? I already gave it to you.` now keeps
+  `belated_obligation_answer` priority.
+- Pen-loop regression command:
+  `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_flight_meta_pen_objection_keeps_belated_answer_priority backend/tests/test_preprototype_flow.py::test_orchestrator_forwards_flight_history_and_neutral_slots_to_prevent_pen_loop_legacy backend/tests/test_preprototype_flow.py::test_orchestrator_prevents_pen_loop_in_default_memory_mode -q`
+  passed: 3 passed, 1 warning (`audioop` deprecation).
+- Full suite: `uv run pytest -q` passed: 566 passed, 1 warning (`audioop`
+  deprecation).
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 149 source files.
+- `git diff --check` passed. Git printed Windows LF-to-CRLF working-copy
+  warnings only.
+
+## 2026-06-26 Latest Pointer - BAG_001 Service Boundary Repair
+
+The latest completed sprint is the BAG_001 service boundary repair. See
+`docs/sprints/2026-06-26-baggage-service-boundary-repair-sprint.md`.
+
+Key result: Brielle should now treat greeting-only or meta non-answers at the
+baggage desk as a service-boundary repair rather than a repeated missing-slot
+loop. C can emit `meta_non_answer`, B treats it as a social stall in the
+existing service-recovery lifecycle, and A says the human-facing boundary
+before asking what happened with the bag.
+
+## 2026-06-26 Developer A / C - BAG_001 Service Intent Check
+
+Developer C investigated the follow-up live run where Brielle no longer asked
+for a claim tag, but still sounded like a slot loop:
+
+- Player: `Hello.`
+- Brielle: `Hi. What happened with your bag?`
+- Player: `Hello.`
+- Brielle: `I can help with baggage. What happened with your bag?`
+
+Root cause:
+
+- `BAG_001_REPORT_MISSING_AT_DESK` opens like a service desk greeting, so a
+  greeting-only player turn should first trigger a service-intent check.
+- A's fallback seed, LLM prompt, and non-ADVANCE post-processing still treated
+  social non-answers as an immediate `missing_bag_statement` detail request.
+- The live run used A's LLM path (`llm_dialogue_from_fallback_seed`), so the
+  fallback seed and LLM guard both needed to preserve the service-intent repair.
+
+Changed files:
+
+- `backend/app/agents/agent_a/npc_dialogue_agent.py`
+- `backend/app/agents/agent_a/npc_llm_client.py`
+- `backend/app/prompts/npc_dialogue_prompt.md`
+- `backend/app/prompts/npc_dialogue_prompt.short.md`
+- `backend/app/services/service_a/developer_a_fallback_service.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `docs/sprints/2026-06-26-baggage-service-intent-check-sprint.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- BAG_001 social non-answer repair now checks service intent first:
+  `Hi. Are you here about a baggage problem?`
+- Repeated/meta non-answer repair now distinguishes reporting a baggage issue
+  from just saying hello:
+  `I understand. Are you trying to report a baggage issue, or just saying
+  hello?`
+- A's LLM post-processing no longer appends `What happened with your bag?` for
+  BAG_001 social repairs, even when the LLM or fallback seed tries to collapse
+  back to the required slot question.
+- A long/short prompts and runtime LLM instruction now say to avoid bag-detail
+  questions until the player confirms they need baggage help.
+
+Verification so far:
+
+- RED:
+  `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_desk_rejects_claim_tag_question_before_problem_report backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_greeting_fallback_sets_service_boundary_without_slot_loop backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_meta_non_answer_fallback_acknowledges_then_names_bag_options backend/tests/test_developer_a_npc_dialogue.py::test_baggage_service_social_llm_slot_question_is_rewritten_to_service_intent_check -q`
+  failed: 4 failed.
+- GREEN:
+  same command passed: 4 passed, 1 warning (`audioop` deprecation).
+- Related regression:
+  `uv run pytest backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_developer_a_prompt_rendering.py backend/tests/test_preprototype_flow.py::test_orchestrator_advances_baggage_report_to_claim_tag_node backend/tests/test_preprototype_flow.py::test_dev_a_adapter_forwards_baggage_seed_and_dialogue_metadata -q`
+  passed: 79 passed, 1 warning (`audioop` deprecation).
+- Full suite: `uv run pytest -q` passed: 567 passed, 1 warning (`audioop`
+  deprecation).
+- `uv run ruff check .` passed.
+- `uv run mypy .` passed with no issues in 149 source files.
+- `git diff --check` passed. Git printed Windows LF-to-CRLF working-copy
+  warnings only.
+
+## 2026-06-26 Latest Pointer - BAG_001 Service Intent Check
+
+The latest completed sprint is the BAG_001 service intent check. See
+`docs/sprints/2026-06-26-baggage-service-intent-check-sprint.md`.
+
+Key result: Brielle should no longer answer a greeting-only BAG_001 turn with
+`What happened with your bag?`. She should first ask whether the player is here
+about a baggage problem, then ask for details after the player confirms they
+need baggage help.
+

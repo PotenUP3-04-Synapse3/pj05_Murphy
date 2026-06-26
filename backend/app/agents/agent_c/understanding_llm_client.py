@@ -244,6 +244,13 @@ def _developer_instructions() -> str:
         "supports it."
         " Do not assign confidence 0.9 or higher when slot_evidence is weak, "
         "idiomatic, inferred, or only loosely related to the required intent."
+        " For stay_duration questions, concrete durations with days, weeks, "
+        "months, or years all satisfy the required slot. Treat phrases such "
+        "as 'one year', 'a year', '365 days', and 'for twelve months' as "
+        "stay_duration evidence rather than as only optional travel_schedule."
+        " For occupation questions, job titles and self-employment descriptions "
+        "satisfy the open occupation slot. Examples include shopkeeper, cafe "
+        "owner, running a cafe, carpenter, engineer, and teacher."
         " Do not return extracted_slots. Developer C derives final "
         "extracted_slots from accepted slot_evidence and the current "
         "node_context after this LLM call. For enum-like slots, put the "
@@ -265,9 +272,30 @@ def _developer_instructions() -> str:
         "requirement to items with difficulty < 7."
         " Also fill pragmatic_context as a compact situation-level judgment. "
         "Use it for real-world speech acts such as refusal, off-topic evasion, "
-        "violent threats, coercive exit requests, or normal meaningful answers. "
+        "violent threats, coercive exit requests, visa/work-purpose mismatch, "
+        "or normal meaningful answers. "
         "For threats or unsafe intent, set player_move=violent_threat, choose "
         "the target, raise risk_level, and recommend warning or secondary_inspection. "
+        "For immigration purpose questions, do not collapse a traveler's claim "
+        "that they are coming to work, earn money, take a job, or help a business "
+        "as an employee into ordinary `business` unless they clearly mean a lawful "
+        "business meeting, conference, or short business visit. If the utterance "
+        "only creates a visa/work-authorization question (for example, 'I'm here "
+        "to work'), set pragmatic_context.player_move=visa_work_mismatch, "
+        "risk_level=medium, procedural_posture=clarify, recommended_b_move=clarify, "
+        "recommended_a_move=repair, risk_delta below 20, and use a tag such as "
+        "visa_work_authorization_unclear. If the player explicitly confirms they "
+        "have a work visa, work permit, or authorization to work, close the "
+        "clarification: set intent_success=true, intent_satisfied=true, "
+        "needs_clarification=false, answer_relevance=on_topic, "
+        "extracted_slots.visit_purpose=work, include "
+        "extracted_slots.work_authorization_status=confirmed, keep risk_delta=0, "
+        "and set pragmatic_context.player_move=meaningful_answer with "
+        "recommended_b_move=continue. If the player explicitly says they will "
+        "work without authorization, take an illegal job, hide employment, or earn "
+        "money in a way that violates visa status, then raise risk_level to high "
+        "or critical, recommend warning or secondary_inspection, and include "
+        "illegal_work_intent. "
         " Also fill conversation_act as a compact natural turn-taking judgment. "
         "Use it for social duties that a human speaker would notice: the player "
         "shared a concrete personal detail, asked the NPC the same question back, "
@@ -377,6 +405,7 @@ def _understanding_schema() -> dict[str, Any]:
                             "reciprocal_question",
                             "belated_obligation_answer",
                             "social_non_answer",
+                            "meta_non_answer",
                             "clarification_request",
                             "off_topic",
                             "refusal",
@@ -453,6 +482,7 @@ def _understanding_schema() -> dict[str, Any]:
                             "refusal",
                             "violent_threat",
                             "coercive_exit_request",
+                            "visa_work_mismatch",
                         ],
                     },
                     "target": {
@@ -548,12 +578,41 @@ def normalize_understanding_llm_result(result: dict[str, Any]) -> dict[str, Any]
     fallback 서버가 `extracted_slots`를 보내더라도 신뢰하지 않고 무시합니다.
     """
 
+    risk_evidence = result.get("risk_evidence")
+    if isinstance(risk_evidence, dict):
+        raw_risk_tags = result.get("risk_tags")
+        existing_tags = raw_risk_tags if isinstance(raw_risk_tags, list) else []
+        raw_evidence_tags = risk_evidence.get("tags")
+        evidence_tags = raw_evidence_tags if isinstance(raw_evidence_tags, list) else []
+        result["risk_tags"] = _unique_strings(
+            [
+                *existing_tags,
+                *evidence_tags,
+            ]
+        )
+        result["risk_delta"] = max(
+            _int_or_zero(result.get("risk_delta")),
+            _int_or_zero(risk_evidence.get("delta")),
+        )
+
     slot_evidence = _normalize_slot_evidence(result.get("slot_evidence"))
     result["slot_evidence"] = slot_evidence
     result["extracted_slots"] = {}
     for evidence in slot_evidence:
         result["extracted_slots"].setdefault(evidence["slot"], evidence["value"])
     return result
+
+
+def _unique_strings(values: list[Any]) -> list[str]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        output.append(text)
+    return output
 
 
 def _normalize_structured_result(result: dict[str, Any]) -> dict[str, Any]:

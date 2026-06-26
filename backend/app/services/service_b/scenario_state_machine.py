@@ -59,6 +59,8 @@ def _stay_duration_days(payload: DevBPolicyInput) -> int:
                     unit = "week"
                 elif "month" in next_word:
                     unit = "month"
+                elif "year" in next_word:
+                    unit = "year"
             
             if unit is None:
                 for w in words:
@@ -71,6 +73,9 @@ def _stay_duration_days(payload: DevBPolicyInput) -> int:
                     elif "month" in w:
                         unit = "month"
                         break
+                    elif "year" in w:
+                        unit = "year"
+                        break
                         
             if unit == "day":
                 total_days += num * 1
@@ -78,6 +83,8 @@ def _stay_duration_days(payload: DevBPolicyInput) -> int:
                 total_days += num * 7
             elif unit == "month":
                 total_days += num * 30
+            elif unit == "year":
+                total_days += num * 365
             else:
                 total_days += num * 1
             i += 2
@@ -173,6 +180,13 @@ class ScenarioStateMachine:
                     f"Patience exhausted ({payload.scenario_state.patience}) or retry limit exceeded ({payload.scenario_state.retry_count}) on failure."
                 )
 
+        if self._has_pragmatic_work_authorization_clarification(payload):
+            return self._clarify(
+                payload,
+                branch_reason="visa_work_authorization_clarification",
+                suspicion_delta=0,
+            )
+
         # 3. Check critical risks
         risk_total = payload.scenario_state.suspicion + payload.understanding.risk_delta
         if self._is_critical_risk(payload, risk_total):
@@ -230,6 +244,13 @@ class ScenarioStateMachine:
                     payload,
                     f"Patience exhausted ({payload.scenario_state.patience}) or retry limit exceeded ({payload.scenario_state.retry_count}) on failure."
                 )
+
+        if self._has_pragmatic_work_authorization_clarification(payload):
+            return self._clarify(
+                payload,
+                branch_reason="visa_work_authorization_clarification",
+                suspicion_delta=0,
+            )
 
         # 4. Critical safety risk veto
         risk_total = payload.scenario_state.suspicion + payload.understanding.risk_delta
@@ -335,6 +356,9 @@ class ScenarioStateMachine:
                                 matched = True
                                 break
                             elif candidate == "months" and ("month" in value or "months" in value):
+                                matched = True
+                                break
+                            elif candidate == "years" and ("year" in value or "years" in value):
                                 matched = True
                                 break
                             elif candidate == "until_date" and "until" in value:
@@ -454,6 +478,7 @@ class ScenarioStateMachine:
             payload.understanding.risk_delta >= 20
             or risk_total >= 50
             or bool(critical_tags.intersection(payload.understanding.risk_tags))
+            or self._has_pragmatic_procedural_risk(payload)
             or self._has_passport_submission_refusal(payload)
         )
 
@@ -510,7 +535,13 @@ class ScenarioStateMachine:
                 return route.target
         return payload.node_context.success_next_node
 
-    def _clarify(self, payload: DevBPolicyInput) -> ScenarioDecision:
+    def _clarify(
+        self,
+        payload: DevBPolicyInput,
+        *,
+        branch_reason: str = "Meaning is unclear or needs clarification.",
+        suspicion_delta: int | None = None,
+    ) -> ScenarioDecision:
         """
         모호한 응답으로 판단되어 되묻기(Clarification) 처리가 필요할 때의 분기 정보와 수치 변화량을 결정합니다.
         """
@@ -523,9 +554,12 @@ class ScenarioStateMachine:
             branch_type="clarify",
             next_action="REASK",
             next_node_id=next_node_id,
-            branch_reason="Meaning is unclear or needs clarification.",
+            branch_reason=branch_reason,
             patience_delta=patience_delta,
-            suspicion_delta=max(payload.understanding.risk_delta, 0),
+            suspicion_delta=max(
+                payload.understanding.risk_delta,
+                0,
+            ) if suspicion_delta is None else suspicion_delta,
             retry_count_delta=0,
             hint_count_delta=0,
         )
@@ -603,10 +637,33 @@ class ScenarioStateMachine:
             }.intersection(payload.understanding.risk_tags)
         )
 
+    def _has_pragmatic_procedural_risk(self, payload: DevBPolicyInput) -> bool:
+        card = payload.understanding.pragmatic_context
+        return bool(
+            card.player_move == "visa_work_mismatch"
+            and card.risk_level in {"high", "critical"}
+            and card.recommended_b_move in {"warning", "secondary_inspection"}
+        )
+
+    def _has_pragmatic_work_authorization_clarification(self, payload: DevBPolicyInput) -> bool:
+        card = payload.understanding.pragmatic_context
+        risk_tags = set(payload.understanding.risk_tags)
+        return bool(
+            card.player_move == "visa_work_mismatch"
+            and (
+                card.recommended_b_move == "clarify"
+                or card.procedural_posture == "clarify"
+                or card.risk_level == "medium"
+                or "visa_work_authorization_unclear" in risk_tags
+            )
+        )
+
     def _critical_branch_reason(self, payload: DevBPolicyInput) -> str:
         tags = set(payload.understanding.risk_tags)
         if self._has_passport_submission_refusal(payload):
             return "passport_submission_refused"
+        if "visa_work_mismatch" in tags or payload.understanding.pragmatic_context.player_move == "visa_work_mismatch":
+            return "visa_work_mismatch"
         if "threat_to_officer" in tags:
             return "violent_threat_to_officer"
         if "threat_to_public_figure" in tags:

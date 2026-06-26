@@ -296,6 +296,7 @@
           "days",
           "weeks",
           "months",
+          "years",
           "until_date"
         ]
       },
@@ -1642,6 +1643,7 @@
           "days",
           "weeks",
           "months",
+          "years",
           "until_date"
         ]
       },
@@ -1707,6 +1709,7 @@
           "days",
           "weeks",
           "months",
+          "years",
           "until_date"
         ]
       },
@@ -3932,6 +3935,7 @@
           "engineer",
           "designer",
           "teacher",
+          "shopkeeper",
           "business_owner",
           "unemployed"
         ]
@@ -3998,6 +4002,7 @@
           "engineer",
           "designer",
           "teacher",
+          "shopkeeper",
           "business_owner",
           "unemployed"
         ]
@@ -4064,6 +4069,7 @@
           "engineer",
           "designer",
           "teacher",
+          "shopkeeper",
           "business_owner",
           "unemployed"
         ]

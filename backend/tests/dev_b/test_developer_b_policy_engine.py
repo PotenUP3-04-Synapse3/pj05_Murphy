@@ -14,6 +14,7 @@ from backend.app.schemas.game_turn import (
     NodeContext,
     OpenKBWriteResult,
     PlayerProfile,
+    PragmaticContextCard,
     PreviousNodeResult,
     RubricScores,
     ScenarioState,
@@ -94,11 +95,13 @@ def _policy_input(
     retry_count: int = 0,
     hint_count: int = 0,
     previous_fail_count: int = 0,
+    suspicion: int = 0,
     tier: Literal["Bronze", "Silver", "Gold"] = "Bronze",
     english_confidence: Literal["beginner", "intermediate", "advanced"] = "beginner",
     client_allowed_next_nodes: list[str] | None = None,
     social_context: dict[str, Any] | None = None,
     conversation_act: dict[str, Any] | None = None,
+    pragmatic_context: dict[str, Any] | None = None,
 ) -> DevBPolicyInput:
     context = node_context or _node_context()
     slots = extracted_slots if extracted_slots is not None else {"visit_purpose": "tourism"}
@@ -129,7 +132,7 @@ def _policy_input(
         ),
         scenario_state=ScenarioState(
             patience=100,
-            suspicion=0,
+            suspicion=suspicion,
             retry_count=retry_count,
             hint_count=hint_count,
             previous_fail_count=previous_fail_count,
@@ -152,6 +155,7 @@ def _policy_input(
             needs_clarification=needs_clarification,
             social_context=SocialContextCard.model_validate(social_context or {}),
             conversation_act=ConversationActCard.model_validate(conversation_act or {}),
+            pragmatic_context=PragmaticContextCard.model_validate(pragmatic_context or {}),
         ),
         previous_node_results=[
             PreviousNodeResult(
@@ -309,6 +313,82 @@ def test_violent_threat_routes_to_secondary_instead_of_retry(tmp_path: Path) -> 
     assert result.dialogue_directive is not None
     assert result.dialogue_directive.purpose == "warn_and_control_risk"
     assert result.npc_emotion == "Suspicion"
+
+
+def test_llm_pragmatic_work_purpose_routes_to_authorization_clarification(tmp_path: Path) -> None:
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            player_text="I'm here to work.",
+            intent_success=False,
+            confidence=0.88,
+            answer_relevance="on_topic",
+            ambiguity_type="visa_work_mismatch",
+            risk_delta=10,
+            risk_tags=["visa_work_authorization_unclear"],
+            extracted_slots={},
+            missing_slots=[],
+            needs_clarification=True,
+            pragmatic_context={
+                "player_move": "visa_work_mismatch",
+                "target": "officer",
+                "risk_level": "medium",
+                "procedural_posture": "clarify",
+                "recommended_b_move": "clarify",
+                "recommended_a_move": "repair",
+                "confidence": 0.88,
+                "evidence": "I'm here to work.",
+                "reason": "The player stated a work-purpose claim that requires visa/work authorization clarification.",
+            },
+        )
+    )
+
+    assert result.evaluation.verdict == "UNCLEAR"
+    assert result.branch.branch_type == "clarify"
+    assert result.branch.next_action == "REASK"
+    assert result.branch.branch_reason == "visa_work_authorization_clarification"
+    assert result.dialogue_directive is not None
+    assert result.dialogue_directive.purpose == "support_retry"
+    assert result.state_delta.suspicion_delta == 0
+
+
+def test_repeated_work_authorization_clarification_does_not_escalate_to_secondary(
+    tmp_path: Path,
+) -> None:
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            player_text="I'm here... I'm here to work as a software engineer.",
+            intent_success=False,
+            confidence=0.96,
+            answer_relevance="on_topic",
+            ambiguity_type="visa_work_mismatch",
+            risk_delta=14,
+            risk_tags=["visa_work_authorization_unclear"],
+            extracted_slots={"visit_purpose": "work"},
+            missing_slots=[],
+            needs_clarification=True,
+            suspicion=38,
+            pragmatic_context={
+                "player_move": "visa_work_mismatch",
+                "target": "officer",
+                "risk_level": "medium",
+                "procedural_posture": "clarify",
+                "recommended_b_move": "clarify",
+                "recommended_a_move": "repair",
+                "confidence": 0.9,
+                "evidence": "work as a software engineer",
+                "reason": "The player stated a work-purpose claim that requires visa/work authorization clarification.",
+            },
+        )
+    )
+
+    assert result.evaluation.verdict == "UNCLEAR"
+    assert result.branch.branch_type == "clarify"
+    assert result.branch.next_action == "REASK"
+    assert result.branch.next_node_id == "IMM_EXTRA_001_CLARIFY_PURPOSE"
+    assert result.branch.branch_reason == "visa_work_authorization_clarification"
+    assert result.dialogue_directive is not None
+    assert result.dialogue_directive.purpose == "support_retry"
+    assert result.state_delta.suspicion_delta == 0
 
 
 def test_passport_submission_refusal_uses_critical_branch_not_retry_or_hint(tmp_path: Path) -> None:
@@ -849,9 +929,9 @@ def test_customs_hold_social_stall_lifecycle_uses_repair_not_hint_loop(tmp_path:
     session_id = "session_dev_b_customs_social_stall_lifecycle"
     turns = [
         ("Hello.", "greeting_only"),
+        ("What? I just said hello.", "meta_non_answer"),
         ("What?", "clarification_request"),
         ("Fine.", "low_content_non_answer"),
-        ("Can you rap for me?", "off_topic"),
     ]
 
     outputs = []
@@ -1046,6 +1126,8 @@ def test_stay_duration_days_parser() -> None:
     assert _stay_duration_days(mock_payload("one week")) == 7
     assert _stay_duration_days(mock_payload("two weeks")) == 14
     assert _stay_duration_days(mock_payload("one month")) == 30
+    assert _stay_duration_days(mock_payload("one year")) == 365
+    assert _stay_duration_days(mock_payload("1 year")) == 365
     assert _stay_duration_days(mock_payload("10 days and 2 weeks")) == 24
     assert _stay_duration_days(mock_payload("until Friday")) == 0
     assert _stay_duration_days(mock_payload(None)) == 0
@@ -1061,6 +1143,25 @@ def test_long_stay_duration_routes_to_long_stay_reason(tmp_path: Path) -> None:
             intent_success=True,
             confidence=0.95,
             extracted_slots={"stay_duration": "two weeks"},
+            missing_slots=[],
+            tier="Bronze",
+        )
+    )
+
+    assert result.evaluation.verdict == "SUCCESS"
+    assert result.branch.next_node_id == "IMM_003B_LONG_STAY_REASON"
+
+
+def test_year_stay_duration_routes_to_long_stay_reason(tmp_path: Path) -> None:
+    context = _node_context("IMM_003_DURATION")
+
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            node_context=context,
+            player_text="I'm gonna stay here for one year.",
+            intent_success=True,
+            confidence=0.95,
+            extracted_slots={"stay_duration": "one year"},
             missing_slots=[],
             tier="Bronze",
         )

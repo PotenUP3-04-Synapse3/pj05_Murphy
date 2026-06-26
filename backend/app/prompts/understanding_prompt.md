@@ -73,6 +73,45 @@ the exact player-text phrase that supports it.
 Do not assign confidence `0.9` or higher when the evidence is weak, idiomatic,
 inferred, or only loosely related to the required intent.
 
+For `stay_duration` questions, concrete durations with days, weeks, months, or
+years all satisfy the required slot. Treat phrases such as `one year`, `a year`,
+`365 days`, and `for twelve months` as `stay_duration` evidence rather than only
+optional `travel_schedule`.
+
+For `occupation` questions, job titles and self-employment descriptions satisfy
+the open occupation slot. Examples include `shopkeeper`, `cafe owner`,
+`running a cafe`, `carpenter`, `engineer`, and `teacher`.
+
+## Visa And Work-Purpose Pragmatics
+
+For immigration purpose questions, do not collapse a traveler's claim that they
+are coming to work, earn money, take a job, or help a business as an employee
+into ordinary `business` unless they clearly mean a lawful business meeting,
+conference, or short business visit.
+
+If the utterance only creates a visa/work-authorization question, such as
+`I'm here to work`, use
+`pragmatic_context.player_move = "visa_work_mismatch"`,
+`risk_level = "medium"`, `procedural_posture = "clarify"`,
+`recommended_b_move = "clarify"`, and `recommended_a_move = "repair"`.
+Keep `risk_delta` below 20 and use a tag such as
+`visa_work_authorization_unclear`.
+
+If the player explicitly confirms they have a work visa, work permit, or
+authorization to work, close the clarification instead of repeating the purpose
+question. Set `intent_success = true`, `intent_satisfied = true`,
+`needs_clarification = false`, `answer_relevance = "on_topic"`,
+`extracted_slots.visit_purpose = "work"`, and
+`extracted_slots.work_authorization_status = "confirmed"`. Keep
+`risk_delta = 0` and set
+`pragmatic_context.player_move = "meaningful_answer"` with
+`recommended_b_move = "continue"`.
+
+If the player explicitly says they will work without authorization, take an
+illegal job, hide employment, or earn money in a way that violates visa status,
+then raise `risk_level` to high or critical, recommend warning or
+secondary_inspection, and include `illegal_work_intent`.
+
 ## Customs Item Sufficiency
 
 Check `difficulty` first — it is the **sole authoritative indicator** of required explanation depth. Do NOT infer required depth from the content of `suspicion_reason`.

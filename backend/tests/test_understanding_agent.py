@@ -50,6 +50,10 @@ def _baggage_customs_hold_node_context():
     return _alpha_node_context("CH0_04_BAGGAGE_CLAIM", "BAG_005_CUSTOMS_HOLD_EXPLANATION")
 
 
+def _baggage_service_desk_node_context():
+    return _alpha_node_context("CH0_04_BAGGAGE_CLAIM", "BAG_001_REPORT_MISSING_AT_DESK")
+
+
 def test_understanding_agent_flight_hello_marks_open_social_obligation() -> None:
     agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
 
@@ -90,6 +94,25 @@ def test_understanding_agent_customs_hold_mixed_everyday_non_answer_marks_low_co
     assert output.social_context.pending_social_obligation == "check_suitcase_contents"
     assert output.social_context.obligation_status == "ignored"
     assert output.social_context.recommended_npc_move == "service_repair"
+
+
+def test_understanding_agent_baggage_meta_greeting_objection_marks_meta_non_answer() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text(
+        "What? I just had... I just said... Hello.",
+        _baggage_service_desk_node_context(),
+    )
+
+    assert output.intent_success is False
+    assert output.answer_relevance == "off_topic"
+    assert output.social_context.scene_norm == "service_recovery"
+    assert output.social_context.conversation_move == "meta_non_answer"
+    assert output.social_context.pending_social_obligation == "answer_report_missing_bag_at_service_desk"
+    assert output.social_context.obligation_status == "ignored"
+    assert output.social_context.recommended_npc_move == "service_repair"
+    assert output.conversation_act.player_act == "meta_non_answer"
+    assert output.conversation_act.npc_social_duty == "repair_current_obligation"
 
 
 def test_understanding_agent_flight_what_marks_clarification_request() -> None:
@@ -151,6 +174,21 @@ def test_understanding_agent_flight_reciprocal_question_marks_answer_duty() -> N
     assert output.conversation_act.natural_next_move == "self_disclose_then_follow_up"
     assert output.conversation_act.should_answer_player_question is True
     assert output.conversation_act.should_avoid_generic_ack is True
+
+
+def test_understanding_agent_flight_meta_pen_objection_keeps_belated_answer_priority() -> None:
+    agent = UnderstandingAgent(settings=AppSettings(murphy_understanding_mode="rule"))
+
+    output = agent.analyze_player_text(
+        "Why do you keep asking me about my pen? I already gave it to you.",
+        _flight_smalltalk_node_context(),
+    )
+
+    assert output.intent_success is True
+    assert output.social_context.conversation_move == "meaningful_answer"
+    assert output.social_context.obligation_status == "addressed"
+    assert output.conversation_act.player_act == "belated_obligation_answer"
+    assert output.conversation_act.npc_social_duty == "accept_belated_answer_then_continue"
 
 
 def test_understanding_agent_flight_second_person_smalltalk_question_marks_answer_duty() -> None:
@@ -387,6 +425,40 @@ def test_understanding_agent_repairs_llm_missing_stay_duration_slot() -> None:
     assert agent.last_trace["postprocessing"]["reason"] == "llm_missing_allowed_slot"
 
 
+def test_understanding_agent_repairs_llm_missing_year_stay_duration_slot() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_stay_duration",
+            "intent_success": False,
+            "confidence": 0.73,
+            "meaning_summary_kr": "The player gave a long stay duration.",
+            "emotion": "calm",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "unclear_required_slot",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "extracted_slots": {"travel_schedule": "one year"},
+            "missing_slots": ["stay_duration"],
+            "needs_clarification": True,
+            "__llm_usage": {"input_tokens": 640, "output_tokens": 120, "total_tokens": 760},
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text("I'm gonna stay here for one year.", _duration_node_context())
+
+    assert output.intent == "state_stay_duration"
+    assert output.intent_success is True
+    assert output.extracted_slots["stay_duration"] == "one year"
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
+    assert agent.last_trace["postprocessing"]["source"] == "rule_stay_duration_classifier"
+
+
 def test_understanding_agent_accepts_generic_llm_slot_evidence_for_required_slot() -> None:
     llm_client = FakeUnderstandingLLMClient(
         {
@@ -562,6 +634,7 @@ def test_understanding_agent_rule_mode_recognizes_stay_duration_values() -> None
         "I will stay for 5 days.": "5 days",
         "I will stay for five days.": "five days",
         "I will stay one week.": "one week",
+        "I'm gonna stay here for one year.": "one year",
         "I will stay until Friday.": "until friday",
     }
     for player_text, stay_duration in cases.items():
@@ -651,6 +724,12 @@ def test_understanding_agent_rule_mode_recognizes_new_immigration_slot_values() 
             "engineer",
         ),
         (
+            "IMM_009_OCCUPATION",
+            "I'm a shopkeeper. I run a cafe.",
+            "occupation",
+            "shopkeeper",
+        ),
+        (
             "IMM_010_CASH",
             "I have 500 dollars in cash.",
             "cash_amount",
@@ -720,6 +799,49 @@ def test_understanding_agent_llm_mode_builds_new_immigration_slot_from_evidence(
     assert output.missing_slots == []
     assert output.slot_evidence[0].slot == "occupation"
     assert output.slot_evidence[0].value == "engineer"
+
+
+def test_understanding_agent_unified_authority_preserves_semantic_slot_repair() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_occupation",
+            "intent_success": False,
+            "intent_satisfied": False,
+            "satisfied": False,
+            "branch_hint": "clarify",
+            "confidence": 0.76,
+            "meaning_summary_kr": "The player answered with a job.",
+            "emotion": "calm",
+            "answer_relevance": "partially_related",
+            "ambiguity_type": "unclear_required_slot",
+            "risk_delta": 0,
+            "risk_reason": "No risk expression was found.",
+            "risk_tags": [],
+            "extracted_slots": {},
+            "missing_slots": ["occupation"],
+            "needs_clarification": True,
+            "__llm_usage": {"input_tokens": 640, "output_tokens": 120, "total_tokens": 760},
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(
+            murphy_understanding_mode="llm",
+            murphy_turn_authority="unified",
+        ),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text(
+        "I'm a shopkeeper. I run a cafe.",
+        _alpha_node_context("CH0_03_IMMIGRATION_CHECK", "IMM_009_OCCUPATION"),
+    )
+
+    assert output.intent_success is True
+    assert output.intent_satisfied is True
+    assert output.satisfied is True
+    assert output.branch_hint == "success"
+    assert output.extracted_slots == {"occupation": "shopkeeper"}
+    assert output.missing_slots == []
 
 
 def test_understanding_agent_llm_mode_upgrades_here_you_go_passport_handover() -> None:
@@ -858,6 +980,134 @@ def test_understanding_agent_llm_pragmatic_card_escalates_threat_risk() -> None:
     assert output.needs_clarification is False
     assert output.pragmatic_context.player_move == "violent_threat"
     assert output.pragmatic_context.recommended_b_move == "secondary_inspection"
+
+
+def test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_visit_purpose",
+            "intent_success": False,
+            "confidence": 0.87,
+            "meaning_summary_kr": "The player says they are coming to work, which needs visa-status clarification.",
+            "emotion": "calm",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "visa_work_mismatch",
+            "risk_delta": 2,
+            "risk_reason": "The model treated this as a work-authorization clarification.",
+            "risk_tags": [],
+            "slot_evidence": [
+                {
+                    "slot": "visit_purpose",
+                    "value": "work",
+                    "confidence": 0.88,
+                    "evidence_text": "here to work",
+                }
+            ],
+            "extracted_slots": {},
+            "missing_slots": [],
+            "needs_clarification": True,
+            "intent_satisfied": False,
+            "judgment_reason": "The statement may be a work-purpose visa mismatch, not a simple visit purpose.",
+            "pragmatic_context": {
+                "player_move": "visa_work_mismatch",
+                "target": "officer",
+                "threat_directness": "none",
+                "risk_level": "medium",
+                "procedural_posture": "clarify",
+                "recommended_b_move": "clarify",
+                "recommended_a_move": "repair",
+                "confidence": 0.88,
+                "evidence": "I'm here to work.",
+                "reason": "A traveler claiming they are here to work may need visa/work authorization verification.",
+            },
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text("I'm here to work.", _purpose_node_context())
+
+    assert output.intent_success is False
+    assert output.intent_satisfied is False
+    assert output.needs_clarification is True
+    assert 0 < output.risk_delta < 20
+    assert "visa_work_authorization_unclear" in output.risk_tags
+    assert "illegal_work_intent" not in output.risk_tags
+    assert output.pragmatic_context.player_move == "visa_work_mismatch"
+    assert output.pragmatic_context.recommended_b_move == "clarify"
+    assert agent.last_trace["postprocessing"]["pragmatic_context_source"] == "llm"
+
+
+def test_understanding_agent_llm_mode_closes_work_authorization_when_work_visa_is_confirmed() -> None:
+    llm_client = FakeUnderstandingLLMClient(
+        {
+            "intent": "state_visit_purpose",
+            "intent_success": False,
+            "confidence": 0.86,
+            "meaning_summary_kr": "The player says they are here to work and mentions a work visa.",
+            "emotion": "calm",
+            "answer_relevance": "partially_related",
+            "ambiguity_type": "visa_work_mismatch",
+            "risk_delta": 12,
+            "risk_reason": "The model still asks for work authorization clarification.",
+            "risk_tags": ["visa_work_authorization_unclear"],
+            "slot_evidence": [
+                {
+                    "slot": "visit_purpose",
+                    "value": "business",
+                    "confidence": 0.81,
+                    "evidence_text": "I'm here to work",
+                },
+                {
+                    "slot": "illegal_work_intent",
+                    "value": "false",
+                    "confidence": 0.86,
+                    "evidence_text": "I have a work visa",
+                },
+            ],
+            "extracted_slots": {"visit_purpose": "business", "illegal_work_intent": "false"},
+            "missing_slots": [],
+            "needs_clarification": True,
+            "intent_satisfied": False,
+            "judgment_reason": "The statement may still need visa clarification.",
+            "pragmatic_context": {
+                "player_move": "visa_work_mismatch",
+                "target": "officer",
+                "threat_directness": "none",
+                "risk_level": "medium",
+                "procedural_posture": "clarify",
+                "recommended_b_move": "clarify",
+                "recommended_a_move": "repair",
+                "confidence": 0.86,
+                "evidence": "I have a work visa.",
+                "reason": "The model did not close the work authorization check.",
+            },
+        }
+    )
+    agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=llm_client,
+    )
+
+    output = agent.analyze_player_text(
+        "I said, I'm here to work. Check my visa. I have a work visa.",
+        _purpose_node_context(),
+    )
+
+    assert output.intent_success is True
+    assert output.intent_satisfied is True
+    assert output.answer_relevance == "on_topic"
+    assert output.extracted_slots["visit_purpose"] == "work"
+    assert output.extracted_slots["work_authorization_status"] == "confirmed"
+    assert output.missing_slots == []
+    assert output.needs_clarification is False
+    assert output.risk_delta == 0
+    assert "visa_work_authorization_unclear" not in output.risk_tags
+    assert output.pragmatic_context.player_move == "meaningful_answer"
+    assert output.pragmatic_context.recommended_b_move == "continue"
+    assert agent.last_trace["postprocessing"]["work_authorization_confirmation_repair_applied"] is True
 
 
 def test_understanding_agent_llm_mode_repairs_first_visit_prior_visit_phrase() -> None:

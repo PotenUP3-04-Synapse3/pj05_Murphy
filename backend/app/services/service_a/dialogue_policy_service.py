@@ -119,7 +119,7 @@ SURFACE_GOAL_QUESTIONS = {
     "ask_denied_entry_history": "Have you ever been denied entry?",
     
     # Baggage 챕터
-    "report_missing_bag_at_service_desk": "Do you have your baggage claim tag or ticket?",
+    "report_missing_bag_at_service_desk": "What happened with your bag?",
     "ask_claim_tag_or_ticket": "May I see your baggage claim tag?",
     "confirm_carousel_search": "Did you check the carousel carefully before coming to the desk?",
     "redirect_to_customs_hold_area": "Please go to the customs hold area. Understood?",

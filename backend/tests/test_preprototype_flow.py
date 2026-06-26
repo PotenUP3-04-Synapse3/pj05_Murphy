@@ -18,6 +18,7 @@ from backend.app.schemas.game_turn import (
     MockAudioInput,
     NpcContext,
     PrePrototypeRequest,
+    PragmaticContextCard,
     UnderstandingOutput,
     UnrealTurnRequest,
 )
@@ -49,6 +50,56 @@ class MissingVisitPurposeLLMClient:
             "missing_slots": ["visit_purpose"],
             "needs_clarification": True,
             "__llm_usage": {"input_tokens": 753, "output_tokens": 153, "total_tokens": 906},
+        }
+
+
+class WorkVisaConfirmationLLMClient:
+    model = "fake-understanding-model"
+
+    def analyze(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "intent": "state_visit_purpose",
+            "intent_success": False,
+            "confidence": 0.86,
+            "meaning_summary_kr": "The player says they are here to work and mentions a work visa.",
+            "emotion": "calm",
+            "answer_relevance": "partially_related",
+            "ambiguity_type": "visa_work_mismatch",
+            "risk_delta": 12,
+            "risk_reason": "The model still asks for work authorization clarification.",
+            "risk_tags": ["visa_work_authorization_unclear"],
+            "slot_evidence": [
+                {
+                    "slot": "visit_purpose",
+                    "value": "business",
+                    "confidence": 0.81,
+                    "evidence_text": "I'm here to work",
+                },
+                {
+                    "slot": "illegal_work_intent",
+                    "value": "false",
+                    "confidence": 0.86,
+                    "evidence_text": "I have a work visa",
+                },
+            ],
+            "extracted_slots": {"visit_purpose": "business", "illegal_work_intent": "false"},
+            "missing_slots": [],
+            "needs_clarification": True,
+            "intent_satisfied": False,
+            "judgment_reason": "The statement may still need visa clarification.",
+            "pragmatic_context": {
+                "player_move": "visa_work_mismatch",
+                "target": "officer",
+                "threat_directness": "none",
+                "risk_level": "medium",
+                "procedural_posture": "clarify",
+                "recommended_b_move": "clarify",
+                "recommended_a_move": "repair",
+                "confidence": 0.86,
+                "evidence": "I have a work visa.",
+                "reason": "The model did not close the work authorization check.",
+            },
+            "__llm_usage": {"input_tokens": 600, "output_tokens": 180, "total_tokens": 780},
         }
 
 
@@ -381,6 +432,90 @@ def test_orchestrator_advances_stay_duration_answer_to_location_node() -> None:
     assert response.stt.player_text == "I will stay for 5 days."
     assert response.next_action == "ADVANCE"
     assert response.next_node_id == "IMM_004_STAY_LOCATION"
+    assert response.evaluation.verdict == "SUCCESS"
+    assert response.evaluation.feedback_tags == ["intent_matched", "required_slot_filled"]
+
+
+def test_orchestrator_accepts_year_stay_duration_answer() -> None:
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = "req_imm_duration_one_year"
+    turn_payload["session"]["current_node_id"] = "IMM_003_DURATION"
+    turn_payload["session"]["turn_index"] = 3
+    turn_payload["npc"]["last_npc_message"] = "How long will you be staying?"
+    turn_payload["game_state"]["current_objective"] = "State the stay duration"
+    turn_payload["game_state"]["completed_intents"] = ["submit_passport", "state_visit_purpose"]
+    turn_payload["previous_node_results"].append(
+        {
+            "node_id": "IMM_002_PURPOSE",
+            "verdict": "SUCCESS",
+            "next_action": "ADVANCE",
+        }
+    )
+    turn_payload["client_allowed_next_nodes"] = [
+        "IMM_004_STAY_LOCATION",
+        "IMM_003B_LONG_STAY_REASON",
+        "IMM_003_RETRY_DURATION",
+        "IMM_EXTRA_002_CLARIFY_DURATION",
+        "END_SECONDARY_INSPECTION",
+    ]
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://immigration/stay_duration_one_year.wav",
+            transcript="I'm gonna stay here for one year.",
+        ),
+    )
+
+    response = Orchestrator().run_turn(request)
+
+    assert response.stt.player_text == "I'm gonna stay here for one year."
+    assert response.next_action == "ADVANCE"
+    assert response.next_node_id == "IMM_003B_LONG_STAY_REASON"
+    assert response.evaluation.verdict == "SUCCESS"
+    assert response.evaluation.feedback_tags == ["intent_matched", "required_slot_filled"]
+
+
+def test_orchestrator_accepts_shopkeeper_occupation_answer() -> None:
+    turn_payload = _turn_payload()
+    turn_payload["request_id"] = "req_imm_occupation_shopkeeper"
+    turn_payload["session"]["current_node_id"] = "IMM_009_OCCUPATION"
+    turn_payload["session"]["turn_index"] = 10
+    turn_payload["npc"]["last_npc_message"] = "What do you do for a living?"
+    turn_payload["game_state"]["current_objective"] = "State your occupation"
+    turn_payload["game_state"]["completed_intents"] = [
+        "submit_passport",
+        "state_visit_purpose",
+        "state_stay_duration",
+        "state_stay_location",
+        "confirm_return_ticket",
+        "confirm_first_visit",
+    ]
+    turn_payload["previous_node_results"].append(
+        {
+            "node_id": "IMM_008_FIRST_VISIT",
+            "verdict": "SUCCESS",
+            "next_action": "ADVANCE",
+        }
+    )
+    turn_payload["client_allowed_next_nodes"] = [
+        "IMM_007_FINAL_DECISION",
+        "IMM_009_OCCUPATION_RETRY_OCCUPATION",
+        "IMM_009_OCCUPATION_CLARIFY_OCCUPATION",
+        "END_SECONDARY_INSPECTION",
+    ]
+    request = PrePrototypeRequest(
+        turn=UnrealTurnRequest.model_validate(turn_payload),
+        audio=MockAudioInput(
+            mock_wav_path="mock://immigration/occupation_shopkeeper.wav",
+            transcript="I'm a shopkeeper. I run a cafe.",
+        ),
+    )
+
+    response = Orchestrator().run_turn(request)
+
+    assert response.stt.player_text == "I'm a shopkeeper. I run a cafe."
+    assert response.next_action == "ADVANCE"
+    assert response.next_node_id == "IMM_007_FINAL_DECISION"
     assert response.evaluation.verdict == "SUCCESS"
     assert response.evaluation.feedback_tags == ["intent_matched", "required_slot_filled"]
 
@@ -2223,6 +2358,70 @@ def test_orchestrator_routes_public_figure_threat_to_secondary_not_purpose_reask
     assert builder_payloads[0]["understanding"]["pragmatic_context"]["player_move"] == "violent_threat"
     assert builder_payloads[0]["branch"]["branch_reason"] == "violent_threat_to_public_figure"
     assert builder_payloads[0]["dialogue_directive"]["purpose"] == "warn_and_control_risk"
+
+
+def test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary() -> None:
+    request = _preprototype_request("I'm here to work.")
+    orchestrator = Orchestrator()
+    orchestrator.understanding_agent = StaticUnderstandingAgent(
+        UnderstandingOutput(
+            intent="state_visit_purpose",
+            intent_success=False,
+            confidence=0.88,
+            meaning_summary_kr="The player stated a work-purpose claim that requires visa/work authorization clarification.",
+            emotion="calm",
+            answer_relevance="on_topic",
+            ambiguity_type="visa_work_mismatch",
+            risk_delta=10,
+            risk_reason="The work-purpose claim requires clarification, not automatic secondary inspection.",
+            risk_tags=["visa_work_authorization_unclear"],
+            extracted_slots={},
+            missing_slots=[],
+            needs_clarification=True,
+            intent_satisfied=False,
+            pragmatic_context=PragmaticContextCard.model_validate({
+                "player_move": "visa_work_mismatch",
+                "target": "officer",
+                "risk_level": "medium",
+                "procedural_posture": "clarify",
+                "recommended_b_move": "clarify",
+                "recommended_a_move": "repair",
+                "confidence": 0.88,
+                "evidence": "I'm here to work.",
+                "reason": "The player stated a work-purpose claim that requires visa/work authorization clarification.",
+            }),
+        )
+    )
+
+    response = orchestrator.run_turn(request)
+
+    assert response.next_action == "REASK"
+    assert response.next_node_id == "IMM_EXTRA_001_CLARIFY_PURPOSE"
+    assert response.evaluation.verdict == "UNCLEAR"
+    assert "what brings you" not in response.npc.text.lower()
+    assert "purpose of your visit" not in response.npc.text.lower()
+    assert "work" in response.npc.text.lower()
+    assert "visa" in response.npc.text.lower() or "authorization" in response.npc.text.lower()
+    assert "secondary inspection" not in response.npc.text.lower()
+
+
+def test_orchestrator_advances_work_purpose_after_work_visa_confirmation() -> None:
+    request = _preprototype_request("I said, I'm here to work. Check my visa. I have a work visa.")
+    orchestrator = Orchestrator()
+    orchestrator.understanding_agent = UnderstandingAgent(
+        settings=AppSettings(murphy_understanding_mode="llm"),
+        llm_client=WorkVisaConfirmationLLMClient(),
+    )
+
+    response = orchestrator.run_turn(request)
+
+    assert response.next_action == "ADVANCE"
+    assert response.next_node_id == "IMM_003_DURATION"
+    assert response.evaluation.verdict == "SUCCESS"
+    assert "purpose of your visit" not in response.npc.text.lower()
+    assert "what brings you" not in response.npc.text.lower()
+    assert "how long" in response.npc.text.lower() or "stay" in response.npc.text.lower()
+    assert response.debug.understanding_confidence >= 0.86
 
 
 def test_dev_a_adapter_reports_speaker_mismatch_diagnostic() -> None:

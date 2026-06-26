@@ -27,6 +27,7 @@ from backend.app.schemas.game_turn import (
     ConversationActCard,
     NodeContext,
     PragmaticContextCard,
+    RiskEvidence,
     SlotEvidence,
     SocialContextCard,
     UnderstandingOutput,
@@ -185,7 +186,20 @@ ALPHA_SLOT_VALUE_KEYWORDS: dict[str, dict[str, tuple[str, ...]]] = {
         "engineer": ("engineer", "developer", "programmer", "software engineer"),
         "designer": ("designer", "graphic designer", "product designer", "ui designer"),
         "teacher": ("teacher", "instructor", "professor", "teach"),
-        "business_owner": ("business owner", "own a business", "self employed", "run a business"),
+        "shopkeeper": ("shopkeeper", "store owner", "storekeeper"),
+        "business_owner": (
+            "business owner",
+            "own a business",
+            "self employed",
+            "run a business",
+            "run a cafe",
+            "run a café",
+            "own a cafe",
+            "own a café",
+            "cafe owner",
+            "café owner",
+            "coffee shop",
+        ),
         "unemployed": ("unemployed", "no job", "between jobs", "not working"),
     },
     "cash_amount": {
@@ -316,11 +330,17 @@ class UnderstandingAgent:
                 player_text,
                 node_context,
             )
+            output, work_authorization_postprocessing = _repair_work_authorization_confirmation(
+                output,
+                player_text,
+                node_context,
+            )
             # If any required slot is open, align intent_success with intent_satisfied
             has_open_required = any(get_slot_policy(slot) == "open" for slot in node_context.required_slots)
             if has_open_required:
                 output = output.model_copy(update={"intent_success": output.intent_satisfied})
 
+            unified_slot_postprocessing: dict[str, Any] = {}
             if self.settings.murphy_turn_authority == "unified":
                 output = output.model_copy(update={
                     "satisfied": raw_satisfied,
@@ -328,6 +348,11 @@ class UnderstandingAgent:
                     "intent_success": raw_intent_success,
                     "intent_satisfied": raw_intent_satisfied,
                 })
+                output, unified_slot_postprocessing = _promote_unified_semantic_slot_satisfaction(
+                    output,
+                    player_text,
+                    node_context,
+                )
 
             output, pragmatic_postprocessing = _attach_pragmatic_context(output, player_text, node_context)
             output = _attach_incivility_classification(output, player_text)
@@ -337,6 +362,8 @@ class UnderstandingAgent:
                 slot_evidence_postprocessing,
                 slot_repair_postprocessing,
                 passport_refusal_postprocessing,
+                work_authorization_postprocessing,
+                unified_slot_postprocessing,
                 pragmatic_postprocessing,
             )
             self.last_trace = _build_llm_trace(
@@ -575,6 +602,135 @@ def _reject_forbidden_llm_keys(result: dict[str, object]) -> None:
         raise UnderstandingLLMUnavailable(f"Understanding LLM returned forbidden keys: {joined_keys}")
 
 
+def _repair_work_authorization_confirmation(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> tuple[UnderstandingOutput, dict[str, Any]]:
+    """Close a work-purpose clarification when the player confirms authorization."""
+
+    no_repair: dict[str, Any] = {}
+    if "visit_purpose" not in node_context.required_slots:
+        return output, no_repair
+    if not _looks_like_work_authorization_confirmation(player_text):
+        return output, no_repair
+
+    extracted_slots = {
+        key: value
+        for key, value in output.extracted_slots.items()
+        if key not in {"illegal_work_intent", "unclear_purpose"}
+    }
+    extracted_slots["visit_purpose"] = "work"
+    extracted_slots["work_authorization_status"] = "confirmed"
+    risk_tags = _unique_non_empty(
+        [
+            tag
+            for tag in output.risk_tags
+            if tag not in {"visa_work_mismatch", "visa_work_authorization_unclear", "illegal_work_intent"}
+        ]
+    )
+    missing_slots = [slot for slot in output.missing_slots if slot != "visit_purpose"]
+    evidence = SlotEvidence(
+        slot="work_authorization_status",
+        value="confirmed",
+        confidence=0.93,
+        evidence_text=_work_authorization_evidence_text(player_text),
+    )
+    pragmatic_context = PragmaticContextCard(
+        player_move="meaningful_answer",
+        risk_level="none",
+        procedural_posture="continue",
+        recommended_b_move="continue",
+        recommended_a_move="continue",
+        confidence=0.93,
+        evidence=evidence.evidence_text,
+        reason="The player stated a work purpose and confirmed work authorization.",
+    )
+    repaired = output.model_copy(
+        update={
+            "intent": "state_visit_purpose",
+            "intent_success": True,
+            "intent_satisfied": True,
+            "satisfied": True,
+            "confidence": max(output.confidence, 0.93),
+            "meaning_summary_kr": "The player said they are here to work and confirmed a work visa or authorization.",
+            "answer_relevance": "on_topic",
+            "ambiguity_type": "none",
+            "risk_delta": 0,
+            "risk_reason": "The player confirmed work authorization.",
+            "risk_tags": risk_tags,
+            "risk_evidence": RiskEvidence(tags=risk_tags, delta=0),
+            "slot_evidence": [*output.slot_evidence, evidence],
+            "extracted_slots": extracted_slots,
+            "missing_slots": missing_slots,
+            "needs_clarification": False,
+            "branch_hint": "success",
+            "judgment_reason": "The work-purpose authorization clarification has been answered.",
+            "pragmatic_context": pragmatic_context,
+        }
+    )
+    return repaired, {
+        "work_authorization_confirmation_repair_applied": True,
+        "work_authorization_confirmation_source": "semantic_repair",
+        "work_authorization_confirmation_evidence": evidence.evidence_text,
+    }
+
+
+def _looks_like_work_authorization_confirmation(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    if not normalized:
+        return False
+
+    negative_markers = (
+        "without authorization",
+        "without authorisation",
+        "without a visa",
+        "without work authorization",
+        "without work authorisation",
+        "no work visa",
+        "do not have a work visa",
+        "don't have a work visa",
+        "dont have a work visa",
+        "no work permit",
+        "do not have work authorization",
+        "don't have work authorization",
+        "dont have work authorization",
+        "illegal job",
+        "illegal work",
+        "hide employment",
+        "tourist visa",
+    )
+    if any(marker in normalized for marker in negative_markers):
+        return False
+
+    positive_markers = (
+        "work visa",
+        "working visa",
+        "valid work visa",
+        "visa to work",
+        "visa for work",
+        "visa allows me to work",
+        "visa lets me work",
+        "work permit",
+        "employment authorization",
+        "employment authorisation",
+        "work authorization",
+        "work authorisation",
+        "authorized to work",
+        "authorised to work",
+        "authorization to work",
+        "authorisation to work",
+    )
+    return any(marker in normalized for marker in positive_markers)
+
+
+def _work_authorization_evidence_text(player_text: str) -> str:
+    stripped = player_text.strip()
+    if len(stripped) <= 160:
+        return stripped
+    return stripped[:157] + "..."
+
+
 def _attach_incivility_classification(
     output: UnderstandingOutput,
     player_text: str,
@@ -608,6 +764,58 @@ def _attach_pragmatic_context(
         source = "llm"
 
     if threat_card is None:
+        work_mismatch_card = _visa_work_mismatch_pragmatic_card(output)
+        if work_mismatch_card is not None:
+            is_authorization_clarification = _is_work_authorization_clarification(work_mismatch_card)
+            if is_authorization_clarification:
+                risk_tags = _unique_non_empty(
+                    [
+                        *(
+                            tag for tag in output.risk_tags
+                            if tag not in {"visa_work_mismatch", "illegal_work_intent"}
+                        ),
+                        "visa_work_authorization_unclear",
+                    ]
+                )
+                risk_delta = min(max(output.risk_delta, _procedural_risk_delta(work_mismatch_card), 1), 19)
+            else:
+                risk_tags = _unique_non_empty(
+                    [
+                        *output.risk_tags,
+                        "visa_work_mismatch",
+                    ]
+                )
+                risk_delta = max(output.risk_delta, _procedural_risk_delta(work_mismatch_card))
+            reason = work_mismatch_card.reason or (
+                "The player stated a work-purpose claim that requires visa/work authorization clarification."
+            )
+            updated = output.model_copy(
+                update={
+                    "intent_success": False,
+                    "intent_satisfied": False,
+                    "confidence": max(output.confidence, work_mismatch_card.confidence, 0.86),
+                    "ambiguity_type": (
+                        output.ambiguity_type
+                        if output.ambiguity_type and output.ambiguity_type != "none"
+                        else "visa_work_mismatch"
+                    ),
+                    "risk_delta": risk_delta,
+                    "risk_reason": reason,
+                    "risk_tags": risk_tags,
+                    "needs_clarification": is_authorization_clarification,
+                    "branch_hint": "clarify" if is_authorization_clarification else output.branch_hint,
+                    "judgment_reason": reason,
+                    "pragmatic_context": work_mismatch_card,
+                }
+            )
+            return updated, {
+                "pragmatic_context_applied": True,
+                "pragmatic_context_source": "llm",
+                "pragmatic_player_move": work_mismatch_card.player_move,
+                "pragmatic_risk_level": work_mismatch_card.risk_level,
+                "pragmatic_work_authorization_clarification": is_authorization_clarification,
+                "pragmatic_procedural_risk_applied": not is_authorization_clarification,
+            }
         refusal_card = _passport_refusal_pragmatic_card(output, player_text, node_context)
         if refusal_card is not None:
             return output.model_copy(update={"pragmatic_context": refusal_card}), {
@@ -651,6 +859,40 @@ def _attach_pragmatic_context(
         "pragmatic_target": threat_card.target,
         "pragmatic_risk_level": threat_card.risk_level,
     }
+
+
+def _visa_work_mismatch_pragmatic_card(output: UnderstandingOutput) -> PragmaticContextCard | None:
+    card = output.pragmatic_context
+    if card.player_move != "visa_work_mismatch":
+        return None
+    if card.risk_level not in {"medium", "high", "critical"}:
+        return None
+    if card.recommended_b_move not in {"clarify", "warning", "secondary_inspection"}:
+        return None
+    return card
+
+
+def _is_work_authorization_clarification(card: PragmaticContextCard) -> bool:
+    return (
+        card.player_move == "visa_work_mismatch"
+        and (
+            card.recommended_b_move == "clarify"
+            or card.procedural_posture == "clarify"
+            or card.risk_level == "medium"
+        )
+    )
+
+
+def _procedural_risk_delta(card: PragmaticContextCard) -> int:
+    if _is_work_authorization_clarification(card):
+        return 10
+    if card.risk_level == "critical" or card.recommended_b_move == "secondary_inspection":
+        return 70
+    if card.risk_level == "high":
+        return 35
+    if card.risk_level == "medium":
+        return 10
+    return 0
 
 
 def _passport_refusal_pragmatic_card(
@@ -928,6 +1170,20 @@ def _build_conversation_act_card(
         )
 
     social_move = output.social_context.conversation_move
+    if social_move == "meta_non_answer":
+        return ConversationActCard(
+            player_act="meta_non_answer",
+            relation_to_previous="ignores_current_prompt",
+            npc_social_duty="repair_current_obligation"
+            if output.social_context.pending_social_obligation
+            else "close_or_pause",
+            natural_next_move="repair",
+            topic_anchor=output.social_context.pending_social_obligation or "",
+            confidence=max(0.78, output.social_context.pragmatics_confidence),
+            evidence=player_text,
+            reason="The player is talking about the conversation itself instead of answering the active request.",
+        )
+
     if social_move in {"greeting_only", "repeated_greeting", "low_content_non_answer", "filler"}:
         return ConversationActCard(
             player_act="social_non_answer",
@@ -956,6 +1212,19 @@ def _build_conversation_act_card(
             reason="The player asked for clarification instead of moving the topic forward.",
         )
 
+    if _is_flight_smalltalk_diagnostic_node(node_context) and _flight_pen_obligation_addressed(player_text):
+        return ConversationActCard(
+            player_act="belated_obligation_answer",
+            relation_to_previous="answers_current_prompt",
+            npc_social_duty="accept_belated_answer_then_continue",
+            natural_next_move="accept_then_pivot",
+            topic_anchor="seatmate_pen_request",
+            should_avoid_generic_ack=True,
+            confidence=0.88,
+            evidence=player_text,
+            reason="The player addressed the seatmate's favor/request.",
+        )
+
     if _is_flight_smalltalk_diagnostic_node(node_context) and _is_reciprocal_question(player_text):
         return ConversationActCard(
             player_act="reciprocal_question",
@@ -968,19 +1237,6 @@ def _build_conversation_act_card(
             confidence=0.9,
             evidence=player_text,
             reason="The player asked the NPC to answer the same conversational topic.",
-        )
-
-    if _is_flight_smalltalk_diagnostic_node(node_context) and _flight_pen_obligation_addressed(player_text):
-        return ConversationActCard(
-            player_act="belated_obligation_answer",
-            relation_to_previous="answers_current_prompt",
-            npc_social_duty="accept_belated_answer_then_continue",
-            natural_next_move="accept_then_pivot",
-            topic_anchor="seatmate_pen_request",
-            should_avoid_generic_ack=True,
-            confidence=0.88,
-            evidence=player_text,
-            reason="The player addressed the seatmate's favor/request.",
         )
 
     topic_anchor = _topic_anchor_from_text(player_text)
@@ -1128,6 +1384,23 @@ def _build_social_context_card(
             recommended_npc_move="clarify",
             pragmatics_confidence=0.74,
             reason="The player gave only filler or hesitation.",
+        )
+
+    if not (output.intent_success or output.intent_satisfied) and _is_meta_non_answer(player_text):
+        return SocialContextCard(
+            scene_norm=scene_norm,
+            conversation_move="meta_non_answer",
+            prior_turn_relation="non_answer",
+            social_pattern="meta_non_answer",
+            pending_social_obligation=pending_obligation,
+            obligation_status="ignored" if pending_obligation else "none",
+            engagement_quality="stalled",
+            recommended_npc_move=_repair_move_for_scene(scene_norm),
+            pragmatics_confidence=0.8,
+            reason=(
+                "The player commented on or objected to the conversation instead "
+                "of answering the active request."
+            ),
         )
 
     if output.answer_relevance == "off_topic":
@@ -1363,6 +1636,39 @@ def _is_low_content_non_answer(player_text: str) -> bool:
     return False
 
 
+def _is_meta_non_answer(player_text: str) -> bool:
+    normalized = _normalize_for_keyword_match(player_text)
+    words = re.findall(r"[a-z0-9']+", normalized)
+    if not words:
+        return False
+
+    compact = " ".join(words)
+    meta_markers = (
+        "i just said",
+        "i only said",
+        "i just wanted to",
+        "i only wanted to",
+        "i'm just here to",
+        "i am just here to",
+        "i just came to",
+        "i only came to",
+        "i was just saying",
+        "i'm just saying",
+        "i am just saying",
+        "just saying",
+        "why are you asking",
+        "what do you mean",
+        "what's your problem",
+        "what is your problem",
+    )
+    if any(marker in compact for marker in meta_markers):
+        return True
+
+    meta_words = {"said", "saying", "asked", "asking", "talking", "conversation"}
+    social_words = {"hello", "hi", "hey", "what", "why", "just", "only"}
+    return bool(meta_words.intersection(words)) and bool(social_words.intersection(words))
+
+
 def _flight_pen_obligation_addressed(player_text: str) -> bool:
     normalized = _normalize_for_keyword_match(player_text)
     if not normalized:
@@ -1377,6 +1683,9 @@ def _flight_pen_obligation_addressed(player_text: str) -> bool:
         "take it",
         "use this",
         "you can use",
+        "already gave",
+        "gave it to you",
+        "gave you",
         "no problem",
         "sorry no",
         "sorry i need",
@@ -1646,6 +1955,60 @@ def _repair_missing_allowed_slots(
         "slot": primary_repair["slot"],
         "value": primary_repair["value"],
         "reason": "llm_missing_allowed_slot",
+    }
+
+
+def _promote_unified_semantic_slot_satisfaction(
+    output: UnderstandingOutput,
+    player_text: str,
+    node_context: NodeContext,
+) -> tuple[UnderstandingOutput, dict[str, Any]]:
+    """Let strong C-side slot evidence close a turn in unified-authority mode.
+
+    Beginner guide:
+    In unified mode the LLM is allowed to propose `satisfied` and `branch_hint`
+    directly.  C still owns schema safety, so when C has already repaired or
+    accepted every required slot, this helper prevents the older raw LLM
+    `satisfied=false` value from reopening an answered immigration question.
+    It only upgrades ordinary success/retry/clarify cases; warning and bad-end
+    hints remain under the safety veto path.
+    """
+
+    no_promotion = {"unified_semantic_slot_satisfaction_applied": False}
+    if not node_context.required_slots:
+        return output, no_promotion
+    if output.branch_hint in {"warning", "bad_end", "hint"}:
+        return output, no_promotion
+    if output.answer_relevance == "off_topic":
+        return output, no_promotion
+    if output.risk_delta > 0 or output.risk_tags:
+        return output, no_promotion
+    if _has_required_intent_mismatch(player_text, node_context):
+        return output, no_promotion
+
+    required_values = {
+        slot: output.extracted_slots.get(slot)
+        for slot in node_context.required_slots
+    }
+    if any(value is None or not str(value).strip() for value in required_values.values()):
+        return output, no_promotion
+    if any(slot in output.missing_slots for slot in node_context.required_slots):
+        return output, no_promotion
+
+    promoted = output.model_copy(
+        update={
+            "intent_success": True,
+            "intent_satisfied": True,
+            "satisfied": True,
+            "branch_hint": "success",
+            "needs_clarification": False,
+            "ambiguity_type": "none",
+        }
+    )
+    return promoted, {
+        "unified_semantic_slot_satisfaction_applied": True,
+        "required_slots": list(node_context.required_slots),
+        "reason": "required_slots_filled_after_c_semantic_repair",
     }
 
 
@@ -2534,7 +2897,10 @@ def _has_risk_expression(player_text: str, node_context: NodeContext) -> bool:
 def _extract_stay_duration(player_text: str) -> str | None:
     normalized = " ".join(player_text.lower().replace("-", " ").split())
     quantity = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|a|an)"
-    duration_match = re.search(rf"\b({quantity}\s+(?:day|days|week|weeks|month|months))\b", normalized)
+    duration_match = re.search(
+        rf"\b({quantity}\s+(?:day|days|week|weeks|month|months|year|years))\b",
+        normalized,
+    )
     if duration_match:
         value = duration_match.group(1)
         if value.startswith("a "):

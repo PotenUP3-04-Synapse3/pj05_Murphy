@@ -48,7 +48,7 @@ SURFACE_GOAL_FALLBACK_TEXTS = {
     "ask_denied_entry_history": "Have you ever been denied entry?",
     
     # Baggage Desk 챕터
-    "report_missing_bag_at_service_desk": "Hi, how can I help you today?",
+    "report_missing_bag_at_service_desk": "What happened with your bag?",
     "ask_claim_tag_or_ticket": "Sure. I can look that up for you.",
     "confirm_carousel_search": "Let me check the baggage belt details.",
     "redirect_to_customs_hold_area": "I'm sorry, but we don't have it here. It seems your bag is held in the customs area. You must go there.",
@@ -80,6 +80,7 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
     social_context_text = _social_context_fallback_text(normalized)
     conversation_act_text = _conversation_act_fallback_text(normalized)
     passport_refusal_text = _passport_submission_refusal_text(normalized)
+    work_authorization_text = _work_authorization_clarification_text(normalized)
     risk_control_text = _risk_control_text(normalized)
     
     # 1. transition_status == complete_chapter 또는 next_action == COMPLETE_CHAPTER
@@ -90,6 +91,10 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
     elif risk_control_text:
         text = risk_control_text
         reason = "risk_control_fallback"
+
+    elif work_authorization_text:
+        text = work_authorization_text
+        reason = "work_authorization_clarification_fallback"
 
     elif transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER":
         text = _completion_closure_fallback_text(normalized)
@@ -287,6 +292,33 @@ def _smalltalk_followup_for_surface_goal(surface_goal: str) -> str:
     return ""
 
 
+def _baggage_service_desk_repair_text(
+    *,
+    surface_goal: str,
+    branch_reason: str,
+    conversation_move: str,
+) -> str:
+    if surface_goal != "report_missing_bag_at_service_desk":
+        return ""
+    if "procedure_warning" in branch_reason:
+        return "I can only help with baggage issues here."
+    if "engagement_check" in branch_reason:
+        return "Are you trying to report a baggage problem, or do you need something else?"
+    if "repeated_social_repair" in branch_reason:
+        if conversation_move == "clarification_request":
+            return "I mean, do you need help with a missing or delayed bag?"
+        if conversation_move == "meta_non_answer":
+            return "I understand. Are you trying to report a baggage issue, or just saying hello?"
+        if conversation_move in {"greeting_only", "repeated_greeting", "low_content_non_answer", "filler"}:
+            return "Hi again. Are you here about a baggage problem, or just saying hello?"
+        return "Do you need help with a baggage problem?"
+    if "social_obligation_open" in branch_reason:
+        if conversation_move == "meta_non_answer":
+            return "I understand. Are you here about a baggage problem?"
+        return "Hi. Are you here about a baggage problem?"
+    return ""
+
+
 def _social_context_fallback_text(normalized: dict[str, Any]) -> str:
     social_context = normalized.get("social_context") or {}
     if not isinstance(social_context, dict):
@@ -330,6 +362,13 @@ def _social_context_fallback_text(normalized: dict[str, Any]) -> str:
 
     fallback_question = SURFACE_GOAL_FALLBACK_TEXTS.get(surface_goal, "").strip()
     if scene_norm == "service_recovery":
+        service_desk_repair = _baggage_service_desk_repair_text(
+            surface_goal=surface_goal,
+            branch_reason=branch_reason,
+            conversation_move=conversation_move,
+        )
+        if service_desk_repair:
+            return service_desk_repair
         if "procedure_warning" in branch_reason:
             return "I cannot continue the inspection without your cooperation."
         if "engagement_check" in branch_reason:
@@ -377,12 +416,73 @@ def _passport_submission_refusal_text(normalized: dict[str, Any]) -> str:
     return "I understand, but I cannot process you without your passport. If you refuse, you may be sent to secondary inspection."
 
 
+def _work_authorization_clarification_text(normalized: dict[str, Any]) -> str:
+    branch_reason = str(normalized.get("branch_reason") or "")
+    branch_type = str(normalized.get("branch_type") or "").lower()
+    next_action = str(normalized.get("next_action") or "").upper()
+    risk_tags = set(normalized.get("risk_tags") or [])
+    pragmatic_context = normalized.get("pragmatic_context") or {}
+    player_move = str(pragmatic_context.get("player_move") or "")
+    recommended_b_move = str(pragmatic_context.get("recommended_b_move") or "")
+    procedural_posture = str(pragmatic_context.get("procedural_posture") or "")
+    risk_level = str(pragmatic_context.get("risk_level") or "")
+    is_clarification = (
+        "visa_work_authorization_clarification" in branch_reason
+        or (
+            player_move == "visa_work_mismatch"
+            and (
+                branch_type == "clarify"
+                or next_action in {"REASK", "GIVE_HINT"}
+                or recommended_b_move == "clarify"
+                or procedural_posture == "clarify"
+                or risk_level == "medium"
+                or "visa_work_authorization_unclear" in risk_tags
+            )
+        )
+    )
+    if not is_clarification:
+        return ""
+    return (
+        "Do you mean you are coming for business meetings, or will you work for an employer here? "
+        "If you will work here, I need to check your work visa or authorization."
+    )
+
+
 def _risk_control_text(normalized: dict[str, Any]) -> str:
     branch_reason = str(normalized.get("branch_reason") or "")
+    branch_type = str(normalized.get("branch_type") or "").lower()
+    next_action = str(normalized.get("next_action") or "").upper()
     risk_tags = set(normalized.get("risk_tags") or [])
     pragmatic_context = normalized.get("pragmatic_context") or {}
     player_move = str(pragmatic_context.get("player_move") or "")
     target = str(pragmatic_context.get("target") or "")
+    is_work_mismatch = (
+        "visa_work_mismatch" in branch_reason
+        or "visa_work_mismatch" in risk_tags
+        or player_move == "visa_work_mismatch"
+    )
+    is_work_clarification = (
+        "visa_work_authorization_clarification" in branch_reason
+        or "visa_work_authorization_unclear" in risk_tags
+        or (
+            is_work_mismatch
+            and (
+                branch_type == "clarify"
+                or next_action in {"REASK", "GIVE_HINT"}
+                or str(pragmatic_context.get("recommended_b_move") or "") == "clarify"
+                or str(pragmatic_context.get("procedural_posture") or "") == "clarify"
+                or str(pragmatic_context.get("risk_level") or "") == "medium"
+            )
+        )
+    )
+    if is_work_clarification:
+        return ""
+    if is_work_mismatch:
+        return (
+            "I need to verify your visa and work authorization before we continue. "
+            "You will be sent to secondary inspection."
+        )
+
     is_threat = (
         "violent_threat" in branch_reason
         or "violent_threat" in risk_tags
