@@ -22,12 +22,14 @@ from backend.app.services.service_b.openkb_feedback_writer import OpenKBFeedback
 
 logger = logging.getLogger(__name__)
 
-# 모든 터미널 노드 — 정상 클리어 + 챕터별 BAD END
+# 모든 터미널 노드 — 정상 클리어 + 챕터별 BAD END + 중간 종료
 TERMINAL_NODE_IDS: frozenset[str] = frozenset({
-    "ALPHA_999_FINAL_SCOREBOARD",
-    "FLIGHT_BAD_END_VERBAL_ABUSE",
-    "IMM_BAD_END_VERBAL_ABUSE",
-    "BAG_BAD_END_VERBAL_ABUSE",
+    "ALPHA_999_FINAL_SCOREBOARD",       # 정상 클리어
+    "FLIGHT_BAD_END_VERBAL_ABUSE",      # 기내 욕설
+    "IMM_BAD_END_VERBAL_ABUSE",         # 입국심사 욕설/패배
+    "BAG_BAD_END_VERBAL_ABUSE",         # 수화물 욕설
+    "END_SECONDARY_INSPECTION",         # 2차 심사 강제 이동
+    "END_BAGGAGE_REPORT_INCOMPLETE",    # 수화물 신고 미완료
 })
 
 
