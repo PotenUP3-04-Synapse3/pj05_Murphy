@@ -669,6 +669,29 @@
       font-size: 16px;
     }
 
+    .result-modal-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-top: 1px solid var(--line);
+      padding: 14px 20px;
+    }
+
+    .result-modal-nav[hidden] {
+      display: none;
+    }
+
+    .result-page-indicator {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .result-modal-nav button:disabled {
+      opacity: 0.4;
+    }
+
     @media (max-width: 900px) {
       main {
         grid-template-columns: 1fr;
@@ -712,7 +735,7 @@
           <button class="chapter active" type="button" data-chapter-id="CH0_01_FLIGHT_SMALLTALK">Flight</button>
           <button class="chapter" type="button" data-chapter-id="CH0_03_IMMIGRATION_CHECK">Immigration</button>
           <button class="chapter" type="button" data-chapter-id="CH0_04_BAGGAGE_CLAIM">Baggage</button>
-          <button class="chapter" type="button" data-chapter-id="CH0_05_RESULT">Result</button>
+          <button class="chapter" type="button" data-chapter-id="ENTIRE">Entire</button>
         </div>
         <div id="npcSelectContainer" style="margin-top: 14px;">
           <label for="npcSelect" style="margin-top: 0;">NPC</label>
@@ -722,18 +745,22 @@
 
       <section>
         <h2>Input</h2>
-        <label for="audioFile">Upload WAV</label>
-        <input id="audioFile" type="file" accept=".wav,audio/wav,audio/x-wav">
+
+        <div class="button-row">
+          <button class="secondary" id="resetTurn" type="button">Reset Dialog</button>
+        </div>
+
+        <details class="payload-details">
+          <summary>Upload WAV (manual)</summary>
+          <label for="audioFile" style="margin-top: 10px;">Upload WAV</label>
+          <input id="audioFile" type="file" accept=".wav,audio/wav,audio/x-wav">
+          <button class="primary" id="runButton" type="button">Send WAV</button>
+        </details>
 
         <details class="payload-details">
           <summary>Generated Payload</summary>
           <textarea id="turnJson" spellcheck="false" readonly></textarea>
         </details>
-
-        <div class="button-row">
-          <button class="secondary" id="resetTurn" type="button">Reset Dialog</button>
-        </div>
-        <button class="primary" id="runButton" type="button">Send WAV</button>
 
         <label for="quickAudioFile">Recorded or Next WAV</label>
         <input id="quickAudioFile" type="file" accept=".wav,audio/wav,audio/x-wav">
@@ -763,7 +790,13 @@
 
       <section id="eokkkaSection">
         <h2>Accusation Context (Eokkka)</h2>
-        <div style="display: grid; gap: 8px;">
+        <div id="eokkkaEntireInfo" style="display: none; margin-bottom: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); font-size: 13px; line-height: 1.6;">
+          <div style="font-weight: 700; color: var(--muted); margin-bottom: 6px;">Entire 모드 · 현재 배정값 (읽기 전용)</div>
+          <div>Level: <strong id="eokkkaInfoLevel">-</strong></div>
+          <div>Visit Location: <strong id="eokkkaInfoLocation">-</strong></div>
+          <div>Customs Item: <strong id="eokkkaInfoItem">-</strong></div>
+        </div>
+        <div id="eokkkaControls" style="display: grid; gap: 8px;">
           <div>
             <label for="englishLevelInput" style="margin-top: 0;">English Level Rubric Total (0-12)</label>
             <div style="display: flex; gap: 8px;">
@@ -851,6 +884,11 @@
         <button class="secondary" id="closeResultButton" type="button">닫기</button>
       </div>
       <div class="result-modal-body" id="resultModalBody"></div>
+      <div class="result-modal-nav" id="resultModalNav" hidden>
+        <button class="secondary" id="resultPrevButton" type="button">← 이전</button>
+        <span class="result-page-indicator" id="resultPageIndicator">1 / 1</span>
+        <button class="secondary" id="resultNextButton" type="button">다음 →</button>
+      </div>
     </div>
   </div>
 
@@ -937,7 +975,18 @@
       resultOverlay: document.getElementById("resultOverlay"),
       resultModalTitle: document.getElementById("resultModalTitle"),
       resultModalBody: document.getElementById("resultModalBody"),
-      closeResultButton: document.getElementById("closeResultButton")
+      closeResultButton: document.getElementById("closeResultButton"),
+      resultModalNav: document.getElementById("resultModalNav"),
+      resultPrevButton: document.getElementById("resultPrevButton"),
+      resultNextButton: document.getElementById("resultNextButton"),
+      resultPageIndicator: document.getElementById("resultPageIndicator"),
+      eokkkaSection: document.getElementById("eokkkaSection"),
+      eokkkaControls: document.getElementById("eokkkaControls"),
+      eokkkaEntireInfo: document.getElementById("eokkkaEntireInfo"),
+      eokkkaInfoLevel: document.getElementById("eokkkaInfoLevel"),
+      eokkkaInfoLocation: document.getElementById("eokkkaInfoLocation"),
+      eokkkaInfoItem: document.getElementById("eokkkaInfoItem"),
+      npcSelectContainer: document.getElementById("npcSelectContainer")
     };
 
     const dialogState = {
@@ -959,8 +1008,46 @@
       realtimeFinalTranscript: null,
       realtimeFinalProvider: null,
       realtimeSubmitting: false,
-      selectedChapterId: defaultChapterId
+      selectedChapterId: defaultChapterId,
+      entireMode: false,
+      resultPages: [],
+      resultPageIndex: 0
     };
+
+    const ENTIRE_START_CHAPTER = "CH0_01_FLIGHT_SMALLTALK";
+
+    // Entire(전체 시나리오) 모드에서 노드 ID로부터 화자(speaker)와 NPC 메타데이터를 추정한다.
+    // 백엔드 dev_a_npc_dialogue_client._is_customs_hold_node 와 동일한 규칙(BAG_005~007 = 세관/Dan)을 따른다.
+    function resolveNpcForNode(nodeId) {
+      if (!nodeId) {
+        return null;
+      }
+      if (nodeId.startsWith("FLIGHT_")) {
+        return { id: "arabella", role: "seatmate", scene: "AIRPLANE_CABIN", speaker: "Arabella" };
+      }
+      if (nodeId.startsWith("IMM_")) {
+        return { id: "hale", role: "immigration_officer", scene: "JFK_IMMIGRATION_HALL", speaker: "Officer Hale" };
+      }
+      if (nodeId.startsWith("BAG_005") || nodeId.startsWith("BAG_006") || nodeId.startsWith("BAG_007")) {
+        return { id: "dan", role: "security_officer", scene: "JFK_BAGGAGE_CLAIM", speaker: "Officer Dan" };
+      }
+      if (nodeId.startsWith("BAG_")) {
+        return { id: "brielle", role: "baggage_agent", scene: "JFK_BAGGAGE_CLAIM", speaker: "Brielle" };
+      }
+      return null;
+    }
+
+    function isWalkableNode(nodeId) {
+      return Boolean(nodeId) && (
+        nodeId.startsWith("FLIGHT_")
+        || nodeId.startsWith("IMM_")
+        || nodeId.startsWith("BAG_")
+      );
+    }
+
+    function isResultNode(nodeId) {
+      return Boolean(nodeId) && nodeId.startsWith("ALPHA_");
+    }
 
     function makeRequestId(turn) {
       return "req_respond_dialog_" + Date.now() + "_" + turn.session.turn_index;
@@ -1676,6 +1763,37 @@
       appendMessage("npc", speaker || "NPC", initialText, null);
     }
 
+    function appendChapterDivider(text) {
+      const item = document.createElement("div");
+      item.className = "turn-divider";
+      const label = document.createElement("div");
+      label.className = "divider-label";
+      const strong = document.createElement("strong");
+      strong.textContent = "▶ " + text;
+      label.appendChild(strong);
+      item.appendChild(label);
+      refs.transcript.appendChild(item);
+      refs.dialogShell.scrollTop = refs.dialogShell.scrollHeight;
+    }
+
+    // Entire 모드에서 챕터 전환 노드를 건너뛰고 다음 NPC의 시작 노드로 이어줄 때,
+    // 새 NPC를 turn에 반영하고 첫 대사를 대화창에 보여준다.
+    function announceEntireTransition(turn, entryNode) {
+      const npc = resolveNpcForNode(entryNode.node_id);
+      if (npc) {
+        turn.npc.npc_id = npc.id;
+        turn.npc.npc_role = npc.role;
+        turn.session.scene_id = npc.scene;
+      }
+      turn.npc.last_npc_message = entryNode.npc_question;
+      if (isResultNode(entryNode.node_id)) {
+        appendChapterDivider("시나리오 종료 · 상단의 결과 보기로 점수를 확인하세요");
+        return;
+      }
+      appendChapterDivider((npc ? npc.speaker : "NPC") + " 등장 · " + (entryNode.chapter_id || ""));
+      appendMessage("npc", npc ? npc.speaker : "NPC", entryNode.npc_question, null);
+    }
+
     function applyStateDelta(turn, delta) {
       if (!delta) {
         return;
@@ -1706,20 +1824,57 @@
       turn.npc.last_npc_message = responseBody.npc?.text || turn.npc.last_npc_message;
       delete turn.audio.transcript;
 
+      // Entire 모드: 백엔드가 자동 배정한 억까 값(방문지/수화물)을 turn에 반영한다.
+      // 이 시점에 반영해 두면 아래의 모든 writeTurn(turn) 분기에 함께 저장된다.
+      if (dialogState.entireMode) {
+        syncEntireEokkkaFromResponse(turn, responseBody.game_state);
+      }
+
       const action = responseBody.next_action;
       const nextNodeId = responseBody.next_node_id;
-      if (
-        action === "ADVANCE"
-        && nextNodeId
-        && (
-          nextNodeId.startsWith("FLIGHT_")
-          || nextNodeId.startsWith("IMM_")
-          || nextNodeId.startsWith("BAG_")
-        )
-      ) {
-        const nextNode = await tryLoadNode(nextNodeId);
+      // 일반 모드는 ADVANCE만 따라간다. Entire 모드는 챕터 완료(COMPLETE_CHAPTER) 시에도
+      // 전환 노드를 건너뛰고 다음 챕터로 자동으로 이어간다.
+      const canWalk = action === "ADVANCE"
+        || (dialogState.entireMode && action === "COMPLETE_CHAPTER");
+      if (canWalk && isWalkableNode(nextNodeId)) {
+        let nextNode = await tryLoadNode(nextNodeId);
+
+        // Entire 모드: "Chapter complete." 같은 전환(transition) 노드는 플레이어 입력 없이
+        // 다음 챕터 시작 노드로 자동으로 건너뛰고, 새 NPC의 첫 대사를 보여준다.
+        if (nextNode && dialogState.entireMode) {
+          let guard = 0;
+          while (nextNode && nextNode.node_type === "transition" && guard < 5) {
+            const entryId = (nextNode.transition && nextNode.transition.entry_node_id)
+              || (nextNode.allowed_next_nodes && nextNode.allowed_next_nodes[0]);
+            const entryNode = entryId ? await tryLoadNode(entryId) : null;
+            if (!entryNode) {
+              break;
+            }
+            announceEntireTransition(turn, entryNode);
+            nextNode = entryNode;
+            guard += 1;
+          }
+        }
+
         if (nextNode) {
+          if (dialogState.entireMode && isResultNode(nextNode.node_id)) {
+            applyNodeToTurn(turn, nextNode);
+            dialogState.terminal = true;
+            writeTurn(turn);
+            setStatus("Scenario Complete", "warning");
+            return;
+          }
           applyNodeToTurn(turn, nextNode);
+          // Entire 모드: 챕터 내 NPC 교체(예: 수화물 Brielle → 세관 Dan)에도
+          // payload의 NPC 정보를 다음 노드 기준으로 맞춰준다.
+          if (dialogState.entireMode) {
+            const npc = resolveNpcForNode(nextNode.node_id);
+            if (npc) {
+              turn.npc.npc_id = npc.id;
+              turn.npc.npc_role = npc.role;
+              turn.session.scene_id = npc.scene;
+            }
+          }
           writeTurn(turn);
           return;
         }
@@ -1771,19 +1926,28 @@
     }
 
     async function startChapter(chapterId, preferredNpcId) {
-      const chapter = chapterStarts[chapterId] || chapterStarts[defaultChapterId];
-      dialogState.selectedChapterId = Object.prototype.hasOwnProperty.call(chapterStarts, chapterId)
-        ? chapterId
-        : defaultChapterId;
+      const isEntire = chapterId === "ENTIRE";
+      dialogState.entireMode = isEntire;
+      const effectiveChapterId = isEntire ? ENTIRE_START_CHAPTER : chapterId;
+      const chapter = chapterStarts[effectiveChapterId] || chapterStarts[defaultChapterId];
+      dialogState.selectedChapterId = isEntire
+        ? "ENTIRE"
+        : (Object.prototype.hasOwnProperty.call(chapterStarts, chapterId) ? chapterId : defaultChapterId);
       dialogState.terminal = false;
       dialogState.submittedRequestIds = [];
       refs.rawJson.textContent = "-";
       clearTiming();
       clearQuickRecordingFile();
-      
-      updateNpcSelect(dialogState.selectedChapterId, preferredNpcId);
 
-      const candidates = npcRoster[dialogState.selectedChapterId] || [];
+      // Entire 모드에서는 NPC 선택을 막고(자동 전환), 일반 모드에서는 드롭다운을 노출한다.
+      if (isEntire) {
+        refs.npcSelectContainer.style.display = "none";
+      } else {
+        updateNpcSelect(dialogState.selectedChapterId, preferredNpcId);
+      }
+
+      const rosterKey = isEntire ? ENTIRE_START_CHAPTER : dialogState.selectedChapterId;
+      const candidates = isEntire ? [] : (npcRoster[rosterKey] || []);
       const selectedNpc = candidates.find((npc) => npc.id === preferredNpcId)
         || candidates.find((npc) => npc.id === chapter.npcId)
         || null;
@@ -1804,15 +1968,28 @@
       turn.npc.last_npc_message = node.npc_question;
       writeTurn(turn);
 
-      const eokkkaSec = document.getElementById("eokkkaSection");
+      const eokkkaSec = refs.eokkkaSection;
       if (eokkkaSec) {
-        if (dialogState.selectedChapterId === "CH0_01_FLIGHT_SMALLTALK" || dialogState.selectedChapterId === "CH0_05_RESULT") {
-          eokkkaSec.style.display = "none";
-        } else {
+        if (dialogState.entireMode) {
+          // Entire 모드: 억까를 수동으로 미리 배정하지 않는다.
+          // 기내 진단이 끝나면(FLIGHT_999_COMPLETE) 백엔드가 추정 레벨(TSL)에 맞춰
+          // 방문지를, 입국심사가 끝나면(IMM_999_CLEARED) 수화물을 자동 배정한다.
+          // 그 값을 매 턴 응답 game_state에서 읽어와 동기화/표시한다.
           eokkkaSec.style.display = "block";
-          document.getElementById("englishLevelInput").value = "0";
-          if (eokkkaOptions.locations && eokkkaOptions.locations.length) {
-            await autoFillEokkka();
+          refs.eokkkaEntireInfo.style.display = "block";
+          setEokkkaControlsDisabled(true);
+          updateEokkkaEntireInfo();
+        } else {
+          refs.eokkkaEntireInfo.style.display = "none";
+          setEokkkaControlsDisabled(false);
+          if (dialogState.selectedChapterId === "CH0_01_FLIGHT_SMALLTALK") {
+            eokkkaSec.style.display = "none";
+          } else {
+            eokkkaSec.style.display = "block";
+            document.getElementById("englishLevelInput").value = "0";
+            if (eokkkaOptions.locations && eokkkaOptions.locations.length) {
+              await autoFillEokkka();
+            }
           }
         }
       }
@@ -2026,6 +2203,9 @@
       rememberSubmittedRequestId(body.request_id || turn.request_id);
       await updateUsage(body.session_id || turn.session.session_id);
       await updateNextTurn(turn, body);
+      if (dialogState.entireMode) {
+        updateEokkkaEntireInfo();
+      }
       if (activeButton === refs.continueButton) {
         refs.quickAudioFile.value = "";
       }
@@ -2075,11 +2255,12 @@
       ["interaction_problem_solving", "Interaction"]
     ];
 
-    function renderFinalResultHtml(finalResult) {
+    // 결과 1페이지: 총점/티어/랭크 + 세부 점수
+    function renderResultScorePage(finalResult) {
+      finalResult = finalResult || {};
       const score = Number(finalResult.final_score_100 || 0);
       const tier = finalResult.tier || "Iron";
       const dims = finalResult.quantitative_scores || {};
-      const summary = finalResult.report_summary || {};
 
       const badges = [
         '<span class="result-chip tier-' + escapeHtml(tier) + '">Tier: ' + escapeHtml(tier) + "</span>",
@@ -2097,6 +2278,20 @@
         );
       }).join("");
 
+      return (
+        '<div class="result-hero">' +
+          '<div class="result-score">' + score + '<span class="result-muted"> / 100</span></div>' +
+          '<div class="result-badges">' + badges + "</div>" +
+        "</div>" +
+        '<div class="result-section"><h3>세부 점수</h3><div class="result-dim-grid">' + dimRows + "</div></div>"
+      );
+    }
+
+    // 결과 2페이지: 총평 (없으면 빈 문자열)
+    function renderResultSummaryPage(finalResult) {
+      finalResult = finalResult || {};
+      const summary = finalResult.report_summary || {};
+
       const summaryRows = [];
       if (summary.overall) summaryRows.push("<p>" + escapeHtml(summary.overall) + "</p>");
       if (summary.main_improvement) {
@@ -2107,16 +2302,10 @@
       if (summary.weakest_node) nodeBits.push("Weakest: " + escapeHtml(summary.weakest_node));
       if (nodeBits.length) summaryRows.push('<p class="result-muted">' + nodeBits.join(" · ") + "</p>");
 
-      return (
-        '<div class="result-hero">' +
-          '<div class="result-score">' + score + '<span class="result-muted"> / 100</span></div>' +
-          '<div class="result-badges">' + badges + "</div>" +
-        "</div>" +
-        '<div class="result-section"><h3>세부 점수</h3><div class="result-dim-grid">' + dimRows + "</div></div>" +
-        (summaryRows.length
-          ? '<div class="result-section"><h3>총평</h3>' + summaryRows.join("") + "</div>"
-          : "")
-      );
+      if (!summaryRows.length) {
+        return "";
+      }
+      return '<div class="result-section"><h3>총평</h3>' + summaryRows.join("") + "</div>";
     }
 
     function renderFonfHtml(outGameFeedback) {
@@ -2164,25 +2353,62 @@
       return '<div class="result-section"><h3>Focus on Form 피드백</h3>' + body + nextHtml + "</div>";
     }
 
-    function renderResultBody(body) {
+    // 결과 화면을 여러 페이지로 나눈다. 단일 플레이어는
+    // [점수/세부점수] → [총평] → [Focus on Form] 순서로 넘긴다.
+    function buildResultPages(body) {
+      const pages = [];
       if (Array.isArray(body.players)) {
         refs.resultModalTitle.textContent = "팀 결과 · " + (body.room_id || "");
-        const team = body.team_outcome
-          ? '<div class="result-section"><h3>팀 결과</h3><p>' + escapeHtml(body.team_outcome) + "</p></div>"
-          : "";
-        const players = body.players.map((player) =>
-          '<div class="result-player-block"><h2>' + escapeHtml(player.player_id) + "</h2>" +
-            renderFinalResultHtml(player.final_result) +
-            renderFonfHtml(player.out_game_feedback) +
-          "</div>"
-        ).join("");
-        refs.resultModalBody.innerHTML = team + players;
-        return;
+        if (body.team_outcome) {
+          pages.push('<div class="result-section"><h3>팀 결과</h3><p>' + escapeHtml(body.team_outcome) + "</p></div>");
+        }
+        body.players.forEach((player) => {
+          pages.push(
+            '<div class="result-player-block"><h2>' + escapeHtml(player.player_id) + "</h2>" +
+              renderResultScorePage(player.final_result) +
+              renderResultSummaryPage(player.final_result) +
+              renderFonfHtml(player.out_game_feedback) +
+            "</div>"
+          );
+        });
+        return pages;
       }
 
       refs.resultModalTitle.textContent = "결과 · " + (body.session_id || "");
-      refs.resultModalBody.innerHTML =
-        renderFinalResultHtml(body.final_result) + renderFonfHtml(body.out_game_feedback);
+      pages.push(renderResultScorePage(body.final_result));
+      const summaryPage = renderResultSummaryPage(body.final_result);
+      if (summaryPage) {
+        pages.push(summaryPage);
+      }
+      pages.push(renderFonfHtml(body.out_game_feedback));
+      return pages;
+    }
+
+    function renderResultBody(body) {
+      dialogState.resultPages = buildResultPages(body);
+      showResultPage(0);
+    }
+
+    function showResultPage(index) {
+      const pages = dialogState.resultPages || [];
+      if (!pages.length) {
+        refs.resultModalBody.innerHTML = '<p class="result-muted">표시할 결과가 없습니다.</p>';
+        refs.resultModalNav.hidden = true;
+        return;
+      }
+      const clamped = Math.max(0, Math.min(pages.length - 1, index));
+      dialogState.resultPageIndex = clamped;
+      refs.resultModalBody.innerHTML = pages[clamped];
+      refs.resultModalBody.scrollTop = 0;
+
+      if (pages.length > 1) {
+        refs.resultModalNav.hidden = false;
+        refs.resultPageIndicator.textContent = (clamped + 1) + " / " + pages.length;
+        refs.resultPrevButton.disabled = clamped === 0;
+        refs.resultNextButton.disabled = clamped === pages.length - 1;
+      } else {
+        refs.resultModalNav.hidden = true;
+      }
     }
 
     async function openResultPanel() {
@@ -2193,6 +2419,9 @@
       }
       refs.resultModalTitle.textContent = "결과";
       refs.resultModalBody.innerHTML = '<p class="result-muted">불러오는 중...</p>';
+      refs.resultModalNav.hidden = true;
+      dialogState.resultPages = [];
+      dialogState.resultPageIndex = 0;
       refs.resultOverlay.hidden = false;
       try {
         const response = await fetch("/api/game/ai/result/" + encodeURIComponent(sessionId));
@@ -2219,6 +2448,12 @@
       });
     });
     refs.closeResultButton.addEventListener("click", closeResultPanel);
+    refs.resultPrevButton.addEventListener("click", () => {
+      showResultPage(dialogState.resultPageIndex - 1);
+    });
+    refs.resultNextButton.addEventListener("click", () => {
+      showResultPage(dialogState.resultPageIndex + 1);
+    });
     refs.resultOverlay.addEventListener("click", (event) => {
       if (event.target === refs.resultOverlay) {
         closeResultPanel();
@@ -2347,6 +2582,82 @@
       });
     }
 
+    function setEokkkaControlsDisabled(disabled) {
+      const ids = [
+        "englishLevelInput",
+        "autoFillEokkkaButton",
+        "visitLocationSelect",
+        "customsItemSelect",
+        "applyEokkkaButton"
+      ];
+      ids.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.disabled = disabled;
+        }
+      });
+    }
+
+    function updateEokkkaEntireInfo() {
+      if (!refs.eokkkaInfoLevel) {
+        return;
+      }
+
+      let turn = null;
+      try {
+        turn = parseTurn();
+      } catch {
+        turn = null;
+      }
+      const gs = turn && turn.game_state;
+
+      // Level: 백엔드가 추정 레벨(TSL)로 배정한 챌린지 난이도를 보여준다.
+      // 배정 전에는 안내 문구를 표시한다.
+      if (gs && gs.visit_location_difficulty != null) {
+        refs.eokkkaInfoLevel.textContent = "난이도 " + gs.visit_location_difficulty + " (기내 추정 레벨 기반)";
+      } else {
+        refs.eokkkaInfoLevel.textContent = "기내 진단 후 자동 배정";
+      }
+
+      if (gs && gs.assigned_visit_location) {
+        const ko = gs.assigned_visit_location_ko ? " (" + gs.assigned_visit_location_ko + ")" : "";
+        const diff = gs.visit_location_difficulty != null ? " · diff " + gs.visit_location_difficulty : "";
+        refs.eokkkaInfoLocation.textContent = gs.assigned_visit_location + ko + diff;
+      } else {
+        refs.eokkkaInfoLocation.textContent = "기내 진단 후 자동 배정";
+      }
+
+      const item = gs && gs.random_customs_item;
+      if (item && item.item_name) {
+        const diff = item.difficulty != null ? " · diff " + item.difficulty : "";
+        refs.eokkkaInfoItem.textContent = item.item_name + diff;
+      } else {
+        refs.eokkkaInfoItem.textContent = "입국심사 후 자동 배정";
+      }
+    }
+
+    // Entire 모드: 응답 game_state에서 백엔드가 배정한 억까 값(방문지/수화물)을
+    // 로컬 turn으로 동기화한다. 한 번 배정되면 이후 턴에도 계속 실려 나간다.
+    function syncEntireEokkkaFromResponse(turn, gameState) {
+      if (!gameState || !turn || !turn.game_state) {
+        return;
+      }
+      const locFields = [
+        "assigned_visit_location",
+        "assigned_visit_location_ko",
+        "visit_location_difficulty",
+        "visit_location_suspicion_reason"
+      ];
+      locFields.forEach((field) => {
+        if (gameState[field] != null) {
+          turn.game_state[field] = gameState[field];
+        }
+      });
+      if (gameState.random_customs_item && !turn.game_state.random_customs_item) {
+        turn.game_state.random_customs_item = gameState.random_customs_item;
+      }
+    }
+
     async function autoFillEokkka() {
       const levelInput = document.getElementById("englishLevelInput");
       let url = "/api/game/ai/demo/eokkka/assign";
@@ -2434,6 +2745,9 @@
       }
 
       writeTurn(turn);
+      if (dialogState.entireMode) {
+        updateEokkkaEntireInfo();
+      }
     }
 
     const autoFillBtn = document.getElementById("autoFillEokkkaButton");

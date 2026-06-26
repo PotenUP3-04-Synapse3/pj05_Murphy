@@ -56,7 +56,7 @@ def test_respond_dialog_page_is_served_without_changing_original_demo() -> None:
     assert 'data-chapter-id="CH0_01_FLIGHT_SMALLTALK"' in response.text
     assert 'data-chapter-id="CH0_03_IMMIGRATION_CHECK"' in response.text
     assert 'data-chapter-id="CH0_04_BAGGAGE_CLAIM"' in response.text
-    assert 'data-chapter-id="CH0_05_RESULT"' in response.text
+    assert 'data-chapter-id="ENTIRE"' in response.text
     assert "chapter_id: node.chapter_id" in response.text
     assert 'sceneId: "AIRPLANE_CABIN"' in response.text
     assert 'npcId: "arabella"' in response.text
@@ -64,7 +64,7 @@ def test_respond_dialog_page_is_served_without_changing_original_demo() -> None:
     assert 'speaker: "Officer Hale"' in response.text
     assert 'body.npc?.speaker || "Officer Hale"' in response.text
     assert "Officer Miller" not in response.text
-    assert 'nextNodeId.startsWith("FLIGHT_")' in response.text
+    assert 'nodeId.startsWith("FLIGHT_")' in response.text
     assert "preferredNpcId" in response.text
     assert "selectedNpc?.start_node_id || chapter.nodeId" in response.text
     assert "startChapter(dialogState.selectedChapterId, selectedNpcId)" in response.text
@@ -96,6 +96,8 @@ def test_demo_node_endpoint_returns_safe_node_context() -> None:
             "IMM_EXTRA_001_CLARIFY_PURPOSE",
             "END_SECONDARY_INSPECTION",
         ],
+        "node_type": "dialogue",
+        "transition": None,
     }
     assert isinstance(purpose_body["objective_kr"], str)
     assert purpose_body["objective_kr"]

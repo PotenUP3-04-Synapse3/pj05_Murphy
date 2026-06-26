@@ -14,6 +14,7 @@ from backend.app.schemas.game_turn import (
     DevBPolicyOutput,
     EvaluationResponse,
     FlowResponse,
+    LevelHint,
     NormalizedInput,
     NpcResponse,
     PrePrototypeRequest,
@@ -97,6 +98,7 @@ class ResponseBuilder:
                 next_node_id=dev_b_output.branch.next_node_id,
                 next_action=dev_b_output.branch.next_action,
                 transition=transition,
+                level_hint=dev_b_output.level_hint,
             ),
             state_delta=dev_b_output.state_delta,
             evaluation=EvaluationResponse(
@@ -134,6 +136,7 @@ def _build_flow_response(
     next_node_id: str,
     next_action: str,
     transition: TransitionContext | None,
+    level_hint: LevelHint | None = None,
 ) -> FlowResponse:
     if transition is not None and transition.unreal_event == "START_AIRPORT_ARRIVAL_TUTORIAL":
         return FlowResponse(
@@ -199,4 +202,12 @@ def _build_flow_response(
             show_scoreboard=True,
         )
 
-    return FlowResponse(from_scene_id=current_scene_id, to_scene_id=current_scene_id)
+    flight_confidence: float | None = None
+    if current_node_id.startswith("FLIGHT_") and level_hint is not None:
+        flight_confidence = level_hint.cumulative_confidence
+
+    return FlowResponse(
+        from_scene_id=current_scene_id,
+        to_scene_id=current_scene_id,
+        flight_diagnostic_confidence=flight_confidence,
+    )
