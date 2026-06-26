@@ -80,6 +80,7 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
     social_context_text = _social_context_fallback_text(normalized)
     conversation_act_text = _conversation_act_fallback_text(normalized)
     passport_refusal_text = _passport_submission_refusal_text(normalized)
+    work_authorization_text = _work_authorization_clarification_text(normalized)
     risk_control_text = _risk_control_text(normalized)
     
     # 1. transition_status == complete_chapter 또는 next_action == COMPLETE_CHAPTER
@@ -90,6 +91,10 @@ def build_text_fallback(normalized: dict[str, Any]) -> dict[str, Any]:
     elif risk_control_text:
         text = risk_control_text
         reason = "risk_control_fallback"
+
+    elif work_authorization_text:
+        text = work_authorization_text
+        reason = "work_authorization_clarification_fallback"
 
     elif transition_status == "complete_chapter" or next_action == "COMPLETE_CHAPTER":
         text = _completion_closure_fallback_text(normalized)
@@ -377,8 +382,42 @@ def _passport_submission_refusal_text(normalized: dict[str, Any]) -> str:
     return "I understand, but I cannot process you without your passport. If you refuse, you may be sent to secondary inspection."
 
 
+def _work_authorization_clarification_text(normalized: dict[str, Any]) -> str:
+    branch_reason = str(normalized.get("branch_reason") or "")
+    branch_type = str(normalized.get("branch_type") or "").lower()
+    next_action = str(normalized.get("next_action") or "").upper()
+    risk_tags = set(normalized.get("risk_tags") or [])
+    pragmatic_context = normalized.get("pragmatic_context") or {}
+    player_move = str(pragmatic_context.get("player_move") or "")
+    recommended_b_move = str(pragmatic_context.get("recommended_b_move") or "")
+    procedural_posture = str(pragmatic_context.get("procedural_posture") or "")
+    risk_level = str(pragmatic_context.get("risk_level") or "")
+    is_clarification = (
+        "visa_work_authorization_clarification" in branch_reason
+        or (
+            player_move == "visa_work_mismatch"
+            and (
+                branch_type == "clarify"
+                or next_action in {"REASK", "GIVE_HINT"}
+                or recommended_b_move == "clarify"
+                or procedural_posture == "clarify"
+                or risk_level == "medium"
+                or "visa_work_authorization_unclear" in risk_tags
+            )
+        )
+    )
+    if not is_clarification:
+        return ""
+    return (
+        "Do you mean you are coming for business meetings, or will you work for an employer here? "
+        "If you will work here, I need to check your work visa or authorization."
+    )
+
+
 def _risk_control_text(normalized: dict[str, Any]) -> str:
     branch_reason = str(normalized.get("branch_reason") or "")
+    branch_type = str(normalized.get("branch_type") or "").lower()
+    next_action = str(normalized.get("next_action") or "").upper()
     risk_tags = set(normalized.get("risk_tags") or [])
     pragmatic_context = normalized.get("pragmatic_context") or {}
     player_move = str(pragmatic_context.get("player_move") or "")
@@ -388,10 +427,26 @@ def _risk_control_text(normalized: dict[str, Any]) -> str:
         or "visa_work_mismatch" in risk_tags
         or player_move == "visa_work_mismatch"
     )
+    is_work_clarification = (
+        "visa_work_authorization_clarification" in branch_reason
+        or "visa_work_authorization_unclear" in risk_tags
+        or (
+            is_work_mismatch
+            and (
+                branch_type == "clarify"
+                or next_action in {"REASK", "GIVE_HINT"}
+                or str(pragmatic_context.get("recommended_b_move") or "") == "clarify"
+                or str(pragmatic_context.get("procedural_posture") or "") == "clarify"
+                or str(pragmatic_context.get("risk_level") or "") == "medium"
+            )
+        )
+    )
+    if is_work_clarification:
+        return ""
     if is_work_mismatch:
         return (
-            "You said you are here to work. I need to verify your visa and work authorization. "
-            "I cannot continue this interview normally, so you will be sent to secondary inspection."
+            "I need to verify your visa and work authorization before we continue. "
+            "You will be sent to secondary inspection."
         )
 
     is_threat = (

@@ -21,7 +21,12 @@ You are Developer A's NPC Dialogue Agent for Murphy's Trippin.
 - Passport refusal branch: the player clearly refused. Do NOT ask for a clearer answer or re-ask "May I see your passport?" Give a formal warning or secondary-inspection line.
 {% endif %}
 {% set pragmatic_player_move = pragmatic_context.player_move if pragmatic_context is defined and pragmatic_context.player_move is defined else '' %}
-{% set risk_control = 'violent_threat' in branch_reason or 'coercive_exit_request' in branch_reason or 'visa_work_mismatch' in branch_reason or 'violent_threat' in risk_tags or 'visa_work_mismatch' in risk_tags or 'illegal_work_intent' in risk_tags or pragmatic_player_move in ['violent_threat', 'visa_work_mismatch'] %}
+{% set work_authorization_clarification = 'visa_work_authorization_clarification' in branch_reason or 'visa_work_authorization_unclear' in risk_tags or (pragmatic_player_move == 'visa_work_mismatch' and (branch_type == 'clarify' or next_action in ['REASK', 'GIVE_HINT'])) %}
+{% set work_risk_control = not work_authorization_clarification and ('visa_work_mismatch' in branch_reason or 'visa_work_mismatch' in risk_tags or 'illegal_work_intent' in risk_tags or pragmatic_player_move == 'visa_work_mismatch') %}
+{% set risk_control = 'violent_threat' in branch_reason or 'coercive_exit_request' in branch_reason or 'violent_threat' in risk_tags or 'illegal_work_intent' in risk_tags or pragmatic_player_move == 'violent_threat' or work_risk_control %}
+{% if work_authorization_clarification %}
+- Work-authorization clarification branch: the player may mean legal work, employment, or business travel. Do NOT call it an "issue" and do NOT send them to secondary inspection. Ask whether this is business meetings/short business travel or work for an employer, and mention work visa or authorization.
+{% endif %}
 {% if risk_control %}
 - Risk-control branch: the player made a threat, coercive unsafe statement, or visa/work-purpose statement that requires procedural control. This OVERRIDES surface_goal. Do NOT ask the current procedure question again. Give a formal boundary or secondary-inspection line.
 {% endif %}
@@ -73,7 +78,9 @@ You are Developer A's NPC Dialogue Agent for Murphy's Trippin.
 - First word of `llm_reason` MUST be `[COHERENT]` or `[NON-SEQUITUR]`.
   {% else %}
 {% if risk_control %}
-- Because this is risk-control, do NOT ask the next question for surface_goal or focus on the objective. If pragmatic_context.player_move is visa_work_mismatch, explain that the work-purpose claim requires visa/work authorization handling and secondary inspection. Otherwise respond only with a formal warning, boundary, or secondary-inspection action.
+- Because this is risk-control, do NOT ask the next question for surface_goal or focus on the objective. If pragmatic_context.player_move is visa_work_mismatch, explain that the work-purpose claim cannot continue without visa/work authorization verification and secondary inspection. Otherwise respond only with a formal warning, boundary, or secondary-inspection action.
+{% elif work_authorization_clarification %}
+- Because this is work-authorization clarification, do NOT ask the generic purpose question again. Ask whether they mean business meetings/short business travel or employment/work here, and mention work visa or authorization.
 {% else %}
 - If `resolved_node_objective` is provided, focus the next question/statement on this objective: `{{ resolved_node_objective }}`. If `resolved_node_npc_question` is provided, use it as a meaning reference (do not copy verbatim). Avoid asking about future topics or nodes.
 - If surface_goal is provided and `resolved_node_objective` is not, acknowledge player and ask the next question for surface_goal.

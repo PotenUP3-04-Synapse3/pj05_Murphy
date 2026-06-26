@@ -314,7 +314,7 @@ def test_violent_threat_routes_to_secondary_instead_of_retry(tmp_path: Path) -> 
     assert result.npc_emotion == "Suspicion"
 
 
-def test_llm_pragmatic_work_purpose_risk_routes_to_warning_not_generic_retry(tmp_path: Path) -> None:
+def test_llm_pragmatic_work_purpose_routes_to_authorization_clarification(tmp_path: Path) -> None:
     result = _agent(tmp_path).evaluate_turn(
         _policy_input(
             player_text="I'm here to work.",
@@ -322,32 +322,32 @@ def test_llm_pragmatic_work_purpose_risk_routes_to_warning_not_generic_retry(tmp
             confidence=0.88,
             answer_relevance="on_topic",
             ambiguity_type="visa_work_mismatch",
-            risk_delta=35,
-            risk_tags=["visa_work_mismatch", "illegal_work_intent"],
-            extracted_slots={"illegal_work_intent": "possible"},
+            risk_delta=10,
+            risk_tags=["visa_work_authorization_unclear"],
+            extracted_slots={},
             missing_slots=[],
-            needs_clarification=False,
+            needs_clarification=True,
             pragmatic_context={
                 "player_move": "visa_work_mismatch",
                 "target": "officer",
-                "risk_level": "high",
-                "procedural_posture": "stop_normal_interview",
-                "recommended_b_move": "warning",
-                "recommended_a_move": "formal_boundary",
+                "risk_level": "medium",
+                "procedural_posture": "clarify",
+                "recommended_b_move": "clarify",
+                "recommended_a_move": "repair",
                 "confidence": 0.88,
                 "evidence": "I'm here to work.",
-                "reason": "The player stated a work-purpose claim that requires visa/work authorization handling.",
+                "reason": "The player stated a work-purpose claim that requires visa/work authorization clarification.",
             },
         )
     )
 
-    assert result.evaluation.verdict == "CRITICAL_FAIL"
-    assert result.branch.branch_type == "warning"
-    assert result.branch.next_action == "WARNING"
-    assert result.branch.branch_reason == "visa_work_mismatch"
+    assert result.evaluation.verdict == "UNCLEAR"
+    assert result.branch.branch_type == "clarify"
+    assert result.branch.next_action == "REASK"
+    assert result.branch.branch_reason == "visa_work_authorization_clarification"
     assert result.dialogue_directive is not None
-    assert result.dialogue_directive.purpose == "warn_and_control_risk"
-    assert result.state_delta.suspicion_delta >= 30
+    assert result.dialogue_directive.purpose == "support_retry"
+    assert 0 < result.state_delta.suspicion_delta < 20
 
 
 def test_passport_submission_refusal_uses_critical_branch_not_retry_or_hint(tmp_path: Path) -> None:

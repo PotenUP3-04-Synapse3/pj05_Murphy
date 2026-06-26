@@ -80,12 +80,18 @@ are coming to work, earn money, take a job, or help a business as an employee
 into ordinary `business` unless they clearly mean a lawful business meeting,
 conference, or short business visit.
 
-If the utterance creates a visa/work-authorization concern, use
+If the utterance only creates a visa/work-authorization question, such as
+`I'm here to work`, use
 `pragmatic_context.player_move = "visa_work_mismatch"`,
-`risk_level = "high"`, `procedural_posture = "stop_normal_interview"`,
-`recommended_b_move = "warning"`, and
-`recommended_a_move = "formal_boundary"`. Include `risk_evidence` tags such as
-`visa_work_mismatch` and `illegal_work_intent` when appropriate.
+`risk_level = "medium"`, `procedural_posture = "clarify"`,
+`recommended_b_move = "clarify"`, and `recommended_a_move = "repair"`.
+Keep `risk_delta` below 20 and use a tag such as
+`visa_work_authorization_unclear`.
+
+If the player explicitly says they will work without authorization, take an
+illegal job, hide employment, or earn money in a way that violates visa status,
+then raise `risk_level` to high or critical, recommend warning or
+secondary_inspection, and include `illegal_work_intent`.
 
 ## Customs Item Sufficiency
 

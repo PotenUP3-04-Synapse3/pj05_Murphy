@@ -160,6 +160,8 @@ def _global_dialogue_violation(
             return "current_slot_contradiction"
         if _has_immigration_surface_goal_mismatch(npc_text, tts_text, normalized):
             return "immigration_surface_goal_mismatch"
+        if _has_work_authorization_generic_reask(npc_text, tts_text, normalized):
+            return "work_authorization_reask_violation"
         if _has_risk_control_reask(npc_text, tts_text, normalized):
             return "risk_control_reask_violation"
 
@@ -284,13 +286,41 @@ def _is_passport_submission_refusal_branch(normalized: dict[str, Any]) -> bool:
     return "passport_submission_refused" in str(normalized.get("branch_reason") or "")
 
 
+def _is_work_authorization_clarification_branch(normalized: dict[str, Any]) -> bool:
+    branch_reason = str(normalized.get("branch_reason") or "")
+    branch_type = str(normalized.get("branch_type") or "").lower()
+    next_action = str(normalized.get("next_action") or "").upper()
+    risk_tags = set(normalized.get("risk_tags") or [])
+    pragmatic_context = normalized.get("pragmatic_context") or {}
+    player_move = str(pragmatic_context.get("player_move") or "")
+    return bool(
+        "visa_work_authorization_clarification" in branch_reason
+        or (
+            player_move == "visa_work_mismatch"
+            and (
+                branch_type == "clarify"
+                or next_action in {"REASK", "GIVE_HINT"}
+                or str(pragmatic_context.get("recommended_b_move") or "") == "clarify"
+                or str(pragmatic_context.get("procedural_posture") or "") == "clarify"
+                or str(pragmatic_context.get("risk_level") or "") == "medium"
+                or "visa_work_authorization_unclear" in risk_tags
+            )
+        )
+    )
+
+
 def _is_risk_control_branch(normalized: dict[str, Any]) -> bool:
+    if _is_work_authorization_clarification_branch(normalized):
+        return False
+
     branch_reason = str(normalized.get("branch_reason") or "")
     purpose = str(normalized.get("dialogue_purpose") or "")
     next_action = str(normalized.get("next_action") or "").upper()
     risk_tags = set(normalized.get("risk_tags") or [])
     pragmatic_context = normalized.get("pragmatic_context") or {}
     player_move = str(pragmatic_context.get("player_move") or "")
+    recommended_b_move = str(pragmatic_context.get("recommended_b_move") or "")
+    risk_level = str(pragmatic_context.get("risk_level") or "")
     threat_markers = {
         "violent_threat",
         "threat_to_officer",
@@ -302,14 +332,28 @@ def _is_risk_control_branch(normalized: dict[str, Any]) -> bool:
         "visa_work_mismatch",
         "illegal_work_intent",
     }
+    work_risk_branch = (
+        "visa_work_mismatch" in branch_reason
+        or "illegal_work_intent" in risk_tags
+        or (
+            "visa_work_mismatch" in risk_tags
+            and next_action in {"WARNING", "FAIL_END"}
+        )
+        or (
+            player_move == "visa_work_mismatch"
+            and (
+                next_action in {"WARNING", "FAIL_END"}
+                or recommended_b_move in {"warning", "secondary_inspection"}
+                or risk_level in {"high", "critical"}
+            )
+        )
+    )
     return (
         "violent_threat" in branch_reason
-        or "visa_work_mismatch" in branch_reason
         or "coercive_exit_request" in branch_reason
         or bool(threat_markers.intersection(risk_tags))
-        or bool(procedural_markers.intersection(risk_tags))
+        or work_risk_branch
         or player_move == "violent_threat"
-        or player_move == "visa_work_mismatch"
         or (
             purpose == "warn_and_control_risk"
             and next_action in {"WARNING", "FAIL_END"}
@@ -331,6 +375,25 @@ def _has_risk_control_reask(npc_text: str, tts_text: str, normalized: dict[str, 
         "what brings you to the united states",
     )
     return any(marker in combined for marker in reask_markers)
+
+
+def _has_work_authorization_generic_reask(
+    npc_text: str,
+    tts_text: str,
+    normalized: dict[str, Any],
+) -> bool:
+    if not _is_work_authorization_clarification_branch(normalized):
+        return False
+    combined = _normalize_for_echo_match(f"{npc_text} {tts_text}")
+    generic_reask_markers = (
+        "what brings you",
+        "purpose of your visit",
+        "what is your purpose",
+        "why are you here",
+        "why did you come",
+        "what brings you to the united states",
+    )
+    return any(marker in combined for marker in generic_reask_markers)
 
 
 _IMMIGRATION_SURFACE_GOAL_CHECKS = {
@@ -680,6 +743,7 @@ def node_initialize_state(state: NPCDialogueState) -> dict[str, Any]:
         and not profanity_res
         and purpose != "smalltalk_diagnostic"
         and not _is_passport_submission_refusal_branch(normalized)
+        and not _is_work_authorization_clarification_branch(normalized)
         and not _is_risk_control_branch(normalized)
     ):
         original_text = fallback_res.get("npc_text") or fallback_res.get("text") or ""
@@ -1103,6 +1167,7 @@ def node_generate_dialogue_llm(state: NPCDialogueState, config: RunnableConfig |
         surface_goal
         and purpose != "smalltalk_diagnostic"
         and not _is_passport_submission_refusal_branch(normalized)
+        and not _is_work_authorization_clarification_branch(normalized)
         and not _is_risk_control_branch(normalized)
     ):
         sentences = [s.strip() for s in re.split(r'[.!?]', npc_text) if s.strip()]

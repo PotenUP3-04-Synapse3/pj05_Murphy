@@ -5875,29 +5875,39 @@ Changed files:
 - `docs/sprints/2026-06-26-immigration-work-purpose-pragmatics-sprint.md`
 - `docs/handoff.md`
 
-Behavior added:
+Behavior added/changed:
 
 - C schema now accepts `pragmatic_context.player_move =
   "visa_work_mismatch"`.
 - C Understanding LLM instructions now ask the model to distinguish ordinary
-  business meetings from work/visa authorization mismatch.
+  business meetings, ambiguous work/employment claims, and explicit illegal
+  work intent.
 - C now merges LLM `risk_evidence` into internal `risk_tags` / `risk_delta`.
-- C now promotes an LLM `visa_work_mismatch` pragmatic card into procedural
-  risk evidence without inspecting the player utterance string.
-- B now routes high-confidence work-purpose pragmatic risk to the existing
-  risk-control warning / secondary-inspection policy instead of generic retry.
-- A fallback and LLM output guards now prevent visit-purpose re-asks on this
-  branch and give the procedural reason: visa/work authorization must be
-  verified.
+- C now treats an LLM `visa_work_mismatch` card with `recommended_b_move =
+  clarify`, `procedural_posture = clarify`, or `risk_level = medium` as a
+  work-authorization clarification: `risk_delta` stays below the critical
+  threshold, `needs_clarification = true`, and the tag becomes
+  `visa_work_authorization_unclear`.
+- C no longer auto-adds `illegal_work_intent` for the ambiguous sentence
+  `I'm here to work.`; explicit illegal/no-authorization work claims are still
+  allowed to become high/critical risk when the LLM card says so.
+- B removed `visa_work_mismatch` from the unconditional critical tag set.
+- B now preserves the LLM's clarification posture by routing ambiguous work
+  purpose to `REASK` / `UNCLEAR` with branch reason
+  `visa_work_authorization_clarification`, instead of immediately sending the
+  player to secondary inspection.
+- A fallback and LLM output guards now prevent generic visit-purpose re-asks on
+  this branch, but also avoid saying "work issue" or "secondary inspection".
+  The fallback asks whether the player means business meetings/short business
+  travel or actual employment, and asks to verify a work visa or authorization
+  if they will work here.
 
 Verification:
 
-- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_escalates_work_purpose_risk backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_risk_routes_to_warning_not_generic_retry backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_warning_fallback_does_not_reask_visit_purpose backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_llm_output_is_not_accepted_as_generic_purpose_reask -q`
-  - RED before implementation: 4 failed.
-  - GREEN after implementation: 4 passed, 1 warning (`audioop`
+- `uv run pytest backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary -q`
+  - RED before correction: 5 failed.
+  - GREEN after correction: 5 passed, 1 warning (`audioop`
     deprecation).
-- `uv run pytest backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_pragmatic_risk_to_secondary_not_purpose_reask -q`
-  passed: 1 passed, 1 warning (`audioop` deprecation).
 - `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
   passed: 273 passed, 1 warning (`audioop` deprecation).
 - `uv run pytest -q`
@@ -5913,7 +5923,8 @@ Next recommended step:
 
 - Run live `/respond-dialog` immigration checks with LLM understanding enabled
   for `I'm here to work`, `I'm here to work as a software engineer`, `I'll help
-  my uncle's shop`, and a lawful business-trip answer. The expected distinction
-  is: work/employee intent becomes visa-work procedural risk; meetings or
-  conferences can remain ordinary `business`.
+  my uncle's shop`, `I have a work visa`, and a lawful business-trip answer.
+  The expected distinction is: ambiguous work/employment gets a visa/work
+  authorization clarification first; explicit illegal/no-authorization work can
+  escalate; meetings or conferences can remain ordinary `business`.
 

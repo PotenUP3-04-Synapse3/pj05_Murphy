@@ -610,15 +610,28 @@ def _attach_pragmatic_context(
     if threat_card is None:
         work_mismatch_card = _visa_work_mismatch_pragmatic_card(output)
         if work_mismatch_card is not None:
-            risk_tags = _unique_non_empty(
-                [
-                    *output.risk_tags,
-                    "visa_work_mismatch",
-                    "illegal_work_intent",
-                ]
-            )
+            is_authorization_clarification = _is_work_authorization_clarification(work_mismatch_card)
+            if is_authorization_clarification:
+                risk_tags = _unique_non_empty(
+                    [
+                        *(
+                            tag for tag in output.risk_tags
+                            if tag not in {"visa_work_mismatch", "illegal_work_intent"}
+                        ),
+                        "visa_work_authorization_unclear",
+                    ]
+                )
+                risk_delta = min(max(output.risk_delta, _procedural_risk_delta(work_mismatch_card), 1), 19)
+            else:
+                risk_tags = _unique_non_empty(
+                    [
+                        *output.risk_tags,
+                        "visa_work_mismatch",
+                    ]
+                )
+                risk_delta = max(output.risk_delta, _procedural_risk_delta(work_mismatch_card))
             reason = work_mismatch_card.reason or (
-                "The player stated a work-purpose claim that requires visa/work authorization handling."
+                "The player stated a work-purpose claim that requires visa/work authorization clarification."
             )
             updated = output.model_copy(
                 update={
@@ -630,10 +643,11 @@ def _attach_pragmatic_context(
                         if output.ambiguity_type and output.ambiguity_type != "none"
                         else "visa_work_mismatch"
                     ),
-                    "risk_delta": max(output.risk_delta, _procedural_risk_delta(work_mismatch_card)),
+                    "risk_delta": risk_delta,
                     "risk_reason": reason,
                     "risk_tags": risk_tags,
-                    "needs_clarification": False,
+                    "needs_clarification": is_authorization_clarification,
+                    "branch_hint": "clarify" if is_authorization_clarification else output.branch_hint,
                     "judgment_reason": reason,
                     "pragmatic_context": work_mismatch_card,
                 }
@@ -643,7 +657,8 @@ def _attach_pragmatic_context(
                 "pragmatic_context_source": "llm",
                 "pragmatic_player_move": work_mismatch_card.player_move,
                 "pragmatic_risk_level": work_mismatch_card.risk_level,
-                "pragmatic_procedural_risk_applied": True,
+                "pragmatic_work_authorization_clarification": is_authorization_clarification,
+                "pragmatic_procedural_risk_applied": not is_authorization_clarification,
             }
         refusal_card = _passport_refusal_pragmatic_card(output, player_text, node_context)
         if refusal_card is not None:
@@ -696,18 +711,31 @@ def _visa_work_mismatch_pragmatic_card(output: UnderstandingOutput) -> Pragmatic
         return None
     if card.risk_level not in {"medium", "high", "critical"}:
         return None
-    if card.recommended_b_move not in {"warning", "secondary_inspection"}:
+    if card.recommended_b_move not in {"clarify", "warning", "secondary_inspection"}:
         return None
     return card
 
 
+def _is_work_authorization_clarification(card: PragmaticContextCard) -> bool:
+    return (
+        card.player_move == "visa_work_mismatch"
+        and (
+            card.recommended_b_move == "clarify"
+            or card.procedural_posture == "clarify"
+            or card.risk_level == "medium"
+        )
+    )
+
+
 def _procedural_risk_delta(card: PragmaticContextCard) -> int:
+    if _is_work_authorization_clarification(card):
+        return 10
     if card.risk_level == "critical" or card.recommended_b_move == "secondary_inspection":
         return 70
     if card.risk_level == "high":
         return 35
     if card.risk_level == "medium":
-        return 20
+        return 10
     return 0
 
 

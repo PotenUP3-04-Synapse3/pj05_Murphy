@@ -178,6 +178,13 @@ class ScenarioStateMachine:
         if self._is_critical_risk(payload, risk_total):
             return self._critical_fail(payload, risk_total)
 
+        if self._has_pragmatic_work_authorization_clarification(payload):
+            return self._clarify(
+                payload,
+                branch_reason="visa_work_authorization_clarification",
+                suspicion_delta=min(max(payload.understanding.risk_delta, 1), 19),
+            )
+
         # 4. Handle success branch
         if is_success:
             if payload.current_node_id == ALPHA_FINAL_SCOREBOARD_NODE_ID:
@@ -235,6 +242,13 @@ class ScenarioStateMachine:
         risk_total = payload.scenario_state.suspicion + payload.understanding.risk_delta
         if self._is_critical_risk(payload, risk_total):
             return self._critical_fail(payload, risk_total)
+
+        if self._has_pragmatic_work_authorization_clarification(payload):
+            return self._clarify(
+                payload,
+                branch_reason="visa_work_authorization_clarification",
+                suspicion_delta=min(max(payload.understanding.risk_delta, 1), 19),
+            )
 
         # 5. Resolve based on satisfied / branch_hint
         if satisfied:
@@ -445,7 +459,6 @@ class ScenarioStateMachine:
             "threat_to_other_person",
             "threat_to_unknown_target",
             "coercive_exit_request",
-            "visa_work_mismatch",
         }
 
         if self._is_undeclared_high_value_violation(payload):
@@ -512,7 +525,13 @@ class ScenarioStateMachine:
                 return route.target
         return payload.node_context.success_next_node
 
-    def _clarify(self, payload: DevBPolicyInput) -> ScenarioDecision:
+    def _clarify(
+        self,
+        payload: DevBPolicyInput,
+        *,
+        branch_reason: str = "Meaning is unclear or needs clarification.",
+        suspicion_delta: int | None = None,
+    ) -> ScenarioDecision:
         """
         모호한 응답으로 판단되어 되묻기(Clarification) 처리가 필요할 때의 분기 정보와 수치 변화량을 결정합니다.
         """
@@ -525,9 +544,12 @@ class ScenarioStateMachine:
             branch_type="clarify",
             next_action="REASK",
             next_node_id=next_node_id,
-            branch_reason="Meaning is unclear or needs clarification.",
+            branch_reason=branch_reason,
             patience_delta=patience_delta,
-            suspicion_delta=max(payload.understanding.risk_delta, 0),
+            suspicion_delta=max(
+                payload.understanding.risk_delta,
+                0,
+            ) if suspicion_delta is None else suspicion_delta,
             retry_count_delta=0,
             hint_count_delta=0,
         )
@@ -611,6 +633,19 @@ class ScenarioStateMachine:
             card.player_move == "visa_work_mismatch"
             and card.risk_level in {"high", "critical"}
             and card.recommended_b_move in {"warning", "secondary_inspection"}
+        )
+
+    def _has_pragmatic_work_authorization_clarification(self, payload: DevBPolicyInput) -> bool:
+        card = payload.understanding.pragmatic_context
+        risk_tags = set(payload.understanding.risk_tags)
+        return bool(
+            card.player_move == "visa_work_mismatch"
+            and (
+                card.recommended_b_move == "clarify"
+                or card.procedural_posture == "clarify"
+                or card.risk_level == "medium"
+                or "visa_work_authorization_unclear" in risk_tags
+            )
         )
 
     def _critical_branch_reason(self, payload: DevBPolicyInput) -> str:
