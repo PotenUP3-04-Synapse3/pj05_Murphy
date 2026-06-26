@@ -5896,6 +5896,10 @@ Behavior added/changed:
   purpose to `REASK` / `UNCLEAR` with branch reason
   `visa_work_authorization_clarification`, instead of immediately sending the
   player to secondary inspection.
+- B now handles `visa_work_authorization_clarification` before the cumulative
+  critical-risk gate and returns `suspicion_delta = 0` for that branch. This
+  prevents repeated medium work-authorization clarifications from accumulating
+  suspicion into an automatic secondary-inspection warning.
 - A fallback and LLM output guards now prevent generic visit-purpose re-asks on
   this branch, but also avoid saying "work issue" or "secondary inspection".
   The fallback asks whether the player means business meetings/short business
@@ -5909,6 +5913,11 @@ Behavior added/changed:
   work-authorization clarification dialogue unless it contains concrete
   visa/authorization/employer/business-meeting specificity, then falls back to
   the visa/work authorization clarification text.
+- Second follow-up live run showed another boundary issue: the first three
+  clarification turns each added suspicion (`0 -> 12 -> 24 -> 38`), so the next
+  medium work-authorization clarification crossed B's cumulative critical-risk
+  threshold and routed to `END_SECONDARY_INSPECTION`. B now treats this branch
+  as a procedural clarification, not suspicion accumulation.
 
 Verification:
 
@@ -5921,8 +5930,23 @@ Verification:
     accepted.
   - GREEN after A specificity guard: 1 passed, 1 warning (`audioop`
     deprecation).
+- `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification backend/tests/dev_b/test_developer_b_policy_engine.py::test_repeated_work_authorization_clarification_does_not_escalate_to_secondary -q`
+  - RED before B ordering/state-delta fix: 2 failed. One failure showed
+    `suspicion_delta = 10`; the other showed repeated clarification escalating
+    to `CRITICAL_FAIL`.
+  - GREEN after B fix: 2 passed.
 - `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification -q`
   passed: 6 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
+  passed: 275 passed, 1 warning (`audioop` deprecation).
+- `uv run pytest -q`
+  passed: 553 passed, 1 warning (`audioop` deprecation).
+- `uv run ruff check .`
+  passed.
+- `uv run mypy .`
+  passed: no issues found in 149 source files.
+- `git diff --check`
+  passed with Windows LF-to-CRLF conversion warnings only.
 - `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
   passed: 273 passed, 1 warning (`audioop` deprecation).
 - `uv run pytest -q`

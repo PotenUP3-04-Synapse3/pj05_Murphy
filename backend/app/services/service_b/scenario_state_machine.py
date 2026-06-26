@@ -173,17 +173,17 @@ class ScenarioStateMachine:
                     f"Patience exhausted ({payload.scenario_state.patience}) or retry limit exceeded ({payload.scenario_state.retry_count}) on failure."
                 )
 
-        # 3. Check critical risks
-        risk_total = payload.scenario_state.suspicion + payload.understanding.risk_delta
-        if self._is_critical_risk(payload, risk_total):
-            return self._critical_fail(payload, risk_total)
-
         if self._has_pragmatic_work_authorization_clarification(payload):
             return self._clarify(
                 payload,
                 branch_reason="visa_work_authorization_clarification",
-                suspicion_delta=min(max(payload.understanding.risk_delta, 1), 19),
+                suspicion_delta=0,
             )
+
+        # 3. Check critical risks
+        risk_total = payload.scenario_state.suspicion + payload.understanding.risk_delta
+        if self._is_critical_risk(payload, risk_total):
+            return self._critical_fail(payload, risk_total)
 
         # 4. Handle success branch
         if is_success:
@@ -238,17 +238,17 @@ class ScenarioStateMachine:
                     f"Patience exhausted ({payload.scenario_state.patience}) or retry limit exceeded ({payload.scenario_state.retry_count}) on failure."
                 )
 
-        # 4. Critical safety risk veto
-        risk_total = payload.scenario_state.suspicion + payload.understanding.risk_delta
-        if self._is_critical_risk(payload, risk_total):
-            return self._critical_fail(payload, risk_total)
-
         if self._has_pragmatic_work_authorization_clarification(payload):
             return self._clarify(
                 payload,
                 branch_reason="visa_work_authorization_clarification",
-                suspicion_delta=min(max(payload.understanding.risk_delta, 1), 19),
+                suspicion_delta=0,
             )
+
+        # 4. Critical safety risk veto
+        risk_total = payload.scenario_state.suspicion + payload.understanding.risk_delta
+        if self._is_critical_risk(payload, risk_total):
+            return self._critical_fail(payload, risk_total)
 
         # 5. Resolve based on satisfied / branch_hint
         if satisfied:

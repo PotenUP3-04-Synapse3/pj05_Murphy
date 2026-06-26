@@ -95,6 +95,7 @@ def _policy_input(
     retry_count: int = 0,
     hint_count: int = 0,
     previous_fail_count: int = 0,
+    suspicion: int = 0,
     tier: Literal["Bronze", "Silver", "Gold"] = "Bronze",
     english_confidence: Literal["beginner", "intermediate", "advanced"] = "beginner",
     client_allowed_next_nodes: list[str] | None = None,
@@ -131,7 +132,7 @@ def _policy_input(
         ),
         scenario_state=ScenarioState(
             patience=100,
-            suspicion=0,
+            suspicion=suspicion,
             retry_count=retry_count,
             hint_count=hint_count,
             previous_fail_count=previous_fail_count,
@@ -347,7 +348,47 @@ def test_llm_pragmatic_work_purpose_routes_to_authorization_clarification(tmp_pa
     assert result.branch.branch_reason == "visa_work_authorization_clarification"
     assert result.dialogue_directive is not None
     assert result.dialogue_directive.purpose == "support_retry"
-    assert 0 < result.state_delta.suspicion_delta < 20
+    assert result.state_delta.suspicion_delta == 0
+
+
+def test_repeated_work_authorization_clarification_does_not_escalate_to_secondary(
+    tmp_path: Path,
+) -> None:
+    result = _agent(tmp_path).evaluate_turn(
+        _policy_input(
+            player_text="I'm here... I'm here to work as a software engineer.",
+            intent_success=False,
+            confidence=0.96,
+            answer_relevance="on_topic",
+            ambiguity_type="visa_work_mismatch",
+            risk_delta=14,
+            risk_tags=["visa_work_authorization_unclear"],
+            extracted_slots={"visit_purpose": "work"},
+            missing_slots=[],
+            needs_clarification=True,
+            suspicion=38,
+            pragmatic_context={
+                "player_move": "visa_work_mismatch",
+                "target": "officer",
+                "risk_level": "medium",
+                "procedural_posture": "clarify",
+                "recommended_b_move": "clarify",
+                "recommended_a_move": "repair",
+                "confidence": 0.9,
+                "evidence": "work as a software engineer",
+                "reason": "The player stated a work-purpose claim that requires visa/work authorization clarification.",
+            },
+        )
+    )
+
+    assert result.evaluation.verdict == "UNCLEAR"
+    assert result.branch.branch_type == "clarify"
+    assert result.branch.next_action == "REASK"
+    assert result.branch.next_node_id == "IMM_EXTRA_001_CLARIFY_PURPOSE"
+    assert result.branch.branch_reason == "visa_work_authorization_clarification"
+    assert result.dialogue_directive is not None
+    assert result.dialogue_directive.purpose == "support_retry"
+    assert result.state_delta.suspicion_delta == 0
 
 
 def test_passport_submission_refusal_uses_critical_branch_not_retry_or_hint(tmp_path: Path) -> None:

@@ -43,6 +43,10 @@ carry that judgment through their normal contracts.
   based on the card strength.
 - Removed `visa_work_mismatch` from the unconditional critical risk tags so
   ambiguous legal work is not punished as illegal work.
+- Moved `visa_work_authorization_clarification` before the cumulative
+  critical-risk gate and set its `suspicion_delta` to 0. Repeated medium
+  work-authorization clarifications should remain procedural clarification, not
+  build up to automatic secondary inspection.
 - Preserved the existing B authority: C provides evidence, B still chooses the
   clarify, warning, or secondary-inspection branch.
 
@@ -70,8 +74,22 @@ carry that judgment through their normal contracts.
   - RED first: 1 failed because `Could you tell me why you're here` was
     accepted as valid LLM dialogue.
   - GREEN after A specificity guard: 1 passed.
+- `uv run pytest backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification backend/tests/dev_b/test_developer_b_policy_engine.py::test_repeated_work_authorization_clarification_does_not_escalate_to_secondary -q`
+  - RED first: 2 failed because clarification still added suspicion and
+    repeated clarification escalated to `CRITICAL_FAIL`.
+  - GREEN after B ordering/state-delta fix: 2 passed.
 - `uv run pytest backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_fallback_asks_authorization_not_secondary backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_is_not_accepted_as_generic_purpose_reask backend/tests/test_developer_a_npc_dialogue.py::test_work_purpose_clarification_llm_output_rejects_vague_why_here_reask backend/tests/test_preprototype_flow.py::test_orchestrator_routes_work_purpose_to_authorization_clarification_not_secondary backend/tests/test_understanding_agent.py::test_understanding_agent_llm_pragmatic_card_clarifies_work_authorization backend/tests/dev_b/test_developer_b_policy_engine.py::test_llm_pragmatic_work_purpose_routes_to_authorization_clarification -q`
   - GREEN: 6 passed.
+- `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
+  - GREEN: 275 passed.
+- `uv run pytest -q`
+  - GREEN: 553 passed.
+- `uv run ruff check .`
+  - GREEN: all checks passed.
+- `uv run mypy .`
+  - GREEN: no issues found in 149 source files.
+- `git diff --check`
+  - GREEN: no whitespace errors; Git printed Windows LF-to-CRLF conversion warnings only.
 - `uv run pytest backend/tests/test_understanding_agent.py backend/tests/dev_b/test_developer_b_policy_engine.py backend/tests/test_developer_a_npc_dialogue.py backend/tests/test_preprototype_flow.py -q`
   - GREEN: 273 passed, 1 warning (`audioop` deprecation).
 - `uv run pytest -q`
