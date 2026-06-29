@@ -25,7 +25,7 @@
 #### 2. 엔딩 및 연출 전환 노드 (Ending & Transition Nodes)
 | 노드 ID | 유형 | 목표/설명 (KR) | 관련 연출/이벤트 (Unreal Event) | 다음 진행 노드 |
 |---|---|---|---|---|
-| `FLIGHT_999_COMPLETE` | 🔄 Transition | **비행기 스몰토크 종료 전환** | `START_AIRPORT_ARRIVAL_TUTORIAL` (챕터 로딩/전환) | `CH0_02_ARRIVAL_TUTORIAL` |
+| `FLIGHT_999_COMPLETE` | 🔄 Transition | **비행기 스몰토크 종료 전환** (이 시점에 장소 억까 `assigned_visit_location_id` 및 물건 억까 `random_customs_item` 정보가 GameState에 미리 배정됨) | `START_AIRPORT_ARRIVAL_TUTORIAL` (챕터 로딩/전환) | `CH0_02_ARRIVAL_TUTORIAL` |
 | `FLIGHT_BAD_END_VERBAL_ABUSE` | 🔴 Ending | **강제 종료 — 무례한 발언으로 인한 대화 중단** | `SHOW_BAD_END_SCOREBOARD` (게임 오버/배드엔딩 연출) | `ALPHA_999_FINAL_SCOREBOARD` |
 
 ### 📍 Chapter 2: Airport Arrival Tutorial (`CH0_02_ARRIVAL_TUTORIAL`)

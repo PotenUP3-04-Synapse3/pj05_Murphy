@@ -105,7 +105,8 @@ Unreal은 게임 상태와 플레이어 입력을 보낸다. Developer B가 직�
     "completed_intents": [
       "submit_passport"
     ],
-    "current_objective": "방문 목적을 말하기"
+    "current_objective": "방문 목적을 말하기",
+    "assigned_visit_location_id": "LOC_SECRET_SOCIETY"
   },
   "previous_node_results": [
     {

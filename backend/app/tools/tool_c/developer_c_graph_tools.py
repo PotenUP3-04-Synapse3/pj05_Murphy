@@ -451,12 +451,17 @@ class DeveloperCGraphTools:
         current_tsl = dev_b_output.level_hint.travel_speaking_level or "TSL_1_SURVIVAL"
         game_state = request.turn.game_state
 
-        if next_node_id == "FLIGHT_999_COMPLETE" and not game_state.assigned_visit_location:
-            loc = pick_location(current_tsl)
-            game_state.assigned_visit_location = loc.name_en
-            game_state.assigned_visit_location_ko = loc.name_ko
-            game_state.visit_location_difficulty = loc.difficulty
-            game_state.visit_location_suspicion_reason = loc.suspicion_reason
+        if next_node_id == "FLIGHT_999_COMPLETE":
+            if not game_state.assigned_visit_location:
+                loc = pick_location(current_tsl)
+                game_state.assigned_visit_location_id = loc.location_id
+                game_state.assigned_visit_location = loc.name_en
+                game_state.assigned_visit_location_ko = loc.name_ko
+                game_state.visit_location_difficulty = loc.difficulty
+                game_state.visit_location_suspicion_reason = loc.suspicion_reason
+            if game_state.random_customs_item is None:
+                item = pick_customs_item(current_tsl)
+                game_state.random_customs_item = to_random_customs_item_context(item)
 
         elif next_node_id == "IMM_999_CLEARED" and game_state.random_customs_item is None:
             item = pick_customs_item(current_tsl)
@@ -897,6 +902,7 @@ def _sync_challenge_context_to_dialogue_seed(
     elif suspicion_scope == "location" and game_state.assigned_visit_location:
         challenge_context = ChallengeContext(
             challenge_type="visit_location",
+            assigned_visit_location_id=game_state.assigned_visit_location_id,
             assigned_visit_location=game_state.assigned_visit_location,
             assigned_visit_location_ko=game_state.assigned_visit_location_ko,
             visit_location_difficulty=game_state.visit_location_difficulty,
@@ -909,6 +915,7 @@ def _sync_challenge_context_to_dialogue_seed(
     dialogue_seed.challenge_context = challenge_context
 
     # 기존 A/B 어댑터가 아직 펼친 필드를 읽을 수 있으므로 같은 값을 함께 맞춰 둡니다.
+    dialogue_seed.assigned_visit_location_id = challenge_context.assigned_visit_location_id
     dialogue_seed.assigned_visit_location = challenge_context.assigned_visit_location
     dialogue_seed.assigned_visit_location_ko = challenge_context.assigned_visit_location_ko
     dialogue_seed.visit_location_difficulty = challenge_context.visit_location_difficulty
@@ -926,6 +933,7 @@ def _clear_dialogue_seed_challenge_fields(dialogue_seed: DialogueSeed) -> None:
     """scope가 꺼진 노드에서 예전 flat 필드가 A의 트집 모드를 켜지 않도록 비웁니다."""
 
     dialogue_seed.challenge_context = None
+    dialogue_seed.assigned_visit_location_id = None
     dialogue_seed.assigned_visit_location = None
     dialogue_seed.assigned_visit_location_ko = None
     dialogue_seed.visit_location_difficulty = None

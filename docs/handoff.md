@@ -6509,3 +6509,43 @@ Key result: Brielle should no longer answer a greeting-only BAG_001 turn with
 about a baggage problem, then ask for details after the player confirms they
 need baggage help.
 
+
+## 2026-06-29 Developer C - 억까 배정 타이밍 통일 및 장소 ID 전송 (Eokkka Timing Unification & Location ID Driven)
+
+Developer C aligned the timing of location and customs item challenge assignments and integrated location ID transmission in GameState and DialogueSeed.
+
+Changed files:
+
+- `backend/app/schemas/game_turn.py`
+- `backend/app/tools/tool_c/developer_c_graph_tools.py`
+- `backend/app/api/ai_respond.py`
+- `backend/tests/dev_b/test_challenge_assignment.py`
+- `backend/tests/test_preprototype_flow.py`
+- `backend/tests/test_developer_a_npc_dialogue.py`
+- `backend/tests/test_demo_ai_respond_page.py`
+- `docs/contracts/scenario_nodes_guide_unreal.md`
+- `docs/contracts/developer_b_json_final_v1.md`
+- `docs/handoff.md`
+
+Behavior added/changed:
+
+- **Unified Assignment Timing**: Both location challenge and customs item challenge are now assigned when exiting the flight smalltalk chapter (`FLIGHT_999_COMPLETE`).
+- **Location ID Propagation**: Added `assigned_visit_location_id` (`LOC_*`) to `GameState`, `ChallengeContext`, and `DialogueSeed` (for flat field compatibility).
+- **Fallback Assignment**: Kept the `IMM_999_CLEARED` check as a fallback assignment for customs items to guard against skips.
+- **Demo Endpoint Alignment**: `/demo/eokkka/assign` now returns the `"assigned_visit_location_id"`.
+- **Contracts Updated**: `scenario_nodes_guide_unreal.md` and `developer_b_json_final_v1.md` now define the unified timing and fields.
+
+Verification so far:
+
+- `uv run pytest backend/tests/dev_b/test_challenge_assignment.py` passed.
+- `uv run pytest backend/tests/test_preprototype_flow.py` passed (verified timing, LOC_ prefix, and item assignment).
+- `uv run pytest backend/tests/test_developer_a_npc_dialogue.py` passed.
+- `uv run pytest backend/tests/test_demo_ai_respond_page.py` passed.
+- `uv run ruff check .` passed.
+- `uv run mypy backend/app/schemas/game_turn.py backend/app/tools/tool_c/developer_c_graph_tools.py backend/app/api/ai_respond.py` passed.
+
+Known Issues & Workarounds:
+
+1. **Pre-existing test failure**: `test_developer_a_npc_roster.py::test_resolve_known_npc_profile_for_officer_hale` fails due to a discrepancy between the expected persona instructions in the test and the actual profile resolved by Dev A's roster service. This is out of Developer C's scope and was documented as an existing failure.
+2. **Pre-existing mypy failure**: `final_result_score_policy.py:188` fails type-checking due to a type incompatibility in Dev B's score policy module (assigning `OpenAIFinalSummaryLLMClient` to a `FinalSummaryLLMClient | None` variable). This is also in a Developer B owned file and left intact under shared editing rules.
+

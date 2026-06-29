@@ -521,6 +521,8 @@ def test_demo_eokkka_assign_endpoint() -> None:
 
     # Must be deterministic (same output for same seed level)
     assert data_lvl5_a == data_lvl5_b
+    assert "assigned_visit_location_id" in data_lvl5_a
+    assert data_lvl5_a["assigned_visit_location_id"].startswith("LOC_")
     assert "assigned_visit_location" in data_lvl5_a
     assert "random_customs_item" in data_lvl5_a
 
@@ -528,5 +530,7 @@ def test_demo_eokkka_assign_endpoint() -> None:
     response_rand = client.get("/api/game/ai/demo/eokkka/assign")
     assert response_rand.status_code == 200
     data_rand = response_rand.json()
+    assert "assigned_visit_location_id" in data_rand
+    assert data_rand["assigned_visit_location_id"].startswith("LOC_")
     assert "assigned_visit_location" in data_rand
     assert "random_customs_item" in data_rand

@@ -157,6 +157,7 @@ class ChallengeContext(BaseModel):
     """
 
     challenge_type: Literal["visit_location", "customs_item"]
+    assigned_visit_location_id: str | None = None
     assigned_visit_location: str | None = None
     assigned_visit_location_ko: str | None = None
     visit_location_difficulty: int | None = None
@@ -177,6 +178,7 @@ class GameState(BaseModel):
     arrival_form: ArrivalFormContext | None = None
 
     # FLIGHT_999_COMPLETE에서 C가 배정하고 Unreal 입국신고서 UI가 표시할 장소 정보입니다.
+    assigned_visit_location_id: str | None = None
     assigned_visit_location: str | None = None
     assigned_visit_location_ko: str | None = None
     visit_location_difficulty: int | None = None
@@ -674,6 +676,7 @@ class DialogueSeed(BaseModel):
     dialogue_history: list[TurnHistoryEntry] = Field(default_factory=list)
 
     # 기존 A/B 어댑터 호환을 위해 유지하는 펼친 형태의 억까 메타데이터입니다.
+    assigned_visit_location_id: str | None = None
     assigned_visit_location: str | None = None
     assigned_visit_location_ko: str | None = None
     visit_location_difficulty: int | None = None
