@@ -2839,6 +2839,7 @@ class _CapturingLLMClient:
 
 
 def _eokkka_payload(
+    assigned_visit_location_id: str = "",
     assigned_visit_location: str = "",
     visit_location_suspicion_reason: str = "",
     visit_location_difficulty: int = 0,
@@ -2857,12 +2858,14 @@ def _eokkka_payload(
         "in_game_feedback": {"npc_recast_line_candidate": None},
         "branch": {"branch_type": "success"},
         "dialogue_seed": {
+            "assigned_visit_location_id": assigned_visit_location_id,
             "assigned_visit_location": assigned_visit_location,
             "visit_location_suspicion_reason": visit_location_suspicion_reason,
             "visit_location_difficulty": visit_location_difficulty,
             "random_customs_item": random_customs_item,
         },
         "game_state": {
+            "assigned_visit_location_id": assigned_visit_location_id,
             "assigned_visit_location": assigned_visit_location,
             "visit_location_suspicion_reason": visit_location_suspicion_reason,
             "visit_location_difficulty": visit_location_difficulty,
@@ -2911,6 +2914,7 @@ def test_dialogue_agent_no_suspicion_meta_uses_default_fallback():
 
 def _payload(**kwargs: Any) -> dict[str, Any]:
     base = _eokkka_payload(
+        assigned_visit_location_id=kwargs.get("assigned_visit_location_id", ""),
         assigned_visit_location=kwargs.get("assigned_visit_location", ""),
         visit_location_suspicion_reason=kwargs.get("visit_location_suspicion_reason", ""),
         visit_location_difficulty=kwargs.get("visit_location_difficulty", 0),

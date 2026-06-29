@@ -37,6 +37,8 @@ def test_pick_location_respects_tsl_range() -> None:
             loc = pick_location(tsl)
             assert isinstance(loc, LocationEntry)
             assert min_diff <= loc.difficulty <= max_diff
+            assert isinstance(loc.location_id, str)
+            assert loc.location_id.startswith("LOC_")
 
 
 def test_pick_customs_item_respects_tsl_range() -> None:

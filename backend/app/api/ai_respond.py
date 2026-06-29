@@ -420,6 +420,7 @@ def demo_eokkka_assign(level: int | None = Query(default=None)) -> dict[str, Any
     customs_item_context = to_random_customs_item_context(item)
 
     return {
+        "assigned_visit_location_id": loc.location_id,
         "assigned_visit_location": loc.name_en,
         "assigned_visit_location_ko": loc.name_ko,
         "visit_location_difficulty": loc.difficulty,

@@ -722,10 +722,15 @@ def test_orchestrator_marks_flight_wrap_up_as_arrival_cutscene_transition() -> N
         assert response.flow.skip_allowed is True
         assert response.flow.show_scoreboard is False
         assert response.game_state is not None
+        assert isinstance(response.game_state.assigned_visit_location_id, str)
+        assert response.game_state.assigned_visit_location_id.startswith("LOC_")
         assert response.game_state.assigned_visit_location
         assert response.game_state.assigned_visit_location_ko
         assert response.game_state.visit_location_difficulty is not None
         assert response.game_state.visit_location_suspicion_reason
+        assert response.game_state.random_customs_item is not None
+        assert isinstance(response.game_state.random_customs_item.item_id, str)
+        assert response.game_state.random_customs_item.item_id.startswith("ITEM_")
     finally:
         if jsonl_path.exists():
             jsonl_path.unlink()
@@ -916,6 +921,7 @@ def test_orchestrator_attaches_recent_dialogue_history_to_dev_a_payload(monkeypa
         turn_payload["session"]["turn_index"] = 3
         turn_payload["npc"]["last_npc_message"] = "Where are you staying?"
         turn_payload["game_state"]["current_objective"] = "State the stay location"
+        turn_payload["game_state"]["assigned_visit_location_id"] = "LOC_SECRET_SOCIETY"
         turn_payload["game_state"]["assigned_visit_location"] = "Downtown Luxury Hotel"
         turn_payload["game_state"]["assigned_visit_location_ko"] = "다운타운 럭셔리 호텔"
         turn_payload["game_state"]["visit_location_difficulty"] = 7
@@ -953,7 +959,9 @@ def test_orchestrator_attaches_recent_dialogue_history_to_dev_a_payload(monkeypa
         dialogue_seed = builder_payloads[0]["dialogue_seed"]
         assert dialogue_seed["suspicion_scope"] == "location"
         assert dialogue_seed["challenge_context"]["challenge_type"] == "visit_location"
+        assert dialogue_seed["challenge_context"]["assigned_visit_location_id"] == "LOC_SECRET_SOCIETY"
         assert dialogue_seed["challenge_context"]["assigned_visit_location"] == "Downtown Luxury Hotel"
+        assert dialogue_seed["assigned_visit_location_id"] == "LOC_SECRET_SOCIETY"
         assert builder_payloads[0]["game_state"]["arrival_form"] == {
             "full_name": "Sean Han",
             "address": "123 Main Street, Queens",
