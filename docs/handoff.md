@@ -6510,15 +6510,16 @@ about a baggage problem, then ask for details after the player confirms they
 need baggage help.
 
 
-## 2026-06-29 Developer C - 억까 배정 타이밍 통일 및 장소 ID 전송 (Eokkka Timing Unification & Location ID Driven)
+## 2026-06-29 Developer B - 억까 배정 타이밍 통일 및 장소 ID 전송 (Eokkka Timing Unification & Location ID Driven)
 
-Developer C aligned the timing of location and customs item challenge assignments and integrated location ID transmission in GameState and DialogueSeed.
+Developer B aligned the timing of location and customs item challenge assignments and integrated location ID transmission in GameState and DialogueSeed.
 
 Changed files:
 
 - `backend/app/schemas/game_turn.py`
 - `backend/app/tools/tool_c/developer_c_graph_tools.py`
 - `backend/app/api/ai_respond.py`
+- `demo/respond-dialog/index.html`
 - `backend/tests/dev_b/test_challenge_assignment.py`
 - `backend/tests/test_preprototype_flow.py`
 - `backend/tests/test_developer_a_npc_dialogue.py`
@@ -6534,6 +6535,7 @@ Behavior added/changed:
 - **Fallback Assignment**: Kept the `IMM_999_CLEARED` check as a fallback assignment for customs items to guard against skips.
 - **Demo Endpoint Alignment**: `/demo/eokkka/assign` now returns the `"assigned_visit_location_id"`.
 - **Contracts Updated**: `scenario_nodes_guide_unreal.md` and `developer_b_json_final_v1.md` now define the unified timing and fields.
+- **Webpage Parity**: Updated `/respond-dialog` webpage logic (`demo/respond-dialog/index.html`) to initialize, synchronize, autofill, and apply `assigned_visit_location_id` correctly (especially in Entire mode).
 
 Verification so far:
 
