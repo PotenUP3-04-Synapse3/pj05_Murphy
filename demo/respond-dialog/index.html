@@ -1098,6 +1098,7 @@
           completed_intents: chapter.completedIntents,
           current_objective: chapter.objective,
           random_customs_item: null,
+          assigned_visit_location_id: null,
           assigned_visit_location: null,
           assigned_visit_location_ko: null,
           visit_location_difficulty: null,
@@ -2643,6 +2644,7 @@
         return;
       }
       const locFields = [
+        "assigned_visit_location_id",
         "assigned_visit_location",
         "assigned_visit_location_ko",
         "visit_location_difficulty",
@@ -2672,7 +2674,9 @@
           const locSelect = document.getElementById("visitLocationSelect");
           const itemSelect = document.getElementById("customsItemSelect");
           
-          if (result.assigned_visit_location) {
+          if (result.assigned_visit_location_id) {
+            locSelect.value = result.assigned_visit_location_id;
+          } else if (result.assigned_visit_location) {
             const matchedLoc = eokkkaOptions.locations.find(l => l.name_en === result.assigned_visit_location);
             if (matchedLoc) {
               locSelect.value = matchedLoc.location_id;
@@ -2713,12 +2717,14 @@
       if (selectedLocId) {
         const loc = eokkkaOptions.locations.find(l => l.location_id === selectedLocId);
         if (loc) {
+          turn.game_state.assigned_visit_location_id = loc.location_id;
           turn.game_state.assigned_visit_location = loc.name_en;
           turn.game_state.assigned_visit_location_ko = loc.name_ko;
           turn.game_state.visit_location_difficulty = loc.difficulty;
           turn.game_state.visit_location_suspicion_reason = loc.suspicion_reason;
         }
       } else {
+        turn.game_state.assigned_visit_location_id = null;
         turn.game_state.assigned_visit_location = null;
         turn.game_state.assigned_visit_location_ko = null;
         turn.game_state.visit_location_difficulty = null;
