@@ -1101,6 +1101,7 @@
           assigned_visit_location_id: null,
           assigned_visit_location: null,
           assigned_visit_location_ko: null,
+          assigned_visit_location_address: null,
           visit_location_difficulty: null,
           visit_location_suspicion_reason: null
         },
@@ -2621,9 +2622,10 @@
       }
 
       if (gs && gs.assigned_visit_location) {
+        const addr = gs.assigned_visit_location_address ? ", " + gs.assigned_visit_location_address : "";
         const ko = gs.assigned_visit_location_ko ? " (" + gs.assigned_visit_location_ko + ")" : "";
         const diff = gs.visit_location_difficulty != null ? " · diff " + gs.visit_location_difficulty : "";
-        refs.eokkkaInfoLocation.textContent = gs.assigned_visit_location + ko + diff;
+        refs.eokkkaInfoLocation.textContent = gs.assigned_visit_location + addr + ko + diff;
       } else {
         refs.eokkkaInfoLocation.textContent = "기내 진단 후 자동 배정";
       }
@@ -2647,6 +2649,7 @@
         "assigned_visit_location_id",
         "assigned_visit_location",
         "assigned_visit_location_ko",
+        "assigned_visit_location_address",
         "visit_location_difficulty",
         "visit_location_suspicion_reason"
       ];
@@ -2720,6 +2723,7 @@
           turn.game_state.assigned_visit_location_id = loc.location_id;
           turn.game_state.assigned_visit_location = loc.name_en;
           turn.game_state.assigned_visit_location_ko = loc.name_ko;
+          turn.game_state.assigned_visit_location_address = loc.address_en;
           turn.game_state.visit_location_difficulty = loc.difficulty;
           turn.game_state.visit_location_suspicion_reason = loc.suspicion_reason;
         }
@@ -2727,6 +2731,7 @@
         turn.game_state.assigned_visit_location_id = null;
         turn.game_state.assigned_visit_location = null;
         turn.game_state.assigned_visit_location_ko = null;
+        turn.game_state.assigned_visit_location_address = null;
         turn.game_state.visit_location_difficulty = null;
         turn.game_state.visit_location_suspicion_reason = null;
       }

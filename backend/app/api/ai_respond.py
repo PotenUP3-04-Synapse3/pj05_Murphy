@@ -368,6 +368,7 @@ def demo_eokkka_options() -> dict[str, Any]:
             "location_id": loc.location_id,
             "name_en": loc.name_en,
             "name_ko": loc.name_ko,
+            "address_en": loc.address_en,
             "difficulty": loc.difficulty,
             "suspicion_reason": loc.suspicion_reason,
         })
@@ -423,6 +424,7 @@ def demo_eokkka_assign(level: int | None = Query(default=None)) -> dict[str, Any
         "assigned_visit_location_id": loc.location_id,
         "assigned_visit_location": loc.name_en,
         "assigned_visit_location_ko": loc.name_ko,
+        "assigned_visit_location_address": loc.address_en,
         "visit_location_difficulty": loc.difficulty,
         "visit_location_suspicion_reason": loc.suspicion_reason,
         "random_customs_item": customs_item_context.model_dump(),
