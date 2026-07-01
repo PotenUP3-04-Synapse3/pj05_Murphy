@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-import httpx
+from backend.app.agents.agent_b.llm_retry import post_json_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,8 @@ class OpenAIFinalSummaryLLMClient:
     model: str = "gpt-4o-mini"
     timeout_seconds: float = 15.0
     endpoint: str = "https://api.openai.com/v1/responses"
+    max_retries: int = 3
+    retry_base_delay_seconds: float = 0.5
 
     @classmethod
     def from_environment(cls, env_path: Path | None = None) -> "OpenAIFinalSummaryLLMClient":
@@ -47,16 +49,34 @@ class OpenAIFinalSummaryLLMClient:
             os.getenv("DEV_B_FINAL_SUMMARY_LLM_TIMEOUT_SECONDS")
             or values.get("DEV_B_FINAL_SUMMARY_LLM_TIMEOUT_SECONDS", "15")
         )
-        return cls(api_key=api_key, model=model, timeout_seconds=timeout)
+        max_retries = int(
+            os.getenv("DEV_B_FINAL_SUMMARY_LLM_MAX_RETRIES")
+            or values.get("DEV_B_FINAL_SUMMARY_LLM_MAX_RETRIES")
+            or os.getenv("DEV_B_FEEDBACK_LLM_MAX_RETRIES")
+            or values.get("DEV_B_FEEDBACK_LLM_MAX_RETRIES", "3")
+        )
+        retry_base_delay = float(
+            os.getenv("DEV_B_FINAL_SUMMARY_LLM_RETRY_BASE_DELAY_SECONDS")
+            or values.get("DEV_B_FINAL_SUMMARY_LLM_RETRY_BASE_DELAY_SECONDS")
+            or os.getenv("DEV_B_FEEDBACK_LLM_RETRY_BASE_DELAY_SECONDS")
+            or values.get("DEV_B_FEEDBACK_LLM_RETRY_BASE_DELAY_SECONDS", "0.5")
+        )
+        return cls(
+            api_key=api_key,
+            model=model,
+            timeout_seconds=timeout,
+            max_retries=max_retries,
+            retry_base_delay_seconds=retry_base_delay,
+        )
 
     def generate(self, payload: dict[str, Any]) -> str:
-        response = httpx.post(
-            self.endpoint,
+        response = post_json_with_retry(
+            endpoint=self.endpoint,
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             },
-            json={
+            json_body={
                 "model": self.model,
                 "instructions": _system_instructions(),
                 "input": [
@@ -90,9 +110,10 @@ class OpenAIFinalSummaryLLMClient:
                     }
                 },
             },
-            timeout=self.timeout_seconds,
+            timeout_seconds=self.timeout_seconds,
+            max_retries=self.max_retries,
+            base_delay_seconds=self.retry_base_delay_seconds,
         )
-        response.raise_for_status()
         result = _extract_json(response.json())
         summary = result.get("overall_summary", "")
         if not isinstance(summary, str) or not summary.strip():

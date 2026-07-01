@@ -995,20 +995,20 @@ class _EnglishLevelHintPolicyCore:
         has_form_issue: bool,
     ) -> ReportItem:
         if decision.verdict == "SUCCESS":
-            summary = "The required immigration answer was understood."
+            summary = "필요한 입국 심사 답변이 잘 전달되었습니다."
             improvement = (
-                "Use a complete sentence for a more natural answer."
+                "더 자연스럽도록 완전한 문장으로 답해보세요."
                 if has_form_issue
-                else "Keep answering with concise, clear travel details."
+                else "간결하고 명확한 여행 정보로 계속 답해보세요."
             )
             score_tags = ["task_success_good"]
         elif decision.verdict == "CRITICAL_FAIL":
-            summary = "The answer raised immigration risk."
-            improvement = "Avoid expressions that imply illegal work, overstay, unknown items, or unsafe intent."
+            summary = "답변이 입국 심사 리스크를 높였습니다."
+            improvement = "불법 취업, 체류 초과, 미상 물품, 위험한 의도를 암시하는 표현은 피하세요."
             score_tags = ["risk_expression", "critical_fail"]
         else:
-            summary = "The answer needs another attempt."
-            improvement = "Answer the officer's exact question with the recommended pattern."
+            summary = "답변을 한 번 더 시도해볼 필요가 있어요."
+            improvement = "심사관의 질문에 추천 표현 패턴으로 정확히 답해보세요."
             score_tags = ["retry_needed"]
 
         if has_form_issue:
@@ -1044,12 +1044,12 @@ class _EnglishLevelHintPolicyCore:
 
     def _feedback_note(self, decision: ScenarioDecision, has_form_issue: bool) -> str:
         if decision.verdict == "SUCCESS" and has_form_issue:
-            return "Meaning was clear, but the answer can be more complete."
+            return "의미는 잘 전달됐지만, 답변을 조금 더 완전한 문장으로 말할 수 있어요."
         if decision.verdict == "SUCCESS":
-            return "Required intent and slot were understood."
+            return "필요한 의도와 핵심 정보가 잘 전달됐습니다."
         if decision.verdict == "CRITICAL_FAIL":
-            return "Risk expression requires warning or fail-end handling."
-        return "The player needs support to answer the current question."
+            return "위험한 표현이라 경고 또는 실패 처리가 필요합니다."
+        return "지금 질문에 답하려면 약간의 도움이 필요해요."
 
     def _avoid_expression(self, payload: DevBPolicyInput) -> str | None:
         if payload.node_context.risk_keywords:

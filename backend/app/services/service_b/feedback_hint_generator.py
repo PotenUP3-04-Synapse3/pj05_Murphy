@@ -204,7 +204,7 @@ class FeedbackHintGenerator:
 
         return FeedbackHintGeneration(
             hint_kr=hint_kr,
-            feedback_note=base_output.evaluation.feedback_note or "The answer was evaluated by rule-based policy.",
+            feedback_note=base_output.evaluation.feedback_note or "규칙 기반 정책으로 평가된 답변입니다.",
             report_summary=base_output.report_item.summary,
             report_improvement=base_output.report_item.improvement,
             example_answer=base_output.report_item.example_answer,

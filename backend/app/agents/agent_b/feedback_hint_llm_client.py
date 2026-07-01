@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Protocol
 
-import httpx
+from backend.app.agents.agent_b.llm_retry import post_json_with_retry
 
 
 class FeedbackHintLLMClient(Protocol):
@@ -48,6 +48,8 @@ class OpenAIFeedbackHintLLMClient:
     model: str = "gpt-4o-mini"
     timeout_seconds: float = 10.0
     endpoint: str = "https://api.openai.com/v1/responses"
+    max_retries: int = 3
+    retry_base_delay_seconds: float = 0.5
 
     @classmethod
     def from_environment(cls, env_path: Path | None = None) -> "OpenAIFeedbackHintLLMClient":
@@ -75,7 +77,21 @@ class OpenAIFeedbackHintLLMClient:
             os.getenv("DEV_B_FEEDBACK_LLM_TIMEOUT_SECONDS")
             or values.get("DEV_B_FEEDBACK_LLM_TIMEOUT_SECONDS", "10")
         )
-        return cls(api_key=api_key, model=model, timeout_seconds=timeout)
+        max_retries = int(
+            os.getenv("DEV_B_FEEDBACK_LLM_MAX_RETRIES")
+            or values.get("DEV_B_FEEDBACK_LLM_MAX_RETRIES", "3")
+        )
+        retry_base_delay = float(
+            os.getenv("DEV_B_FEEDBACK_LLM_RETRY_BASE_DELAY_SECONDS")
+            or values.get("DEV_B_FEEDBACK_LLM_RETRY_BASE_DELAY_SECONDS", "0.5")
+        )
+        return cls(
+            api_key=api_key,
+            model=model,
+            timeout_seconds=timeout,
+            max_retries=max_retries,
+            retry_base_delay_seconds=retry_base_delay,
+        )
 
     def generate(self, payload: dict[str, Any]) -> dict[str, Any]:
         """
@@ -91,13 +107,13 @@ class OpenAIFeedbackHintLLMClient:
             HTTPError: OpenAI API 통신에 실패했을 때 발생
             FeedbackHintLLMUnavailable: 반환된 결과가 올바른 JSON 형식이 아닐 때 발생
         """
-        response = httpx.post(
-            self.endpoint,
+        response = post_json_with_retry(
+            endpoint=self.endpoint,
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             },
-            json={
+            json_body={
                 "model": self.model,
                 "instructions": _developer_instructions(),
                 "input": [
@@ -120,9 +136,10 @@ class OpenAIFeedbackHintLLMClient:
                     }
                 },
             },
-            timeout=self.timeout_seconds,
+            timeout_seconds=self.timeout_seconds,
+            max_retries=self.max_retries,
+            base_delay_seconds=self.retry_base_delay_seconds,
         )
-        response.raise_for_status()
         return _extract_structured_json(response.json())
 
 
