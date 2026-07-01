@@ -60,6 +60,8 @@ class FocusOnFormReportPolicy:
         for item in items:
             item.pop("occurrence_count", None)
 
+        self._dedupe_examples_across_items(items)
+
         top_item = items[0]
         return {
             "report_mode": "focus_on_form",
@@ -86,6 +88,27 @@ class FocusOnFormReportPolicy:
         reader = OpenKBFinalResultRecordReader(runtime_root=self.runtime_root)
         records = reader.read_session_records(session_id)
         return self.build_report(records)
+
+    def _dedupe_examples_across_items(self, items: list[dict[str, Any]]) -> None:
+        """
+        여러 학습 카드에 걸쳐 동일한 모범 표현(suggested_expressions)이 반복 노출되지 않도록
+        전역 중복을 제거합니다. 폴백 시 카드마다 같은 recommended_expression이 채워져
+        최종 화면에서 "같은 문장이 여러 번" 보이던 문제를 방지합니다.
+
+        각 카드는 최소 한 개의 모범 표현을 유지합니다(모두 중복이면 answer_example로 보강).
+        """
+        seen: set[str] = set()
+        for item in items:
+            deduped: list[str] = []
+            for expression in item.get("suggested_expressions", []):
+                if expression in seen:
+                    continue
+                seen.add(expression)
+                deduped.append(expression)
+            if not deduped:
+                fallback = str(item.get("answer_example", ""))
+                deduped = [fallback] if fallback else list(item.get("suggested_expressions", []))[:1]
+            item["suggested_expressions"] = deduped
 
     def _group_records(
         self,
