@@ -457,6 +457,7 @@ class DeveloperCGraphTools:
                 game_state.assigned_visit_location_id = loc.location_id
                 game_state.assigned_visit_location = loc.name_en
                 game_state.assigned_visit_location_ko = loc.name_ko
+                game_state.assigned_visit_location_address = loc.address_en
                 game_state.visit_location_difficulty = loc.difficulty
                 game_state.visit_location_suspicion_reason = loc.suspicion_reason
             if game_state.random_customs_item is None:

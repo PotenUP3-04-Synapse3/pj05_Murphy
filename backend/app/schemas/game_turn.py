@@ -181,6 +181,8 @@ class GameState(BaseModel):
     assigned_visit_location_id: str | None = None
     assigned_visit_location: str | None = None
     assigned_visit_location_ko: str | None = None
+    # Unreal 입국신고서 UI에 "{name_en}, {address} ({name_ko})"로 표시할 짧은 주소입니다.
+    assigned_visit_location_address: str | None = None
     visit_location_difficulty: int | None = None
     visit_location_suspicion_reason: str | None = None
 
